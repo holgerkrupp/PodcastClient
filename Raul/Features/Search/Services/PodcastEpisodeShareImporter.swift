@@ -651,19 +651,7 @@ struct PodcastEpisodeShareImporter {
     }
 
     private func decodeHTMLEntities(_ string: String) -> String {
-        guard let data = string.data(using: .utf8),
-              let decoded = try? NSAttributedString(
-                data: data,
-                options: [
-                    .documentType: NSAttributedString.DocumentType.html,
-                    .characterEncoding: String.Encoding.utf8.rawValue
-                ],
-                documentAttributes: nil
-              ).string else {
-            return string
-        }
-
-        return decoded
+        string.plainTextFromHTML() ?? string
     }
 
     private func fallbackTitle(for url: URL) -> String {

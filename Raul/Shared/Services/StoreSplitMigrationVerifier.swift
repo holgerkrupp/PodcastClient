@@ -36,6 +36,26 @@ struct LegacyStoreCleanupGate: Equatable, Sendable {
 enum StoreSplitMigrationVerifier {
     static let verificationID = "store-split-v\(StoreSplitMigrationService.migrationVersion)"
 
+    /// Builds the local half of the authority-release gate. Population-level
+    /// convergence and delayed-import evidence are supplied by release
+    /// telemetry because they cannot be inferred from one device's SQLite file.
+    static func cutoverGate(
+        cacheContainer: ModelContainer,
+        allDevicesConverged: Bool,
+        delayedCloudImportsSettled: Bool
+    ) -> StoreSplitCutoverGate {
+        StoreSplitCutoverGate(
+            localBackfillComplete: StoreSplitMigrationService.isSliceMigrationComplete(
+                cacheContainer: cacheContainer
+            ),
+            localVerificationPassed: StoreSplitMigrationService.isMigrationVerified(
+                cacheContainer: cacheContainer
+            ),
+            allDevicesConverged: allDevicesConverged,
+            delayedCloudImportsSettled: delayedCloudImportsSettled
+        )
+    }
+
     @discardableResult
     static func verify(
         legacyContainer: ModelContainer,
@@ -92,6 +112,13 @@ enum StoreSplitMigrationVerifier {
         destinationCounts["episodeStates"] = episodeStates.count
         destinationCounts["playlists"] = playlists.count
         destinationCounts["playlistEntries"] = playlistEntries.count
+        let queueEntries = newest(
+            (try? userState.fetch(FetchDescriptor<QueueEntrySync>())) ?? [],
+            id: \QueueEntrySync.id,
+            date: \QueueEntrySync.updatedAt,
+            device: { $0.sourceDeviceID }
+        )
+        destinationCounts["queueEntries"] = queueEntries.count
         destinationCounts["bookmarks"] = bookmarks.count
         destinationCounts["preferences"] = preferences.count
         destinationCounts["listeningHistory"] =
@@ -101,6 +128,13 @@ enum StoreSplitMigrationVerifier {
 
         var requiredFeedKeys = Set<String>()
         var requiredEpisodeKeys = Set<String>()
+        var sourceSubscriptionKeys = Set<String>()
+        var sourceEpisodeStateKeys = Set<String>()
+        var sourcePlaylistIDs = Set<String>()
+        var sourcePlaylistEntryIDs = Set<String>()
+        var sourceQueueEntryIDs = Set<String>()
+        var sourceBookmarkIDs = Set<String>()
+        var sourcePreferenceIDs = Set<String>()
         let legacyPodcasts = (try? legacy.fetch(FetchDescriptor<Podcast>())) ?? []
         sourceCounts["subscriptions"] = 0
         for podcast in legacyPodcasts {
@@ -110,6 +144,7 @@ enum StoreSplitMigrationVerifier {
             sourceCounts["subscriptions", default: 0] += 1
             let subscribedAt = podcast.metaData?.subscriptionDate ?? .distantPast
             let isSubscribed = podcast.metaData?.isSubscribed != false
+            if isSubscribed { sourceSubscriptionKeys.insert(feedKey) }
             let line = canonical(
                 "subscription", feedKey, isSubscribed,
                 subscribedAt.timeIntervalSince1970
@@ -147,6 +182,7 @@ enum StoreSplitMigrationVerifier {
             let identity = episode.stableEpisodeIdentity
             requiredEpisodeKeys.insert(identity.key)
             requiredFeedKeys.insert(identity.feedURL)
+            sourceEpisodeStateKeys.insert(identity.key)
             sourceCounts["episodeStates", default: 0] += 1
             let updatedAt = [
                 metadata.lastPlayed, metadata.completionDate,
@@ -182,6 +218,7 @@ enum StoreSplitMigrationVerifier {
         sourceCounts["playlistEntries"] = 0
         for playlist in legacyPlaylists {
             let playlistID = playlist.storeSplitSyncID
+            sourcePlaylistIDs.insert(playlistID)
             let sourceUpdatedAt = playlist.ordered.compactMap(\.dateAdded).max() ?? .distantPast
             sourceLines.append(canonical(
                 "playlist", playlistID, playlist.title, playlist.symbolName,
@@ -213,6 +250,10 @@ enum StoreSplitMigrationVerifier {
                 )
                 requiredFeedKeys.insert(identity.feedURL)
                 requiredEpisodeKeys.insert(identity.key)
+                sourcePlaylistEntryIDs.insert(entryID)
+                if playlist.title == Playlist.defaultQueueTitle {
+                    sourceQueueEntryIDs.insert(identity.key)
+                }
                 sourceCounts["playlistEntries", default: 0] += 1
                 sourceLines.append(canonical(
                     "playlistEntry", entryID, entry.order,
@@ -249,6 +290,7 @@ enum StoreSplitMigrationVerifier {
             requiredFeedKeys.insert(identity.feedURL)
             requiredEpisodeKeys.insert(identity.key)
             sourceCounts["bookmarks", default: 0] += 1
+            sourceBookmarkIDs.insert(bookmarkID)
             sourceLines.append(canonical(
                 "bookmark", bookmarkID, identity.key,
                 bookmark.start ?? 0, bookmark.title,
@@ -285,8 +327,65 @@ enum StoreSplitMigrationVerifier {
                 .map(PodcastFeedIdentity.normalizedFeedURLString)
                 .map { StableIdentityKey.make("feed", $0) }
                 ?? StableIdentityKey.make("global")
+            sourcePreferenceIDs.insert(id)
             if preferences[id] == nil { issues.append("missing_preference:\(id)") }
         }
+
+        sourceCounts["queueEntries"] = sourceQueueEntryIDs.count
+        let appendDestinationOnlyIssue: (String, Set<String>, Set<String>) -> Void = {
+            label, destinationIDs, sourceIDs in
+            let count = destinationIDs.subtracting(sourceIDs).count
+            if count > 0 { issues.append("destination_only_\(label):\(count)") }
+        }
+        appendDestinationOnlyIssue(
+            "subscriptions",
+            Set(subscriptions.values.filter {
+                $0.isSubscribed && $0.unsubscribedAt == nil
+            }.map {
+                URL(string: $0.feedURL)
+                    .map(PodcastFeedIdentity.normalizedFeedURLString)
+                    ?? $0.feedURL
+            }),
+            sourceSubscriptionKeys
+        )
+        appendDestinationOnlyIssue(
+            "episode_states",
+            Set(episodeStates.values.map(\.id)),
+            sourceEpisodeStateKeys
+        )
+        appendDestinationOnlyIssue(
+            "playlists",
+            Set(playlists.values.filter {
+                $0.isDeleted == false && $0.deletedAt == nil
+            }.map(\.id)),
+            sourcePlaylistIDs
+        )
+        appendDestinationOnlyIssue(
+            "playlist_entries",
+            Set(playlistEntries.values.filter {
+                $0.isDeleted == false && $0.deletedAt == nil
+            }.map(\.id)),
+            sourcePlaylistEntryIDs
+        )
+        appendDestinationOnlyIssue(
+            "queue_entries",
+            Set(queueEntries.values.filter {
+                $0.isDeleted == false && $0.deletedAt == nil
+            }.map(\.id)),
+            sourceQueueEntryIDs
+        )
+        appendDestinationOnlyIssue(
+            "bookmarks",
+            Set(bookmarks.values.filter {
+                $0.isDeleted == false && $0.deletedAt == nil
+            }.map(\.id)),
+            sourceBookmarkIDs
+        )
+        appendDestinationOnlyIssue(
+            "preferences",
+            Set(preferences.values.map(\.id)),
+            sourcePreferenceIDs
+        )
 
         // Only sessions the migration can actually carry count as source rows.
         // A session with no episode, no start time, or no clean end has nothing

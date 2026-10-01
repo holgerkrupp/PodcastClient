@@ -2171,6 +2171,37 @@ actor StoreSplitMigrationService {
         return currentPhase(cache: context) == nil
     }
 
+    /// Records the no-source case explicitly. A fresh install has no legacy
+    /// rows to page, but leaving eight checkpoints absent makes diagnostics say
+    /// `0/8` forever and keeps a completed no-op indistinguishable from a stall.
+    nonisolated static func markMigrationCompleteWithoutSource(
+        cacheContainer: ModelContainer
+    ) {
+        let context = makeContext(for: cacheContainer)
+        for phase in slicePhaseOrder {
+            let id = checkpointID(for: phase)
+            var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+                predicate: #Predicate { $0.id == id }
+            )
+            descriptor.fetchLimit = 1
+            let checkpoint = (try? context.fetch(descriptor).first)
+                ?? StoreSplitMigrationCheckpoint(
+                    id: id,
+                    migrationVersion: migrationVersion,
+                    phase: phase,
+                    cursor: "0",
+                    startedAt: .now
+                )
+            if checkpoint.modelContext == nil {
+                context.insert(checkpoint)
+            }
+            checkpoint.cursor = "0"
+            checkpoint.completedAt = checkpoint.completedAt ?? .now
+            checkpoint.updatedAt = .now
+        }
+        try? context.save()
+    }
+
     nonisolated static func isMigrationVerified(
         cacheContainer: ModelContainer
     ) -> Bool {
@@ -2181,6 +2212,21 @@ actor StoreSplitMigrationService {
             && record.verifiedAt != nil
             && record.issues.isEmpty
             && record.cacheMissingCount == 0
+    }
+
+    /// Shared diagnostics entry point for the automatic slice runner. Keeping
+    /// the checkpoint-to-key formatting here prevents the App Store path from
+    /// reporting a successful run with stale failure telemetry.
+    nonisolated static func failedItemKeysForDiagnostics(
+        from context: ModelContext
+    ) -> [String] {
+        let checkpoints = (try? context.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>())) ?? []
+        return Array(
+            checkpoints
+                .filter { $0.failedCount > 0 }
+                .map { "\($0.phase):\($0.lastError ?? "failed=\($0.failedCount)")" }
+                .prefix(100)
+        )
     }
 
     /// The first non-AI phase whose checkpoint has not completed, or `nil` when
@@ -2377,5 +2423,456 @@ actor StoreSplitMigrationService {
 
     private static func latestDate(_ dates: Date?...) -> Date? {
         dates.compactMap { $0 }.max()
+    }
+}
+
+/// Removes UserState rows that cannot exist in the current legacy library.
+///
+/// The split release is still in its legacy-authoritative phase, so the normal
+/// migration can safely publish deletions in this direction. This is separate
+/// from the normal paged upsert work: a completed upsert phase used to leave
+/// destination-only rows active forever, which made a completed migration look
+/// larger than its source.
+struct StoreSplitAuthoritativeReconciliationResult: Sendable, Equatable {
+    var subscriptionsRepublished = 0
+    var episodeStatesRepublished = 0
+    var preferencesRepublished = 0
+    var subscriptionsTombstoned = 0
+    var playlistsTombstoned = 0
+    var playlistEntriesTombstoned = 0
+    var queueEntriesTombstoned = 0
+    var bookmarksTombstoned = 0
+    var preferencesDeleted = 0
+    var episodeStatesDeleted = 0
+    var listeningHistoryPreserved = 0
+    var failed = 0
+    var error: String?
+
+    var republishedCount: Int {
+        subscriptionsRepublished + episodeStatesRepublished + preferencesRepublished
+    }
+
+    var cleanupCount: Int {
+        subscriptionsTombstoned
+            + playlistsTombstoned
+            + playlistEntriesTombstoned
+            + queueEntriesTombstoned
+            + bookmarksTombstoned
+            + preferencesDeleted
+            + episodeStatesDeleted
+    }
+
+    var changedCount: Int {
+        republishedCount + cleanupCount
+    }
+}
+
+actor StoreSplitAuthoritativeReconciliationService {
+    private let legacyContainer: ModelContainer
+    private let userStateContainer: ModelContainer
+
+    private struct SourceSnapshot {
+        var subscriptions: [String: Bool] = [:]
+        var playlistIDs = Set<String>()
+        var playlistEntryIDs = Set<String>()
+        var queueEntryIDs = Set<String>()
+        var bookmarkIDs = Set<String>()
+        var preferenceIDs = Set<String>()
+        var episodeStateIDs = Set<String>()
+    }
+
+    private init(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) {
+        self.legacyContainer = legacyContainer
+        self.userStateContainer = userStateContainer
+    }
+
+    nonisolated static func reconcile(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) async -> StoreSplitAuthoritativeReconciliationResult {
+        let service = StoreSplitAuthoritativeReconciliationService(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer
+        )
+        return await service.run()
+    }
+
+    private func run() async -> StoreSplitAuthoritativeReconciliationResult {
+        let legacyContext = ModelContext(legacyContainer)
+        let source = makeSourceSnapshot(from: legacyContext)
+        let now = Date()
+        var result = StoreSplitAuthoritativeReconciliationResult()
+
+        // The original repair only removed destination-only rows. Re-publish
+        // every current source record first so a partially completed or older
+        // migration also repairs destination-only gaps before cleanup runs.
+        let republished = await republishSourceState(from: legacyContext, at: now)
+        result.subscriptionsRepublished = republished.subscriptions
+        result.episodeStatesRepublished = republished.episodeStates
+        result.preferencesRepublished = republished.preferences
+
+        let playlistWriter = StoreSplitPlaylistSyncWriter(
+            modelContainer: userStateContainer
+        )
+        for playlist in sourcePlaylists(from: legacyContext) {
+            await playlistWriter.upsert(
+                playlist.storeSplitSnapshot,
+                at: now,
+                authoritative: true
+            )
+        }
+
+        let bookmarkWriter = StoreSplitBookmarkSyncWriter(
+            modelContainer: userStateContainer
+        )
+        for bookmark in sourceBookmarks(from: legacyContext) {
+            guard let episode = bookmark.bookmarkEpisode,
+                  episode.podcast?.feed != nil else { continue }
+            let bookmarkID = bookmarkID(for: bookmark, episode: episode)
+            await bookmarkWriter.upsert(
+                StoreSplitBookmarkSnapshot(
+                    id: bookmarkID,
+                    identity: episode.stableEpisodeIdentity,
+                    time: bookmark.start ?? 0,
+                    title: bookmark.title,
+                    createdAt: bookmark.creationtime ?? now
+                ),
+                at: now
+            )
+        }
+
+        let context = ModelContext(userStateContainer)
+        reconcileSubscriptions(
+            source: source,
+            context: context,
+            now: now,
+            result: &result
+        )
+        reconcilePlaylists(
+            source: source,
+            context: context,
+            now: now,
+            result: &result
+        )
+        reconcileBookmarks(
+            source: source,
+            context: context,
+            now: now,
+            result: &result
+        )
+        deleteDestinationOnlyPreferences(
+            source: source,
+            context: context,
+            result: &result
+        )
+        deleteDestinationOnlyEpisodeStates(
+            source: source,
+            context: context,
+            result: &result
+        )
+        result.listeningHistoryPreserved =
+            (try? context.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
+
+        guard context.hasChanges else { return result }
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            result.failed += 1
+            result.error = error.localizedDescription
+            CrashBreadcrumbs.shared.record(
+                "store_split_authoritative_reconciliation_failed",
+                details: error.localizedDescription
+            )
+        }
+        return result
+    }
+
+    private func republishSourceState(
+        from context: ModelContext,
+        at date: Date
+    ) async -> (subscriptions: Int, episodeStates: Int, preferences: Int) {
+        var subscriptions = 0
+        let subscriptionWriter = StoreSplitSubscriptionSyncWriter(
+            modelContainer: userStateContainer
+        )
+        for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
+            guard let feed = podcast.feed else { continue }
+            await subscriptionWriter.setSubscribed(
+                feedURL: feed,
+                isSubscribed: podcast.metaData?.isSubscribed != false,
+                at: date
+            )
+            subscriptions += 1
+        }
+
+        let episodeStateSnapshots = ((try? context.fetch(
+            FetchDescriptor<Episode>()
+        )) ?? []).compactMap { episode -> StoreSplitEpisodeStateSnapshot? in
+            guard let metadata = episode.metaData,
+                  episode.podcast?.feed != nil else { return nil }
+            let isPlayed = metadata.isHistory == true
+                || metadata.status == .history
+                || metadata.completionDate != nil
+            let isArchived = metadata.isArchived == true
+                || metadata.status == .archived
+            let snapshot = StoreSplitEpisodeStateSnapshot(
+                identity: episode.stableEpisodeIdentity,
+                playPosition: max(0, metadata.playPosition ?? 0),
+                maxPlayPosition: max(
+                    0,
+                    metadata.maxPlayposition ?? 0,
+                    metadata.playPosition ?? 0
+                ),
+                duration: episode.duration,
+                isPlayed: isPlayed,
+                isArchived: isArchived,
+                wasSkipped: metadata.wasSkipped,
+                completedAt: metadata.completionDate,
+                archivedAt: metadata.archivedAt,
+                firstPlayedAt: metadata.firstListenDate,
+                lastPlayedAt: metadata.lastPlayed
+            )
+            guard snapshot.playPosition > 0
+                || snapshot.maxPlayPosition > 0
+                || snapshot.isPlayed
+                || snapshot.isArchived
+                || snapshot.wasSkipped
+                || snapshot.completedAt != nil
+                || snapshot.archivedAt != nil
+                || snapshot.firstPlayedAt != nil
+                || snapshot.lastPlayedAt != nil else {
+                return nil
+            }
+            return snapshot
+        }
+        if episodeStateSnapshots.isEmpty == false {
+            await StoreSplitEpisodeStateSyncWriter(
+                modelContainer: userStateContainer
+            ).upsert(episodeStateSnapshots, at: date)
+        }
+
+        var preferences = 0
+        let preferenceWriter = StoreSplitPreferenceSyncWriter(
+            modelContainer: userStateContainer
+        )
+        for settings in (try? context.fetch(FetchDescriptor<PodcastSettings>())) ?? [] {
+            await preferenceWriter.upsert(
+                PortablePodcastPreferenceSnapshot.make(
+                    settings: settings,
+                    feedURL: settings.podcast?.feed
+                ),
+                at: date
+            )
+            preferences += 1
+        }
+        return (subscriptions, episodeStateSnapshots.count, preferences)
+    }
+
+    private func makeSourceSnapshot(from context: ModelContext) -> SourceSnapshot {
+        var snapshot = SourceSnapshot()
+        for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
+            guard let feed = podcast.feed else { continue }
+            let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
+            snapshot.subscriptions[feedKey] = podcast.metaData?.isSubscribed != false
+        }
+
+        for settings in (try? context.fetch(FetchDescriptor<PodcastSettings>())) ?? [] {
+            let feedKey = settings.podcast?.feed.map(
+                PodcastFeedIdentity.normalizedFeedURLString
+            )
+            snapshot.preferenceIDs.insert(
+                feedKey.map { StableIdentityKey.make("feed", $0) }
+                    ?? StableIdentityKey.make("global")
+            )
+        }
+
+        for playlist in sourcePlaylists(from: context) {
+            let playlistID = playlist.storeSplitSyncID
+            snapshot.playlistIDs.insert(playlistID)
+            for entry in playlist.ordered {
+                guard let episode = entry.episode,
+                      episode.podcast?.feed != nil else { continue }
+                let identity = episode.stableEpisodeIdentity
+                snapshot.playlistEntryIDs.insert(
+                    StableIdentityKey.make(
+                        playlistID,
+                        identity.feedURL,
+                        identity.episodeID
+                    )
+                )
+                if playlist.title == Playlist.defaultQueueTitle {
+                    snapshot.queueEntryIDs.insert(identity.key)
+                }
+            }
+        }
+
+        for bookmark in sourceBookmarks(from: context) {
+            guard let episode = bookmark.bookmarkEpisode,
+                  episode.podcast?.feed != nil else { continue }
+            snapshot.bookmarkIDs.insert(bookmarkID(for: bookmark, episode: episode))
+        }
+
+        for episode in (try? context.fetch(FetchDescriptor<Episode>())) ?? [] {
+            guard let metadata = episode.metaData,
+                  episode.podcast?.feed != nil,
+                  hasMeaningfulState(metadata) else { continue }
+            snapshot.episodeStateIDs.insert(episode.stableEpisodeIdentity.key)
+        }
+        return snapshot
+    }
+
+    private func sourcePlaylists(
+        from context: ModelContext
+    ) -> [Playlist] {
+        (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+    }
+
+    private func sourceBookmarks(
+        from context: ModelContext
+    ) -> [Bookmark] {
+        (try? context.fetch(FetchDescriptor<Bookmark>())) ?? []
+    }
+
+    private func bookmarkID(
+        for bookmark: Bookmark,
+        episode: Episode
+    ) -> String {
+        bookmark.uuid?.uuidString ?? StableIdentityKey.make(
+            "legacy-bookmark",
+            episode.stableEpisodeIdentity.key,
+            String(bookmark.start ?? 0),
+            bookmark.title,
+            String((bookmark.creationtime ?? .distantPast).timeIntervalSince1970)
+        )
+    }
+
+    private func reconcileSubscriptions(
+        source: SourceSnapshot,
+        context: ModelContext,
+        now: Date,
+        result: inout StoreSplitAuthoritativeReconciliationResult
+    ) {
+        let records = (try? context.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
+        for record in records {
+            let feedKey = URL(string: record.feedURL)
+                .map(PodcastFeedIdentity.normalizedFeedURLString)
+                ?? record.feedURL
+            guard let isSubscribed = source.subscriptions[feedKey] else {
+                guard record.isSubscribed else { continue }
+                record.isSubscribed = false
+                record.unsubscribedAt = now
+                record.updatedAt = now
+                record.sourceDeviceID = ListeningDeviceIdentity.current().id
+                result.subscriptionsTombstoned += 1
+                continue
+            }
+            let needsRepair = record.isSubscribed != isSubscribed
+                || (isSubscribed && record.unsubscribedAt != nil)
+                || (isSubscribed == false && record.unsubscribedAt == nil)
+            guard needsRepair else { continue }
+            record.isSubscribed = isSubscribed
+            record.unsubscribedAt = isSubscribed ? nil : now
+            if isSubscribed { record.subscribedAt = now }
+            record.updatedAt = now
+            record.sourceDeviceID = ListeningDeviceIdentity.current().id
+            result.subscriptionsTombstoned += 1
+        }
+    }
+
+    private func reconcilePlaylists(
+        source: SourceSnapshot,
+        context: ModelContext,
+        now: Date,
+        result: inout StoreSplitAuthoritativeReconciliationResult
+    ) {
+        let playlists = (try? context.fetch(FetchDescriptor<PlaylistSync>())) ?? []
+        for playlist in playlists where source.playlistIDs.contains(playlist.id) == false {
+            guard playlist.isDeleted == false else { continue }
+            playlist.isDeleted = true
+            playlist.deletedAt = now
+            playlist.updatedAt = now
+            playlist.sourceDeviceID = ListeningDeviceIdentity.current().id
+            result.playlistsTombstoned += 1
+        }
+
+        let entries = (try? context.fetch(FetchDescriptor<PlaylistEntrySync>())) ?? []
+        for entry in entries where source.playlistEntryIDs.contains(entry.id) == false {
+            guard entry.isDeleted == false else { continue }
+            entry.isDeleted = true
+            entry.deletedAt = now
+            entry.updatedAt = now
+            entry.sourceDeviceID = ListeningDeviceIdentity.current().id
+            result.playlistEntriesTombstoned += 1
+        }
+
+        let queueEntries = (try? context.fetch(FetchDescriptor<QueueEntrySync>())) ?? []
+        for entry in queueEntries where source.queueEntryIDs.contains(entry.id) == false {
+            guard entry.isDeleted == false else { continue }
+            entry.isDeleted = true
+            entry.deletedAt = now
+            entry.updatedAt = now
+            entry.sourceDeviceID = ListeningDeviceIdentity.current().id
+            result.queueEntriesTombstoned += 1
+        }
+    }
+
+    private func reconcileBookmarks(
+        source: SourceSnapshot,
+        context: ModelContext,
+        now: Date,
+        result: inout StoreSplitAuthoritativeReconciliationResult
+    ) {
+        let bookmarks = (try? context.fetch(FetchDescriptor<BookmarkSync>())) ?? []
+        for bookmark in bookmarks where source.bookmarkIDs.contains(bookmark.id) == false {
+            guard bookmark.isDeleted == false else { continue }
+            bookmark.isDeleted = true
+            bookmark.deletedAt = now
+            bookmark.updatedAt = now
+            bookmark.sourceDeviceID = ListeningDeviceIdentity.current().id
+            result.bookmarksTombstoned += 1
+        }
+    }
+
+    private func deleteDestinationOnlyPreferences(
+        source: SourceSnapshot,
+        context: ModelContext,
+        result: inout StoreSplitAuthoritativeReconciliationResult
+    ) {
+        let preferences = (try? context.fetch(FetchDescriptor<PodcastPreferenceSync>())) ?? []
+        for preference in preferences where source.preferenceIDs.contains(preference.id) == false {
+            context.delete(preference)
+            result.preferencesDeleted += 1
+        }
+    }
+
+    private func deleteDestinationOnlyEpisodeStates(
+        source: SourceSnapshot,
+        context: ModelContext,
+        result: inout StoreSplitAuthoritativeReconciliationResult
+    ) {
+        let states = (try? context.fetch(FetchDescriptor<EpisodeStateSync>())) ?? []
+        for state in states where source.episodeStateIDs.contains(state.id) == false {
+            context.delete(state)
+            result.episodeStatesDeleted += 1
+        }
+    }
+
+    private func hasMeaningfulState(_ metadata: EpisodeMetaData) -> Bool {
+        let isPlayed = metadata.isHistory == true
+            || metadata.status == .history
+            || metadata.completionDate != nil
+        let isArchived = metadata.isArchived == true
+            || metadata.status == .archived
+        return (metadata.playPosition ?? 0) > 0
+            || (metadata.maxPlayposition ?? 0) > 0
+            || isPlayed
+            || isArchived
+            || metadata.wasSkipped
+            || metadata.firstListenDate != nil
+            || metadata.lastPlayed != nil
     }
 }

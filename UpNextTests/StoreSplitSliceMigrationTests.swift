@@ -171,6 +171,112 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     // MARK: - Tests
 
     @MainActor
+    func testAuthoritativeReconciliationRemovesDestinationOnlyState() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 3)
+
+        let userContext = containers.userState.mainContext
+        userContext.insert(
+            SubscriptionSync(
+                feedURL: "https://stale.example/feed.xml",
+                isSubscribed: true
+            )
+        )
+        userContext.insert(
+            PlaylistSync(
+                id: "stale-playlist",
+                title: "Stale playlist",
+                symbolName: "archivebox",
+                sortIndex: 99,
+                kindRawValue: "manual"
+            )
+        )
+        userContext.insert(
+            PlaylistEntrySync(
+                playlistID: "stale-playlist",
+                feedURL: "https://stale.example/feed.xml",
+                episodeID: "stale-episode",
+                sortIndex: 0
+            )
+        )
+        userContext.insert(
+            QueueEntrySync(
+                feedURL: "https://stale.example/feed.xml",
+                episodeID: "stale-episode",
+                sortIndex: 0
+            )
+        )
+        userContext.insert(
+            BookmarkSync(
+                id: "stale-bookmark",
+                feedURL: "https://stale.example/feed.xml",
+                episodeID: "stale-episode",
+                time: 10
+            )
+        )
+        userContext.insert(PodcastPreferenceSync(feedURL: "https://stale.example/feed.xml"))
+        userContext.insert(
+            EpisodeStateSync(
+                feedURL: "https://stale.example/feed.xml",
+                episodeID: "stale-episode",
+                playPosition: 10
+            )
+        )
+        try userContext.save()
+
+        let result = await StoreSplitAuthoritativeReconciliationService.reconcile(
+            legacyContainer: containers.legacy,
+            userStateContainer: containers.userState
+        )
+
+        XCTAssertEqual(result.subscriptionsTombstoned, 1)
+        XCTAssertEqual(result.playlistsTombstoned, 1)
+        XCTAssertEqual(result.playlistEntriesTombstoned, 1)
+        XCTAssertEqual(result.queueEntriesTombstoned, 1)
+        XCTAssertEqual(result.bookmarksTombstoned, 1)
+        XCTAssertEqual(result.preferencesDeleted, 1)
+        XCTAssertEqual(result.episodeStatesDeleted, 1)
+        XCTAssertEqual(result.failed, 0)
+
+        let subscription = try XCTUnwrap(
+            try userContext.fetch(FetchDescriptor<SubscriptionSync>())
+                .first { $0.id == "https://stale.example/feed.xml" }
+        )
+        XCTAssertFalse(subscription.isSubscribed)
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<PlaylistSync>())
+                .first { $0.id == "stale-playlist" }?.isDeleted == true
+        )
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<PlaylistEntrySync>())
+                .first { $0.id == StableIdentityKey.make(
+                    "stale-playlist",
+                    "https://stale.example/feed.xml",
+                    "stale-episode"
+                ) }?.isDeleted == true
+        )
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<QueueEntrySync>())
+                .first { $0.id == StableIdentityKey.make(
+                    "https://stale.example/feed.xml",
+                    "stale-episode"
+                ) }?.isDeleted == true
+        )
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<BookmarkSync>())
+                .first { $0.id == "stale-bookmark" }?.isDeleted == true
+        )
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<PodcastPreferenceSync>())
+                .contains { $0.feedURL == "https://stale.example/feed.xml" } == false
+        )
+        XCTAssertTrue(
+            try userContext.fetch(FetchDescriptor<EpisodeStateSync>())
+                .contains { $0.feedURL == "https://stale.example/feed.xml" } == false
+        )
+    }
+
+    @MainActor
     func testBookmarkPhasePagesBookmarksNotTheChapterTable() async throws {
         let containers = try makeContainers()
         try populate(containers.legacy, episodeCount: 3)
@@ -654,5 +760,103 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             gracePeriodEnd: .distantPast
         )
         XCTAssertTrue(gate.migrationVerified, "issues: \(report.issues)")
+    }
+
+    @MainActor
+    func testMigrationDiagnosticsMatchAutomaticSliceEngine() async throws {
+        let containers = try makeContainers()
+        try populate(containers.legacy, episodeCount: 5)
+
+        var status = StoreSplitMigrationDiagnostics.migrationStatus(
+            cacheContext: containers.cache.mainContext,
+            userStateContext: containers.userState.mainContext,
+            isRunning: false,
+            readiness: .ready
+        )
+        XCTAssertEqual(status.completedPhaseCount, 0)
+        XCTAssertEqual(
+            status.totalPhaseCount,
+            StoreSplitMigrationService.slicePhaseOrder.count
+        )
+        XCTAssertFalse(status.isComplete)
+
+        let reports = await drainSlices(containers, shouldContinue: { true })
+        let last = try XCTUnwrap(reports.last)
+        status = StoreSplitMigrationDiagnostics.migrationStatus(
+            cacheContext: containers.cache.mainContext,
+            userStateContext: containers.userState.mainContext,
+            isRunning: false,
+            readiness: .complete,
+            lastSliceStatus: last.status,
+            lastSliceProcessed: last.processed,
+            lastSliceError: last.error
+        )
+        XCTAssertEqual(status.lastSliceStatus, .completed)
+        XCTAssertEqual(status.lastSliceError, nil)
+        XCTAssertTrue(status.isComplete)
+        XCTAssertEqual(status.completedPhaseCount, status.totalPhaseCount)
+    }
+
+    @MainActor
+    func testNoSourceCompletionCreatesTruthfulCheckpoints() throws {
+        let containers = try makeContainers()
+        StoreSplitMigrationService.markMigrationCompleteWithoutSource(
+            cacheContainer: containers.cache
+        )
+
+        let status = StoreSplitMigrationDiagnostics.migrationStatus(
+            cacheContext: containers.cache.mainContext,
+            userStateContext: containers.userState.mainContext,
+            isRunning: false,
+            readiness: .complete
+        )
+        XCTAssertEqual(status.completedPhaseCount, status.totalPhaseCount)
+        XCTAssertTrue(status.isComplete)
+        XCTAssertTrue(
+            StoreSplitMigrationService.isSliceMigrationComplete(
+                cacheContainer: containers.cache
+            )
+        )
+    }
+
+    @MainActor
+    func testDualSyncBackfillConvergesTwoReleaseEquivalentDevicesBeforeCutover() async throws {
+        XCTAssertEqual(
+            StoreSplitReleasePhase.current,
+            .dualSyncBackfill,
+            "the release-equivalent test must exercise ship one"
+        )
+
+        let firstDevice = try makeContainers()
+        let secondDevice = try makeContainers()
+        try populate(firstDevice.legacy, episodeCount: 12)
+        try populate(secondDevice.legacy, episodeCount: 12)
+
+        let firstReports = await drainSlices(firstDevice, shouldContinue: { true })
+        let secondReports = await drainSlices(secondDevice, shouldContinue: { true })
+        XCTAssertEqual(firstReports.last?.status, .completed)
+        XCTAssertEqual(secondReports.last?.status, .completed)
+        XCTAssertEqual(
+            try destinationCounts(firstDevice.userState),
+            try destinationCounts(secondDevice.userState)
+        )
+
+        let firstGate = StoreSplitMigrationVerifier.cutoverGate(
+            cacheContainer: firstDevice.cache,
+            allDevicesConverged: false,
+            delayedCloudImportsSettled: true
+        )
+        XCTAssertFalse(StoreSplitReleasePhase.canSwitchToUserStateAuthority(gate: firstGate))
+        XCTAssertTrue(firstGate.blockers.contains("devices have not converged"))
+
+        let convergedGate = StoreSplitMigrationVerifier.cutoverGate(
+            cacheContainer: firstDevice.cache,
+            allDevicesConverged: true,
+            delayedCloudImportsSettled: true
+        )
+        XCTAssertTrue(
+            StoreSplitReleasePhase.canSwitchToUserStateAuthority(gate: convergedGate),
+            "authority cutover requires both devices to finish the dual-sync backfill"
+        )
     }
 }

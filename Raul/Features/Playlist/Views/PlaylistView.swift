@@ -12,6 +12,13 @@ import TipKit
 struct PlaylistView: View {
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
+    @Query(
+        filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false },
+        sort: [SortDescriptor<Podcast>(\.title)]
+    )
+    private var subscribedPodcasts: [Podcast]
+    @Query(filter: PodcastSettingsView.defaultSettingsFilter)
+    private var defaultSettings: [PodcastSettings]
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -25,6 +32,7 @@ struct PlaylistView: View {
     @State private var showCreatePlaylistSheet: Bool = false
     @State private var requestedEpisode: Episode?
     @State private var showsRequestedEpisode = false
+    @State private var showsLivePodcasts = false
 
     private var visiblePlaylists: [Playlist] {
         Playlist.manualVisibleSorted(playlists)
@@ -55,6 +63,13 @@ struct PlaylistView: View {
         horizontalSizeClass == .regular
     }
 
+    private var liveEntries: [LivePodcastEntry] {
+        LivePodcastDiscovery.entries(
+            from: subscribedPodcasts,
+            isEnabled: defaultSettings.first?.showLivePodcasts != false
+        )
+    }
+
     var body: some View {
         VStack {
             if showsPlaylistPickerInContent {
@@ -76,6 +91,22 @@ struct PlaylistView: View {
         .animation(reduceMotion ? nil : .easeInOut, value: selectedPlaylistID)
         .platformInlineNavigationTitle()
         .toolbar {
+            if liveEntries.isEmpty == false {
+                #if os(macOS)
+                ToolbarItem(placement: .primaryAction) {
+                    LivePodcastsToolbarButton {
+                        showsLivePodcasts = true
+                    }
+                }
+                #else
+                ToolbarItem(placement: .topBarLeading) {
+                    LivePodcastsToolbarButton {
+                        showsLivePodcasts = true
+                    }
+                }
+                #endif
+            }
+
             if showsPlaylistPickerInContent == false {
                 ToolbarItem(placement: .principal) {
                     playlistPicker
@@ -97,6 +128,9 @@ struct PlaylistView: View {
             NewPlaylistSheet { draft in
                 createPlaylist(from: draft)
             }
+        }
+        .sheet(isPresented: $showsLivePodcasts) {
+            LivePodcastsView()
         }
         .navigationDestination(isPresented: $showsRequestedEpisode) {
             if let requestedEpisode {

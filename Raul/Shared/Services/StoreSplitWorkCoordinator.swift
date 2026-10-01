@@ -58,7 +58,8 @@ actor StoreSplitWorkCoordinator {
             )
         }
         if StoreDevelopmentConfiguration.legacyMigrationEnabled,
-           ModelContainerManager.hasPendingMigrationWork {
+           (ModelContainerManager.hasPendingMigrationWork
+                || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork) {
             pendingMigration = true
         }
         await publishPendingState()
@@ -78,6 +79,13 @@ actor StoreSplitWorkCoordinator {
 
     func scheduleCloudImportReconcile() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        if ModelContainerManager.hasPendingMigrationWork
+            || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork {
+            pendingMigration = true
+            await publishPendingState()
+            startRunnerIfNeeded()
+            return
+        }
         enqueueReconcile(
             authoritativePlaylists: false,
             force: false,
@@ -114,6 +122,14 @@ actor StoreSplitWorkCoordinator {
 
     func runManualReconcile(authoritativePlaylists: Bool) async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        if ModelContainerManager.hasPendingMigrationWork
+            || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork {
+            pendingMigration = true
+            await publishPendingState()
+            startRunnerIfNeeded()
+            await waitForIdle()
+            return
+        }
         enqueueReconcile(
             authoritativePlaylists: authoritativePlaylists,
             force: true,
@@ -129,10 +145,6 @@ actor StoreSplitWorkCoordinator {
     }
 
     func runManualMigration() async {
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
-            return
-        }
-        guard StoreDevelopmentConfiguration.legacyMigrationEnabled else { return }
         pendingMigration = true
         await publishPendingState()
         startRunnerIfNeeded()
@@ -222,7 +234,24 @@ actor StoreSplitWorkCoordinator {
                 await ModelContainerManager.shared.performSplitStoreAIImportIfPossible()
             case .migration:
                 pendingMigration = false
-                await ModelContainerManager.shared.performSplitStoreMigrationIfNeeded()
+                let result = await ModelContainerManager.shared
+                    .performSplitStoreMigrationIfNeeded()
+                switch result {
+                case .completed, .progressed, .deferred:
+                    break
+                case let .blocked(reason), let .failed(reason):
+                    // The manager records the blocker and schedules a delayed
+                    // retry when the cause can recover (store preparation,
+                    // CloudKit export, or a transient save failure). Keep the
+                    // coordinator queue clear here so a blocked launch cannot
+                    // spin at full speed.
+                    await MainActor.run {
+                        ModelContainerManager.shared.updateSplitStoreCoordinatorState(
+                            currentJob: nil,
+                            pendingReason: reason
+                        )
+                    }
+                }
             }
 
             await clearCurrentJob()
@@ -263,6 +292,14 @@ actor StoreSplitWorkCoordinator {
             return nil
         }
 
+        // During the legacy-authoritative release, finish the backfill and its
+        // deletion cleanup before importing UserState back into the legacy graph.
+        // Otherwise stale destination rows could be reintroduced as source data
+        // immediately before the authoritative pass runs.
+        if pendingMigration,
+           StoreSplitReleasePhase.current == .dualSyncBackfill {
+            return .migration
+        }
         if pendingReconcile != nil {
             return .reconcile
         }

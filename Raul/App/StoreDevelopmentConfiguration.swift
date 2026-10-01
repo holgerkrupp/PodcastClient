@@ -48,7 +48,7 @@ enum DevelopmentStoreMode: String, CaseIterable, Identifiable {
 /// production — and it opens a divergence window for anyone whose second device
 /// has not updated yet. `dualSyncBackfill` ships the risky half first, with
 /// nothing user-visible riding on it.
-enum StoreSplitReleasePhase {
+enum StoreSplitReleasePhase: Equatable {
     /// Ship #1. The legacy library graph stays exactly as it shipped before:
     /// primary source of truth, CloudKit-backed, unchanged cross-device
     /// behaviour. `UserState.sqlite` is populated in the background and synced,
@@ -63,6 +63,43 @@ enum StoreSplitReleasePhase {
 
     /// The phase this build ships. Changing this constant is the cutover.
     static let current: StoreSplitReleasePhase = .dualSyncBackfill
+
+    /// The authority release is a source-level switch, but it must not be
+    /// flipped on the strength of one device's local checkpoint. This gate is
+    /// deliberately pure so release tooling and end-to-end upgrade tests can
+    /// evaluate the exact same rule before changing `current`.
+    static func canSwitchToUserStateAuthority(
+        gate: StoreSplitCutoverGate
+    ) -> Bool {
+        gate.isSatisfied
+    }
+}
+
+/// Population-level evidence required before the release phase can stop
+/// syncing the legacy store. Local migration completion is necessary, but it is
+/// not enough: another device may still be on the old build or a delayed
+/// CloudKit delivery may still be in flight.
+struct StoreSplitCutoverGate: Equatable, Sendable {
+    let localBackfillComplete: Bool
+    let localVerificationPassed: Bool
+    let allDevicesConverged: Bool
+    let delayedCloudImportsSettled: Bool
+
+    var isSatisfied: Bool {
+        localBackfillComplete
+            && localVerificationPassed
+            && allDevicesConverged
+            && delayedCloudImportsSettled
+    }
+
+    var blockers: [String] {
+        var result: [String] = []
+        if localBackfillComplete == false { result.append("local backfill incomplete") }
+        if localVerificationPassed == false { result.append("local verification incomplete") }
+        if allDevicesConverged == false { result.append("devices have not converged") }
+        if delayedCloudImportsSettled == false { result.append("delayed CloudKit imports are unsettled") }
+        return result
+    }
 }
 
 struct StoreDevelopmentConfiguration: Equatable {
@@ -382,7 +419,11 @@ extension StoreDevelopmentConfiguration {
 
     var legacyMigrationEnabled: Bool {
         splitStoreHeavyWorkPaused == false
-            && (mode == .splitStores || mode == .splitStoreReads)
+            // The experimental cache-projection mode still has to publish the
+            // durable legacy source into UserState. Treating it as a migration
+            // exemption made DEBUG the one path where automatic backfill was a
+            // silent no-op.
+            && (mode == .splitStores || mode == .splitStoreReads || mode == .newStoresOnly)
     }
 
     var cloudSyncSettingsAvailable: Bool {

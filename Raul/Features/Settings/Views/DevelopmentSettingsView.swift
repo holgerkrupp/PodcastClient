@@ -1,4 +1,5 @@
 #if DEBUG
+import Foundation
 import SwiftUI
 
 struct DevelopmentSettingsView: View {
@@ -27,6 +28,11 @@ struct DevelopmentSettingsView: View {
     @State private var reattachApprovalToken = 0
     @State private var playlistDiagnostics: String?
     @State private var showTombstoneRecoverySheet = false
+    @State private var storeSizes: [DevelopmentStoreSize] = []
+    @State private var storeObjectCounts: [StoreSplitDevelopmentDatabaseCounts] = []
+    @State private var isLoadingStoreObjectCounts = false
+    @State private var cacheStatus: StoreSplitCacheDevelopmentStatus?
+    @State private var migrationStatus: StoreSplitMigrationStatus?
     @State private var tombstoneRecoveryCutoff = Calendar.current.date(
         byAdding: .day,
         value: -7,
@@ -109,14 +115,21 @@ struct DevelopmentSettingsView: View {
     var body: some View {
         Form {
             Section {
+                Picker("Data architecture", selection: $storeMode) {
+                    ForEach(DevelopmentStoreMode.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.menu)
+
                 LabeledContent(
-                    "Data architecture",
+                    "Active since launch",
                     value: launchConfiguration.mode.title
                 )
             } header: {
                 Text("Store Selection")
             } footer: {
-                Text(storeModeDescription)
+                Text("Selected: \(storeModeDescription) Changes apply after relaunch. The cache projection mode is experimental and rebuilds the library graph from PodcastCache.sqlite.")
             }
 
             Section {
@@ -209,24 +222,183 @@ struct DevelopmentSettingsView: View {
                 )
             }
 
+            Section {
+                ForEach(storeSizes) { store in
+                    LabeledContent(store.name, value: store.displayValue)
+                }
+
+                if storeSizes.contains(where: \.isAvailable) {
+                    LabeledContent("Total store footprint") {
+                        Text(storeSizes.reduce(into: Int64(0)) { total, store in
+                            total += store.bytes
+                        }.formattedAsStorage)
+                        .monospacedDigit()
+                    }
+                }
+
+                Button("Refresh Store Sizes") {
+                    refreshStoreSizes()
+                }
+            } header: {
+                Text("Database / Store Sizes")
+            } footer: {
+                Text("Includes each SQLite file and its -wal, -shm, and -journal sidecars. Sizes use allocated disk space and show Not created when a store has not been opened yet.")
+            }
+
+            Section {
+                if isLoadingStoreObjectCounts {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                        Text("Reading object counts…")
+                    }
+                } else if storeObjectCounts.isEmpty {
+                    Text("No object counts loaded yet.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(storeObjectCounts) { store in
+                        DisclosureGroup {
+                            if store.isAvailable {
+                                ForEach(store.objects) { object in
+                                    LabeledContent(object.name) {
+                                        Text(object.displayValue)
+                                            .monospacedDigit()
+                                    }
+                                }
+                            } else {
+                                Text("Not open in the active launch configuration.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } label: {
+                            HStack {
+                                Text(store.storeName)
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+
+                Button("Refresh Object Counts") {
+                    refreshStoreObjectCounts()
+                }
+                .disabled(isLoadingStoreObjectCounts)
+            } header: {
+                Text("Database / Store Objects")
+            } footer: {
+                Text("The same metrics appear in the same order for every store. Counts are unique logical objects; live UserState counts exclude tombstoned/deleted rows. A dash means that store does not own that kind of data; it is not the same as zero. SQLite may still contain tombstones and duplicate historical rows for CloudKit deletion propagation.")
+            }
+
+            Section {
+                if let cacheStatus {
+                    LabeledContent(
+                        "Automatic filling",
+                        value: cacheStatus.automaticFillingEnabled ? "Enabled" : "Not active in this mode"
+                    )
+                    LabeledContent(
+                        "Feeds cached",
+                        value: "\(cacheStatus.cachedFeedCount) / \(cacheStatus.sourceFeedCount)"
+                    )
+                    LabeledContent("Pending feeds", value: "\(cacheStatus.pendingFeedCount)")
+                    LabeledContent("Cached episodes", value: "\(cacheStatus.cachedEpisodeCount)")
+                    LabeledContent("Cached transcript records", value: "\(cacheStatus.cachedTranscriptCount)")
+                    LabeledContent("Cached transcript lines", value: "\(cacheStatus.cachedTranscriptLineCount)")
+                    LabeledContent("Cached AI chapters", value: "\(cacheStatus.cachedChapterCount)")
+                    LabeledContent(
+                        "Cache status",
+                        value: cacheStatus.isComplete ? "Complete" : "Filling"
+                    )
+                    LabeledContent(
+                        "Last cache pass",
+                        value: cacheStatus.lastBootstrapAt?.formatted(
+                            date: .abbreviated,
+                            time: .shortened
+                        ) ?? "Not run"
+                    )
+                    if let copied = cacheStatus.lastBootstrapCopied {
+                        LabeledContent("Feeds copied last pass", value: "\(copied)")
+                    }
+                } else {
+                    Text("Cache status is not available until the split stores are opened.")
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Refresh Cache Status") {
+                    refreshStoreObjectCounts()
+                }
+                .disabled(isLoadingStoreObjectCounts)
+            } header: {
+                Text("Podcast Cache Filling")
+            } footer: {
+                Text("The cache is filled automatically only in the Cache Projection architecture. It prioritizes feeds needed by playlists, then processes up to 15 feeds after launch/foreground and up to 200 during the overnight background pass. Each feed is complete when it reaches the current cache schema version; transcripts and chapters are included in that feed pass.")
+            }
+
+            Section {
+                if let migrationStatus {
+                    LabeledContent(
+                        "Overall",
+                        value: migrationOverallTitle(migrationStatus)
+                    )
+                    LabeledContent(
+                        "Regular slices",
+                        value: "\(migrationStatus.completedPhaseCount) of \(migrationStatus.totalPhaseCount) complete"
+                    )
+                    if migrationStatus.failedItemCount > 0 {
+                        LabeledContent(
+                            "Failed items",
+                            value: "\(migrationStatus.failedItemCount)"
+                        )
+                        .foregroundStyle(.red)
+                    }
+                    if let blocker = migrationStatus.blocker {
+                        LabeledContent("Blocker", value: blocker)
+                            .foregroundStyle(.orange)
+                    }
+
+                    ForEach(migrationStatus.phases) { phase in
+                        migrationPhaseRow(phase)
+                    }
+
+                    if migrationStatus.supplementalPhases.isEmpty == false {
+                        Divider()
+                        Text("AI content checkpoints")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(migrationStatus.supplementalPhases) { phase in
+                            migrationPhaseRow(phase)
+                        }
+                    }
+                } else {
+                    Text("Migration status is not available until the split stores are opened.")
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Refresh Migration Completeness") {
+                    refreshStoreObjectCounts()
+                }
+                .disabled(isLoadingStoreObjectCounts)
+            } header: {
+                Text("Migration Completeness")
+            } footer: {
+                Text("Use the checkmarks and unique live destination counts to verify subscriptions, listening history, listening statistics, and AI transcripts/chapters. Tombstones remain physically stored for CloudKit deletion propagation but are excluded from these counts. Listening history may intentionally exceed the legacy raw-session count because old raw sessions are retention-limited. AI content has separate checkpoints and is not included in the regular slice percentage.")
+            }
+
             if launchConfiguration.mode != .legacyOnly {
                 Section("Split-Store Work") {
                     LabeledContent(
                         "Current job",
-                        value: modelContainerManager.currentSplitStoreJobDescription ?? "Idle"
+                        value: modelContainerManager.currentSplitStoreJobDescription ?? "No active job"
                     )
                     LabeledContent(
                         "Pending work",
-                        value: modelContainerManager.pendingSplitStoreWorkReason ?? "None"
+                        value: modelContainerManager.pendingSplitStoreWorkReason ?? "No pending work"
                     )
                     LabeledContent(
                         "Last reconcile",
-                        value: modelContainerManager.lastSplitStoreReconcileSummary ?? "None"
+                        value: modelContainerManager.lastSplitStoreReconcileSummary ?? "No reconcile has run"
                     )
                     LabeledContent(
                         "Reconciled at",
                         value: modelContainerManager.lastSplitStoreReconcileAt?
-                            .formatted(date: .abbreviated, time: .shortened) ?? "Never"
+                            .formatted(date: .abbreviated, time: .shortened) ?? "No reconcile has run"
                     )
                 }
             }
@@ -246,24 +418,37 @@ struct DevelopmentSettingsView: View {
                     Toggle("Pause migration", isOn: $migrationPaused)
 
                     LabeledContent(
+                        "Readiness",
+                        value: modelContainerManager.migrationReadiness.title
+                    )
+                    LabeledContent(
+                        "Blocker",
+                        value: modelContainerManager.migrationBlocker ?? "No blocker recorded"
+                    )
+
+                    LabeledContent(
                         "Current phase",
-                        value: modelContainerManager.migrationCurrentPhase ?? "Idle"
+                        value: modelContainerManager.migrationCurrentPhase ?? "No slice has run"
                     )
                     LabeledContent(
                         "Cursor",
-                        value: modelContainerManager.migrationCursorSummary ?? "—"
+                        value: modelContainerManager.migrationCursorSummary ?? "No cursor"
                     )
                     LabeledContent(
                         "Progress",
-                        value: modelContainerManager.migrationProgressSummary ?? "—"
+                        value: modelContainerManager.migrationProgressSummary ?? "No checkpoint yet"
                     )
                     LabeledContent(
                         "Memory footprint",
-                        value: modelContainerManager.migrationFootprintSummary ?? "—"
+                        value: modelContainerManager.migrationFootprintSummary ?? "No slice has run"
+                    )
+                    LabeledContent(
+                        "Last slice",
+                        value: modelContainerManager.migrationLastSliceResult
                     )
                     LabeledContent(
                         "Last slice error",
-                        value: modelContainerManager.migrationLastSliceError ?? "None"
+                        value: modelContainerManager.migrationLastSliceError ?? "No error"
                     )
                 } header: {
                     Text("Slice Migration")
@@ -277,7 +462,7 @@ struct DevelopmentSettingsView: View {
                     } label: {
                         LabeledContent(
                             "Migration Log",
-                            value: modelContainerManager.migrationCurrentPhase ?? "Idle"
+                            value: modelContainerManager.migrationLastSliceResult
                         )
                     }
                 } footer: {
@@ -495,6 +680,11 @@ struct DevelopmentSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle("Development")
         .platformInlineNavigationTitle()
+        .task {
+            refreshStoreSizes()
+            refreshMigrationStatus()
+            refreshStoreObjectCounts()
+        }
         .onChange(of: storeMode) { _, mode in
             if mode == .legacyOnly || mode == .newStoresOnly {
                 userStateCloudSyncEnabled = false
@@ -572,7 +762,7 @@ struct DevelopmentSettingsView: View {
     }
 
     private var storeModeDescription: String {
-        switch launchConfiguration.mode {
+        switch storeMode {
         case .legacyOnly:
             "Only the local library store is opened. Split-store migration, imports, and dual writes are disabled."
         case .splitStores:
@@ -591,6 +781,142 @@ struct DevelopmentSettingsView: View {
             || isResetting
             || launchConfiguration.splitStoreWorkEnabled == false
             || launchConfiguration.mode == .legacyOnly
+    }
+
+    private func refreshStoreSizes() {
+        storeSizes = DevelopmentStoreSize.all()
+    }
+
+    private func refreshStoreObjectCounts() {
+        guard isLoadingStoreObjectCounts == false else { return }
+        isLoadingStoreObjectCounts = true
+        Task {
+            do {
+                storeObjectCounts = try await modelContainerManager
+                    .splitStoreDevelopmentObjectCounts()
+                cacheStatus = try? await modelContainerManager
+                    .splitStoreCacheDevelopmentStatus()
+                migrationStatus = modelContainerManager.storeSplitMigrationStatus()
+            } catch {
+                resetMessage = "Could not read store object counts: \(error.localizedDescription)"
+            }
+            isLoadingStoreObjectCounts = false
+        }
+    }
+
+    private func refreshMigrationStatus() {
+        migrationStatus = modelContainerManager.storeSplitMigrationStatus()
+    }
+
+    private func migrationPhaseRow(
+        _ phase: StoreSplitMigrationPhaseStatus
+    ) -> some View {
+        let metricName = migrationMetricName(for: phase.id)
+        let sourceCount = metricName.flatMap {
+            objectCount(store: "SharedDatabase.sqlite", metric: $0)
+        }
+        let countsMustMatch = [
+            "subscriptions", "playlists", "playlist_entries", "bookmarks",
+            "episode_states", "ai_transcripts", "ai_chapters"
+        ].contains(phase.id)
+        let hasCountMismatch = countsMustMatch
+            && sourceCount != nil
+            && sourceCount != phase.activeDestinationCount
+        let phaseIsComplete = phase.isComplete && hasCountMismatch == false
+
+        return HStack(spacing: 10) {
+            Image(
+                systemName: phaseIsComplete
+                    ? "checkmark.circle.fill"
+                    : hasCountMismatch ? "exclamationmark.circle.fill" : "circle"
+            )
+            .foregroundStyle(
+                phaseIsComplete ? .green : hasCountMismatch ? .orange : .secondary
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(phase.title)
+                if let metricName {
+                    Text(
+                        "Legacy \(displayedObjectCount(store: "SharedDatabase.sqlite", metric: metricName)) → "
+                            + "\(destinationStoreName(for: phase.id)) "
+                            + (phase.id.hasPrefix("ai_")
+                                ? displayedObjectCount(
+                                    store: destinationStoreName(for: phase.id),
+                                    metric: metricName
+                                )
+                                : String(phase.activeDestinationCount))
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                } else {
+                    Text("\(phase.activeDestinationCount) destination records")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            Spacer()
+            if phase.failedCount > 0 {
+                Text("\(phase.failedCount) failed")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            } else if hasCountMismatch {
+                Text("Count mismatch")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            } else if phaseIsComplete {
+                Text("Complete")
+                    .font(.caption)
+                    .foregroundStyle(.green)
+            } else {
+                Text("Pending")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func migrationMetricName(for phaseID: String) -> String? {
+        switch phaseID {
+        case "subscriptions": "Subscribed podcasts"
+        case "playlists": "Playlists"
+        case "playlist_entries": "Playlist entries"
+        case "bookmarks": "Bookmarks"
+        case "episode_states": "Playback state"
+        case "listening_summaries": "Listening statistics"
+        case "listening_history": "Listening history"
+        case "ai_transcripts": "AI transcripts"
+        case "ai_chapters": "AI chapters"
+        default: nil
+        }
+    }
+
+    private func migrationOverallTitle(
+        _ status: StoreSplitMigrationStatus
+    ) -> String {
+        guard status.isComplete else { return status.readiness.title }
+        if status.supplementalPhases.contains(where: { $0.failedCount > 0 }) {
+            return "AI content has failures"
+        }
+        if status.supplementalPhases.contains(where: { $0.isComplete == false }) {
+            return "Regular slices complete; AI pending"
+        }
+        return "Complete"
+    }
+
+    private func destinationStoreName(for phaseID: String) -> String {
+        phaseID.hasPrefix("ai_") ? "PodcastCache.sqlite" : "UserState.sqlite"
+    }
+
+    private func displayedObjectCount(store: String, metric: String) -> String {
+        objectCount(store: store, metric: metric).map(String.init) ?? "—"
+    }
+
+    private func objectCount(store: String, metric: String) -> Int? {
+        storeObjectCounts
+            .first(where: { $0.storeName == store })?
+            .objects
+            .first(where: { $0.name == metric })?
+            .count
     }
 
     private func applyPublicConfiguration() {
@@ -689,9 +1015,11 @@ struct DevelopmentSettingsView: View {
             await modelContainerManager.runStoreSplitMigrationNowForDevelopment()
             if let error = modelContainerManager.migrationError {
                 resetMessage = error
+            } else if let blocker = modelContainerManager.migrationBlocker {
+                resetMessage = "Migration not completed: \(blocker)"
             } else {
                 resetMessage = modelContainerManager.isMigratingSplitStores
-                    || modelContainerManager.pendingSplitStoreWorkReason == "migration"
+                    || ModelContainerManager.hasPendingMigrationWork
                     ? "Legacy migration is queued and will run when playback is idle."
                     : "Legacy migration completed."
             }
@@ -727,13 +1055,8 @@ struct DevelopmentSettingsView: View {
         resetMessage = nil
         Task {
             await modelContainerManager.runOneMigrationSliceForDevelopment()
-            if let error = modelContainerManager.migrationLastSliceError {
-                resetMessage = error
-            } else if let progress = modelContainerManager.migrationProgressSummary {
-                resetMessage = "Slice complete. \(progress)."
-            } else {
-                resetMessage = "Slice complete."
-            }
+            resetMessage = modelContainerManager.migrationLastSliceError
+                ?? modelContainerManager.migrationLastSliceResult
             isRunningSyncAction = false
         }
     }
@@ -856,6 +1179,65 @@ struct DevelopmentSettingsView: View {
         }
     }
 
+}
+
+private struct DevelopmentStoreSize: Identifiable {
+    let name: String
+    let bytes: Int64
+    let isAvailable: Bool
+
+    var id: String { name }
+
+    var displayValue: String {
+        isAvailable ? bytes.formattedAsStorage : "Not created"
+    }
+
+    static func all() -> [DevelopmentStoreSize] {
+        [
+            make(name: "SharedDatabase.sqlite", url: ModelContainerManager.sharedStoreURL),
+            make(name: "UserState.sqlite", url: ModelContainerManager.userStateStoreURL),
+            make(name: "PodcastCache.sqlite", url: ModelContainerManager.cacheStoreURL)
+        ]
+    }
+
+    private static func make(name: String, url: URL?) -> DevelopmentStoreSize {
+        guard let url else {
+            return DevelopmentStoreSize(name: name, bytes: 0, isAvailable: false)
+        }
+
+        let fileManager = FileManager.default
+        let urls = [
+            url,
+            URL(fileURLWithPath: url.path + "-wal"),
+            URL(fileURLWithPath: url.path + "-shm"),
+            URL(fileURLWithPath: url.path + "-journal")
+        ]
+        var bytes: Int64 = 0
+        var isAvailable = false
+
+        for fileURL in urls where fileManager.fileExists(atPath: fileURL.path) {
+            let values = try? fileURL.resourceValues(forKeys: [
+                .totalFileAllocatedSizeKey,
+                .fileAllocatedSizeKey,
+                .fileSizeKey
+            ])
+            bytes += Int64(
+                values?.totalFileAllocatedSize
+                    ?? values?.fileAllocatedSize
+                    ?? values?.fileSize
+                    ?? 0
+            )
+            isAvailable = true
+        }
+
+        return DevelopmentStoreSize(name: name, bytes: bytes, isAvailable: isAvailable)
+    }
+}
+
+private extension Int64 {
+    var formattedAsStorage: String {
+        ByteCountFormatter.string(fromByteCount: self, countStyle: .file)
+    }
 }
 
 private extension StoreSplitDevelopmentRepublishScope {

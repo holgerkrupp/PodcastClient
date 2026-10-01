@@ -157,7 +157,7 @@ class CarPlayPlayNext {
 
     private func carPlayText(_ text: String?) -> String {
         guard let text else { return "" }
-        return (text.decodeHTML() ?? text)
+        return (text.plainTextFromHTML() ?? text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     

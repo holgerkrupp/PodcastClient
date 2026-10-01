@@ -37,15 +37,44 @@ struct StoreSplitMigrationPhaseStatus: Identifiable, Sendable, Equatable {
     let updatedAt: Date?
 }
 
+enum StoreSplitMigrationReadiness: String, Sendable, Equatable {
+    case unavailable
+    case preparing
+    case ready
+    case running
+    case blocked
+    case complete
+
+    var title: String {
+        switch self {
+        case .unavailable: "Unavailable"
+        case .preparing: "Preparing"
+        case .ready: "Ready"
+        case .running: "Running"
+        case .blocked: "Blocked"
+        case .complete: "Complete"
+        }
+    }
+}
+
 struct StoreSplitMigrationStatus: Sendable, Equatable {
     let migrationVersion: Int
+    let readiness: StoreSplitMigrationReadiness
+    let blocker: String?
     let isRunning: Bool
     let completedPhaseCount: Int
     let totalPhaseCount: Int
     let scannedItemCount: Int
     let failedItemCount: Int
     let lastMigrationAt: Date?
+    let lastSliceStatus: StoreSplitSliceReport.Status?
+    let lastSliceProcessed: Int
+    let lastSliceError: String?
     let phases: [StoreSplitMigrationPhaseStatus]
+    /// AI content is checkpointed by the importer, but is intentionally kept
+    /// out of the slice progress denominator because it is not part of the
+    /// regular user-state slice engine.
+    let supplementalPhases: [StoreSplitMigrationPhaseStatus]
 
     var fractionCompleted: Double {
         guard totalPhaseCount > 0 else { return 0 }
@@ -53,25 +82,44 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     }
 
     var isComplete: Bool {
-        completedPhaseCount == totalPhaseCount && failedItemCount == 0
+        readiness != .blocked
+            && completedPhaseCount == totalPhaseCount
+            && failedItemCount == 0
     }
 }
 
 enum StoreSplitMigrationDiagnostics {
     private static let lastMigrationKey = "storeSplit.lastMigrationAt"
     private static let failedItemsKey = "storeSplit.failedItems"
-    private static let phases: [(id: String, title: String)] = [
-        ("subscriptions", "Subscriptions"),
-        ("episode_states", "Playback state"),
-        ("playlists", "Playlists"),
-        ("playlist_entries", "Playlist entries"),
-        ("queue_entries", "Up Next queue"),
-        ("bookmarks", "Bookmarks"),
-        ("listening_history", "Listening history"),
-        ("listening_summaries", "Listening statistics"),
-        ("ai_transcripts", "AI transcripts"),
-        ("ai_chapters", "AI chapters")
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+    /// Keep the readout in lockstep with the phases the automatic slice engine
+    /// actually runs. Queue entries are produced by `playlist_entries`, and AI
+    /// content is intentionally deferred to its own importer; showing either as
+    /// pending migration phases made a completed backfill look permanently stuck.
+    private static let phaseTitles: [String: String] = [
+        StoreSplitMigrationService.Phase.subscriptions: "Subscribed podcasts",
+        StoreSplitMigrationService.Phase.playlists: "Playlists",
+        StoreSplitMigrationService.Phase.playlistEntries: "Playlist entries",
+        StoreSplitMigrationService.Phase.bookmarks: "Bookmarks",
+        StoreSplitMigrationService.Phase.preferences: "Podcast preferences",
+        StoreSplitMigrationService.Phase.episodeStates: "Playback state",
+        StoreSplitMigrationService.Phase.listeningSummaries: "Listening statistics",
+        StoreSplitMigrationService.Phase.listeningHistory: "Listening history"
     ]
+
+    private static let supplementalPhaseTitles: [String: String] = [
+        "ai_transcripts": "AI transcripts",
+        "ai_chapters": "AI chapters"
+    ]
+
+    private static var phases: [(id: String, title: String)] {
+        StoreSplitMigrationService.slicePhaseOrder.compactMap { phase in
+            guard let title = phaseTitles[phase] else { return nil }
+            return (phase, title)
+        }
+    }
 
     static func snapshot(
         legacyContext: ModelContext,
@@ -119,28 +167,33 @@ enum StoreSplitMigrationDiagnostics {
             cachedAITranscriptChunkCount: (try? cacheContext.fetchCount(FetchDescriptor<AITranscriptChunkSync>())) ?? 0,
             cachedAIChapterSetCount: (try? cacheContext.fetchCount(FetchDescriptor<AIChapterSetSync>())) ?? 0,
             failedCheckpointCount: (try? cacheContext.fetchCount(failedCheckpointDescriptor)) ?? 0,
-            lastMigrationAt: UserDefaults.standard.object(forKey: lastMigrationKey) as? Date,
+            lastMigrationAt: defaults.object(forKey: lastMigrationKey) as? Date,
             failedItemCount: failedItems().count
         )
     }
 
     static func recordMigrationRun(at date: Date = .now) {
-        UserDefaults.standard.set(date, forKey: lastMigrationKey)
+        defaults.set(date, forKey: lastMigrationKey)
     }
 
     static func recordFailedItems(_ items: [String]) {
-        UserDefaults.standard.set(items, forKey: failedItemsKey)
+        defaults.set(items, forKey: failedItemsKey)
     }
 
     static func failedItems() -> [String] {
-        UserDefaults.standard.stringArray(forKey: failedItemsKey) ?? []
+        defaults.stringArray(forKey: failedItemsKey) ?? []
     }
 
     @MainActor
     static func migrationStatus(
         cacheContext: ModelContext,
         userStateContext: ModelContext,
-        isRunning: Bool
+        isRunning: Bool,
+        readiness: StoreSplitMigrationReadiness = .ready,
+        blocker: String? = nil,
+        lastSliceStatus: StoreSplitSliceReport.Status? = nil,
+        lastSliceProcessed: Int = 0,
+        lastSliceError: String? = nil
     ) -> StoreSplitMigrationStatus {
         let version = StoreSplitMigrationService.migrationVersion
         let checkpoints = ((try? cacheContext.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>())) ?? [])
@@ -174,15 +227,38 @@ enum StoreSplitMigrationDiagnostics {
             )
         }
 
+        let supplementalPhaseStatuses = supplementalPhaseTitles.map { phaseID, title in
+            let checkpoint = checkpointsByPhase[phaseID]
+            return StoreSplitMigrationPhaseStatus(
+                id: phaseID,
+                title: title,
+                isComplete: checkpoint?.completedAt != nil,
+                scannedCount: checkpoint?.scannedCount ?? 0,
+                activeDestinationCount: activeDestinationCount(
+                    for: phaseID,
+                    context: cacheContext
+                ),
+                failedCount: checkpoint?.failedCount ?? 0,
+                cursor: checkpoint?.cursor,
+                updatedAt: checkpoint?.updatedAt
+            )
+        }
+
         return StoreSplitMigrationStatus(
             migrationVersion: version,
+            readiness: readiness,
+            blocker: blocker,
             isRunning: isRunning,
             completedPhaseCount: phaseStatuses.filter(\.isComplete).count,
             totalPhaseCount: phaseStatuses.count,
             scannedItemCount: phaseStatuses.reduce(0) { $0 + $1.scannedCount },
             failedItemCount: phaseStatuses.reduce(0) { $0 + $1.failedCount },
-            lastMigrationAt: UserDefaults.standard.object(forKey: lastMigrationKey) as? Date,
-            phases: phaseStatuses
+            lastMigrationAt: defaults.object(forKey: lastMigrationKey) as? Date,
+            lastSliceStatus: lastSliceStatus,
+            lastSliceProcessed: lastSliceProcessed,
+            lastSliceError: lastSliceError,
+            phases: phaseStatuses,
+            supplementalPhases: supplementalPhaseStatuses
         )
     }
 
@@ -193,40 +269,62 @@ enum StoreSplitMigrationDiagnostics {
     ) -> Int {
         switch phase {
         case "subscriptions":
-            let descriptor = FetchDescriptor<SubscriptionSync>(
-                predicate: #Predicate<SubscriptionSync> { $0.isSubscribed }
-            )
-            return (try? context.fetchCount(descriptor)) ?? 0
+            let records = (try? context.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
+            return Set(records.filter {
+                $0.isSubscribed && $0.unsubscribedAt == nil
+            }.map {
+                URL(string: $0.feedURL)
+                    .map(PodcastFeedIdentity.normalizedFeedURLString)
+                    ?? $0.feedURL
+            }).count
         case "episode_states":
-            return (try? context.fetchCount(FetchDescriptor<EpisodeStateSync>())) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<EpisodeStateSync>())) ?? []).map(\.id)
+            ).count
         case "playlists":
-            let descriptor = FetchDescriptor<PlaylistSync>(
-                predicate: #Predicate<PlaylistSync> { $0.deletedAt == nil }
-            )
-            return (try? context.fetchCount(descriptor)) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<PlaylistSync>())) ?? [])
+                    .filter { $0.isDeleted == false && $0.deletedAt == nil }
+                    .map(\.id)
+            ).count
         case "playlist_entries":
-            let descriptor = FetchDescriptor<PlaylistEntrySync>(
-                predicate: #Predicate<PlaylistEntrySync> { $0.deletedAt == nil }
-            )
-            return (try? context.fetchCount(descriptor)) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<PlaylistEntrySync>())) ?? [])
+                    .filter { $0.isDeleted == false && $0.deletedAt == nil }
+                    .map(\.id)
+            ).count
         case "queue_entries":
-            let descriptor = FetchDescriptor<QueueEntrySync>(
-                predicate: #Predicate<QueueEntrySync> { $0.deletedAt == nil }
-            )
-            return (try? context.fetchCount(descriptor)) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<QueueEntrySync>())) ?? [])
+                    .filter { $0.isDeleted == false && $0.deletedAt == nil }
+                    .map(\.id)
+            ).count
         case "bookmarks":
-            let descriptor = FetchDescriptor<BookmarkSync>(
-                predicate: #Predicate<BookmarkSync> { $0.deletedAt == nil }
-            )
-            return (try? context.fetchCount(descriptor)) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<BookmarkSync>())) ?? [])
+                    .filter { $0.isDeleted == false && $0.deletedAt == nil }
+                    .map(\.id)
+            ).count
+        case "preferences":
+            return Set(
+                ((try? context.fetch(FetchDescriptor<PodcastPreferenceSync>())) ?? []).map(\.id)
+            ).count
         case "listening_history":
-            return (try? context.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<ListeningHistorySync>())) ?? []).map(\.id)
+            ).count
         case "listening_summaries":
-            return (try? context.fetchCount(FetchDescriptor<ListeningBaselineSync>())) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<ListeningBaselineSync>())) ?? []).map(\.id)
+            ).count
         case "ai_transcripts":
-            return (try? context.fetchCount(FetchDescriptor<AITranscriptSync>())) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<AITranscriptSync>())) ?? []).map(\.id)
+            ).count
         case "ai_chapters":
-            return (try? context.fetchCount(FetchDescriptor<AIChapterSetSync>())) ?? 0
+            return Set(
+                ((try? context.fetch(FetchDescriptor<AIChapterSetSync>())) ?? []).map(\.id)
+            ).count
         default:
             return 0
         }
