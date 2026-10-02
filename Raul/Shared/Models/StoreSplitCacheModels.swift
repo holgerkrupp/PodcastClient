@@ -75,6 +75,45 @@ final class StoreSplitMigrationVerification: Identifiable {
     }
 }
 
+/// Durable per-feed checkpoint for the local-only PodcastCache prewarm.
+@Model
+final class StoreSplitFeedCacheCheckpoint: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var targetSchemaVersion: Int = 0
+    var stateRawValue: String = "failed"
+    var attemptCount: Int = 0
+    var lastAttemptAt: Date?
+    var lastSuccessfulAt: Date?
+    var lastFailureAt: Date?
+    var lastError: String?
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        feedURL: String,
+        targetSchemaVersion: Int,
+        stateRawValue: String = "failed",
+        attemptCount: Int = 0,
+        lastAttemptAt: Date? = nil,
+        lastSuccessfulAt: Date? = nil,
+        lastFailureAt: Date? = nil,
+        lastError: String? = nil,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.feedURL = feedURL
+        self.targetSchemaVersion = targetSchemaVersion
+        self.stateRawValue = stateRawValue
+        self.attemptCount = attemptCount
+        self.lastAttemptAt = lastAttemptAt
+        self.lastSuccessfulAt = lastSuccessfulAt
+        self.lastFailureAt = lastFailureAt
+        self.lastError = lastError
+        self.updatedAt = updatedAt
+    }
+}
+
 @Model
 final class CachedFeedExtensionElement: Identifiable {
     var id: String = ""
@@ -340,6 +379,7 @@ final class CachedChapter: Identifiable {
     var endTime: Double?
     var duration: Double?
     var creationTime: Date?
+    var analysisVariantID: String?
     var progress: Double?
     var typeRawValue: String = MarkerType.unknown.rawValue
     var shouldPlay: Bool = true
@@ -359,6 +399,7 @@ final class CachedChapter: Identifiable {
         endTime: Double? = nil,
         duration: Double? = nil,
         creationTime: Date? = nil,
+        analysisVariantID: String? = nil,
         progress: Double? = nil,
         typeRawValue: String = MarkerType.unknown.rawValue,
         shouldPlay: Bool = true,
@@ -377,6 +418,7 @@ final class CachedChapter: Identifiable {
         self.endTime = endTime
         self.duration = duration
         self.creationTime = creationTime
+        self.analysisVariantID = analysisVariantID
         self.progress = progress
         self.typeRawValue = typeRawValue
         self.shouldPlay = shouldPlay

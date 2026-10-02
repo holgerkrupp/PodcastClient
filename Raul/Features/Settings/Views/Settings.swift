@@ -65,6 +65,14 @@ class PodcastSettings {
     var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
+    /// Dynamic advertisement detection is deliberately opt-in and independent
+    /// from transcript generation and automatic skipping.
+    var enableAdvertisementDetection: Bool = false
+    var showDetectedAdvertisements: Bool = false
+    var enableAutomaticAdvertisementSkipping: Bool = false
+    /// Preserve the existing transcript-chapter behavior while allowing users
+    /// to turn automatic generated chapter materialization off independently.
+    var automaticallyGenerateChaptersWhenUnavailable: Bool = true
     /// Master gate for all live-podcast discovery, live-specific refresh work,
     /// and companion actions. Notification opt-in remains separate.
     var showLivePodcasts: Bool = true

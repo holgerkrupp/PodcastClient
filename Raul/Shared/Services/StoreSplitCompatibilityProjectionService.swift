@@ -317,6 +317,7 @@ enum StoreSplitCompatibilityProjectionService {
             marker.image = cached.imageURL
             marker.endTime = cached.endTime
             marker.creationtime = cached.creationTime
+            marker.analysisVariantID = cached.analysisVariantID
             marker.progress = cached.progress
             marker.shouldPlay = cached.shouldPlay
             marker.episode = episode

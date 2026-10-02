@@ -153,12 +153,14 @@ enum StoreSplitReleasePhase: Equatable {
 struct StoreSplitCutoverGate: Equatable, Sendable {
     let localBackfillComplete: Bool
     let localVerificationPassed: Bool
+    let podcastCacheReady: Bool
     let allDevicesConverged: Bool
     let delayedCloudImportsSettled: Bool
 
     var isSatisfied: Bool {
         localBackfillComplete
             && localVerificationPassed
+            && podcastCacheReady
             && allDevicesConverged
             && delayedCloudImportsSettled
     }
@@ -167,6 +169,7 @@ struct StoreSplitCutoverGate: Equatable, Sendable {
         var result: [String] = []
         if localBackfillComplete == false { result.append("local backfill incomplete") }
         if localVerificationPassed == false { result.append("local verification incomplete") }
+        if podcastCacheReady == false { result.append("PodcastCache is not ready") }
         if allDevicesConverged == false { result.append("devices have not converged") }
         if delayedCloudImportsSettled == false { result.append("delayed CloudKit imports are unsettled") }
         return result
@@ -224,6 +227,15 @@ struct StoreDevelopmentConfiguration: Equatable {
 
     static var splitStoresEnabled: Bool {
         launch.splitStoresEnabled
+    }
+
+    /// The public backfill phase warms the local-only PodcastCache while the
+    /// legacy store remains authoritative. The experimental projection mode
+    /// keeps the same behavior for development installations.
+    static var feedCachePrewarmingEnabled: Bool {
+        guard splitStoresEnabled else { return false }
+        return StoreSplitReleasePhase.current == .dualSyncBackfill
+            || runtimeStoreIsInMemoryProjection
     }
 
     /// Whether `UserState.sqlite` is the authority for user-owned state.

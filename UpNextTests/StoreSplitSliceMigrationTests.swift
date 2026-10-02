@@ -836,12 +836,39 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         let secondReports = await drainSlices(secondDevice, shouldContinue: { true })
         XCTAssertEqual(firstReports.last?.status, .completed)
         XCTAssertEqual(secondReports.last?.status, .completed)
+
+        let coldGate = StoreSplitMigrationVerifier.cutoverGate(
+            legacyContainer: firstDevice.legacy,
+            cacheContainer: firstDevice.cache,
+            allDevicesConverged: true,
+            delayedCloudImportsSettled: true
+        )
+        XCTAssertFalse(StoreSplitReleasePhase.canSwitchToUserStateAuthority(gate: coldGate))
+        XCTAssertTrue(coldGate.blockers.contains("PodcastCache is not ready"))
+
+        XCTAssertEqual(
+            StoreSplitFeedCacheWriter.bootstrapMissingFeeds(
+                legacyContainer: firstDevice.legacy,
+                cacheContainer: firstDevice.cache,
+                limit: 50
+            ),
+            1
+        )
+        XCTAssertEqual(
+            StoreSplitFeedCacheWriter.bootstrapMissingFeeds(
+                legacyContainer: secondDevice.legacy,
+                cacheContainer: secondDevice.cache,
+                limit: 50
+            ),
+            1
+        )
         XCTAssertEqual(
             try destinationCounts(firstDevice.userState),
             try destinationCounts(secondDevice.userState)
         )
 
         let firstGate = StoreSplitMigrationVerifier.cutoverGate(
+            legacyContainer: firstDevice.legacy,
             cacheContainer: firstDevice.cache,
             allDevicesConverged: false,
             delayedCloudImportsSettled: true
@@ -850,6 +877,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         XCTAssertTrue(firstGate.blockers.contains("devices have not converged"))
 
         let convergedGate = StoreSplitMigrationVerifier.cutoverGate(
+            legacyContainer: firstDevice.legacy,
             cacheContainer: firstDevice.cache,
             allDevicesConverged: true,
             delayedCloudImportsSettled: true

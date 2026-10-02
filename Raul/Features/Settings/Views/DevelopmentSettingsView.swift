@@ -345,17 +345,39 @@ struct DevelopmentSettingsView: View {
                         value: cacheStatus.automaticFillingEnabled ? "Enabled" : "Not active in this mode"
                     )
                     LabeledContent(
+                        "Cache schema",
+                        value: "v\(cacheStatus.cacheSchemaVersion)"
+                    )
+                    LabeledContent(
                         "Feeds cached",
                         value: "\(cacheStatus.cachedFeedCount) / \(cacheStatus.sourceFeedCount)"
                     )
                     LabeledContent("Pending feeds", value: "\(cacheStatus.pendingFeedCount)")
+                    LabeledContent(
+                        "Failed / retryable feeds",
+                        value: "\(cacheStatus.failedOrRetryableFeedCount)"
+                    )
+                    LabeledContent(
+                        "Pending feeds recoverable from RSS",
+                        value: "\(cacheStatus.rssRecoverablePendingFeedCount)"
+                    )
                     LabeledContent("Cached episodes", value: "\(cacheStatus.cachedEpisodeCount)")
                     LabeledContent("Cached transcript records", value: "\(cacheStatus.cachedTranscriptCount)")
                     LabeledContent("Cached transcript lines", value: "\(cacheStatus.cachedTranscriptLineCount)")
                     LabeledContent("Cached AI chapters", value: "\(cacheStatus.cachedChapterCount)")
                     LabeledContent(
                         "Cache status",
-                        value: cacheStatus.isComplete ? "Complete" : "Filling"
+                        value: cacheStatus.isComplete
+                            && cacheStatus.failedOrRetryableFeedCount == 0
+                            ? "Ready for cutover"
+                            : "Filling"
+                    )
+                    LabeledContent(
+                        "Last successful progress",
+                        value: cacheStatus.lastSuccessfulProgressAt?.formatted(
+                            date: .abbreviated,
+                            time: .shortened
+                        ) ?? "Not recorded"
                     )
                     LabeledContent(
                         "Last cache pass",

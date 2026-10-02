@@ -368,6 +368,11 @@ class Player {
     private var currentPlaybackPlaylistID: UUID?
     private var isSkippingChapters = false
     private var chapterSkipPlan = ChapterSkipPlan(entries: [])
+    private var adSkipPlan = AdSkipPlan(segments: [])
+    private var adDetectionTask: Task<Void, Never>?
+    private var adDetectionEngine: AdDetectionEngine?
+    private var automaticAdSkipInFlight = false
+    private var lastAutomaticallySkippedAdID: UUID?
     private let chapterBoundaryTolerance: TimeInterval = 0.35
     private var playbackPowerMode: PlaybackPowerMode = .foreground
 #if canImport(UIKit)
@@ -505,6 +510,12 @@ class Player {
     }
     var nextChapter: Marker?
     var chapters: [Marker]?
+    /// Detected ranges are transient playback evidence, never SwiftData
+    /// chapters. They are published for the timeline and explicit skip action.
+    var adSegments: [AdSegment] = []
+    var adDetectionEnabled = false
+    var showDetectedAdvertisements = false
+    var automaticAdvertisementSkippingEnabled = false
     private(set) var currentArtworkImage: UIImage?
     
     var allowScrubbing:Bool?
@@ -669,8 +680,8 @@ class Player {
         )
     }
 
-    private func offerSkipProtectionUndo(from origin: SkipProtectionOrigin) {
-        guard skipProtectionEnabled else { return }
+    private func offerSkipProtectionUndo(from origin: SkipProtectionOrigin, force: Bool = false) {
+        guard skipProtectionEnabled || force else { return }
 
         if let existingUndo = skipProtectionUndo {
             if existingUndo.expiresAt > Date() {
@@ -934,6 +945,7 @@ class Player {
                 await self?.loadSkipProtectionSettings()
                 await self?.loadPlaybackAudioProcessingSettings()
                 await self?.loadPlaybackTrimSettings(applyToCurrentPlayback: true)
+                await self?.reloadAdvertisementDetection()
                 if let currentItem = self?.videoPlayer.currentItem {
                     await self?.configurePlaybackAudioProcessing(for: currentItem)
                 }
@@ -1310,6 +1322,7 @@ class Player {
         guard let currentEpisode else {
             chapters = []
             chapterSkipPlan = ChapterSkipPlan(entries: [])
+            adSkipPlan = AdSkipPlan(segments: [])
             currentChapter = nil
             nextChapter = nil
             configureChapterBoundaryObserver()
@@ -1323,7 +1336,12 @@ class Player {
     }
 
     private func configureChapterBoundaryObserver() {
-        let chapterStartTimes = chapterSkipPlan.boundaryTimes
+        let chapterStartTimes = (chapterSkipPlan.boundaryTimes + adSkipPlan.boundaryTimes)
+            .sorted()
+            .reduce(into: [TimeInterval]()) { result, time in
+                guard result.last.map({ abs($0 - time) > 0.1 }) ?? true else { return }
+                result.append(time)
+            }
             .filter { $0 > 0 }
             .map { CMTime(seconds: $0, preferredTimescale: 600) }
 
@@ -1348,6 +1366,150 @@ class Player {
         })
     }
 
+    private func configureAdvertisementDetection(for episode: Episode, episodeURL: URL) async {
+        adDetectionTask?.cancel()
+        adDetectionTask = nil
+        adDetectionEngine = nil
+        adSegments = []
+        adSkipPlan = AdSkipPlan(segments: [])
+        adDetectionEnabled = await settingsActor?.getAdvertisementDetectionEnabled() ?? false
+        showDetectedAdvertisements = await settingsActor?.getDetectedAdvertisementsVisible() ?? false
+        automaticAdvertisementSkippingEnabled = await settingsActor?.getAutomaticAdvertisementSkippingEnabled() ?? false
+
+        guard adDetectionEnabled,
+              episode.isVideo == false,
+              let mediaURL = episode.localFile ?? episode.url else {
+            configureChapterBoundaryObserver()
+            return
+        }
+
+        let configuration = AdDetectionConfiguration(
+            enabled: true,
+            showDetectedAdvertisements: showDetectedAdvertisements,
+            automaticallySkipAdvertisements: automaticAdvertisementSkippingEnabled,
+            thresholds: .default,
+            windowDuration: 30,
+            hopDuration: 15
+        )
+        let transcriptLines = (episode.transcriptLines ?? []).map {
+            TranscriptDetectionLine(text: $0.text, start: $0.startTime, end: nil)
+        }
+        let transcriptProvider = RollingSpeechTranscriptProvider(existingLines: transcriptLines)
+        let audioSource: any AudioAnalysisSource
+#if !os(watchOS)
+        if episode.url?.pathExtension.lowercased() == "m3u8",
+           let currentItem = videoPlayer.currentItem {
+            audioSource = AudioAnalysisSourceFactory.make(for: currentItem)
+        } else {
+            audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
+        }
+#else
+        audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
+#endif
+        let publisherMarkers = (episode.chapters ?? []).compactMap { marker -> AdPublisherMarker? in
+            guard let start = marker.start else { return nil }
+            return AdPublisherMarker(start: start, end: marker.end, title: marker.title)
+        }
+        var providers: [any AdSignalProvider] = [
+            TranscriptAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
+            SemanticAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
+            AcousticBoundarySignalProvider(audioSource: audioSource),
+            FingerprintAdvertisementSignalProvider(
+                audioSource: audioSource,
+                store: AdFingerprintStore.shared,
+                podcastIdentity: episode.podcast?.feed?.absoluteString
+            )
+        ]
+        if publisherMarkers.isEmpty == false {
+            providers.append(PublisherMetadataAdSignalProvider(markers: publisherMarkers))
+        }
+
+        let engine = AdDetectionEngine(configuration: configuration, providers: providers)
+        adDetectionEngine = engine
+        let request = AdDetectionRequest(
+            episodeIdentity: episodeURL.absoluteString,
+            mediaURL: mediaURL,
+            languageIdentifier: episode.podcast?.language,
+            range: AdTimeRange(start: 0, end: episode.duration),
+            configuration: configuration
+        )
+
+        adDetectionTask = Task { [weak self] in
+            do {
+                let snapshot = try await engine.detect(for: request)
+                guard let self,
+                      self.currentEpisodeURL == episodeURL,
+                      self.adDetectionEngine != nil else { return }
+                await AdDetectionResultsStore.shared.store(snapshot)
+                self.adSegments = snapshot.segments
+                self.adSkipPlan = AdSkipPlan(
+                    segments: snapshot.segments,
+                    threshold: configuration.thresholds.automaticSkipThreshold
+                )
+                self.configureChapterBoundaryObserver()
+                if let container = ModelContainerManager.shared.preparedContainer {
+                    _ = await EpisodeActor(modelContainer: container)
+                        .mergeDetectedAdvertisementChapters(for: episodeURL)
+                }
+                AppDiagnostics.log("ad detection completed: \(snapshot.segments.count) range(s)")
+            } catch is CancellationError {
+                // Episode replacement or disabling detection is expected.
+            } catch {
+                AppDiagnostics.log("ad detection unavailable: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func reloadAdvertisementDetection() async {
+        guard let episode = currentEpisode, let episodeURL = currentEpisodeURL else {
+            adDetectionTask?.cancel()
+            adDetectionTask = nil
+            adSegments = []
+            adSkipPlan = AdSkipPlan(segments: [])
+            return
+        }
+        await configureAdvertisementDetection(for: episode, episodeURL: episodeURL)
+    }
+
+    var currentAdvertisement: AdSegment? {
+        guard showDetectedAdvertisements else { return nil }
+        return adSegments.last(where: { $0.contains(playPosition) })
+    }
+
+    var canSkipCurrentAdvertisement: Bool {
+        guard let segment = currentAdvertisement,
+              segment.confidence >= AdDetectionThresholds.default.manualSkipThreshold,
+              segment.hasKnownStableEnd else { return false }
+        return true
+    }
+
+    func skipCurrentAdvertisement() async {
+        guard let segment = currentAdvertisement,
+              segment.confidence >= AdDetectionThresholds.default.manualSkipThreshold,
+              let end = segment.end,
+              end > playPosition else { return }
+        AppDiagnostics.log("manual ad skip to \(end)")
+        await jumpTo(time: end, protectLargeSeek: false)
+    }
+
+    private func skipDetectedAdvertisementIfNeeded() async {
+        guard automaticAdvertisementSkippingEnabled,
+              automaticAdSkipInFlight == false,
+              let segment = adSkipPlan.segment(at: playPosition),
+              segment.id != lastAutomaticallySkippedAdID,
+              let end = segment.end,
+              end > playPosition else { return }
+
+        automaticAdSkipInFlight = true
+        lastAutomaticallySkippedAdID = segment.id
+        defer { automaticAdSkipInFlight = false }
+        if let origin = currentSkipProtectionOrigin(position: playPosition) {
+            offerSkipProtectionUndo(from: origin, force: true)
+        }
+        AppDiagnostics.log("automatic ad skip id=\(segment.id) from=\(playPosition) to=\(end)")
+        await jumpTo(time: end, protectLargeSeek: false)
+    }
+
     private func handleChapterBoundary() async {
         guard currentPlaybackSource != .liveRemote else { return }
 
@@ -1358,6 +1520,7 @@ class Player {
         _ = updateCurrentChapter()
         updateChapterProgress()
         await skipOverChapters()
+        await skipDetectedAdvertisementIfNeeded()
     }
     
     private func updateCurrentChapter() -> Bool {
@@ -1845,6 +2008,15 @@ class Player {
         )
 
         stopPlaybackUpdates()
+        adDetectionTask?.cancel()
+        adDetectionTask = nil
+        adDetectionEngine = nil
+        adSegments = []
+        adSkipPlan = AdSkipPlan(segments: [])
+        adDetectionEnabled = false
+        showDetectedAdvertisements = false
+        automaticAdvertisementSkippingEnabled = false
+        lastAutomaticallySkippedAdID = nil
         currentEpisode = nil
         currentEpisodeURL = nil
         currentPlaybackPlaylistID = nil
@@ -2023,6 +2195,11 @@ class Player {
         engine.pause()
         await resetPlaybackAudioProcessing(for: item)
         engine.replaceCurrentItem(with: item)
+        // Detection owns a separate analysis reader and must never delay
+        // installation or activation of the normal playback item.
+        Task { @MainActor [weak self] in
+            await self?.configureAdvertisementDetection(for: episode, episodeURL: episodeURL)
+        }
         configureChapterBoundaryObserver()
         configureOutroBoundaryObserver()
         schedulePlaybackAudioProcessing(
@@ -2890,6 +3067,12 @@ class Player {
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
+
+        if automaticAdvertisementSkippingEnabled {
+            Task { [weak self] in
+                await self?.skipDetectedAdvertisementIfNeeded()
+            }
+        }
         
         if let chapters, chapters.isEmpty == false {
             playPosition = chapterEvaluationPosition(for: time, snappingToUpcomingBoundary: true)
@@ -3173,6 +3356,15 @@ class Player {
     /// episode can be loaded without inheriting stale chapters/artwork/audio-processing state.
     private func resetPlaybackStateForFinishedEpisode(refreshPresentation: Bool) async {
         stopPlaybackUpdates()
+        adDetectionTask?.cancel()
+        adDetectionTask = nil
+        adDetectionEngine = nil
+        adSegments = []
+        adSkipPlan = AdSkipPlan(segments: [])
+        adDetectionEnabled = false
+        showDetectedAdvertisements = false
+        automaticAdvertisementSkippingEnabled = false
+        lastAutomaticallySkippedAdID = nil
         currentEpisode = nil
         currentEpisodeURL = nil
         currentPlaybackPlaylistID = nil

@@ -12,6 +12,7 @@ struct PlayerProgressSliderView: View {
     @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
     var chapterTimelineDuration: Double?
+    var adSegments: [AdSegment] = []
     var onEditingChanged: ((Bool, Double) -> Void)?
     
     @State var lastCoordinateValue: CGFloat = 0.0
@@ -35,6 +36,7 @@ struct PlayerProgressSliderView: View {
             let sliderVal = abs((self.value - lower) * scaleFactor + minValue)
             
             let chapterMarkerPositions = chapterMarkerPositions(width: gr.size.width)
+            let adRangeRects = advertisementRangeRects(width: gr.size.width)
             let trackShape = RoundedRectangle(cornerRadius: radius)
             
             ZStack {
@@ -74,6 +76,16 @@ struct PlayerProgressSliderView: View {
                     }
                     .frame(width: gr.size.width, height: gr.size.height)
                     .clipShape(trackShape)
+                }
+
+                if adRangeRects.isEmpty == false {
+                    ForEach(Array(adRangeRects.enumerated()), id: \.offset) { _, rect in
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(.orange.opacity(0.82))
+                            .frame(width: max(rect.width, 3), height: gr.size.height * 0.55)
+                            .position(x: rect.midX, y: gr.size.height / 2)
+                            .accessibilityHidden(true)
+                    }
                 }
 
             }
@@ -143,6 +155,19 @@ struct PlayerProgressSliderView: View {
             duration: chapterTimelineDuration,
             markers: markers
         )
+    }
+
+    private func advertisementRangeRects(width: CGFloat) -> [CGRect] {
+        guard width > 0,
+              let duration = chapterTimelineDuration,
+              duration > 0 else { return [] }
+        return adSegments.compactMap { segment in
+            guard let end = segment.end, end > segment.start else { return nil }
+            let startX = width * CGFloat(min(max(segment.start / duration, 0), 1))
+            let endX = width * CGFloat(min(max(end / duration, 0), 1))
+            guard endX > startX else { return nil }
+            return CGRect(x: startX, y: 0, width: endX - startX, height: 1)
+        }
     }
 
     static func chapterMarkerPositions(

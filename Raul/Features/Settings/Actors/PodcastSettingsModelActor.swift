@@ -561,6 +561,22 @@ actor PodcastSettingsModelActor {
         await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
     }
 
+    func getAdvertisementDetectionEnabled() async -> Bool {
+        await standardSettings().enableAdvertisementDetection
+    }
+
+    func getDetectedAdvertisementsVisible() async -> Bool {
+        await standardSettings().showDetectedAdvertisements
+    }
+
+    func getAutomaticAdvertisementSkippingEnabled() async -> Bool {
+        await standardSettings().enableAutomaticAdvertisementSkipping
+    }
+
+    func getAutomaticChapterGenerationEnabled() async -> Bool {
+        await standardSettings().automaticallyGenerateChaptersWhenUnavailable
+    }
+
     func getTranscriptionMaxSnippetDurationSeconds() async -> Double {
         let configuredValue = await standardSettings().transcriptionMaxSnippetDurationSeconds
         return min(max(configuredValue, 0.4), 8.0)

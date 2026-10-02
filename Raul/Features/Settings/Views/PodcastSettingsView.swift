@@ -958,6 +958,17 @@ struct PodcastSettingsView: View {
                 )
             }
 
+            NavigationLink {
+                TranscriptSearchMaintenanceView(modelContainer: context.container)
+            } label: {
+                SettingsNavigationRow(
+                    title: "Transcript Search Index",
+                    summary: "Local index and backfill status",
+                    detail: "Rebuild the on-device search index if transcript results are incomplete.",
+                    systemImage: "text.magnifyingglass"
+                )
+            }
+
             Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

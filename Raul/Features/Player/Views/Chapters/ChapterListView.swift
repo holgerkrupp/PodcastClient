@@ -14,6 +14,7 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
     case mp4
     case podlove
     case ai
+    case advertisement
     case extracted
 
     var id: String { rawValue }
@@ -30,6 +31,8 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
             "Podlove"
         case .ai:
             "AI"
+        case .advertisement:
+            "Advertisement"
         case .extracted:
             "Extracted"
         }
@@ -47,6 +50,8 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
             .podlove
         case .ai:
             .ai
+        case .advertisement:
+            .advertisement
         case .extracted:
             .extracted
         }

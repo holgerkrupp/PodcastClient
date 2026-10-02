@@ -21,6 +21,7 @@ struct EpisodeDetailView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Bindable var episode: Episode
+    private let transcriptSearchNavigation: TranscriptSearchNavigation?
     @Bindable private var player = Player.shared
     @State private var shareURL: IdentifiableURL?
 
@@ -40,8 +41,10 @@ struct EpisodeDetailView: View {
 
 
     
-    init(episode: Episode) {
+    init(episode: Episode, transcriptSearchNavigation: TranscriptSearchNavigation? = nil) {
         self._episode = Bindable(wrappedValue: episode)
+        self.transcriptSearchNavigation = transcriptSearchNavigation
+        self._showTranscriptSheet = State(initialValue: transcriptSearchNavigation != nil)
     }
     
     var body: some View {
@@ -321,7 +324,11 @@ struct EpisodeDetailView: View {
             .sheet(isPresented: $showTranscriptSheet) {
                 NavigationStack {
                     if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
-                        TranscriptListView(transcriptLines: transcriptLines, episode: episode)
+                        TranscriptListView(
+                            transcriptLines: transcriptLines,
+                            episode: episode,
+                            searchNavigation: transcriptSearchNavigation
+                        )
                             .navigationTitle("Captions & Transcript")
                             .platformInlineNavigationTitle()
                     } else {
@@ -424,9 +431,27 @@ struct EpisodeDetailView: View {
             throw EpisodeActor.TranscriptError.decodingFailed
         }
 
+        let searchLines = lines.map {
+            TranscriptLineSnapshot(
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime
+            )
+        }
+        let searchSnapshot = TranscriptSearchEpisodeSnapshot(
+            episode: episode,
+            lines: searchLines,
+            source: "publisher"
+        )
         episode.transcriptLines = lines
         episode.refresh.toggle()
         context.saveIfNeeded()
+        do {
+            _ = try await TranscriptSearchIndex.shared.upsert(searchSnapshot)
+        } catch {
+            AppDiagnostics.log("transcript_search_index_update_failed")
+        }
 
         if let episodeURL = episode.url {
             _ = await EpisodeActor(modelContainer: context.container).regenerateTranscriptChapters(for: episodeURL)

@@ -26,6 +26,91 @@ struct StoreSplitMigrationDiagnosticsSnapshot: Sendable {
     var failedItemCount: Int
 }
 
+/// Production-safe, aggregate-only readiness for the local PodcastCache. It
+/// intentionally contains counts, versions and dates but no feed URLs, titles,
+/// or other user content.
+struct StoreSplitFeedCacheReadiness: Sendable, Equatable {
+    let subscribedFeedCount: Int
+    let readyFeedCount: Int
+    let pendingFeedCount: Int
+    let failedOrRetryableFeedCount: Int
+    let unrecoverableFeedCount: Int
+    let cachedEpisodeCount: Int
+    let cacheSchemaVersion: Int
+    let lastSuccessfulProgressAt: Date?
+
+    var rssRecoverablePendingFeedCount: Int {
+        max(0, pendingFeedCount - unrecoverableFeedCount)
+    }
+
+    var requiredFieldsCachedOrRSSRecoverable: Bool {
+        unrecoverableFeedCount == 0
+    }
+
+    var isSafeForCutover: Bool {
+        pendingFeedCount == 0
+            && failedOrRetryableFeedCount == 0
+            && requiredFieldsCachedOrRSSRecoverable
+    }
+
+    static func read(
+        legacyContext: ModelContext,
+        cacheContext: ModelContext
+    ) -> Self {
+        let sourceFeeds = Set(
+            ((try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? [])
+                .filter { $0.metaData?.isSubscribed != false }
+                .compactMap { $0.feed.map(PodcastFeedIdentity.normalizedFeedURLString) }
+        )
+        let cachedPodcasts = (try? cacheContext.fetch(FetchDescriptor<CachedPodcast>())) ?? []
+        let readyCacheByFeed = Dictionary(
+            cachedPodcasts.map { ($0.id, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let readyFeeds = Set(
+            sourceFeeds.filter {
+                readyCacheByFeed[$0]?.cacheSchemaVersion ?? 0
+                    >= StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+            }
+        )
+        let checkpoints = (try? cacheContext.fetch(
+            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+        )) ?? []
+        let failedFeeds = Set(
+            checkpoints.filter {
+                $0.targetSchemaVersion >= StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+                    && $0.stateRawValue == "failed"
+            }.map(\.feedURL)
+        ).intersection(sourceFeeds)
+        let pendingFeeds = sourceFeeds.subtracting(readyFeeds)
+        let unrecoverable = pendingFeeds.filter { isRSSRecoverable($0) == false }
+        let successfulDates = checkpoints.compactMap(\.lastSuccessfulAt)
+        let cachedProgressDates = cachedPodcasts
+            .filter { sourceFeeds.contains($0.id) }
+            .map(\.updatedAt)
+        let lastProgress = (successfulDates + cachedProgressDates).max()
+
+        return Self(
+            subscribedFeedCount: sourceFeeds.count,
+            readyFeedCount: readyFeeds.count,
+            pendingFeedCount: pendingFeeds.count,
+            failedOrRetryableFeedCount: failedFeeds.count,
+            unrecoverableFeedCount: unrecoverable.count,
+            cachedEpisodeCount: ((try? cacheContext.fetch(
+                FetchDescriptor<CachedEpisode>()
+            )) ?? []).filter { sourceFeeds.contains($0.feedURL) }.count,
+            cacheSchemaVersion: StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
+            lastSuccessfulProgressAt: lastProgress
+        )
+    }
+
+    private static func isRSSRecoverable(_ feedURL: String) -> Bool {
+        guard let url = URL(string: feedURL),
+              let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https"
+    }
+}
+
 struct StoreSplitMigrationHealthRecord: Codable, Sendable, Equatable {
     let operation: String
     let appState: String
@@ -89,6 +174,7 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     let currentJob: String?
     let pendingReason: String?
     let phases: [StoreSplitMigrationPhaseStatus]
+    let podcastCacheReadiness: StoreSplitFeedCacheReadiness?
     /// AI content is checkpointed by the importer, but is intentionally kept
     /// out of the slice progress denominator because it is not part of the
     /// regular user-state slice engine.
@@ -228,6 +314,7 @@ enum StoreSplitMigrationDiagnostics {
     static func migrationStatus(
         cacheContext: ModelContext,
         userStateContext: ModelContext,
+        legacyContext: ModelContext? = nil,
         isRunning: Bool,
         readiness: StoreSplitMigrationReadiness = .ready,
         blocker: String? = nil,
@@ -302,6 +389,12 @@ enum StoreSplitMigrationDiagnostics {
             currentJob: currentJob,
             pendingReason: pendingReason,
             phases: phaseStatuses,
+            podcastCacheReadiness: legacyContext.map {
+                StoreSplitFeedCacheReadiness.read(
+                    legacyContext: $0,
+                    cacheContext: cacheContext
+                )
+            },
             supplementalPhases: supplementalPhaseStatuses
         )
     }
@@ -345,6 +438,7 @@ enum StoreSplitMigrationDiagnostics {
             currentJob: currentJob,
             pendingReason: pendingReason,
             phases: emptyPhases,
+            podcastCacheReadiness: nil,
             supplementalPhases: []
         )
     }

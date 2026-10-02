@@ -7,6 +7,7 @@ actor StoreSplitWorkCoordinator {
         case reconcile = "Reconcile user state"
         case aiImport = "Import AI content"
         case migration = "Migrate split stores"
+        case feedCachePrewarm = "Prewarm PodcastCache"
     }
 
     private struct ReconcileRequest: Sendable {
@@ -36,6 +37,7 @@ actor StoreSplitWorkCoordinator {
     private var pendingReconcile: ReconcileRequest?
     private var pendingAIImport = false
     private var pendingMigration = false
+    private var pendingFeedCachePrewarm = false
     private var pendingPlaybackIdleReconcile = false
     private var runnerTask: Task<Void, Never>?
     private var nextHeavyWorkAllowedAt = Date.distantPast
@@ -70,8 +72,25 @@ actor StoreSplitWorkCoordinator {
                 || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork) {
             pendingMigration = true
         }
+        if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled {
+            pendingFeedCachePrewarm = true
+        }
         await publishPendingState()
         startRunnerIfNeeded()
+    }
+
+    func scheduleFeedCachePrewarming() async {
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else {
+            return
+        }
+        pendingFeedCachePrewarm = true
+        await publishPendingState()
+        startRunnerIfNeeded()
+    }
+
+    func waitForBackgroundPassToDrain() async {
+        await waitForIdle()
     }
 
     func pauseForBackground() async {
@@ -162,6 +181,7 @@ actor StoreSplitWorkCoordinator {
         pendingReconcile = nil
         pendingAIImport = false
         pendingMigration = false
+        pendingFeedCachePrewarm = false
         pendingPlaybackIdleReconcile = false
         currentJob = nil
         await MainActor.run {
@@ -256,6 +276,11 @@ actor StoreSplitWorkCoordinator {
                         )
                     }
                 }
+            case .feedCachePrewarm:
+                pendingFeedCachePrewarm = false
+                await ModelContainerManager.shared.performFeedCachePrewarmIfPossible(
+                    feedLimit: 200
+                )
             }
 
             await clearCurrentJob()
@@ -316,6 +341,7 @@ actor StoreSplitWorkCoordinator {
                 )
             }
             return pendingMigration || pendingReconcile != nil || pendingAIImport
+                || pendingFeedCachePrewarm
                 ? nextPendingJobWithoutExportCheck()
                 : nil
         }
@@ -327,6 +353,9 @@ actor StoreSplitWorkCoordinator {
         if pendingMigration,
            StoreSplitReleasePhase.current == .dualSyncBackfill {
             return .migration
+        }
+        if pendingFeedCachePrewarm {
+            return .feedCachePrewarm
         }
         if pendingReconcile != nil {
             return .reconcile
@@ -344,6 +373,7 @@ actor StoreSplitWorkCoordinator {
         if pendingMigration, StoreSplitReleasePhase.current == .dualSyncBackfill {
             return .migration
         }
+        if pendingFeedCachePrewarm { return .feedCachePrewarm }
         if pendingReconcile != nil { return .reconcile }
         if pendingAIImport { return .aiImport }
         if pendingMigration { return .migration }
@@ -361,7 +391,8 @@ actor StoreSplitWorkCoordinator {
     /// asked for the reconcile goes away — this spun the actor's executor at
     /// 100% CPU until iOS killed the process on the 80%-over-60s limit.
     private func waitForIdle() async {
-        while currentJob != nil || pendingReconcile != nil || pendingAIImport || pendingMigration {
+        while currentJob != nil || pendingReconcile != nil || pendingAIImport
+            || pendingMigration || pendingFeedCachePrewarm {
             // Nobody left to drain the queue: the work stays queued for the
             // next `.active` transition, and this caller stops waiting.
             guard runnerTask != nil else { return }
@@ -399,6 +430,8 @@ actor StoreSplitWorkCoordinator {
             pendingReason = "ai import"
         } else if pendingMigration {
             pendingReason = "migration"
+        } else if pendingFeedCachePrewarm {
+            pendingReason = "PodcastCache prewarming"
         } else {
             pendingReason = nil
         }

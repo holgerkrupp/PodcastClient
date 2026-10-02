@@ -144,7 +144,7 @@ struct PlayerControllView: View {
                             value: $player.progress,
                             markers: $player.chapters,
                             allowTouch: globalSettings.first?.enableInAppSlider ?? true,
-                            chapterTimelineDuration: player.currentEpisode?.duration,
+                            chapterTimelineDuration: player.currentEpisode?.duration, adSegments: player.showDetectedAdvertisements ? player.adSegments : [],
                             onEditingChanged: { isEditing, progress in
                                 if isEditing {
                                     player.beginSkipProtectionSeek()
@@ -257,6 +257,18 @@ struct PlayerControllView: View {
                     .accessibilityHint("Generates a transcript and chapter markers for this episode")
                 }
 #endif
+            }
+
+            if player.canSkipCurrentAdvertisement {
+                Button {
+                    Task { await player.skipCurrentAdvertisement() }
+                } label: {
+                    Label("Skip Ad", systemImage: "forward.end.fill")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityLabel("Skip advertisement")
+                .accessibilityHint("Seeks to the end of the detected advertisement")
             }
 
             HStack(spacing: 0) {

@@ -604,6 +604,48 @@ struct AIChapterValue: Codable, Equatable, Sendable {
     let title: String
     let startTime: Double
     let duration: Double?
+    let typeRawValue: String?
+    let analysisVariantID: String?
+
+    init(
+        title: String,
+        startTime: Double,
+        duration: Double?,
+        typeRawValue: String? = nil,
+        analysisVariantID: String? = nil
+    ) {
+        self.title = title
+        self.startTime = startTime
+        self.duration = duration
+        self.typeRawValue = typeRawValue
+        self.analysisVariantID = analysisVariantID
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decode(String.self, forKey: .title)
+        startTime = try container.decode(Double.self, forKey: .startTime)
+        duration = try container.decodeIfPresent(Double.self, forKey: .duration)
+        typeRawValue = try container.decodeIfPresent(String.self, forKey: .typeRawValue)
+        analysisVariantID = try container.decodeIfPresent(String.self, forKey: .analysisVariantID)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(title, forKey: .title)
+        try container.encode(startTime, forKey: .startTime)
+        try container.encodeIfPresent(duration, forKey: .duration)
+        try container.encodeIfPresent(typeRawValue, forKey: .typeRawValue)
+        try container.encodeIfPresent(analysisVariantID, forKey: .analysisVariantID)
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case title
+        case startTime
+        case duration
+        case typeRawValue
+        case analysisVariantID
+    }
 }
 
 struct AITranscriptEncodedRevision: Equatable, Sendable {

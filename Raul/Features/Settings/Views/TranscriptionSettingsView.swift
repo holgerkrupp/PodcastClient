@@ -106,6 +106,75 @@ struct TranscriptionSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Advertisement Detection") {
+                if let globalSettings {
+                    Toggle(
+                        "Detect advertisements",
+                        isOn: Binding(
+                            get: { globalSettings.enableAdvertisementDetection },
+                            set: { newValue in
+                                globalSettings.enableAdvertisementDetection = newValue
+                                if newValue == false {
+                                    globalSettings.showDetectedAdvertisements = false
+                                    globalSettings.enableAutomaticAdvertisementSkipping = false
+                                }
+                                context.saveIfNeeded()
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+
+                    Toggle(
+                        "Show detected advertisements",
+                        isOn: Binding(
+                            get: { globalSettings.showDetectedAdvertisements },
+                            set: { newValue in
+                                globalSettings.showDetectedAdvertisements = newValue
+                                context.saveIfNeeded()
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+                    .disabled(globalSettings.enableAdvertisementDetection == false)
+
+                    Toggle(
+                        "Automatically skip high-confidence advertisements",
+                        isOn: Binding(
+                            get: { globalSettings.enableAutomaticAdvertisementSkipping },
+                            set: { newValue in
+                                globalSettings.enableAutomaticAdvertisementSkipping = newValue
+                                context.saveIfNeeded()
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+                    .disabled(globalSettings.enableAdvertisementDetection == false)
+                }
+
+                Text("Detection runs on device and keeps evidence separate from publisher chapters. Showing a range never changes playback; automatic skipping is a separate opt-in.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Generated Chapters") {
+                if let globalSettings {
+                    Toggle(
+                        "Automatically generate chapters when publisher chapters are unavailable",
+                        isOn: Binding(
+                            get: { globalSettings.automaticallyGenerateChaptersWhenUnavailable },
+                            set: { newValue in
+                                globalSettings.automaticallyGenerateChaptersWhenUnavailable = newValue
+                                context.saveIfNeeded()
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+                }
+                Text("Generated editorial chapters use the on-device transcript model. Confirmed detected advertisements are added as separate chapters and never enable ad skipping.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Captions & Audio Descriptions") {
                 Text("Episode transcripts are used as captions inside the player and transcript screens.")
                     .font(.caption)

@@ -37,6 +37,7 @@ struct LibrarySearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var searchGeneration: Int = 0
     @State private var expandedPodcastGroupIDs: Set<String> = []
+    @State private var hasSearchableTranscripts = false
 
     @ScaledMetric(relativeTo: .body) private var groupHeaderHeight: CGFloat = 128
     @ScaledMetric(relativeTo: .body) private var groupArtworkSize: CGFloat = 96
@@ -55,8 +56,17 @@ struct LibrarySearchView: View {
                 ContentUnavailableView(
                     "Search Your Library",
                     systemImage: "magnifyingglass",
-                    description: Text("Search podcasts, episodes, chapters, and transcripts directly in SwiftData.")
+                    description: Text("Search podcasts, episodes, chapters, or open the local transcript index.")
                 )
+                if hasSearchableTranscripts {
+                    NavigationLink {
+                        TranscriptSearchView()
+                    } label: {
+                        Label("Search transcripts", systemImage: "text.magnifyingglass")
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityHint("Searches every transcript available on this device")
+                }
             } else if groupedResults.isEmpty {
                 if isSearching {
                     ProgressView("Searching Library...")
@@ -144,6 +154,7 @@ struct LibrarySearchView: View {
         .navigationTitle("Library Search")
         .searchable(text: $searchText, prompt: "Search library")
         .task {
+            await refreshTranscriptSearchAvailability()
             scheduleSearch(immediate: true)
         }
         .onChange(of: searchText) { _, _ in
@@ -192,8 +203,23 @@ struct LibrarySearchView: View {
                     Label("Search filters", systemImage: "slider.horizontal.3")
                 }
                 .accessibilityLabel("Search filters")
+
+                if hasSearchableTranscripts {
+                    NavigationLink {
+                        TranscriptSearchView()
+                    } label: {
+                        Label("Transcript Search", systemImage: "text.magnifyingglass")
+                    }
+                    .accessibilityLabel("Search transcripts")
+                }
             }
         }
+    }
+
+    private func refreshTranscriptSearchAvailability() async {
+        let available = (try? await TranscriptSearchIndex.shared.hasSearchableTranscripts(in: .library)) == true
+        guard Task.isCancelled == false else { return }
+        hasSearchableTranscripts = available
     }
 
     private struct PodcastSearchGroupHeader: View {

@@ -44,6 +44,8 @@ struct PodcastDetailView: View {
     @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
     @State private var showPodroll: Bool = false
+    @State private var showTranscriptSearch = false
+    @State private var hasSearchableTranscripts = false
     @State private var showDebugMetadata: Bool = false
     @State private var predictedReleaseFrequencyLabel: String?
 #if DEBUG
@@ -285,6 +287,17 @@ struct PodcastDetailView: View {
                             artworkURL: podcast.imageURL
                         )
 
+                        if hasSearchableTranscripts {
+                            Button {
+                                showTranscriptSearch = true
+                            } label: {
+                                Label("Search transcripts", systemImage: "text.magnifyingglass")
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .accessibilityLabel("Search transcripts in this podcast")
+                            .accessibilityHint("Searches every locally available transcript in this podcast")
+                        }
+
                         if podrollItems.isEmpty == false {
                             Button {
                                 showPodroll = true
@@ -459,6 +472,10 @@ struct PodcastDetailView: View {
                 await refreshEpisodesIfNeeded()
                 await updatePredictedReleaseInfo()
             }
+            .task(id: podcast.stablePodcastIdentityKey) {
+                hasSearchableTranscripts = (try? await TranscriptSearchIndex.shared
+                    .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
+            }
             .onChange(of: searchText) { _, _ in
                 filteredEpisodeDisplayLimit = Self.episodePageSize
                 debounceEpisodeFilters()
@@ -501,6 +518,15 @@ struct PodcastDetailView: View {
                     podcastTitle: podcast.title,
                     items: podrollItems
                 )
+            }
+            .sheet(isPresented: $showTranscriptSearch) {
+                NavigationStack {
+                    TranscriptSearchView(
+                        scope: .podcast(podcast.stablePodcastIdentityKey),
+                        title: "Search \(podcast.title)",
+                        emptyDescription: "Search every locally available transcript in this podcast."
+                    )
+                }
             }
 #if DEBUG
             .navigationDestination(isPresented: $showDebugMetadata) {

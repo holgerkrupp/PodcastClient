@@ -289,7 +289,10 @@ actor StoreSplitAIContentImporter {
                 predicate: #Predicate { $0.episodeID == episodeID }
             )
             let current = (try? cacheContext.fetch(descriptor)) ?? []
-            let currentAI = current.filter { $0.typeRawValue == MarkerType.ai.rawValue }
+            let currentAI = current.filter {
+                $0.typeRawValue == MarkerType.ai.rawValue
+                    || $0.typeRawValue == MarkerType.advertisement.rawValue
+            }
             let previousByKey = Dictionary(
                 currentAI.map {
                     (chapterKey(title: $0.title, start: $0.start ?? 0), $0)
@@ -313,8 +316,9 @@ actor StoreSplitAIContentImporter {
                         title: value.title,
                         start: value.startTime,
                         duration: value.duration,
+                        analysisVariantID: value.analysisVariantID,
                         progress: previous?.progress,
-                        typeRawValue: MarkerType.ai.rawValue,
+                        typeRawValue: value.typeRawValue ?? MarkerType.ai.rawValue,
                         shouldPlay: previous?.shouldPlay ?? true,
                         ordinal: ordinal,
                         updatedAt: chapterSet.updatedAt

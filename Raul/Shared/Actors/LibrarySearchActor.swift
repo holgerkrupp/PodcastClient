@@ -202,22 +202,6 @@ actor LibrarySearchActor {
             )
         }
 
-        if request.query.count >= request.minimumCharactersForTranscriptSearch {
-            var transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-                predicate: transcriptLinePredicate(query: request.query),
-                sortBy: [SortDescriptor(\TranscriptLineAndTime.startTime)]
-            )
-            transcriptDescriptor.fetchLimit = 1_500
-            for line in try modelContext.fetch(transcriptDescriptor) {
-                guard let episode = line.episode else { continue }
-                insertIfNeeded(
-                    episode: episode,
-                    kind: .transcript(startTime: line.startTime),
-                    snippet: snippet(from: line.text, query: request.query, maxLength: 180)
-                )
-            }
-        }
-
         return matchesByEpisodeID.values.sorted { lhs, rhs in
             let leftDate = lhs.publishDate ?? .distantPast
             let rightDate = rhs.publishDate ?? .distantPast
@@ -340,10 +324,6 @@ actor LibrarySearchActor {
 
     private func chapterTitlePredicate(query: String) -> Predicate<Marker> {
         #Predicate<Marker> { $0.title.localizedStandardContains(query) }
-    }
-
-    private func transcriptLinePredicate(query: String) -> Predicate<TranscriptLineAndTime> {
-        #Predicate<TranscriptLineAndTime> { $0.text.localizedStandardContains(query) }
     }
 
     private func containsIgnoringCaseAndDiacritics(_ text: String, query: String) -> Bool {

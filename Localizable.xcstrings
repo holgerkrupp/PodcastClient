@@ -103,6 +103,16 @@
         }
       }
     },
+    "%@ • %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ • %2$@"
+          }
+        }
+      }
+    },
     "%@ complete" : {
       "localizations" : {
         "de" : {
@@ -217,6 +227,16 @@
         }
       }
     },
+    "%@, %lld transcript matches" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@, %2$lld transcript matches"
+          }
+        }
+      }
+    },
     "%@, opens link" : {
       "localizations" : {
         "de" : {
@@ -263,6 +283,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld-Details"
+          }
+        }
+      }
+    },
+    "%lld episodes · %lld matches" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld episodes · %2$lld matches"
+          }
+        }
+      }
+    },
+    "%lld episodes in %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld episodes in %2$@."
           }
         }
       }
@@ -377,6 +417,9 @@
         }
       }
     },
+    "%lld matches" : {
+
+    },
     "%lld next" : {
       "localizations" : {
         "de" : {
@@ -479,6 +522,36 @@
         }
       }
     },
+    "0.5×" : {
+
+    },
+    "0.75×" : {
+
+    },
+    "1 match" : {
+
+    },
+    "1.5×" : {
+
+    },
+    "1.25×" : {
+
+    },
+    "1.75×" : {
+
+    },
+    "1×" : {
+
+    },
+    "2.5×" : {
+
+    },
+    "2×" : {
+
+    },
+    "3×" : {
+
+    },
     "45 Gradient" : {
       "localizations" : {
         "de" : {
@@ -559,6 +632,15 @@
         }
       }
     },
+    "Add an entity collection while preserving its order." : {
+
+    },
+    "Add an episode to a named playlist." : {
+
+    },
+    "Add an Episode to Up Next" : {
+
+    },
     "Add bookmark" : {
       "localizations" : {
         "de" : {
@@ -582,6 +664,12 @@
     "Add credentials" : {
 
     },
+    "Add Episode to Playlist" : {
+
+    },
+    "Add Episode to Up Next" : {
+
+    },
     "Add episodes in the app to see them here." : {
       "localizations" : {
         "de" : {
@@ -601,6 +689,12 @@
           }
         }
       }
+    },
+    "Add Multiple Episodes to Up Next" : {
+
+    },
+    "Add one episode to the front or end of Up Next." : {
+
     },
     "Add one or more episodes to your Up Next queue." : {
       "localizations" : {
@@ -707,6 +801,19 @@
         }
       }
     },
+    "Add, remove, list, and play episodes in a named playlist." : {
+
+    },
+    "Added %@ to %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$@ to %2$@."
+          }
+        }
+      }
+    },
     "Added %lld episodes to Up Next." : {
       "localizations" : {
         "de" : {
@@ -746,6 +853,9 @@
           }
         }
       }
+    },
+    "Added the episode to %@." : {
+
     },
     "Added to the bottom · Global default" : {
       "localizations" : {
@@ -820,6 +930,9 @@
         }
       }
     },
+    "Advertisement Detection" : {
+
+    },
     "Africa" : {
       "localizations" : {
         "de" : {
@@ -829,6 +942,15 @@
           }
         }
       }
+    },
+    "After a number of minutes" : {
+
+    },
+    "After this episode" : {
+
+    },
+    "Aggregate Monitor" : {
+
     },
     "AirPlay" : {
       "localizations" : {
@@ -1100,6 +1222,9 @@
         }
       }
     },
+    "Archive an episode so it is no longer in the inbox." : {
+
+    },
     "Archive episode" : {
       "localizations" : {
         "de" : {
@@ -1109,6 +1234,9 @@
           }
         }
       }
+    },
+    "Archive Episode" : {
+
     },
     "Archive every episode in this podcast" : {
 
@@ -1123,6 +1251,12 @@
         }
       }
     },
+    "Archive or Unarchive Episode" : {
+
+    },
+    "Archive this episode in Up Next" : {
+
+    },
     "Asia-Pacific" : {
       "localizations" : {
         "de" : {
@@ -1132,6 +1266,12 @@
           }
         }
       }
+    },
+    "Ask What Is Next" : {
+
+    },
+    "Ask What Is Playing" : {
+
     },
     "Aspect Ratio" : {
       "localizations" : {
@@ -1162,6 +1302,9 @@
           }
         }
       }
+    },
+    "Audio Schema Playlist Actions" : {
+
     },
     "August" : {
       "localizations" : {
@@ -1266,6 +1409,12 @@
         }
       }
     },
+    "Automatically generate chapters when publisher chapters are unavailable" : {
+
+    },
+    "Automatically skip high-confidence advertisements" : {
+
+    },
     "Automatically start the next queue item when an episode finishes." : {
       "localizations" : {
         "de" : {
@@ -1277,6 +1426,7 @@
       }
     },
     "Available actions now include: Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1325,6 +1475,9 @@
           }
         }
       }
+    },
+    "Backfill" : {
+
     },
     "Background" : {
       "localizations" : {
@@ -1412,6 +1565,9 @@
         }
       }
     },
+    "Bookmark this in Up Next" : {
+
+    },
     "Bookmarks" : {
       "localizations" : {
         "de" : {
@@ -1492,6 +1648,12 @@
         }
       }
     },
+    "Cancel both the minute-based and after-episode sleep timer." : {
+
+    },
+    "Cancel Sleep Timer" : {
+
+    },
     "Caption" : {
       "localizations" : {
         "de" : {
@@ -1565,6 +1727,9 @@
     "Change how fast episodes play" : {
 
     },
+    "Change playback speed using the same setting as the player." : {
+
+    },
     "Changes archive state without changing inbox or playlist membership" : {
       "localizations" : {
         "de" : {
@@ -1624,6 +1789,12 @@
           }
         }
       }
+    },
+    "Chapter Navigation" : {
+
+    },
+    "Chapter restarted." : {
+
     },
     "Chapter Rules" : {
       "localizations" : {
@@ -1705,6 +1876,9 @@
         }
       }
     },
+    "Choose a duration from 1 minute to 24 hours." : {
+
+    },
     "Choose an audio output device" : {
       "localizations" : {
         "de" : {
@@ -1768,6 +1942,9 @@
         }
       }
     },
+    "Clean up the active queue item." : {
+
+    },
     "Clear inbox" : {
       "localizations" : {
         "de" : {
@@ -1827,7 +2004,11 @@
     "Close player" : {
 
     },
+    "CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. A store is only marked complete after that store's own import event succeeds; an unrelated store's completed import does not mark the queue current." : {
+
+    },
     "CloudKit does not expose exact transfer progress, so the displayed percentage is an estimate. CloudKit's import status determines when synchronization is complete." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1838,6 +2019,7 @@
       }
     },
     "CloudKit Events" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1872,6 +2054,9 @@
           }
         }
       }
+    },
+    "Continue the current or most recent episode." : {
+
     },
     "Continues the paused download" : {
       "localizations" : {
@@ -1959,6 +2144,9 @@
         }
       }
     },
+    "Create a Bookmark" : {
+
+    },
     "Create a bookmark at the current playback position." : {
       "localizations" : {
         "de" : {
@@ -1968,6 +2156,9 @@
           }
         }
       }
+    },
+    "Create a listening-statistics PNG for later Shortcuts actions." : {
+
     },
     "Create a podcast listening statistics share image and return it as a PNG file." : {
       "localizations" : {
@@ -2451,6 +2642,12 @@
         }
       }
     },
+    "Detect advertisements" : {
+
+    },
+    "Detection runs on device and keeps evidence separate from publisher chapters. Showing a range never changes playback; automatic skipping is a separate opt-in." : {
+
+    },
     "Directly exports an audio clip from the currently playing episode without opening the app." : {
       "localizations" : {
         "de" : {
@@ -2564,6 +2761,9 @@
         }
       }
     },
+    "Download an episode using Up Next's normal download service." : {
+
+    },
     "Download at most" : {
       "localizations" : {
         "de" : {
@@ -2573,6 +2773,9 @@
           }
         }
       }
+    },
+    "Download Episode" : {
+
     },
     "Download episodes automatically" : {
       "localizations" : {
@@ -2593,6 +2796,12 @@
           }
         }
       }
+    },
+    "Download started for %@." : {
+
+    },
+    "Download this episode in Up Next" : {
+
     },
     "Downloaded" : {
       "localizations" : {
@@ -2677,6 +2886,9 @@
     "Drag the waveform to move through the episode, and pinch to zoom in for a precise cut." : {
 
     },
+    "Dual sync backfill" : {
+
+    },
     "Duration: %@" : {
       "localizations" : {
         "de" : {
@@ -2719,6 +2931,9 @@
           }
         }
       }
+    },
+    "Eligible episodes" : {
+
     },
     "Enable Notifications" : {
       "localizations" : {
@@ -2793,6 +3008,15 @@
         }
       }
     },
+    "Episode added to play next." : {
+
+    },
+    "Episode added to the end of Up Next." : {
+
+    },
+    "Episode archived." : {
+
+    },
     "Episode Cover" : {
       "localizations" : {
         "de" : {
@@ -2833,6 +3057,9 @@
         }
       }
     },
+    "Episode marked as played." : {
+
+    },
     "Episode Not Found" : {
       "localizations" : {
         "de" : {
@@ -2852,6 +3079,9 @@
           }
         }
       }
+    },
+    "Episode restored from the archive." : {
+
     },
     "Episode transcripts are used as captions inside the player and transcript screens." : {
       "localizations" : {
@@ -2972,6 +3202,15 @@
           }
         }
       }
+    },
+    "Export a clip from the current local episode." : {
+
+    },
+    "Export a clip from Up Next" : {
+
+    },
+    "Export a Podcast Clip" : {
+
     },
     "Export Podcast Clip" : {
       "localizations" : {
@@ -3156,6 +3395,9 @@
         }
       }
     },
+    "Find current live subscribed podcasts and play or stop them." : {
+
+    },
     "Find the Exact Moment" : {
 
     },
@@ -3243,6 +3485,7 @@
       }
     },
     "For best results, keep a few Siri phrases short and specific, like \"Play Up Next\" or \"Bookmark this in Up Next.\"" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3291,6 +3534,9 @@
           }
         }
       }
+    },
+    "Format" : {
+
     },
     "Forward" : {
       "localizations" : {
@@ -3368,6 +3614,9 @@
         }
       }
     },
+    "Generate a Podcast Share Image" : {
+
+    },
     "Generate a transcript and use it to create chapter markers." : {
 
     },
@@ -3383,6 +3632,9 @@
           }
         }
       }
+    },
+    "Generate Episode Transcript" : {
+
     },
     "Generate Podcast Share Image" : {
       "localizations" : {
@@ -3410,6 +3662,12 @@
     "Generate Transcript and Chapters" : {
 
     },
+    "Generated Chapters" : {
+
+    },
+    "Generated editorial chapters use the on-device transcript model. Confirmed detected advertisements are added as separate chapters and never enable ad skipping." : {
+
+    },
     "Gentle preserves more pauses; stronger levels shorten more silence." : {
       "localizations" : {
         "de" : {
@@ -3429,6 +3687,27 @@
           }
         }
       }
+    },
+    "Get Episode Transcript" : {
+
+    },
+    "Get Episodes in Playlist" : {
+
+    },
+    "Get Live Podcasts" : {
+
+    },
+    "Get Now Playing" : {
+
+    },
+    "Get Sleep Timer" : {
+
+    },
+    "Get the current sleep timer state and remaining time." : {
+
+    },
+    "Get Up Next Queue" : {
+
     },
     "Getting Started" : {
       "localizations" : {
@@ -3464,6 +3743,9 @@
 
     },
     "Go forward %lld seconds" : {
+
+    },
+    "Go to the previous chapter of the current episode." : {
 
     },
     "Halloween" : {
@@ -3571,6 +3853,9 @@
           }
         }
       }
+    },
+    "Here are the next %lld episodes." : {
+
     },
     "Here is your %lld second clip from '%@'." : {
       "localizations" : {
@@ -3815,6 +4100,7 @@
       }
     },
     "In Apple Shortcuts, search for Up Next to add these actions to personal automations." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3883,6 +4169,12 @@
           }
         }
       }
+    },
+    "Indexed episodes" : {
+
+    },
+    "Indexing continues in the background. These results are ready now." : {
+
     },
     "Install Apple Podcasts Shortcut" : {
       "localizations" : {
@@ -4132,6 +4424,12 @@
           }
         }
       }
+    },
+    "Last successful import %@" : {
+
+    },
+    "Last successful upload %@" : {
+
     },
     "Last updated: %@" : {
       "localizations" : {
@@ -4441,6 +4739,18 @@
         }
       }
     },
+    "Live playback is not active." : {
+
+    },
+    "Live playback stopped." : {
+
+    },
+    "Live Podcast" : {
+
+    },
+    "Live Podcast Discovery and Playback" : {
+
+    },
     "Live podcast discovery is disabled in the global settings." : {
 
     },
@@ -4616,6 +4926,9 @@
         }
       }
     },
+    "Manage an episode's inbox and archive state." : {
+
+    },
     "Manage Episode" : {
       "localizations" : {
         "de" : {
@@ -4645,6 +4958,18 @@
           }
         }
       }
+    },
+    "Mark Episode Played" : {
+
+    },
+    "Mark the current or selected episode as played." : {
+
+    },
+    "Mark the selected episode, or the current episode, as played." : {
+
+    },
+    "Mark this played in Up Next" : {
+
     },
     "Marker type" : {
       "localizations" : {
@@ -4698,6 +5023,9 @@
           }
         }
       }
+    },
+    "Maximum Episodes" : {
+
     },
     "May" : {
       "localizations" : {
@@ -4768,6 +5096,15 @@
           }
         }
       }
+    },
+    "Minutes" : {
+
+    },
+    "Mirrored Stores" : {
+
+    },
+    "Mode" : {
+
     },
     "Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale." : {
       "localizations" : {
@@ -4876,6 +5213,9 @@
     "Move later" : {
 
     },
+    "Move or Remove the Current Episode" : {
+
+    },
     "Move Subscriptions in Minutes" : {
       "localizations" : {
         "de" : {
@@ -4906,7 +5246,11 @@
         }
       }
     },
+    "Move this episode to the end in Up Next" : {
+
+    },
     "Move To End" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4946,6 +5290,9 @@
         }
       }
     },
+    "Move to the next, previous, or current chapter." : {
+
+    },
     "Move Up" : {
       "localizations" : {
         "de" : {
@@ -4955,6 +5302,12 @@
           }
         }
       }
+    },
+    "Moved to the next chapter." : {
+
+    },
+    "Moved to the previous chapter." : {
+
     },
     "Moves playback backward by %lld seconds" : {
       "localizations" : {
@@ -4995,6 +5348,9 @@
           }
         }
       }
+    },
+    "Named Playlist Actions" : {
+
     },
     "Navigate" : {
       "localizations" : {
@@ -5156,6 +5512,9 @@
         }
       }
     },
+    "Next chapter in Up Next" : {
+
+    },
     "Next in queue" : {
       "localizations" : {
         "de" : {
@@ -5166,6 +5525,9 @@
         }
       }
     },
+    "Next match" : {
+
+    },
     "Next predicted release: Unavailable" : {
       "localizations" : {
         "de" : {
@@ -5175,6 +5537,9 @@
           }
         }
       }
+    },
+    "Next transcript match" : {
+
     },
     "Next week" : {
       "localizations" : {
@@ -5278,6 +5643,9 @@
           }
         }
       }
+    },
+    "No indexed transcript matches for \"%@\"." : {
+
     },
     "No listening data yet." : {
       "localizations" : {
@@ -5535,7 +5903,13 @@
         }
       }
     },
+    "No subscribed podcasts are live right now." : {
+
+    },
     "No Transcript" : {
+
+    },
+    "No Transcript Matches" : {
 
     },
     "No Transcriptions Yet" : {
@@ -5761,6 +6135,9 @@
         }
       }
     },
+    "On-Device Index" : {
+
+    },
     "On-Device Transcription" : {
       "localizations" : {
         "de" : {
@@ -5800,6 +6177,9 @@
           }
         }
       }
+    },
+    "Open access settings" : {
+
     },
     "Open all settings for queue behavior, podcasts, transcriptions, appearance, integrations, and storage." : {
       "localizations" : {
@@ -6000,6 +6380,9 @@
           }
         }
       }
+    },
+    "Open Settings > Integrations > Siri & Shortcuts for the current list of voice commands and automation actions." : {
+
     },
     "Open Share Pictures" : {
       "localizations" : {
@@ -6338,6 +6721,12 @@
         }
       }
     },
+    "Pause playback in Up Next" : {
+
+    },
+    "Pause the active episode." : {
+
+    },
     "Pause the current episode." : {
       "localizations" : {
         "de" : {
@@ -6408,6 +6797,9 @@
         }
       }
     },
+    "Plain text" : {
+
+    },
     "Play" : {
       "localizations" : {
         "de" : {
@@ -6473,6 +6865,12 @@
           }
         }
       }
+    },
+    "Play a selected episode from your library." : {
+
+    },
+    "Play an Episode" : {
+
     },
     "Play an episode from your library." : {
       "localizations" : {
@@ -6564,6 +6962,9 @@
         }
       }
     },
+    "Play Latest" : {
+
+    },
     "Play Latest Episode" : {
       "localizations" : {
         "de" : {
@@ -6574,6 +6975,9 @@
         }
       }
     },
+    "Play Live Podcast" : {
+
+    },
     "Play Live Stream" : {
       "localizations" : {
         "de" : {
@@ -6583,6 +6987,9 @@
           }
         }
       }
+    },
+    "Play my Commute playlist in Up Next" : {
+
     },
     "Play Next" : {
       "localizations" : {
@@ -6614,6 +7021,9 @@
         }
       }
     },
+    "Play Playlist" : {
+
+    },
     "Play Podcast Episode" : {
       "localizations" : {
         "de" : {
@@ -6634,6 +7044,9 @@
         }
       }
     },
+    "Play the Latest Episode" : {
+
+    },
     "Play the latest episode of ${podcast}" : {
       "localizations" : {
         "de" : {
@@ -6643,6 +7056,9 @@
           }
         }
       }
+    },
+    "Play the latest episode of this podcast" : {
+
     },
     "Play the newest episode of a podcast." : {
       "localizations" : {
@@ -6664,6 +7080,12 @@
         }
       }
     },
+    "Play this episode in Up Next" : {
+
+    },
+    "Play this episode next in Up Next" : {
+
+    },
     "Play Up Next" : {
       "localizations" : {
         "de" : {
@@ -6673,6 +7095,9 @@
           }
         }
       }
+    },
+    "Play Up Next at 1.5 times" : {
+
     },
     "Play/Pause" : {
       "localizations" : {
@@ -6800,6 +7225,9 @@
         }
       }
     },
+    "Playback speed set to %@ times." : {
+
+    },
     "Playback uses files and streams on the watch." : {
       "localizations" : {
         "de" : {
@@ -6809,6 +7237,9 @@
           }
         }
       }
+    },
+    "Playback will stop after this episode." : {
+
     },
     "Played" : {
       "localizations" : {
@@ -6873,6 +7304,9 @@
         }
       }
     },
+    "Playing %@ live." : {
+
+    },
     "Playing %@." : {
       "localizations" : {
         "de" : {
@@ -6905,6 +7339,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Playlist"
+          }
+        }
+      }
+    },
+    "Playlist entries: %lld → %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Playlist entries: %1$lld → %2$lld"
           }
         }
       }
@@ -7521,6 +7965,9 @@
         }
       }
     },
+    "Previous match" : {
+
+    },
     "Previous Period" : {
       "localizations" : {
         "de" : {
@@ -7531,6 +7978,9 @@
         }
       }
     },
+    "Previous transcript match" : {
+
+    },
     "Previous week" : {
       "localizations" : {
         "de" : {
@@ -7540,6 +7990,9 @@
           }
         }
       }
+    },
+    "Private podcasts will appear here after you add one." : {
+
     },
     "Private RSS providers" : {
 
@@ -7576,6 +8029,9 @@
           }
         }
       }
+    },
+    "Put an episode first or last in the queue." : {
+
     },
     "Queue" : {
       "localizations" : {
@@ -7647,7 +8103,13 @@
         }
       }
     },
+    "Re-authenticate on this device" : {
+
+    },
     "Read the whole episode as text" : {
+
+    },
+    "Reading index status…" : {
 
     },
     "Ready to Subscribe (%lld)" : {
@@ -7700,6 +8162,9 @@
         }
       }
     },
+    "Rebuild Transcript Search Index" : {
+
+    },
     "Rebuilding analytics…" : {
       "localizations" : {
         "de" : {
@@ -7709,6 +8174,12 @@
           }
         }
       }
+    },
+    "Rebuilding runs in bounded SwiftData batches and can resume after the app is closed." : {
+
+    },
+    "Rebuilding…" : {
+
     },
     "Recalculate hourly listening stats and period summaries from recorded play sessions" : {
       "localizations" : {
@@ -7800,6 +8271,9 @@
         }
       }
     },
+    "Refresh a selected subscribed feed without refreshing the library." : {
+
+    },
     "Refresh iCloud sync status" : {
       "localizations" : {
         "de" : {
@@ -7840,6 +8314,12 @@
         }
       }
     },
+    "Refresh One Podcast" : {
+
+    },
+    "Refresh one subscribed podcast feed." : {
+
+    },
     "Refresh podcast" : {
       "localizations" : {
         "de" : {
@@ -7850,6 +8330,9 @@
         }
       }
     },
+    "Refresh Podcast" : {
+
+    },
     "Refresh podcasts" : {
       "localizations" : {
         "de" : {
@@ -7859,6 +8342,9 @@
           }
         }
       }
+    },
+    "Refresh Podcasts" : {
+
     },
     "Refresh sideloading" : {
       "localizations" : {
@@ -7889,6 +8375,12 @@
           }
         }
       }
+    },
+    "Refresh this podcast in Up Next" : {
+
+    },
+    "Refreshed %@." : {
+
     },
     "Refreshing inbox" : {
       "localizations" : {
@@ -8000,6 +8492,9 @@
         }
       }
     },
+    "Remove an episode from a named playlist." : {
+
+    },
     "Remove credentials" : {
 
     },
@@ -8007,6 +8502,7 @@
 
     },
     "Remove Current" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8047,6 +8543,9 @@
       }
     },
     "Remove episode from playlist" : {
+
+    },
+    "Remove Episode from Playlist" : {
 
     },
     "Remove episodes played in another playlist" : {
@@ -8098,6 +8597,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Entferne die aktuelle Episode aus deiner „Als Nächstes“-Warteschlange."
+          }
+        }
+      }
+    },
+    "Removed %@ from %@." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removed %1$@ from %2$@."
           }
         }
       }
@@ -8168,6 +8677,12 @@
         }
       }
     },
+    "Resolve a podcast page or feed URL and subscribe through Up Next." : {
+
+    },
+    "Resolve and subscribe to a podcast feed or podcast page." : {
+
+    },
     "Restart Current Chapter" : {
       "localizations" : {
         "de" : {
@@ -8177,6 +8692,15 @@
           }
         }
       }
+    },
+    "Restart the current chapter of the playing episode." : {
+
+    },
+    "Restart this chapter in Up Next" : {
+
+    },
+    "Restore an archived episode." : {
+
     },
     "Resume" : {
       "localizations" : {
@@ -8197,6 +8721,33 @@
           }
         }
       }
+    },
+    "Resume playback in Up Next" : {
+
+    },
+    "Retrieve or Generate a Transcript" : {
+
+    },
+    "Return an episode transcript as a text file for use in Shortcuts." : {
+
+    },
+    "Return currently live subscribed podcasts." : {
+
+    },
+    "Return episodes in Up Next order without refreshing feeds." : {
+
+    },
+    "Return structured now-playing details for Siri or Shortcuts." : {
+
+    },
+    "Return the current episode, chapter, position, and playback state." : {
+
+    },
+    "Return the episodes in a named playlist in their saved order." : {
+
+    },
+    "Return the ordered Up Next queue." : {
+
     },
     "Return to Previous Episode" : {
 
@@ -8296,6 +8847,9 @@
           }
         }
       }
+    },
+    "Save the current playback position." : {
+
     },
     "Save this moment to your bookmarks" : {
 
@@ -8444,6 +8998,7 @@
       }
     },
     "Search podcasts, episodes, chapters, and transcripts directly in SwiftData." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8452,6 +9007,9 @@
           }
         }
       }
+    },
+    "Search podcasts, episodes, chapters, or open the local transcript index." : {
+
     },
     "Search Public Broadcasters" : {
       "localizations" : {
@@ -8463,6 +9021,15 @@
         }
       }
     },
+    "Search stays on this device and opens exact playback timestamps." : {
+
+    },
+    "Search transcripts" : {
+
+    },
+    "Search transcripts in this podcast" : {
+
+    },
     "Search Your Library" : {
       "localizations" : {
         "de" : {
@@ -8473,6 +9040,12 @@
         }
       }
     },
+    "Searches every locally available transcript in this podcast" : {
+
+    },
+    "Searches every transcript available on this device" : {
+
+    },
     "Searching Library..." : {
       "localizations" : {
         "de" : {
@@ -8482,6 +9055,12 @@
           }
         }
       }
+    },
+    "Searching transcripts…" : {
+
+    },
+    "Seeks to the end of the detected advertisement" : {
+
     },
     "Select the segment to share" : {
       "localizations" : {
@@ -8522,6 +9101,18 @@
           }
         }
       }
+    },
+    "Set Playback Speed" : {
+
+    },
+    "Set sleep timer" : {
+
+    },
+    "Set Sleep Timer" : {
+
+    },
+    "Set the same playback rate used by the player." : {
+
     },
     "Setting up the iCloud folder..." : {
       "localizations" : {
@@ -8622,6 +9213,9 @@
           }
         }
       }
+    },
+    "Share Image" : {
+
     },
     "Share Picture Title" : {
       "localizations" : {
@@ -8755,6 +9349,9 @@
           }
         }
       }
+    },
+    "Show detected advertisements" : {
+
     },
     "Show inline transcript" : {
       "localizations" : {
@@ -8988,7 +9585,11 @@
         }
       }
     },
+    "Siri & Shortcuts" : {
+
+    },
     "Siri & Shortcuts Intents" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8997,6 +9598,15 @@
           }
         }
       }
+    },
+    "Siri wording can vary. The examples below are suggestions; the same capabilities are also available as actions in Shortcuts." : {
+
+    },
+    "Skip Ad" : {
+
+    },
+    "Skip advertisement" : {
+
     },
     "Skip at beginning" : {
 
@@ -9033,6 +9643,9 @@
           }
         }
       }
+    },
+    "Skip back in Up Next" : {
+
     },
     "Skip back seconds" : {
       "localizations" : {
@@ -9124,6 +9737,12 @@
         }
       }
     },
+    "Skip forward in Up Next" : {
+
+    },
+    "Skip Forward or Backward" : {
+
+    },
     "Skip forward seconds" : {
       "localizations" : {
         "de" : {
@@ -9143,6 +9762,9 @@
           }
         }
       }
+    },
+    "Skip to the next chapter of the current episode." : {
+
     },
     "Skipped" : {
       "localizations" : {
@@ -9193,6 +9815,21 @@
           }
         }
       }
+    },
+    "Sleep timer cancelled." : {
+
+    },
+    "Sleep timer is active." : {
+
+    },
+    "Sleep timer is off." : {
+
+    },
+    "Sleep Timer Mode" : {
+
+    },
+    "Sleep timer set for %lld minutes." : {
+
     },
     "Social links" : {
       "localizations" : {
@@ -9301,6 +9938,9 @@
     "Start" : {
 
     },
+    "Start a currently live podcast stream." : {
+
+    },
     "Start Listening" : {
       "localizations" : {
         "de" : {
@@ -9334,6 +9974,9 @@
         }
       }
     },
+    "Start playback with the first episode in a named playlist." : {
+
+    },
     "Start playback with the first episode in your Up Next queue." : {
       "localizations" : {
         "de" : {
@@ -9343,6 +9986,12 @@
           }
         }
       }
+    },
+    "Start the first episode in the Up Next queue." : {
+
+    },
+    "Start the normal Up Next download flow." : {
+
     },
     "Starts playback at %@" : {
       "localizations" : {
@@ -9414,6 +10063,9 @@
         }
       }
     },
+    "Stop after a duration or after the current episode." : {
+
+    },
     "Stop after this episode" : {
       "localizations" : {
         "de" : {
@@ -9434,7 +10086,22 @@
         }
       }
     },
+    "Stop Live Playback" : {
+
+    },
+    "Stop live playback and return to the previous episode." : {
+
+    },
+    "Stop playback after a number of minutes or after the current episode." : {
+
+    },
     "Stop playback after a set time or at the end of the episode" : {
+
+    },
+    "Stop Up Next after this episode" : {
+
+    },
+    "Stop Up Next in 20 minutes" : {
 
     },
     "Stops and removes this download" : {
@@ -9480,6 +10147,9 @@
         }
       }
     },
+    "Store Split Release" : {
+
+    },
     "Stored Files" : {
       "localizations" : {
         "de" : {
@@ -9490,6 +10160,9 @@
         }
       }
     },
+    "Stores Synced" : {
+
+    },
     "Subscribe" : {
       "localizations" : {
         "de" : {
@@ -9499,6 +10172,9 @@
           }
         }
       }
+    },
+    "Subscribe from a URL" : {
+
     },
     "Subscribe to All Available Podcasts" : {
       "localizations" : {
@@ -9520,6 +10196,9 @@
         }
       }
     },
+    "Subscribe to Podcast Feed" : {
+
+    },
     "Subscribed" : {
       "localizations" : {
         "de" : {
@@ -9529,6 +10208,9 @@
           }
         }
       }
+    },
+    "Subscribed to %@." : {
+
     },
     "Succeeded" : {
       "localizations" : {
@@ -9690,6 +10372,9 @@
         }
       }
     },
+    "Syncing user data" : {
+
+    },
     "Tap to jump ahead to the furthest point you've listened to in this episode." : {
 
     },
@@ -9713,6 +10398,18 @@
         }
       }
     },
+    "That episode is not in %@." : {
+
+    },
+    "That live podcast is no longer available." : {
+
+    },
+    "That playlist is empty." : {
+
+    },
+    "That playlist is no longer available." : {
+
+    },
     "That podcast could not be found in your library." : {
       "localizations" : {
         "de" : {
@@ -9722,6 +10419,15 @@
           }
         }
       }
+    },
+    "That podcast feed is invalid." : {
+
+    },
+    "That URL did not resolve to a podcast feed." : {
+
+    },
+    "The current episode has no chapters." : {
+
     },
     "The currently playing episode is kept pinned at the top while playback is active." : {
       "localizations" : {
@@ -9789,6 +10495,9 @@
         }
       }
     },
+    "The podcast was subscribed, but its library entry is not ready yet." : {
+
+    },
     "The progress bar compares this device's local SwiftData record count with a lightweight reference shared through iCloud." : {
       "localizations" : {
         "de" : {
@@ -9819,6 +10528,18 @@
         }
       }
     },
+    "There are %lld live podcasts." : {
+
+    },
+    "There is no current chapter." : {
+
+    },
+    "There is no current podcast episode." : {
+
+    },
+    "There is no episode playing." : {
+
+    },
     "These chapter rules could not be loaded." : {
       "localizations" : {
         "de" : {
@@ -9848,6 +10569,9 @@
           }
         }
       }
+    },
+    "These package-level phases describe the latest CloudKit event from any store. Store convergence is reported above." : {
+
     },
     "These values apply across the app unless a podcast is switched to custom settings." : {
       "localizations" : {
@@ -9889,6 +10613,9 @@
         }
       }
     },
+    "This episode cannot be downloaded by Up Next." : {
+
+    },
     "This episode could not be loaded." : {
       "localizations" : {
         "de" : {
@@ -9898,6 +10625,9 @@
           }
         }
       }
+    },
+    "This episode does not have a transcript yet." : {
+
     },
     "This feed link is personal and will be stored securely. It is not included in sync or export." : {
 
@@ -9931,6 +10661,9 @@
           }
         }
       }
+    },
+    "This live podcast has no playable stream." : {
+
     },
     "This playlist has no later episodes." : {
       "localizations" : {
@@ -10089,6 +10822,9 @@
         }
       }
     },
+    "This transcript is indexed, but the episode is no longer available in the local library." : {
+
+    },
     "Timer" : {
       "localizations" : {
         "de" : {
@@ -10098,6 +10834,9 @@
           }
         }
       }
+    },
+    "Timestamped text" : {
+
     },
     "Title" : {
       "localizations" : {
@@ -10301,6 +11040,12 @@
         }
       }
     },
+    "Transcript Format" : {
+
+    },
+    "Transcript generation was queued for %@." : {
+
+    },
     "Transcript Lines" : {
       "localizations" : {
         "de" : {
@@ -10310,6 +11055,21 @@
           }
         }
       }
+    },
+    "Transcript ready for %@." : {
+
+    },
+    "Transcript ready." : {
+
+    },
+    "Transcript Search" : {
+
+    },
+    "Transcript Search Unavailable" : {
+
+    },
+    "Transcript text and queries never leave this device. The index is disposable derived data; canonical transcripts stay in the library store." : {
+
     },
     "Transcript Unavailable" : {
       "localizations" : {
@@ -10420,6 +11180,9 @@
           }
         }
       }
+    },
+    "Unarchive Episode" : {
+
     },
     "Unattributed Files" : {
       "localizations" : {
@@ -10547,6 +11310,9 @@
         }
       }
     },
+    "Up Next is empty." : {
+
+    },
     "Up Next is starting" : {
       "localizations" : {
         "de" : {
@@ -10653,6 +11419,12 @@
         }
       }
     },
+    "Upload: (diagnostic.activeExportCount) active" : {
+
+    },
+    "URL" : {
+
+    },
     "URL or Search" : {
       "localizations" : {
         "de" : {
@@ -10736,6 +11508,18 @@
         }
       }
     },
+    "Use the configured skip intervals." : {
+
+    },
+    "Use the iOS/macOS 27 Audio App Schema for playlist additions." : {
+
+    },
+    "Use transcript text as a Shortcuts file or request the existing transcription pipeline." : {
+
+    },
+    "Use Up Next's existing transcript import or on-device transcription pipeline." : {
+
+    },
     "Used when playback starts; the player speed control updates this value." : {
       "localizations" : {
         "de" : {
@@ -10752,6 +11536,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nützliche Ausgaben"
+          }
+        }
+      }
+    },
+    "User State authority" : {
+
+    },
+    "User State queue entries: %lld → %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "User State queue entries: %1$lld → %2$lld"
           }
         }
       }
@@ -10846,6 +11643,9 @@
         }
       }
     },
+    "Waiting for Store Import" : {
+
+    },
     "Waiting to be imported" : {
       "localizations" : {
         "de" : {
@@ -10935,6 +11735,15 @@
           }
         }
       }
+    },
+    "What am I listening to in Up Next?" : {
+
+    },
+    "What is next in Up Next?" : {
+
+    },
+    "What podcasts are live in Up Next?" : {
+
     },
     "When" : {
       "localizations" : {

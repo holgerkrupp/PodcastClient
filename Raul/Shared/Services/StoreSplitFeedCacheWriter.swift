@@ -38,6 +38,11 @@ enum StoreSplitFeedCacheWriter {
         var completed = true
     }
 
+    struct FeedCacheBootstrapResult: Sendable {
+        var processed = 0
+        var failed = 0
+    }
+
     /// Upserts a single feed's cache rows from the legacy store. Call after a feed
     /// refresh/create has been written to the legacy container.
     @discardableResult
@@ -119,12 +124,29 @@ enum StoreSplitFeedCacheWriter {
         cacheContainer: ModelContainer,
         limit: Int
     ) -> Int {
-        var processed = 0
+        bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacyContainer,
+            cacheContainer: cacheContainer,
+            limit: limit
+        ).processed
+    }
+
+    /// Bounded, resumable bootstrap with a durable per-feed result. The cache
+    /// row's schema version is the fast success checkpoint; the companion
+    /// checkpoint records retryable failures and survives termination.
+    static func bootstrapMissingFeedsWithStatus(
+        legacyContainer: ModelContainer,
+        cacheContainer: ModelContainer,
+        limit: Int
+    ) -> FeedCacheBootstrapResult {
+        var bootstrapResult = FeedCacheBootstrapResult()
+        guard limit > 0 else { return bootstrapResult }
+        var attempted = 0
         var offset = 0
         let pageSize = 25
-        while processed < limit {
+        while attempted < limit {
             let legacyContext = ModelContext(legacyContainer)
-            let requestedLimit = min(pageSize, max(1, limit - processed))
+            let requestedLimit = min(pageSize, max(1, limit - attempted))
             var descriptor = FetchDescriptor<Podcast>(
                 sortBy: [SortDescriptor(\Podcast.title)]
             )
@@ -134,7 +156,7 @@ enum StoreSplitFeedCacheWriter {
                   podcasts.isEmpty == false else { break }
 
             for podcast in podcasts {
-                guard shouldContinue(deadline: nil), processed < limit else { break }
+                guard shouldContinue(deadline: nil), attempted < limit else { break }
                 guard let feed = podcast.feed else { continue }
                 let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
                 let lookupContext = ModelContext(cacheContainer)
@@ -142,35 +164,94 @@ enum StoreSplitFeedCacheWriter {
                    cached.cacheSchemaVersion >= currentCacheSchemaVersion {
                     continue
                 }
+                attempted += 1
                 // Keep each feed's registered-object graph short-lived. A single
                 // context for a large library retains every projected episode and
                 // supplemental row until bootstrap finishes.
                 let cacheContext = ModelContext(cacheContainer)
-                var result = FeedCacheProjectionResult()
+                var projectionResult = FeedCacheProjectionResult()
                 guard upsert(
                     podcast: podcast,
                     transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(
                         for: podcast,
                         in: legacyContext,
-                        result: &result
+                        result: &projectionResult
                     ),
                     into: cacheContext,
                     deadline: nil,
-                    result: &result
+                    result: &projectionResult
                 ) else {
-                    return processed
+                    recordCheckpoint(
+                        feedKey: feedKey,
+                        succeeded: false,
+                        error: "projection interrupted",
+                        in: cacheContainer
+                    )
+                    bootstrapResult.failed += 1
+                    continue
                 }
                 do {
                     if cacheContext.hasChanges { try cacheContext.save() }
+                    recordCheckpoint(
+                        feedKey: feedKey,
+                        succeeded: true,
+                        error: nil,
+                        in: cacheContainer
+                    )
+                    bootstrapResult.processed += 1
                 } catch {
-                    return processed
+                    recordCheckpoint(
+                        feedKey: feedKey,
+                        succeeded: false,
+                        error: "cache save failed",
+                        in: cacheContainer
+                    )
+                    bootstrapResult.failed += 1
                 }
-                processed += 1
             }
             offset += podcasts.count
             if podcasts.count < requestedLimit { break }
         }
-        return processed
+        return bootstrapResult
+    }
+
+    private static func recordCheckpoint(
+        feedKey: String,
+        succeeded: Bool,
+        error: String?,
+        in cacheContainer: ModelContainer
+    ) {
+        let context = ModelContext(cacheContainer)
+        var descriptor = FetchDescriptor<StoreSplitFeedCacheCheckpoint>(
+            predicate: #Predicate { $0.id == feedKey }
+        )
+        descriptor.fetchLimit = 1
+        let checkpoint = (try? context.fetch(descriptor).first)
+            ?? {
+                let created = StoreSplitFeedCacheCheckpoint(
+                    id: feedKey,
+                    feedURL: feedKey,
+                    targetSchemaVersion: currentCacheSchemaVersion
+                )
+                context.insert(created)
+                return created
+            }()
+        let now = Date()
+        checkpoint.feedURL = feedKey
+        checkpoint.targetSchemaVersion = currentCacheSchemaVersion
+        checkpoint.attemptCount += 1
+        checkpoint.lastAttemptAt = now
+        checkpoint.updatedAt = now
+        if succeeded {
+            checkpoint.stateRawValue = "ready"
+            checkpoint.lastSuccessfulAt = now
+            checkpoint.lastError = nil
+        } else {
+            checkpoint.stateRawValue = "failed"
+            checkpoint.lastFailureAt = now
+            checkpoint.lastError = error
+        }
+        try? context.save()
     }
 
     /// Force-projects the feeds needed to render synchronized playlists before
@@ -601,6 +682,7 @@ enum StoreSplitFeedCacheWriter {
             changed |= assignIfChanged(cached, \.endTime, chapter.endTime)
             changed |= assignIfChanged(cached, \.duration, chapter.duration)
             changed |= assignIfChanged(cached, \.creationTime, chapter.creationtime)
+            changed |= assignIfChanged(cached, \.analysisVariantID, chapter.analysisVariantID)
             changed |= assignIfChanged(cached, \.progress, chapter.progress)
             changed |= assignIfChanged(cached, \.typeRawValue, chapter.type.rawValue)
             changed |= assignIfChanged(cached, \.shouldPlay, chapter.shouldPlay)

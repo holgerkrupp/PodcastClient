@@ -452,20 +452,26 @@ class EpisodeDownloadStatus{
         let chapters = markers
 
         if let preferredType {
+            let selectedTypes: Set<MarkerType> = preferredType == .ai
+                ? [.ai, .advertisement]
+                : [preferredType]
             return deduplicatedChaptersForDisplay(markers
-                .filter { $0.type == preferredType }
+                .filter { selectedTypes.contains($0.type) }
             ).sortedByStartTime()
         }
 
         // Feed-authored shownote timestamps are deterministic and generally more
         // complete than the locally generated transcript fallback.
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai, .advertisement]
 
         // Pick a single type for the whole list based on availability and preference order.
         let availableTypes = Set(chapters.map { $0.type })
         if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
+            let selectedTypes: Set<MarkerType> = chosenType == .ai || chosenType == .advertisement
+                ? [.ai, .advertisement]
+                : [chosenType]
             return deduplicatedChaptersForDisplay(chapters
-                .filter { $0.type == chosenType }
+                .filter { selectedTypes.contains($0.type) }
             ).sortedByStartTime()
         } else {
             // Fallback: no known preferred types found, return all chapters as-is.
@@ -503,7 +509,7 @@ class EpisodeDownloadStatus{
 
     private func matchingChapterTitle(for chapter: Marker) -> String? {
         let start = chapter.start ?? 0
-        let titleSourcePreference: [MarkerType] = [.podlove, .mp4, .ai, .extracted, .mp3]
+        let titleSourcePreference: [MarkerType] = [.podlove, .mp4, .ai, .advertisement, .extracted, .mp3]
         let candidateTypes = titleSourcePreference.filter { $0 != chapter.type }
 
         return (chapters ?? [])

@@ -40,6 +40,7 @@ enum StoreSplitMigrationVerifier {
     /// convergence and delayed-import evidence are supplied by release
     /// telemetry because they cannot be inferred from one device's SQLite file.
     static func cutoverGate(
+        legacyContainer: ModelContainer,
         cacheContainer: ModelContainer,
         allDevicesConverged: Bool,
         delayedCloudImportsSettled: Bool
@@ -51,6 +52,10 @@ enum StoreSplitMigrationVerifier {
             localVerificationPassed: StoreSplitMigrationService.isMigrationVerified(
                 cacheContainer: cacheContainer
             ),
+            podcastCacheReady: StoreSplitFeedCacheReadiness.read(
+                legacyContext: ModelContext(legacyContainer),
+                cacheContext: ModelContext(cacheContainer)
+            ).isSafeForCutover,
             allDevicesConverged: allDevicesConverged,
             delayedCloudImportsSettled: delayedCloudImportsSettled
         )

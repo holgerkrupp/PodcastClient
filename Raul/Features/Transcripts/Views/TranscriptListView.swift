@@ -1,5 +1,11 @@
 import SwiftUI
 
+struct TranscriptSearchNavigation: Hashable, Sendable {
+    let episodeID: String
+    let timestamp: TimeInterval
+    let query: String
+}
+
 private struct TranscriptDisplayRow: Identifiable {
     let id: UUID
     /// Every transcript line merged into this row, so playback highlighting keeps working.
@@ -16,6 +22,7 @@ struct TranscriptListView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     let transcriptLines: [TranscriptLineAndTime]
     let episode: Episode?
+    let searchNavigation: TranscriptSearchNavigation?
 
     @Bindable private var player = Player.shared
     @State private var searchText: String
@@ -23,19 +30,25 @@ struct TranscriptListView: View {
     @State private var displayRows: [TranscriptDisplayRow]
     @State private var speakerColorMap: [String: Color]
     @State private var lineToDisplayRowID: [UUID: UUID]
+    @State private var selectedSearchRowID: UUID?
 
     init(
         transcriptLines: [TranscriptLineAndTime],
         episode: Episode? = nil,
         searchText: String = "",
-        startFollowingPlayback: Bool = false
+        startFollowingPlayback: Bool = false,
+        searchNavigation: TranscriptSearchNavigation? = nil
     ) {
         let sortedLines = transcriptLines.sorted { $0.startTime < $1.startTime }
-        let initialRows = Self.makeDisplayRows(from: sortedLines, matching: searchText)
+        let initialSearchText = searchNavigation?.query.isEmpty == false
+            ? searchNavigation!.query
+            : searchText
+        let initialRows = Self.makeDisplayRows(from: sortedLines, matching: initialSearchText)
 
         self.transcriptLines = sortedLines
         self.episode = episode
-        _searchText = State(initialValue: searchText)
+        self.searchNavigation = searchNavigation
+        _searchText = State(initialValue: initialSearchText)
         _followPlayback = State(initialValue: startFollowingPlayback)
         _displayRows = State(initialValue: initialRows)
         _speakerColorMap = State(initialValue: Self.makeSpeakerColorMap(from: initialRows))
@@ -129,7 +142,7 @@ struct TranscriptListView: View {
                         }
                 )
                 .onAppear {
-                    scrollToActiveRow(with: proxy, animated: false)
+                    scrollToInitialLocation(with: proxy)
                 }
                 .onChange(of: searchText) {
                     rebuildDisplayRows()
@@ -140,12 +153,36 @@ struct TranscriptListView: View {
                 .onChange(of: followPlayback) {
                     scrollToActiveRow(with: proxy, animated: true)
                 }
+                .onChange(of: selectedSearchRowID) {
+                    guard let selectedSearchRowID else { return }
+                    proxy.scrollTo(selectedSearchRowID, anchor: .center)
+                }
+            }
+        }
+        .toolbar {
+            if searchText.isEmpty == false, displayRows.isEmpty == false {
+                ToolbarItemGroup(placement: .secondaryAction) {
+                    Button {
+                        moveSearchMatch(by: -1)
+                    } label: {
+                        Label("Previous match", systemImage: "chevron.up")
+                    }
+                    .accessibilityLabel("Previous transcript match")
+
+                    Button {
+                        moveSearchMatch(by: 1)
+                    } label: {
+                        Label("Next match", systemImage: "chevron.down")
+                    }
+                    .accessibilityLabel("Next transcript match")
+                }
             }
         }
     }
 
     private func transcriptRow(_ row: TranscriptDisplayRow) -> some View {
         let isActive = row.id == activeDisplayRowID
+        let isFocusedSearchMatch = row.id == selectedSearchRowID
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -184,6 +221,10 @@ struct TranscriptListView: View {
             Text(row.text)
                 .font(.body)
                 .foregroundColor(.primary)
+                .underline(
+                    searchText.isEmpty == false
+                        && TranscriptSearchText.matches(row.text, query: searchText)
+                )
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(12)
@@ -197,8 +238,10 @@ struct TranscriptListView: View {
                 .stroke(
                     isActive
                         ? Color.accentColor.opacity(differentiateWithoutColor ? 0.8 : 0.45)
+                        : isFocusedSearchMatch
+                            ? Color.accentColor.opacity(0.75)
                         : Color.secondary.opacity(differentiateWithoutColor ? 0.35 : 0.15),
-                    lineWidth: differentiateWithoutColor && isActive ? 2 : 1
+                    lineWidth: (differentiateWithoutColor && isActive) || isFocusedSearchMatch ? 2 : 1
                 )
         )
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
@@ -224,6 +267,20 @@ struct TranscriptListView: View {
         } else {
             proxy.scrollTo(activeDisplayRowID, anchor: .center)
         }
+    }
+
+    private func scrollToInitialLocation(with proxy: ScrollViewProxy) {
+        if let searchNavigation,
+           let row = displayRows.first(where: { row in
+               row.startTime <= searchNavigation.timestamp
+                   && (row.endTime ?? .greatestFiniteMagnitude) > searchNavigation.timestamp
+           }) ?? displayRows.min(by: {
+               abs($0.startTime - searchNavigation.timestamp) < abs($1.startTime - searchNavigation.timestamp)
+           }) {
+            proxy.scrollTo(row.id, anchor: .center)
+            return
+        }
+        scrollToActiveRow(with: proxy, animated: false)
     }
 
     @MainActor
@@ -293,6 +350,16 @@ struct TranscriptListView: View {
         displayRows = rows
         speakerColorMap = Self.makeSpeakerColorMap(from: rows)
         lineToDisplayRowID = Self.makeLineToDisplayRowID(from: rows)
+        selectedSearchRowID = nil
+    }
+
+    private func moveSearchMatch(by offset: Int) {
+        guard displayRows.isEmpty == false else { return }
+        let currentIndex = selectedSearchRowID.flatMap { id in
+            displayRows.firstIndex { $0.id == id }
+        } ?? (offset > 0 ? -1 : displayRows.count)
+        let nextIndex = (currentIndex + offset + displayRows.count) % displayRows.count
+        selectedSearchRowID = displayRows[nextIndex].id
     }
 
     private static func makeDisplayRows(from lines: [TranscriptLineAndTime], matching searchText: String) -> [TranscriptDisplayRow] {
@@ -305,8 +372,8 @@ struct TranscriptListView: View {
             filteredSegments = segments
         } else {
             filteredSegments = segments.filter { segment in
-                segment.text.localizedCaseInsensitiveContains(searchText) ||
-                (segment.speaker?.localizedCaseInsensitiveContains(searchText) ?? false)
+                TranscriptSearchText.matches(segment.text, query: searchText) ||
+                (segment.speaker.map { TranscriptSearchText.matches($0, query: searchText) } ?? false)
             }
         }
 

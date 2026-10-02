@@ -169,3 +169,19 @@ extension Episode {
         stableEpisodeIdentity.key
     }
 }
+
+extension Podcast {
+    /// Stable local identity used by derived indexes. Feed identity is preferred;
+    /// the title fallback keeps side-loaded/imported previews searchable without
+    /// making SwiftData's temporary persistent identifier part of the index API.
+    var stablePodcastIdentityKey: String {
+        if let feed {
+            return PodcastFeedIdentity.normalizedFeedURLString(feed)
+        }
+
+        let normalizedTitle = title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+        return StableIdentityKey.make("title", normalizedTitle)
+    }
+}

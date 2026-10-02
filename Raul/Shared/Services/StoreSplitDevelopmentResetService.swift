@@ -74,6 +74,10 @@ actor StoreSplitDevelopmentResetService {
             from: cacheContext
         )
         result.cacheRecordsDeleted += try deleteAll(
+            StoreSplitFeedCacheCheckpoint.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
             AITranscriptChunkSync.self,
             from: cacheContext
         )

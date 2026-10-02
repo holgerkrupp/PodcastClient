@@ -446,6 +446,10 @@ struct StoreSplitCacheDevelopmentStatus: Sendable {
     let cachedTranscriptLineCount: Int
     let cachedChapterCount: Int
     let automaticFillingEnabled: Bool
+    let failedOrRetryableFeedCount: Int
+    let rssRecoverablePendingFeedCount: Int
+    let cacheSchemaVersion: Int
+    let lastSuccessfulProgressAt: Date?
     let lastBootstrapAt: Date?
     let lastBootstrapCopied: Int?
 
@@ -459,27 +463,25 @@ struct StoreSplitCacheDevelopmentStatus: Sendable {
     ) -> Self {
         let legacy = ModelContext(legacyContainer)
         let cache = ModelContext(cacheContainer)
-        let sourceFeedKeys = Set(
-            ((try? legacy.fetch(FetchDescriptor<Podcast>())) ?? []).compactMap {
-                $0.feed.map(PodcastFeedIdentity.normalizedFeedURLString)
-            }
-        )
-        let cachedFeeds = Set(
-            ((try? cache.fetch(FetchDescriptor<CachedPodcast>())) ?? [])
-                .filter { $0.cacheSchemaVersion >= StoreSplitFeedCacheWriter.currentCacheSchemaVersion }
-                .map(\.id)
-        )
         let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
             ?? .standard
+        let readiness = StoreSplitFeedCacheReadiness.read(
+            legacyContext: legacy,
+            cacheContext: cache
+        )
         return Self(
-            sourceFeedCount: sourceFeedKeys.count,
-            cachedFeedCount: sourceFeedKeys.intersection(cachedFeeds).count,
-            pendingFeedCount: sourceFeedKeys.subtracting(cachedFeeds).count,
+            sourceFeedCount: readiness.subscribedFeedCount,
+            cachedFeedCount: readiness.readyFeedCount,
+            pendingFeedCount: readiness.pendingFeedCount,
             cachedEpisodeCount: uniqueCount(CachedEpisode.self, in: cache, key: \.id),
             cachedTranscriptCount: uniqueCount(CachedTranscriptionRecord.self, in: cache, key: \.id),
             cachedTranscriptLineCount: uniqueCount(CachedTranscriptLine.self, in: cache, key: \.id),
             cachedChapterCount: uniqueCount(CachedChapter.self, in: cache, key: \.id),
-            automaticFillingEnabled: StoreDevelopmentConfiguration.runtimeStoreIsInMemoryProjection,
+            automaticFillingEnabled: StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
+            failedOrRetryableFeedCount: readiness.failedOrRetryableFeedCount,
+            rssRecoverablePendingFeedCount: readiness.rssRecoverablePendingFeedCount,
+            cacheSchemaVersion: readiness.cacheSchemaVersion,
+            lastSuccessfulProgressAt: readiness.lastSuccessfulProgressAt,
             lastBootstrapAt: defaults.object(forKey: "storeSplit.cacheBootstrapLastAt") as? Date,
             lastBootstrapCopied: defaults.object(forKey: "storeSplit.cacheBootstrapLastCopied") as? Int
         )

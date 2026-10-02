@@ -85,6 +85,7 @@ enum EpisodeChapterMerger {
                 existing.start = chapter.start
                 existing.endTime = chapter.endTime
                 existing.duration = chapter.duration
+                existing.analysisVariantID = chapter.analysisVariantID
                 existing.image = chapter.image ?? existing.image
                 existing.imageData = chapter.imageData ?? existing.imageData
                 existing.link = chapter.link ?? existing.link
@@ -2148,38 +2149,137 @@ actor EpisodeActor {
     @discardableResult
     func extractTranscriptChapters(fileURL: URL, force: Bool = false) async -> Bool {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
-        guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
-        guard let transcriptLines = episode.transcriptLines, transcriptLines != [] else {
-            return false
-        }
-        
-        let extractedData = await generateAIChapters(from: transcriptLines)
-        guard !extractedData.isEmpty else { return false }
+        let automaticGenerationEnabled = await shouldAutomaticallyGenerateChapters()
+        guard force || automaticGenerationEnabled else { return false }
+        return await generateEpisodeChapters(for: episode, fileURL: fileURL, force: force)
+    }
 
-        var newchapters:[Marker] = []
-        for extractedChapter in extractedData.sorted(by: { ($0.key.durationAsSeconds ?? 0) < ($1.key.durationAsSeconds ?? 0) }) {
-            if let startingTime =  extractedChapter.key.durationAsSeconds{
-                let title = extractedChapter.value.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard title.isEmpty == false else { continue }
-                let newChapter = Marker(start: startingTime, title: title, type: .ai)
-                newchapters.append(newChapter)
+    /// Generates editorial and confirmed-ad chapters together, while leaving
+    /// publisher, embedded, and extracted chapters untouched.
+    @discardableResult
+    func generateEpisodeChapters(for episodeURL: URL, force: Bool = false) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        let automaticGenerationEnabled = await shouldAutomaticallyGenerateChapters()
+        guard force || automaticGenerationEnabled else { return false }
+        return await generateEpisodeChapters(for: episode, fileURL: episodeURL, force: force)
+    }
+
+    /// Adds newly detected advertisement ranges to an existing generated set
+    /// without rerunning transcript or semantic analysis.
+    @discardableResult
+    func mergeDetectedAdvertisementChapters(for episodeURL: URL) async -> Bool {
+        guard await shouldAutomaticallyGenerateChapters(),
+              let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        let adSegments = await AdDetectionResultsStore.shared.segments(
+            for: episodeURL.absoluteString
+        )
+        guard adSegments.isEmpty == false else { return false }
+        let editorialCandidates = (episode.chapters ?? [])
+            .filter { $0.type == .ai }
+            .compactMap { chapter -> GeneratedEditorialChapterCandidate? in
+                guard let start = chapter.start else { return nil }
+                return GeneratedEditorialChapterCandidate(title: chapter.title, start: start)
+            }
+        return await materializeGeneratedChapters(
+            for: episode,
+            fileURL: episodeURL,
+            editorialCandidates: editorialCandidates,
+            adSegments: adSegments
+        )
+    }
+
+    private func generateEpisodeChapters(
+        for episode: Episode,
+        fileURL: URL,
+        force: Bool
+    ) async -> Bool {
+        let transcriptLines = episode.transcriptLines ?? []
+        let adSegments = await AdDetectionResultsStore.shared.segments(
+            for: fileURL.absoluteString
+        )
+        let audioVariantID = AudioVariantIdentity.make(
+            episodeURL: fileURL,
+            mediaURL: episode.localFile ?? episode.url
+        )
+
+        guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
+
+        var editorialCandidates: [GeneratedEditorialChapterCandidate] = []
+        if transcriptLines.isEmpty == false {
+            let extractedData = await generateAIChapters(from: transcriptLines)
+            editorialCandidates = extractedData.compactMap { timecode, title in
+                guard let start = timecode.durationAsSeconds else { return nil }
+                let isAdvertisement = title.lowercased().hasPrefix("advertisement:")
+                let normalizedTitle = title
+                    .replacingOccurrences(
+                        of: #"(?i)^\s*advertisement\s*:\s*"#,
+                        with: "",
+                        options: .regularExpression
+                    )
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                guard isAdvertisement == false, normalizedTitle.isEmpty == false else { return nil }
+                return GeneratedEditorialChapterCandidate(title: normalizedTitle, start: start)
             }
         }
-        guard newchapters.isEmpty == false else { return false }
 
-        if episode.chapters == nil {
-            episode.chapters = []
+        return await materializeGeneratedChapters(
+            for: episode,
+            fileURL: fileURL,
+            editorialCandidates: editorialCandidates,
+            adSegments: adSegments,
+            audioVariantID: audioVariantID
+        )
+    }
+
+    private func materializeGeneratedChapters(
+        for episode: Episode,
+        fileURL: URL,
+        editorialCandidates: [GeneratedEditorialChapterCandidate],
+        adSegments: [AdSegment],
+        audioVariantID: String? = nil
+    ) async -> Bool {
+        let resolvedAudioVariantID = audioVariantID ?? AudioVariantIdentity.make(
+            episodeURL: fileURL,
+            mediaURL: episode.localFile ?? episode.url
+        )
+        let proposals = GeneratedChapterEngine.makeProposals(
+            editorialCandidates: editorialCandidates,
+            adSegments: adSegments,
+            existingTypes: (episode.chapters ?? []).map(\.type),
+            episodeDuration: episode.duration,
+            audioVariantID: resolvedAudioVariantID
+        )
+        guard proposals.isEmpty == false else { return false }
+
+        let newChapters = proposals.map { proposal in
+            let chapter = Marker(
+                start: proposal.start,
+                title: proposal.title,
+                type: proposal.kind == .advertisement ? .advertisement : .ai,
+                duration: proposal.end.map { $0 - proposal.start }
+            )
+            chapter.endTime = proposal.end
+            chapter.analysisVariantID = proposal.audioVariantID
+            return chapter
         }
-        replaceChapters(on: episode, replacingTypes: [.extracted, .ai], with: newchapters)
+        var generatedTypes: Set<MarkerType> = [.ai, .advertisement]
+        if ChapterSourcePolicy.shouldGenerateTranscriptChapters(from: episode.chapters ?? []) {
+            generatedTypes.insert(.extracted)
+        }
+        replaceChapters(on: episode, replacingTypes: generatedTypes, with: newChapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
         await writeAIChaptersToSplitStore(
             episode: episode,
-            chapters: newchapters,
+            chapters: newChapters,
             generatedAt: .now
         )
         return true
-        
+    }
+
+    private func shouldAutomaticallyGenerateChapters() async -> Bool {
+        await PodcastSettingsModelActor(modelContainer: modelContainer)
+            .getAutomaticChapterGenerationEnabled()
     }
     
     @discardableResult
@@ -2323,6 +2423,9 @@ actor EpisodeActor {
             }
 
             let duration = end.map { $0 - start }
+            if chapters[i].type == .advertisement, chapters[i].end != nil {
+                continue
+            }
             if chapters[i].duration != duration {
                 chapters[i].duration = duration
                 didChange = true
@@ -2438,6 +2541,7 @@ actor EpisodeActor {
                         throw TranscriptError.episodeNotFound
                     }
                     try await replaceTranscriptLines(for: episode, with: snapshots)
+                    await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "publisher")
                     episode.refresh.toggle()
                     if let episodeURL = episode.url {
                         await finalizeTranscriptChapters(for: episodeURL)
@@ -2468,6 +2572,7 @@ actor EpisodeActor {
             )
         }
         try await replaceTranscriptLines(for: episode, with: snapshots)
+        await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "replacement")
         episode.refresh.toggle()
         await finalizeTranscriptChapters(for: episodeURL)
     }
@@ -2522,8 +2627,28 @@ actor EpisodeActor {
         }
         let snapshots = decodeTranscriptSnapshots(vtt)
         try await replaceTranscriptLines(for: episode, with: snapshots)
+        await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "generated")
         episode.refresh.toggle()
         return snapshots
+    }
+
+    /// Index only after the canonical SwiftData replacement has committed. The
+    /// search actor receives immutable values and never retains SwiftData models.
+    private func indexCommittedTranscript(
+        for episode: Episode,
+        snapshots: [TranscriptLineSnapshot],
+        source: String
+    ) async {
+        let snapshot = TranscriptSearchEpisodeSnapshot(
+            episode: episode,
+            lines: snapshots,
+            source: source
+        )
+        do {
+            _ = try await TranscriptSearchIndex.shared.upsert(snapshot)
+        } catch {
+            AppDiagnostics.log("transcript_search_index_update_failed")
+        }
     }
 
     private func replaceTranscriptLines(
@@ -2616,6 +2741,8 @@ actor EpisodeActor {
         try modelContext.save()
         episode.refresh.toggle()
 
+        try? await TranscriptSearchIndex.shared.removeEpisode(episodeID: identity.key)
+
         if let cacheContainer = await preparedCacheContainer() {
             await StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
                 .tombstoneTranscripts(identities: [identity])
@@ -2651,6 +2778,9 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
+        for identity in generatedIdentities {
+            try? await TranscriptSearchIndex.shared.removeEpisode(episodeID: identity.key)
+        }
         if generatedIdentities.isEmpty == false,
            let cacheContainer = await preparedCacheContainer() {
             let writer = StoreSplitAIContentSyncWriter(
@@ -2723,11 +2853,14 @@ actor EpisodeActor {
         generatedAt: Date
     ) async {
         let values = chapters.compactMap { chapter -> AIChapterValue? in
-            guard chapter.type == .ai, let start = chapter.start else { return nil }
+            guard chapter.type == .ai || chapter.type == .advertisement,
+                  let start = chapter.start else { return nil }
             return AIChapterValue(
                 title: chapter.title,
                 startTime: start,
-                duration: chapter.duration
+                duration: chapter.duration,
+                typeRawValue: chapter.type.rawValue,
+                analysisVariantID: chapter.analysisVariantID
             )
         }
         guard values.isEmpty == false else { return }
@@ -2957,8 +3090,8 @@ enum ChapterSourcePolicy {
         // Publisher timestamps in the shownotes are preferable to locally
         // generated transcript chapters. Re-check shownotes when AI is the only
         // timeline source so a later feed refresh can promote those timestamps.
-        if timelineChapters.allSatisfy({ $0.type == .ai || $0.type == .extracted }),
-           timelineChapters.contains(where: { $0.type == .ai }) {
+        if timelineChapters.allSatisfy({ $0.type == .ai || $0.type == .advertisement || $0.type == .extracted }),
+           timelineChapters.contains(where: { $0.type == .ai || $0.type == .advertisement }) {
             return true
         }
 
@@ -2979,7 +3112,7 @@ enum ChapterSourcePolicy {
                 .compactMap(\.start)
         )
         return extractedStartTimes.count < 2
-            && timelineChapters.allSatisfy { $0.type == .extracted }
+            && timelineChapters.allSatisfy { $0.type == .extracted || $0.type == .advertisement }
     }
 }
 

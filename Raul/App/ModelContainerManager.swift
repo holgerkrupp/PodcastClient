@@ -1143,8 +1143,12 @@ class ModelContainerManager: ObservableObject {
             scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
             return
         }
-        guard Self.hasPendingMigrationWork
-            || Self.hasPendingLegacyAuthoritativeReconciliationWork else {
+        if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled {
+            await splitStoreCoordinator.scheduleFeedCachePrewarming()
+        }
+        let migrationPending = Self.hasPendingMigrationWork
+            || Self.hasPendingLegacyAuthoritativeReconciliationWork
+        guard migrationPending else {
             pendingSplitStoreWorkReason = nil
             migrationReadiness = .complete
             migrationBlocker = nil
@@ -1201,7 +1205,6 @@ class ModelContainerManager: ObservableObject {
         await resolveStoreSplitRolloutIfNeeded()
         await prunePlayedPlaylistEntries()
         await splitStoreCoordinator.scheduleLaunchWork()
-        await bootstrapFeedCacheIfNeeded(feedLimit: 15)
 #if canImport(UIKit)
         // Arm the overnight charging pass now rather than waiting for a clean
         // background transition, which a force-quit never delivers.
@@ -1254,17 +1257,23 @@ class ModelContainerManager: ObservableObject {
     /// schema version is the checkpoint. Runtime projection and repositories
     /// consume the cache directly after each committed page.
     func bootstrapFeedCacheIfNeeded(feedLimit: Int) async {
+        guard StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else { return }
+        await performFeedCachePrewarmIfPossible(feedLimit: feedLimit)
+    }
+
+    /// Runs one bounded local-only PodcastCache prewarm batch. The work
+    /// coordinator calls this only while the app is active or inside a granted
+    /// BGProcessing window, never during ordinary background audio execution.
+    func performFeedCachePrewarmIfPossible(feedLimit: Int) async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.splitStoresEnabled,
-              // Only the cache-projection mode needs a complete feed mirror. With
-              // the durable library store authoritative this pass would rewrite
-              // the whole library into a second SQLite file for nothing.
-              Self.runtimeUsesCacheProjection else { return }
+              StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else {
+            return
+        }
         await prepareSplitStores()
         guard let legacyContainer = legacyMigrationSourceContainer,
               let cacheContainer = preparedCacheContainer else { return }
-        let copied = await Task.detached(priority: .utility) {
-            StoreSplitFeedCacheWriter.bootstrapMissingFeeds(
+        let result = await Task.detached(priority: .utility) {
+            StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
                 legacyContainer: legacyContainer,
                 cacheContainer: cacheContainer,
                 limit: feedLimit
@@ -1272,11 +1281,11 @@ class ModelContainerManager: ObservableObject {
         }.value
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
         defaults.set(Date(), forKey: "storeSplit.cacheBootstrapLastAt")
-        defaults.set(copied, forKey: "storeSplit.cacheBootstrapLastCopied")
-        if copied > 0 {
+        defaults.set(result.processed, forKey: "storeSplit.cacheBootstrapLastCopied")
+        if result.processed > 0 || result.failed > 0 {
             CrashBreadcrumbs.shared.record(
                 "store_split_feed_cache_bootstrap",
-                details: "feeds=\(copied)"
+                details: "feeds=\(result.processed),failed=\(result.failed)"
             )
         }
     }
@@ -1333,7 +1342,8 @@ class ModelContainerManager: ObservableObject {
                 return
             }
             await resolveStoreSplitRolloutIfNeeded()
-            await bootstrapFeedCacheIfNeeded(feedLimit: 200)
+            await splitStoreCoordinator.scheduleLaunchWork()
+            await splitStoreCoordinator.waitForBackgroundPassToDrain()
         }
     }
 
@@ -1718,6 +1728,7 @@ class ModelContainerManager: ObservableObject {
         return StoreSplitMigrationDiagnostics.migrationStatus(
             cacheContext: cacheContainer.mainContext,
             userStateContext: userStateContainer.mainContext,
+            legacyContext: legacyMigrationSourceContainer.map { ModelContext($0) },
             isRunning: isMigratingSplitStores,
             readiness: migrationReadiness,
             blocker: migrationBlocker,
@@ -3161,6 +3172,7 @@ class ModelContainerManager: ObservableObject {
         let schema = Schema([
             StoreSplitMigrationCheckpoint.self,
             StoreSplitMigrationVerification.self,
+            StoreSplitFeedCacheCheckpoint.self,
             CachedFeedExtensionElement.self,
             AppliedAIContentRevision.self,
             CachedPodcast.self,
