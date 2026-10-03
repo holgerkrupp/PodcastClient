@@ -102,7 +102,7 @@ enum GeneratedChapterEngine {
     static func shouldGenerateAlongsideExistingChapters(_ types: [MarkerType]) -> Bool {
         let timelineTypes = Set(types).subtracting([.bookmark, .soundbite])
         guard timelineTypes.isEmpty == false else { return true }
-        return timelineTypes.allSatisfy { $0 == .ai || $0 == .advertisement || $0 == .extracted }
+        return timelineTypes.allSatisfy { $0 == .ai || $0 == .extracted }
     }
 
     private static func minPositiveEnd(_ end: TimeInterval?, duration: TimeInterval?) -> TimeInterval? {

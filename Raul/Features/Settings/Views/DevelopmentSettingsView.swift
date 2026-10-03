@@ -525,7 +525,7 @@ struct DevelopmentSettingsView: View {
                 } header: {
                     Text("Slice Migration")
                 } footer: {
-                    Text("Migration runs automatically: at launch, on returning to the foreground, and overnight while charging. Each run is budgeted (25s foreground, 120s in the background task) with idle time between slices, and stops on playback or backgrounding, so it can never saturate the CPU. SharedDatabase.sqlite is only ever read by the migrator.")
+                    Text("Migration runs automatically: at launch, on returning to the foreground, and overnight while charging. Each slice is limited to 2 seconds. Runs are capped at 15 seconds foreground or 20 seconds in the background task, with separate active-work and memory limits plus proportional idle time between slices. SharedDatabase.sqlite is only ever read by the migrator.")
                 }
 
                 Section {
@@ -750,6 +750,7 @@ struct DevelopmentSettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .tint(.blue)
         .navigationTitle("Development")
         .platformInlineNavigationTitle()
         .task {

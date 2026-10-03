@@ -14,7 +14,6 @@ struct LibrarySearchRequest: Sendable {
     let searchInAuthor: Bool
     let searchInDescription: Bool
     let searchInEpisodes: Bool
-    let minimumCharactersForTranscriptSearch: Int
 }
 
 @ModelActor

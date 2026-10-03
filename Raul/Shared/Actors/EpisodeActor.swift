@@ -2255,14 +2255,14 @@ actor EpisodeActor {
             let chapter = Marker(
                 start: proposal.start,
                 title: proposal.title,
-                type: proposal.kind == .advertisement ? .advertisement : .ai,
+                type: .ai,
                 duration: proposal.end.map { $0 - proposal.start }
             )
             chapter.endTime = proposal.end
             chapter.analysisVariantID = proposal.audioVariantID
             return chapter
         }
-        var generatedTypes: Set<MarkerType> = [.ai, .advertisement]
+        var generatedTypes: Set<MarkerType> = [.ai]
         if ChapterSourcePolicy.shouldGenerateTranscriptChapters(from: episode.chapters ?? []) {
             generatedTypes.insert(.extracted)
         }
@@ -2423,7 +2423,7 @@ actor EpisodeActor {
             }
 
             let duration = end.map { $0 - start }
-            if chapters[i].type == .advertisement, chapters[i].end != nil {
+            if isGeneratedAdvertisementChapter(chapters[i]) {
                 continue
             }
             if chapters[i].duration != duration {
@@ -2440,6 +2440,13 @@ actor EpisodeActor {
             modelContext.saveIfNeeded()
         }
         return didChange
+    }
+
+    private func isGeneratedAdvertisementChapter(_ chapter: Marker) -> Bool {
+        guard chapter.type == .ai, chapter.end != nil else { return false }
+        return chapter.title
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare("Advertisement") == .orderedSame
     }
     
     
@@ -2541,7 +2548,6 @@ actor EpisodeActor {
                         throw TranscriptError.episodeNotFound
                     }
                     try await replaceTranscriptLines(for: episode, with: snapshots)
-                    await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "publisher")
                     episode.refresh.toggle()
                     if let episodeURL = episode.url {
                         await finalizeTranscriptChapters(for: episodeURL)
@@ -2572,7 +2578,6 @@ actor EpisodeActor {
             )
         }
         try await replaceTranscriptLines(for: episode, with: snapshots)
-        await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "replacement")
         episode.refresh.toggle()
         await finalizeTranscriptChapters(for: episodeURL)
     }
@@ -2627,28 +2632,8 @@ actor EpisodeActor {
         }
         let snapshots = decodeTranscriptSnapshots(vtt)
         try await replaceTranscriptLines(for: episode, with: snapshots)
-        await indexCommittedTranscript(for: episode, snapshots: snapshots, source: "generated")
         episode.refresh.toggle()
         return snapshots
-    }
-
-    /// Index only after the canonical SwiftData replacement has committed. The
-    /// search actor receives immutable values and never retains SwiftData models.
-    private func indexCommittedTranscript(
-        for episode: Episode,
-        snapshots: [TranscriptLineSnapshot],
-        source: String
-    ) async {
-        let snapshot = TranscriptSearchEpisodeSnapshot(
-            episode: episode,
-            lines: snapshots,
-            source: source
-        )
-        do {
-            _ = try await TranscriptSearchIndex.shared.upsert(snapshot)
-        } catch {
-            AppDiagnostics.log("transcript_search_index_update_failed")
-        }
     }
 
     private func replaceTranscriptLines(
@@ -2741,8 +2726,6 @@ actor EpisodeActor {
         try modelContext.save()
         episode.refresh.toggle()
 
-        try? await TranscriptSearchIndex.shared.removeEpisode(episodeID: identity.key)
-
         if let cacheContainer = await preparedCacheContainer() {
             await StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
                 .tombstoneTranscripts(identities: [identity])
@@ -2778,9 +2761,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        for identity in generatedIdentities {
-            try? await TranscriptSearchIndex.shared.removeEpisode(episodeID: identity.key)
-        }
         if generatedIdentities.isEmpty == false,
            let cacheContainer = await preparedCacheContainer() {
             let writer = StoreSplitAIContentSyncWriter(
@@ -2853,7 +2833,7 @@ actor EpisodeActor {
         generatedAt: Date
     ) async {
         let values = chapters.compactMap { chapter -> AIChapterValue? in
-            guard chapter.type == .ai || chapter.type == .advertisement,
+            guard chapter.type == .ai,
                   let start = chapter.start else { return nil }
             return AIChapterValue(
                 title: chapter.title,
@@ -3090,8 +3070,8 @@ enum ChapterSourcePolicy {
         // Publisher timestamps in the shownotes are preferable to locally
         // generated transcript chapters. Re-check shownotes when AI is the only
         // timeline source so a later feed refresh can promote those timestamps.
-        if timelineChapters.allSatisfy({ $0.type == .ai || $0.type == .advertisement || $0.type == .extracted }),
-           timelineChapters.contains(where: { $0.type == .ai || $0.type == .advertisement }) {
+        if timelineChapters.allSatisfy({ $0.type == .ai || $0.type == .extracted }),
+           timelineChapters.contains(where: { $0.type == .ai }) {
             return true
         }
 
@@ -3112,7 +3092,7 @@ enum ChapterSourcePolicy {
                 .compactMap(\.start)
         )
         return extractedStartTimes.count < 2
-            && timelineChapters.allSatisfy { $0.type == .extracted || $0.type == .advertisement }
+            && timelineChapters.allSatisfy { $0.type == .extracted || $0.type == .ai }
     }
 }
 

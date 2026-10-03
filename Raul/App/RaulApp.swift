@@ -948,16 +948,7 @@ private struct RootWindowView: View {
                         let actor = EpisodeActor(modelContainer: container)
                         await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                     }
-                    Task(priority: .utility) {
-                        // Transcript indexing is derived local data. Start it after
-                        // launch work has settled, in short resumable batches, so
-                        // search is useful immediately without creating a launch wall.
-                        try? await Task.sleep(for: .seconds(6))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
-                        guard Task.isCancelled == false else { return }
-                        _ = await TranscriptSearchBackfillCoordinator(modelContainer: container)
-                            .run()
-                    }
+                    TranscriptSearchLegacyStoreCleanup.removeObsoleteStore()
                     Task(priority: .background) {
                         try? await Task.sleep(for: .seconds(8))
                         await modelContainerManager.waitUntilApplicationQueriesReady()

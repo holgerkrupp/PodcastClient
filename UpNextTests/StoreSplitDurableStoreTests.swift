@@ -10,7 +10,46 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         let budget = StoreWorkBudget.migrationSlice
         XCTAssertLessThanOrEqual(budget.maximumMutations, 40)
         XCTAssertLessThanOrEqual(budget.maximumSaves, 2)
-        XCTAssertEqual(budget.maximumWallTime, .seconds(5))
+        XCTAssertEqual(budget.maximumWallTime, .seconds(2))
+    }
+
+    func testBackgroundMigrationUsesAnActiveWorkAndIdleBudget() {
+        let policy = StoreSplitMigrationRunPolicy.background
+
+        XCTAssertEqual(policy.maximumWallTime, 20)
+        XCTAssertEqual(policy.maximumActiveWorkTime, 6)
+        XCTAssertEqual(policy.maximumSlices, 3)
+        XCTAssertEqual(policy.idleDuration(after: 2), 4)
+        XCTAssertGreaterThan(policy.maximumWallTime, policy.maximumActiveWorkTime)
+        XCTAssertGreaterThan(policy.minimumIdleTime, 0)
+        XCTAssertGreaterThanOrEqual(policy.idleToWorkRatio, 2)
+    }
+
+    func testBackgroundMigrationStopsForMemoryGrowthOrAbsoluteFootprint() {
+        let policy = StoreSplitMigrationRunPolicy.background
+        let megabyte: UInt64 = 1024 * 1024
+
+        XCTAssertNil(
+            policy.memorySafetyReason(
+                runStart: 500 * megabyte,
+                sliceBefore: 500 * megabyte,
+                sliceAfter: 520 * megabyte
+            )
+        )
+        XCTAssertNotNil(
+            policy.memorySafetyReason(
+                runStart: 500 * megabyte,
+                sliceBefore: 550 * megabyte,
+                sliceAfter: 565 * megabyte
+            )
+        )
+        XCTAssertNotNil(
+            policy.memorySafetyReason(
+                runStart: 500 * megabyte,
+                sliceBefore: 895 * megabyte,
+                sliceAfter: policy.maximumFootprint
+            )
+        )
     }
 
 #if DEBUG

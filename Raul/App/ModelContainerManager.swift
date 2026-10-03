@@ -446,15 +446,6 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static let authoritativeReconciliationVersion = 2
     nonisolated private static let authoritativeReconciliationVersionKey =
         "storeSplit.authoritativeReconciliationVersion"
-    /// Spacing between migration slices while audio is playing. Long enough that
-    /// the backfill stays a background trickle rather than a sustained load.
-    /// Idle time between slices, so a long backfill stays a background trickle
-    /// instead of a sustained CPU/disk load.
-    nonisolated private static let sliceSpacingSeconds = 0.75
-    /// Wall-clock budget for one foreground migration run.
-    nonisolated private static let foregroundRunBudgetSeconds: TimeInterval = 25
-    /// Wall-clock budget inside a `BGProcessingTask`.
-    nonisolated private static let backgroundRunBudgetSeconds: TimeInterval = 120
     /// How long to wait before picking the backfill up after a budget stop.
     nonisolated private static let budgetExhaustedRetryDelay: TimeInterval = 180
     /// How long to wait before retrying after yielding to a CloudKit export.
@@ -1342,8 +1333,11 @@ class ModelContainerManager: ObservableObject {
                 return
             }
             await resolveStoreSplitRolloutIfNeeded()
-            await splitStoreCoordinator.scheduleLaunchWork()
-            await splitStoreCoordinator.waitForBackgroundPassToDrain()
+            // This task is reserved for the explicitly bounded migration
+            // slices. Launch reconciliation, UserState import, and feed-cache
+            // prewarming can each perform full-store work, so they remain on
+            // the foreground coordinator and cannot accidentally share this
+            // background CPU window.
         }
     }
 
@@ -1483,16 +1477,35 @@ class ModelContainerManager: ObservableObject {
             cacheContainer: cacheContainer
         ) == false {
             _ = await runMigrationSliceLoop()
-        } else if StoreSplitMigrationService.isMigrationVerified(
-            cacheContainer: cacheContainer
-        ) == false,
-                  let legacyContainer = legacyMigrationSourceContainer,
-                  let userStateContainer = preparedUserStateContainer {
-            _ = StoreSplitMigrationVerifier.verify(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                cacheContainer: cacheContainer
-            )
+        }
+        if isRunningBackgroundProcessingTask == false,
+           StoreSplitMigrationService.isSliceMigrationComplete(
+               cacheContainer: cacheContainer
+           ),
+           StoreSplitMigrationService.isMigrationVerified(
+               cacheContainer: cacheContainer
+           ) == false,
+           let legacyContainer = legacyMigrationSourceContainer,
+           let userStateContainer = preparedUserStateContainer {
+            if heavyStoreWorkMayRunInCurrentAppState,
+               Task.isCancelled == false,
+               MemoryFootprint.current() < StoreSplitMigrationRunPolicy.foreground.maximumFootprint {
+                let verificationStartedAt = Date()
+                let footprintBefore = MemoryFootprint.current()
+                _ = StoreSplitMigrationVerifier.verify(
+                    legacyContainer: legacyContainer,
+                    userStateContainer: userStateContainer,
+                    cacheContainer: cacheContainer
+                )
+                let footprintAfter = MemoryFootprint.current()
+                CrashBreadcrumbs.shared.record(
+                    "store_split_migration_verification_finished",
+                    details: "duration_ms=\(Int(Date().timeIntervalSince(verificationStartedAt) * 1_000)),footprint=\(MemoryFootprint.formattedDelta(before: footprintBefore, after: footprintAfter))"
+                )
+            } else {
+                pendingSplitStoreWorkReason = "verification deferred for resource safety"
+                scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
+            }
         }
         // Verification above is recorded for the cleanup gate and telemetry; the
         // read cutover only requires every phase to have completed.
@@ -2223,6 +2236,14 @@ class ModelContainerManager: ObservableObject {
         guard Self.hasPendingLegacyAuthoritativeReconciliationWork else {
             return .completed
         }
+        guard isRunningBackgroundProcessingTask == false else {
+            // The reconciliation builds source snapshots and scans every
+            // destination table. It is intentionally not part of the overnight
+            // migration budget; the foreground coordinator will pick it up on
+            // the next active launch.
+            pendingSplitStoreWorkReason = "authoritative reconciliation deferred until foreground"
+            return .progressed
+        }
         guard StoreDevelopmentConfiguration.legacyMigrationEnabled,
               StoreSplitReleasePhase.current == .dualSyncBackfill else {
             return .completed
@@ -2327,73 +2348,82 @@ class ModelContainerManager: ObservableObject {
         )
 #endif
         let task = Task { @MainActor in
-#if DEBUG
+            let isBackgroundRun = self.isRunningBackgroundProcessingTask
+            let policy = isBackgroundRun
+                ? StoreSplitMigrationRunPolicy.background
+                : StoreSplitMigrationRunPolicy.foreground
+            let mode = isBackgroundRun ? "background" : "foreground"
+            let runStartedAt = Date()
+            let runFootprintBefore = MemoryFootprint.current()
+            var activeWorkDuration: TimeInterval = 0
+            var idleDuration: TimeInterval = 0
+            var processedCount = 0
+            var mutationCount = 0
+            var saveDuration: TimeInterval = 0
+            var peakFootprint = runFootprintBefore
             var stopReason = "loop exited"
-#endif
             var executionResult: StoreSplitMigrationExecutionResult =
                 .deferred("Migration yielded before completion")
+            var exportWaitCount = 0
+            var sliceCount = 0
+            let deadline = runStartedAt.addingTimeInterval(policy.maximumWallTime)
             defer {
                 isMigratingSplitStores = false
                 migrationTask = nil
                 updateMigrationReadiness()
+                let footprintAfter = MemoryFootprint.current()
+                let footprintDelta = footprintAfter > runFootprintBefore
+                    ? footprintAfter - runFootprintBefore
+                    : 0
+                let activeDescription = String(format: "%.2f", activeWorkDuration)
+                let idleDescription = String(format: "%.2f", idleDuration)
+                let saveDescription = String(format: "%.2f", saveDuration)
+                let summary = "mode=\(mode),slices=\(sliceCount),active=\(activeDescription),idle=\(idleDescription),processed=\(processedCount),mutations=\(mutationCount),save_seconds=\(saveDescription),footprint_delta=\(MemoryFootprint.formatted(footprintDelta)),peak=\(MemoryFootprint.formatted(peakFootprint)),stop=\(stopReason)"
+                CrashBreadcrumbs.shared.record(
+                    "store_split_migration_run_summary",
+                    details: summary
+                )
 #if DEBUG
                 StoreSplitMigrationDebugLog.record(
                     "migration run ended",
-                    details: stopReason
+                    details: summary
                 )
 #endif
             }
-            var exportWaitCount = 0
-            var sliceCount = 0
-            let deadline = Date().addingTimeInterval(
-                self.isRunningBackgroundProcessingTask
-                    ? Self.backgroundRunBudgetSeconds
-                    : Self.foregroundRunBudgetSeconds
-            )
             sliceLoop: while true {
                 if Task.isCancelled {
                     CrashBreadcrumbs.shared.record("store_split_migration_cancelled")
                     executionResult = .deferred("Migration cancelled")
-#if DEBUG
                     stopReason = "cancelled"
-#endif
                     break
                 }
                 if StoreDevelopmentConfiguration.migrationSlicePaused {
                     pendingSplitStoreWorkReason = "migration paused"
                     recordMigrationBlocker("Paused by the migration safety switch")
                     executionResult = .blocked("Paused by the migration safety switch")
-#if DEBUG
                     stopReason = "paused by the migration switch"
-#endif
                     break
                 }
-                // Hard wall-clock budget. A slice is bounded in rows, but the
-                // number of slices is not, and an unbudgeted loop saturated a
-                // CPU for hours and was killed by the 80%-over-60s limit.
+                // The wall-clock limit is only one safety valve. The active-work
+                // and slice limits below are what keep a background processing
+                // grant from becoming a continuous CPU window.
                 if Date() >= deadline {
                     pendingSplitStoreWorkReason = "budget reached, continuing later"
                     scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
                     executionResult = .progressed
-#if DEBUG
                     stopReason = "run budget reached after \(sliceCount) slices"
-#endif
                     break
                 }
                 if Player.shared.isPlaying {
                     pendingSplitStoreWorkReason = "waiting for playback to stop"
                     executionResult = .deferred("Waiting for playback to stop")
-#if DEBUG
                     stopReason = "playback started"
-#endif
                     break
                 }
                 if migrationMayContinueInCurrentAppState() == false {
                     pendingSplitStoreWorkReason = "paused while app is in background"
                     executionResult = .deferred("Waiting for the app to return to the foreground")
-#if DEBUG
                     stopReason = "app backgrounded"
-#endif
                     break
                 }
                 if cloudKitExportInProgress() {
@@ -2407,9 +2437,7 @@ class ModelContainerManager: ObservableObject {
                     if exportWaitCount > 20 {
                         scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
                         executionResult = .deferred("Waiting for CloudKit export to drain")
-#if DEBUG
                         stopReason = "yielded to CloudKit export, retrying in \(Int(Self.exportBackpressureRetryDelay))s"
-#endif
                         break
                     }
                     try? await Task.sleep(for: .seconds(3))
@@ -2418,6 +2446,7 @@ class ModelContainerManager: ObservableObject {
                 exportWaitCount = 0
 
                 let exportBefore = cloudKitExportInProgress()
+                let sliceStartedAt = Date()
                 let report = await StoreSplitMigrationService.runSlice(
                     legacyContainer: legacyContainer,
                     userStateContainer: userStateContainer,
@@ -2429,14 +2458,19 @@ class ModelContainerManager: ObservableObject {
                     cloudKitExportInProgressBefore: exportBefore,
                     exporterWaitDuration: 0
                 )
+                let sliceWallDuration = Date().timeIntervalSince(sliceStartedAt)
+                activeWorkDuration += sliceWallDuration
+                processedCount += report.processed
+                mutationCount += report.mutations
+                saveDuration += report.saveDuration
+                peakFootprint = max(peakFootprint, report.footprintAfter)
+                sliceCount += 1
 
                 switch report.status {
                 case .completed:
                     markMigrationCompleted(hadFailures: report.error != nil)
                     executionResult = .completed
-#if DEBUG
                     stopReason = "all phases complete"
-#endif
                     break sliceLoop
                 case .failed:
                     if let error = report.error {
@@ -2446,24 +2480,47 @@ class ModelContainerManager: ObservableObject {
                     recordMigrationBlocker(reason)
                     scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
                     executionResult = .failed(reason)
-#if DEBUG
                     stopReason = "slice failed: \(report.error ?? "unknown error")"
-#endif
                     break sliceLoop
                 case .cancelled:
                     executionResult = .deferred("Migration slice cancelled")
-#if DEBUG
                     stopReason = "slice cancelled"
-#endif
                     break sliceLoop
                 case .advanced, .phaseCompleted:
                     executionResult = .progressed
-                    sliceCount += 1
+                    if let memoryReason = policy.memorySafetyReason(
+                        runStart: runFootprintBefore,
+                        sliceBefore: report.footprintBefore,
+                        sliceAfter: report.footprintAfter
+                    ) {
+                        pendingSplitStoreWorkReason = "\(memoryReason); continuing later"
+                        scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
+                        stopReason = "memory safety valve: \(memoryReason)"
+                        break sliceLoop
+                    }
+                    if activeWorkDuration >= policy.maximumActiveWorkTime {
+                        pendingSplitStoreWorkReason = "active-work budget reached, continuing later"
+                        scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
+                        stopReason = "active-work budget reached after \(sliceCount) slices"
+                        break sliceLoop
+                    }
+                    if sliceCount >= policy.maximumSlices {
+                        pendingSplitStoreWorkReason = "slice-count budget reached, continuing later"
+                        scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
+                        stopReason = "slice-count budget reached"
+                        break sliceLoop
+                    }
                     await Task.yield()
-                    // Deliberate idle time between slices. Without it the loop
-                    // ran back-to-back SwiftData saves at ~98% CPU until iOS
-                    // killed the process.
-                    try? await Task.sleep(for: .seconds(Self.sliceSpacingSeconds))
+                    let requestedIdleDuration = policy.idleDuration(
+                        after: sliceWallDuration
+                    )
+                    idleDuration += requestedIdleDuration
+                    do {
+                        try await Task.sleep(for: .seconds(requestedIdleDuration))
+                    } catch {
+                        // The next iteration records cancellation and exits
+                        // without starting another slice.
+                    }
                 }
             }
             return executionResult

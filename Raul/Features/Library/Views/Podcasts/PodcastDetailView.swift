@@ -253,9 +253,10 @@ struct PodcastDetailView: View {
                             } label: {
                                 Image(systemName: "ladybug")
                                     .imageScale(.small)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.blue)
                             }
                             .buttonStyle(.plain)
+                            .tint(.blue)
                             .accessibilityLabel("Podcast debug metadata")
 #endif
                         }
@@ -473,7 +474,8 @@ struct PodcastDetailView: View {
                 await updatePredictedReleaseInfo()
             }
             .task(id: podcast.stablePodcastIdentityKey) {
-                hasSearchableTranscripts = (try? await TranscriptSearchIndex.shared
+                let service = TranscriptSearchActor(modelContainer: modelContext.container)
+                hasSearchableTranscripts = (try? await service
                     .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
             }
             .onChange(of: searchText) { _, _ in

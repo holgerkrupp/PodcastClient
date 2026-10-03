@@ -220,11 +220,12 @@ struct ImportExportView: View {
                         title: "Delete All Podcasts",
                         subtitle: "Debug action that removes all current subscriptions.",
                         icon: "trash.fill",
-                        tint: .red,
+                        tint: .blue,
                         trailingIcon: "exclamationmark.triangle.fill"
                     )
                 }
                 .buttonStyle(.plain)
+                .tint(.blue)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(.init(top: 4, leading: 14, bottom: 4, trailing: 14))

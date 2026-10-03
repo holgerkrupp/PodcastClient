@@ -119,6 +119,7 @@ struct RefreshHistorySettingsView: View {
             }
         }
         .navigationTitle("Refresh History")
+        .tint(.blue)
         .task {
             await loadRefreshHistory()
         }

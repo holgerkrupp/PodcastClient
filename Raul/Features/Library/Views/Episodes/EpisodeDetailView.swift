@@ -179,7 +179,7 @@ struct EpisodeDetailView: View {
                         }else if isGeneratingTranscriptChapters{
                             ProgressView()
                                 .controlSize(.small)
-                        }else{
+                        }else if canGenerateTranscriptChapters{
                             
                             Button {
                                 Task { await generateTranscriptChaptersOnDemand(for: url) }
@@ -190,6 +190,7 @@ struct EpisodeDetailView: View {
                                 )
                             }
                             .buttonStyle(.glass(.clear))
+                            .tint(.blue)
                             .padding(.horizontal)
                             .padding(.vertical, 8)
                             .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
@@ -206,6 +207,7 @@ struct EpisodeDetailView: View {
                                 )
                             }
                             .buttonStyle(.glass(.clear))
+                            .tint(.blue)
                             .padding(.horizontal)
                             .padding(.vertical, 8)
                             .disabled(isDeletingTranscript)
@@ -244,6 +246,7 @@ struct EpisodeDetailView: View {
                                 .imageScale(.small)
                         }
                         .buttonStyle(.glass(.clear))
+                        .tint(.blue)
                         .accessibilityLabel("Episode debug metadata")
                         Spacer()
 #endif
@@ -316,7 +319,9 @@ struct EpisodeDetailView: View {
                 Button("Delete Transcript", role: .destructive) {
                     Task { await deleteTranscript() }
                 }
+                .tint(.blue)
                 Button("Cancel", role: .cancel) {}
+                    .tint(.blue)
             } message: {
                 Text("This removes the transcript and its transcription history so the episode can be transcribed again.")
             }
@@ -431,27 +436,9 @@ struct EpisodeDetailView: View {
             throw EpisodeActor.TranscriptError.decodingFailed
         }
 
-        let searchLines = lines.map {
-            TranscriptLineSnapshot(
-                speaker: $0.speaker,
-                text: $0.text,
-                startTime: $0.startTime,
-                endTime: $0.endTime
-            )
-        }
-        let searchSnapshot = TranscriptSearchEpisodeSnapshot(
-            episode: episode,
-            lines: searchLines,
-            source: "publisher"
-        )
         episode.transcriptLines = lines
         episode.refresh.toggle()
         context.saveIfNeeded()
-        do {
-            _ = try await TranscriptSearchIndex.shared.upsert(searchSnapshot)
-        } catch {
-            AppDiagnostics.log("transcript_search_index_update_failed")
-        }
 
         if let episodeURL = episode.url {
             _ = await EpisodeActor(modelContainer: context.container).regenerateTranscriptChapters(for: episodeURL)

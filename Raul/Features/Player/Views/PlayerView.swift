@@ -327,6 +327,7 @@ struct PlayerView: View {
                         .imageScale(.small)
                 }
                 .buttonStyle(.glass(.clear))
+                .tint(.blue)
                 .accessibilityLabel("Episode debug metadata")
 #endif
 
@@ -381,9 +382,10 @@ struct PlayerView: View {
             NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
                 Image(systemName: "ladybug")
                     .imageScale(.small)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.blue)
             }
             .buttonStyle(.plain)
+            .tint(.blue)
             .accessibilityLabel("Episode debug metadata")
 #endif
         }

@@ -44,8 +44,6 @@ struct LibrarySearchView: View {
     @ScaledMetric(relativeTo: .body) private var resultRowHeight: CGFloat = 132
     @ScaledMetric(relativeTo: .body) private var resultArtworkSize: CGFloat = 82
 
-    private let minimumCharactersForTranscriptSearch = 3
-
     private var trimmedSearchText: String {
         searchText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -56,7 +54,7 @@ struct LibrarySearchView: View {
                 ContentUnavailableView(
                     "Search Your Library",
                     systemImage: "magnifyingglass",
-                    description: Text("Search podcasts, episodes, chapters, or open the local transcript index.")
+                    description: Text("Search podcasts, episodes, chapters, or transcripts available on this device.")
                 )
                 if hasSearchableTranscripts {
                     NavigationLink {
@@ -139,14 +137,6 @@ struct LibrarySearchView: View {
                         .listRowBackground(Color.clear)
                     }
 
-                    if searchInEpisodes,
-                       trimmedSearchText.count > 0,
-                       trimmedSearchText.count < minimumCharactersForTranscriptSearch {
-                        Text("Use at least \(minimumCharactersForTranscriptSearch) characters to search transcripts.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .listRowBackground(Color.clear)
-                    }
                 }
                 .listStyle(.plain)
             }
@@ -217,7 +207,8 @@ struct LibrarySearchView: View {
     }
 
     private func refreshTranscriptSearchAvailability() async {
-        let available = (try? await TranscriptSearchIndex.shared.hasSearchableTranscripts(in: .library)) == true
+        let service = TranscriptSearchActor(modelContainer: modelContext.container)
+        let available = (try? await service.hasSearchableTranscripts(in: .library)) == true
         guard Task.isCancelled == false else { return }
         hasSearchableTranscripts = available
     }
@@ -409,8 +400,7 @@ struct LibrarySearchView: View {
             searchInTitle: searchInTitle,
             searchInAuthor: searchInAuthor,
             searchInDescription: searchInDescription,
-            searchInEpisodes: searchInEpisodes,
-            minimumCharactersForTranscriptSearch: minimumCharactersForTranscriptSearch
+            searchInEpisodes: searchInEpisodes
         )
 
         do {

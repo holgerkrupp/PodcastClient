@@ -291,7 +291,7 @@ actor StoreSplitAIContentImporter {
             let current = (try? cacheContext.fetch(descriptor)) ?? []
             let currentAI = current.filter {
                 $0.typeRawValue == MarkerType.ai.rawValue
-                    || $0.typeRawValue == MarkerType.advertisement.rawValue
+                    || $0.typeRawValue == "advertisement"
             }
             let previousByKey = Dictionary(
                 currentAI.map {
@@ -318,7 +318,9 @@ actor StoreSplitAIContentImporter {
                         duration: value.duration,
                         analysisVariantID: value.analysisVariantID,
                         progress: previous?.progress,
-                        typeRawValue: value.typeRawValue ?? MarkerType.ai.rawValue,
+                        typeRawValue: value.typeRawValue == "advertisement"
+                            ? MarkerType.ai.rawValue
+                            : (value.typeRawValue ?? MarkerType.ai.rawValue),
                         shouldPlay: previous?.shouldPlay ?? true,
                         ordinal: ordinal,
                         updatedAt: chapterSet.updatedAt

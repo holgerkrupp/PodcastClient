@@ -1476,9 +1476,6 @@
         }
       }
     },
-    "Backfill" : {
-
-    },
     "Background" : {
       "localizations" : {
         "de" : {
@@ -2932,9 +2929,6 @@
         }
       }
     },
-    "Eligible episodes" : {
-
-    },
     "Enable Notifications" : {
       "localizations" : {
         "de" : {
@@ -4169,12 +4163,6 @@
           }
         }
       }
-    },
-    "Indexed episodes" : {
-
-    },
-    "Indexing continues in the background. These results are ready now." : {
-
     },
     "Install Apple Podcasts Shortcut" : {
       "localizations" : {
@@ -5644,9 +5632,6 @@
         }
       }
     },
-    "No indexed transcript matches for \"%@\"." : {
-
-    },
     "No listening data yet." : {
       "localizations" : {
         "de" : {
@@ -5912,6 +5897,9 @@
     "No Transcript Matches" : {
 
     },
+    "No transcript matches for \"%@\"." : {
+
+    },
     "No Transcriptions Yet" : {
       "localizations" : {
         "de" : {
@@ -6134,9 +6122,6 @@
           }
         }
       }
-    },
-    "On-Device Index" : {
-
     },
     "On-Device Transcription" : {
       "localizations" : {
@@ -8109,9 +8094,6 @@
     "Read the whole episode as text" : {
 
     },
-    "Reading index status…" : {
-
-    },
     "Ready to Subscribe (%lld)" : {
       "localizations" : {
         "de" : {
@@ -8162,9 +8144,6 @@
         }
       }
     },
-    "Rebuild Transcript Search Index" : {
-
-    },
     "Rebuilding analytics…" : {
       "localizations" : {
         "de" : {
@@ -8174,12 +8153,6 @@
           }
         }
       }
-    },
-    "Rebuilding runs in bounded SwiftData batches and can resume after the app is closed." : {
-
-    },
-    "Rebuilding…" : {
-
     },
     "Recalculate hourly listening stats and period summaries from recorded play sessions" : {
       "localizations" : {
@@ -9008,7 +8981,7 @@
         }
       }
     },
-    "Search podcasts, episodes, chapters, or open the local transcript index." : {
+    "Search podcasts, episodes, chapters, or transcripts available on this device." : {
 
     },
     "Search Public Broadcasters" : {
@@ -10822,7 +10795,7 @@
         }
       }
     },
-    "This transcript is indexed, but the episode is no longer available in the local library." : {
+    "This transcript is available, but the episode is no longer available in the local library." : {
 
     },
     "Timer" : {
@@ -11066,9 +11039,6 @@
 
     },
     "Transcript Search Unavailable" : {
-
-    },
-    "Transcript text and queries never leave this device. The index is disposable derived data; canonical transcripts stay in the library store." : {
 
     },
     "Transcript Unavailable" : {
@@ -11449,6 +11419,7 @@
 
     },
     "Use at least %lld characters to search transcripts." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -34,6 +34,7 @@ struct StoreSplitMigrationLogView: View {
         }
         .navigationTitle("Migration Log")
         .platformInlineNavigationTitle()
+        .tint(.blue)
         .toolbar {
             ToolbarItem(placement: .secondaryAction) {
                 Button(role: .destructive) {

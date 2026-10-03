@@ -251,6 +251,7 @@ struct PlayerControllView: View {
                         }
                     }
                     .buttonStyle(.glass(.clear))
+                    .tint(.blue)
                     .disabled(isDebugGeneratingTranscriptAndChapters)
                     .padding(.horizontal, 50)
                     .accessibilityLabel("Create transcript and chapters")

@@ -95,7 +95,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// Schedules the overnight store-split migration pass. Requires external
     /// power so it runs while charging and idle, and network so CloudKit can
     /// export the migrated user-state. Only scheduled while migration could still
-    /// have work to do.
+    /// have migration slices left to do. Authoritative reconciliation is a
+    /// foreground-only repair and must not keep scheduling background CPU work.
     static func scheduleStoreSplitMigrationProcessingIfNeeded() {
         // Gate on real remaining work, not on the rollout marker. A device can
         // sit at `newStoreReads` from an earlier migration version and still owe

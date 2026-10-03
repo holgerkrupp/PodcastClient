@@ -958,17 +958,6 @@ struct PodcastSettingsView: View {
                 )
             }
 
-            NavigationLink {
-                TranscriptSearchMaintenanceView(modelContainer: context.container)
-            } label: {
-                SettingsNavigationRow(
-                    title: "Transcript Search Index",
-                    summary: "Local index and backfill status",
-                    detail: "Rebuild the on-device search index if transcript results are incomplete.",
-                    systemImage: "text.magnifyingglass"
-                )
-            }
-
             Text("When this is off, the app skips feed-linked transcript downloads and automatic on-device transcript creation for every podcast.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
@@ -1652,6 +1641,7 @@ struct PodcastSettingsView: View {
                     systemImage: "wrench.and.screwdriver"
                 )
             }
+            .tint(.blue)
         }
     }
 #endif
@@ -1669,34 +1659,35 @@ struct PodcastSettingsView: View {
                     systemImage: "clock.arrow.trianglehead.counterclockwise.rotate.90"
                 )
             }
+            .tint(.blue)
             
-                NavigationLink {
-                    PredictedRefreshQueueSettingsView()
-                } label: {
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "calendar.badge.clock")
-                            .foregroundStyle(.accent)
-                            .frame(width: 24, height: 24)
-                            .padding(.top, 2)
+            NavigationLink {
+                PredictedRefreshQueueSettingsView()
+            } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "calendar.badge.clock")
+                        .foregroundStyle(.accent)
+                        .frame(width: 24, height: 24)
+                        .padding(.top, 2)
 
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Next Predicted Refreshes")
-                                .foregroundStyle(.primary)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Next Predicted Refreshes")
+                            .foregroundStyle(.primary)
 
-                            Text("Next \(BackgroundTaskConfiguration.predictedReleaseRefreshPodcastLimit) podcasts")
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
+                        Text("Next \(BackgroundTaskConfiguration.predictedReleaseRefreshPodcastLimit) podcasts")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
 
-                            Text("Sorted by predicted release time, with the submitted background task marked.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .multilineTextAlignment(.leading)
-                        }
+                        Text("Sorted by predicted release time, with the submitted background task marked.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.leading)
                     }
-                    .padding(.vertical, 2)
                 }
+                .padding(.vertical, 2)
             }
-        
+            .tint(.blue)
+        }
     }
 #endif
 

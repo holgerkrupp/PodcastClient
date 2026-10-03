@@ -15,6 +15,15 @@ The following behavior is a strict product requirement for the full player on ev
 
 Before considering a player layout change complete, verify the resting and scrolled states on a standard portrait iPhone and an iPhone Duo configuration. Confirm the hero transition, transcript placement, top-pinned transport controls, and continuous background treatment.
 
+## Startup and loading UX
+
+Do not introduce a full-screen loading or spinner view that blocks the app at
+startup when the primary app container is already available. Render the main
+content as soon as it can be used and keep remaining initialization work
+asynchronous and out of the launch-critical path. Reserve a launch error or
+retry view for genuine initialization failures, not normal readiness or
+background setup.
+
 ## Xcode build artifacts
 
 Never create DerivedData, build products, test results, or other generated

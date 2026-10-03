@@ -432,6 +432,7 @@ struct EpisodeDebugMetadataView: View {
         }
         .navigationTitle("Episode Debug")
         .platformInlineNavigationTitle()
+        .tint(.blue)
     }
 
     private func runEnrichment(_ action: EpisodeDebugEnrichmentAction) {

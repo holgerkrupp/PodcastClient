@@ -92,8 +92,69 @@ struct StoreWorkBudget: Sendable, Equatable {
     static let migrationSlice = StoreWorkBudget(
         maximumMutations: 40,
         maximumSaves: 2,
-        maximumWallTime: .seconds(5)
+        maximumWallTime: .seconds(2)
     )
+}
+
+/// Run-level limits are deliberately separate from the wall-clock window that
+/// iOS grants a `BGProcessingTask`. The latter is an upper bound, not a CPU
+/// budget: a process that works continuously can still be killed long before
+/// that window expires.
+struct StoreSplitMigrationRunPolicy: Sendable, Equatable {
+    let maximumWallTime: TimeInterval
+    let maximumActiveWorkTime: TimeInterval
+    let maximumSlices: Int
+    let minimumIdleTime: TimeInterval
+    let idleToWorkRatio: Double
+    let maximumMemoryGrowth: UInt64
+    let maximumFootprint: UInt64
+
+    static let foreground = StoreSplitMigrationRunPolicy(
+        maximumWallTime: 15,
+        maximumActiveWorkTime: 10,
+        maximumSlices: 6,
+        minimumIdleTime: 1,
+        idleToWorkRatio: 0.5,
+        maximumMemoryGrowth: 96 * 1024 * 1024,
+        maximumFootprint: 900 * 1024 * 1024
+    )
+
+    static let background = StoreSplitMigrationRunPolicy(
+        maximumWallTime: 20,
+        maximumActiveWorkTime: 6,
+        maximumSlices: 3,
+        minimumIdleTime: 3,
+        idleToWorkRatio: 2,
+        maximumMemoryGrowth: 64 * 1024 * 1024,
+        maximumFootprint: 900 * 1024 * 1024
+    )
+
+    /// Enforces a proportional idle period while retaining a floor for very
+    /// short slices. Background slices therefore spend at least twice as long
+    /// idle as they spend doing migration work.
+    func idleDuration(after activeDuration: TimeInterval) -> TimeInterval {
+        max(minimumIdleTime, activeDuration * idleToWorkRatio)
+    }
+
+    func memorySafetyReason(
+        runStart: UInt64,
+        sliceBefore: UInt64,
+        sliceAfter: UInt64
+    ) -> String? {
+        guard sliceAfter > 0 else { return nil }
+        if sliceAfter >= maximumFootprint {
+            return "memory footprint reached \(MemoryFootprint.formatted(sliceAfter))"
+        }
+        let runGrowth = sliceAfter > runStart ? sliceAfter - runStart : 0
+        if runStart > 0, runGrowth >= maximumMemoryGrowth {
+            return "memory grew by \(MemoryFootprint.formatted(runGrowth)) in one run"
+        }
+        let sliceGrowth = sliceAfter > sliceBefore ? sliceAfter - sliceBefore : 0
+        if sliceBefore > 0, sliceGrowth >= maximumMemoryGrowth {
+            return "memory grew by \(MemoryFootprint.formatted(sliceGrowth)) in one slice"
+        }
+        return nil
+    }
 }
 
 actor StoreSplitMigrationService {
@@ -431,14 +492,6 @@ actor StoreSplitMigrationService {
             status = .advanced
         }
 
-        if status == .completed {
-            _ = StoreSplitMigrationVerifier.verify(
-                legacyContainer: legacyContainer,
-                userStateContainer: userStateContainer,
-                cacheContainer: cacheContainer
-            )
-        }
-
         return StoreSplitSliceReport(
             status: status,
             phase: phase,
@@ -506,11 +559,6 @@ actor StoreSplitMigrationService {
         CrashBreadcrumbs.shared.record(
             "store_split_migration_completed",
             details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
-        )
-        _ = StoreSplitMigrationVerifier.verify(
-            legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer,
-            cacheContainer: cacheContainer
         )
         return result
     }
@@ -1277,8 +1325,8 @@ actor StoreSplitMigrationService {
     /// to `Bookmark`. `Marker` is also the chapter model, so that walked every
     /// chapter of every episode — an unindexed sorted fetch with a growing
     /// offset, which makes SQLite spill a temp B-tree to disk on every slice.
-    /// Two of those per slice, every 0.75s, dirtied gigabytes per run (68GB in
-    /// one report) to migrate a handful of bookmarks.
+    /// Two of those per slice, with only a short idle gap, dirtied gigabytes per
+    /// run (68GB in one report) to migrate a handful of bookmarks.
     private static func orderedBookmarks(in context: ModelContext) throws -> [Bookmark] {
         try context.fetch(FetchDescriptor<Bookmark>())
             .sorted { lhs, rhs in

@@ -305,10 +305,13 @@ enum StoreSplitCompatibilityProjectionService {
         )
         let cachedChapters = (try? cacheContext.fetch(chapterDescriptor)) ?? []
         episode.chapters = cachedChapters.map { cached in
+            let markerType = cached.typeRawValue == "advertisement"
+                ? MarkerType.ai
+                : (MarkerType(rawValue: cached.typeRawValue) ?? .unknown)
             let marker = Marker(
                 start: cached.start ?? 0,
                 title: cached.title,
-                type: MarkerType(rawValue: cached.typeRawValue) ?? .unknown,
+                type: markerType,
                 imageData: cached.imageData,
                 duration: cached.duration
             )

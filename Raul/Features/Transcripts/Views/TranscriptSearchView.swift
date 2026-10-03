@@ -6,6 +6,7 @@ struct TranscriptSearchView: View {
     let title: String
     let emptyDescription: String
 
+    @Environment(\.modelContext) private var modelContext
     @State private var query = ""
     @State private var snapshot: TranscriptSearchSnapshot?
     @State private var isSearching = false
@@ -54,15 +55,12 @@ struct TranscriptSearchView: View {
                 ContentUnavailableView(
                     "No Transcript Matches",
                     systemImage: "text.magnifyingglass",
-                    description: Text("No indexed transcript matches for \"\(trimmedQuery)\".")
+                    description: Text("No transcript matches for \"\(trimmedQuery)\".")
                 )
             }
         }
         .navigationTitle(title)
         .searchable(text: $query, prompt: "Search transcripts")
-        .task {
-            await refreshStatus()
-        }
         .onChange(of: query) { _, _ in
             scheduleSearch()
         }
@@ -74,16 +72,6 @@ struct TranscriptSearchView: View {
     @ViewBuilder
     private func resultsList(_ snapshot: TranscriptSearchSnapshot) -> some View {
         List {
-            if snapshot.status.isBackfillInProgress {
-                Label(
-                    "Indexing continues in the background. These results are ready now.",
-                    systemImage: "arrow.triangle.2.circlepath"
-                )
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .listRowBackground(Color.clear)
-            }
-
             ForEach(snapshot.groups) { podcast in
                 Section {
                     ForEach(podcast.episodes) { episode in
@@ -164,11 +152,12 @@ struct TranscriptSearchView: View {
             return
         }
         isSearching = true
+        let modelContainer = modelContext.container
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(180))
             guard Task.isCancelled == false else { return }
             do {
-                let result = try await TranscriptSearchIndex.shared.search(
+                let result = try await TranscriptSearchActor(modelContainer: modelContainer).search(
                     TranscriptSearchQuery(text: requestedQuery, scope: scope)
                 )
                 guard Task.isCancelled == false else { return }
@@ -189,19 +178,6 @@ struct TranscriptSearchView: View {
         }
     }
 
-    private func refreshStatus() async {
-        guard trimmedQuery.isEmpty else {
-            scheduleSearch()
-            return
-        }
-        // Opening the screen should initialize the disposable index even before
-        // the first query, while all actual text matching remains cancellable.
-        do {
-            _ = try await TranscriptSearchIndex.shared.status()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
 }
 
 private struct TranscriptSearchPassageRow: View {
@@ -295,7 +271,7 @@ private struct TranscriptSearchEpisodeDestinationView: View {
                 ContentUnavailableView(
                     "Episode Unavailable",
                     systemImage: "quote.bubble",
-                    description: Text("This transcript is indexed, but the episode is no longer available in the local library.")
+                    description: Text("This transcript is available, but the episode is no longer available in the local library.")
                 )
             }
         }
