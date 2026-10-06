@@ -173,7 +173,7 @@ final class PlayerEngine {
         return avPlayer.rate
     }
 
-    func replaceCurrentItem(with item: AVPlayerItem) {
+    func replaceCurrentItem(with item: AVPlayerItem?) {
         guard  avPlayer.currentItem != item else {
             return
         }

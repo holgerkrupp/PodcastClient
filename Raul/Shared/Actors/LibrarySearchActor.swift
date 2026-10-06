@@ -246,7 +246,16 @@ actor LibrarySearchActor {
                 desc: podcast.desc,
                 imageURL: podcast.imageURL
             )
-            for episode in podcast.episodes ?? [] {
+
+            // Do not fault the podcast's to-many relationship here. Search can
+            // overlap feed imports and CloudKit reconciliation, either of
+            // which may invalidate a materialized relationship collection.
+            let episodeDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { episode in
+                    episode.podcast?.persistentModelID == podcastID
+                }
+            )
+            for episode in try modelContext.fetch(episodeDescriptor) {
                 let episodeKey = "\(episode.persistentModelID)"
                 episodeIDs.insert(episodeKey)
                 episodeToPodcastID[episodeKey] = podcastKey

@@ -106,5 +106,44 @@ final class WatchSyncRemoteControlModelTests: XCTestCase {
         XCTAssertEqual(entries.map(\.order), [1, 4, 7])
         XCTAssertTrue(entries.allSatisfy { $0.playlist?.id == selectedPlaylist.id })
     }
+
+    func testPlaylistEntryQueryLimitsLargeWatchSnapshots() throws {
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(
+            for: Podcast.self,
+            PodcastMetaData.self,
+            Episode.self,
+            EpisodeMetaData.self,
+            Playlist.self,
+            PlaylistEntry.self,
+            configurations: configuration
+        )
+        let context = ModelContext(container)
+        let playlist = Playlist()
+        context.insert(playlist)
+
+        for order in 0..<150 {
+            let episode = Episode(
+                guid: "queue-\(order)",
+                title: "Queue \(order)",
+                url: URL(string: "https://example.com/queue-\(order).mp3")!,
+                duration: 100
+            )
+            let entry = PlaylistEntry(episode: episode, order: order)
+            context.insert(episode)
+            context.insert(entry)
+            entry.playlist = playlist
+        }
+        try context.save()
+
+        let entries = try WatchSyncPlaylistEntryQuery.fetchOrdered(
+            playlistID: playlist.id,
+            in: context,
+            limit: 100
+        )
+
+        XCTAssertEqual(entries.count, 100)
+        XCTAssertEqual(entries.map(\.order), Array(0..<100))
+    }
 }
 #endif

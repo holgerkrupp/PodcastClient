@@ -101,7 +101,7 @@ struct TopPodcastShareGalleryView: View {
                                 .progressViewStyle(.linear)
                             Text(renderProgressMessage)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .monospacedDigit()
                         }
                         .padding(.vertical, 4)
@@ -412,7 +412,7 @@ private struct TopPodcastShareBackgroundOption: View {
                     .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
                 Text(background.title)
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
+                    .esaForeground(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }

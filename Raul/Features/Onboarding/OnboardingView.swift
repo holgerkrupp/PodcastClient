@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import CloudKitSyncMonitor
+import ESADesignKit
 
 enum OnboardingPreferenceKeys {
     static let didCompleteOnboarding = "didCompleteOnboarding"
@@ -9,6 +10,8 @@ enum OnboardingPreferenceKeys {
 struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPage = 0
+    @AppStorage(UpNextVisualDesignPreference.storageKey) private var storedVisualStyle = ESAVisualStyle.artwork.rawValue
+    @State private var selectedVisualStyle: ESAVisualStyle
 
     private let requiresInitialCloudImport: Bool
     private let modelContainer: ModelContainer?
@@ -16,6 +19,8 @@ struct OnboardingView: View {
     init(requiresInitialCloudImport: Bool = false, modelContainer: ModelContainer? = nil) {
         self.requiresInitialCloudImport = requiresInitialCloudImport
         self.modelContainer = modelContainer
+        let rawStyle = UserDefaults.standard.string(forKey: UpNextVisualDesignPreference.storageKey) ?? ESAVisualStyle.artwork.rawValue
+        _selectedVisualStyle = State(initialValue: ESAVisualStyle(rawValue: rawStyle) ?? .artwork)
     }
 
     private let pages: [OnboardingPage] = [
@@ -66,7 +71,7 @@ struct OnboardingView: View {
     ]
 
     private var pageCount: Int {
-        pages.count + (requiresInitialCloudImport && modelContainer != nil ? 1 : 0)
+        pages.count + 1 + (requiresInitialCloudImport && modelContainer != nil ? 1 : 0)
     }
 
     var body: some View {
@@ -94,6 +99,7 @@ struct OnboardingView: View {
                         Spacer()
 
                         Button {
+                            storedVisualStyle = selectedVisualStyle.rawValue
                             dismiss()
                         } label: {
                             Text("Start Listening")
@@ -117,7 +123,11 @@ struct OnboardingView: View {
                 }
             }
 
-            if selectedPage == pages.count, requiresInitialCloudImport, let modelContainer {
+            if selectedPage == pages.count {
+                VisualDesignChooser(selection: $selectedVisualStyle)
+            }
+
+            if selectedPage == pages.count + 1, requiresInitialCloudImport, let modelContainer {
                 OnboardingCloudSyncPageView(modelContainer: modelContainer)
             }
         }
@@ -128,9 +138,12 @@ struct OnboardingView: View {
                     .tag(index)
             }
 
+            VisualDesignChooser(selection: $selectedVisualStyle)
+                .tag(pages.count)
+
             if requiresInitialCloudImport, let modelContainer {
                 OnboardingCloudSyncPageView(modelContainer: modelContainer)
-                    .tag(pages.count)
+                    .tag(pages.count + 1)
             }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))

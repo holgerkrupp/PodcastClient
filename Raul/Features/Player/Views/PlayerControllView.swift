@@ -32,8 +32,10 @@ struct PlayerControllView: View {
     var showsInlineTranscript = true
     var showsTranscriptOverHero = false
     var showsPlaybackUtilities = true
-    var debugGenerateTranscriptAndChaptersAction: (() -> Void)?
-    var isDebugGeneratingTranscriptAndChapters = false
+    var generationAction: EpisodeAIGenerationAction?
+    var generationState: EpisodeAIGenerationState?
+    var generateAction: ((EpisodeAIGenerationAction) -> Void)?
+    var cancelGeneration: (() -> Void)?
     
     @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
@@ -97,6 +99,7 @@ struct PlayerControllView: View {
                 Text("\(episode.title)")
                     .font(.body)
                     .lineLimit(2)
+                    .esaForeground(.primary)
                 
                 
                 if player.isLivePlayback {
@@ -160,11 +163,13 @@ struct PlayerControllView: View {
                             Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
                                 .monospacedDigit()
                                 .font(.caption)
+                                .esaForeground(.secondary)
 
                             Spacer()
                             Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
                                 .monospacedDigit()
                                 .font(.caption)
+                                .esaForeground(.secondary)
                         }
                     }
                 }
@@ -233,31 +238,17 @@ struct PlayerControllView: View {
 
     private var chapterControlsRow: some View {
         ZStack {
-            if player.currentEpisode?.preferredChapters.count ?? 0 > 1 {
+            if player.currentEpisode?.hasChapterSelectionUI == true {
                 PlayerChapterView()
                     .padding(.horizontal, 16)
-            } else {
-#if DEBUG
-                if let debugGenerateTranscriptAndChaptersAction {
-                    Button(action: debugGenerateTranscriptAndChaptersAction) {
-                        if isDebugGeneratingTranscriptAndChapters {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Label("Create transcript/chapters", systemImage: "sparkles")
-                                .font(.caption)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                    }
-                    .buttonStyle(.glass(.clear))
-                    .tint(.blue)
-                    .disabled(isDebugGeneratingTranscriptAndChapters)
-                    .padding(.horizontal, 50)
-                    .accessibilityLabel("Create transcript and chapters")
-                    .accessibilityHint("Generates a transcript and chapter markers for this episode")
-                }
-#endif
+            } else if let generateAction, let cancelGeneration {
+                EpisodeAIGenerationControl(
+                    action: generationAction,
+                    state: generationState,
+                    start: generateAction,
+                    cancel: cancelGeneration
+                )
+                .frame(maxWidth: .infinity)
             }
 
             if player.canSkipCurrentAdvertisement {
@@ -407,7 +398,7 @@ struct PlayerPlaybackUtilitiesRow: View {
     private var airPlayButton: some View {
         AirPlayButtonView()
             .tint(.primary)
-            .foregroundColor(.primary)
+            .esaForeground(.primary)
             .frame(width: 44, height: 44)
             .glassEffect(.regular, in: Circle())
             .accessibilityLabel("AirPlay")
@@ -547,7 +538,7 @@ private struct PlayerMediaView: View {
                     .overlay {
                         Image(systemName: "photo")
                             .font(.largeTitle)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                     }
             }
         }

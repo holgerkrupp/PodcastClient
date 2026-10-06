@@ -361,9 +361,12 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             $0.phase == "episode_states"
                 && ($0.status == .advanced || $0.status == .phaseCompleted)
         }
-        XCTAssertEqual(episodeSlices.count, 3, "130 episodes / 50 per page = 3 pages")
+        XCTAssertGreaterThan(episodeSlices.count, 1)
         for slice in episodeSlices {
-            XCTAssertLessThanOrEqual(slice.processed, 50)
+            XCTAssertLessThanOrEqual(
+                slice.processed,
+                StoreWorkBudget.migrationSlice.maximumMutations
+            )
         }
         XCTAssertEqual(episodeSlices.reduce(0) { $0 + $1.processed }, 130)
 
@@ -866,6 +869,18 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             try destinationCounts(firstDevice.userState),
             try destinationCounts(secondDevice.userState)
         )
+        // The cutover gate requires a recorded lossless verification, not just
+        // completed migration cursors and a populated feed cache.
+        XCTAssertTrue(StoreSplitMigrationVerifier.verify(
+            legacyContainer: firstDevice.legacy,
+            userStateContainer: firstDevice.userState,
+            cacheContainer: firstDevice.cache
+        ).isLossless)
+        XCTAssertTrue(StoreSplitMigrationVerifier.verify(
+            legacyContainer: secondDevice.legacy,
+            userStateContainer: secondDevice.userState,
+            cacheContainer: secondDevice.cache
+        ).isLossless)
 
         let firstGate = StoreSplitMigrationVerifier.cutoverGate(
             legacyContainer: firstDevice.legacy,

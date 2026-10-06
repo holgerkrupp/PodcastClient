@@ -702,11 +702,22 @@ class ModelContainerManager: ObservableObject {
                 await prepareSplitStores()
             } else {
                 // The on-disk library store is already complete. Opening the
-                // split stores and applying synchronized state happens off the
-                // launch path so the UI renders the user's real data at once.
+                // split stores can resume another CloudKit exporter. A feed or
+                // transcription background launch needs only this library
+                // container; the migration task opens its stores explicitly.
+                // Do not start an unrelated exporter in the audio background
+                // window just because a caller needed the runtime container.
+#if canImport(UIKit)
+                if UIApplication.shared.applicationState != .background {
+                    Task { [weak self] in
+                        await self?.prepareSplitStores()
+                    }
+                }
+#else
                 Task { [weak self] in
                     await self?.prepareSplitStores()
                 }
+#endif
             }
         } catch {
             if initializationError == nil {
@@ -861,6 +872,15 @@ class ModelContainerManager: ObservableObject {
         force: Bool = false
     ) async -> StoreSplitCompatibilityProjectionResult {
         let empty = StoreSplitCompatibilityProjectionResult()
+        // Recovery walks the cache and can write a large legacy graph. It is
+        // optional at launch and must never hitchhike on a BGProcessing grant
+        // intended for bounded migration slices or feed updates.
+        if force == false {
+            guard isRunningBackgroundProcessingTask == false else { return empty }
+#if canImport(UIKit)
+            guard UIApplication.shared.applicationState != .background else { return empty }
+#endif
+        }
         let defaults = UserDefaults.standard
         guard force || Self.deviceUsedInMemoryProjection,
               force || defaults.integer(forKey: Self.cacheRecoveryVersionKey)
@@ -1253,30 +1273,40 @@ class ModelContainerManager: ObservableObject {
     }
 
     /// Runs one bounded local-only PodcastCache prewarm batch. The work
-    /// coordinator calls this only while the app is active or inside a granted
-    /// BGProcessing window, never during ordinary background audio execution.
+    /// coordinator calls this while the app is active. A BGProcessing grant is
+    /// deliberately not enough: a feed projection can fault a large episode /
+    /// chapter graph and Core Data will otherwise keep the process above the
+    /// watchdog CPU threshold while the app is not visible.
     func performFeedCachePrewarmIfPossible(feedLimit: Int) async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else {
+              StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
+              isRunningBackgroundProcessingTask == false,
+              heavyStoreWorkMayRunInCurrentAppState else {
             return
         }
         await prepareSplitStores()
         guard let legacyContainer = legacyMigrationSourceContainer,
               let cacheContainer = preparedCacheContainer else { return }
+        // Keep the pass short even for a library whose first uncached feed has
+        // thousands of episodes. The per-feed schema checkpoint makes yielding
+        // safe; the next foreground entry will resume at the first unfinished
+        // feed rather than starting another unbounded graph walk.
+        let deadline = Date().addingTimeInterval(2)
         let result = await Task.detached(priority: .utility) {
             StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
                 legacyContainer: legacyContainer,
                 cacheContainer: cacheContainer,
-                limit: feedLimit
+                limit: min(feedLimit, 50),
+                deadline: deadline
             )
         }.value
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
         defaults.set(Date(), forKey: "storeSplit.cacheBootstrapLastAt")
         defaults.set(result.processed, forKey: "storeSplit.cacheBootstrapLastCopied")
-        if result.processed > 0 || result.failed > 0 {
+        if result.processed > 0 || result.failed > 0 || result.completed == false {
             CrashBreadcrumbs.shared.record(
                 "store_split_feed_cache_bootstrap",
-                details: "feeds=\(result.processed),failed=\(result.failed)"
+                details: "feeds=\(result.processed),failed=\(result.failed),completed=\(result.completed)"
             )
         }
     }
@@ -1310,6 +1340,14 @@ class ModelContainerManager: ObservableObject {
     /// exercised on a debug device.
     func runStoreSplitMigrationBackgroundPass() async {
         await withBackgroundProcessingWindow {
+            guard Self.hasPendingMigrationWork,
+                  Player.hasActivePlaybackInProcess == false else {
+                CrashBreadcrumbs.shared.record(
+                    "store_split_background_pass_skipped",
+                    details: "pending=\(Self.hasPendingMigrationWork),playing=\(Player.hasActivePlaybackInProcess)"
+                )
+                return
+            }
             await StoreSplitRemoteConfigStore.refresh()
             guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
                 recordMigrationBlocker("Paused by the migration safety switch")
@@ -1321,6 +1359,8 @@ class ModelContainerManager: ObservableObject {
 #endif
                 return
             }
+            await prepareContainer()
+            guard preparedContainer != nil, Task.isCancelled == false else { return }
             await prepareSplitStores()
             guard StoreDevelopmentConfiguration.splitStoresEnabled else {
                 recordMigrationBlocker("Split-store work is disabled by the active configuration")
@@ -2534,6 +2574,19 @@ class ModelContainerManager: ObservableObject {
     private func scheduleMigrationRetry(after delay: TimeInterval) {
         guard Self.hasPendingMigrationWork
             || Self.hasPendingLegacyAuthoritativeReconciliationWork else { return }
+        // A BGProcessingTask is already the system's metered retry mechanism.
+        // Scheduling an in-process timer from that window used to wake another
+        // migration pass every few minutes while the app remained non-visible;
+        // over an overnight charge this kept Core Data/CloudKit exporting for
+        // hours and could trip the 0x8BADF00D CPU watchdog. The task delegate
+        // re-arms the next BGProcessing request after this pass completes.
+        guard isRunningBackgroundProcessingTask == false else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_migration_retry_deferred_to_system",
+                details: "delay_seconds=\(Int(delay))"
+            )
+            return
+        }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))
             guard Task.isCancelled == false else { return }

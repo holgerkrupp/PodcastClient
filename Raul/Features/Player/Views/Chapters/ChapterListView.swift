@@ -190,7 +190,7 @@ struct ChapterListView: View {
                 if rows.isEmpty {
                     Text(emptyStateText)
                         .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                         .padding()
                 } else {
                     ForEach(rows) { row in
@@ -221,7 +221,7 @@ struct ChapterListView: View {
                     Spacer()
                     Text(chapterInfo)
                         .font(.caption)
-                        .foregroundStyle(.primary)
+                        .esaForeground(.primary)
                         .padding()
                 }
             }
@@ -239,7 +239,7 @@ struct ChapterListView: View {
             HStack {
                 Text("Chapter source")
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
 
                 Spacer()
 

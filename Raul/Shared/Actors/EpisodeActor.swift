@@ -1349,7 +1349,7 @@ actor EpisodeActor {
         let episodeURL = snapshot.url
         let episodeID = snapshot.id
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        guard await settingsActor.getTranscriptionsEnabled() else { return }
+        if origin == .automatic, await settingsActor.getTranscriptionsEnabled() == false { return }
 
         if snapshot.hasLoadedTranscript {
             await finalizeTranscriptChapters(for: episodeURL)
@@ -1358,7 +1358,7 @@ actor EpisodeActor {
         
         if snapshot.hasExternalTranscript {
             do {
-                try await downloadTranscript(episodeID)
+                try await downloadTranscript(episodeID, manuallyRequested: origin == .manual)
                 return
             } catch let error as TranscriptError {
                 switch error {
@@ -2170,8 +2170,13 @@ actor EpisodeActor {
     func mergeDetectedAdvertisementChapters(for episodeURL: URL) async -> Bool {
         guard await shouldAutomaticallyGenerateChapters(),
               let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        let expectedVariantID = AudioVariantIdentity.make(
+            episodeURL: episodeURL,
+            mediaURL: episode.localFile ?? episode.url
+        )
         let adSegments = await AdDetectionResultsStore.shared.segments(
-            for: episodeURL.absoluteString
+            for: episodeURL.absoluteString,
+            audioVariantID: expectedVariantID
         )
         guard adSegments.isEmpty == false else { return false }
         let editorialCandidates = (episode.chapters ?? [])
@@ -2191,25 +2196,34 @@ actor EpisodeActor {
     private func generateEpisodeChapters(
         for episode: Episode,
         fileURL: URL,
-        force: Bool
+        force: Bool,
+        progress: (@Sendable (String) -> Void)? = nil
     ) async -> Bool {
         let transcriptLines = episode.transcriptLines ?? []
-        let adSegments = await AdDetectionResultsStore.shared.segments(
-            for: fileURL.absoluteString
-        )
         let audioVariantID = AudioVariantIdentity.make(
             episodeURL: fileURL,
             mediaURL: episode.localFile ?? episode.url
+        )
+        let adSegments = await AdDetectionResultsStore.shared.segments(
+            for: fileURL.absoluteString,
+            audioVariantID: audioVariantID
         )
 
         guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
 
         var editorialCandidates: [GeneratedEditorialChapterCandidate] = []
+        var advertisementCandidates: [GeneratedAdvertisementCandidate] = []
         if transcriptLines.isEmpty == false {
-            let extractedData = await generateAIChapters(from: transcriptLines)
+            progress?(String(localized: "Preparing transcript chapters…"))
+            let extractedData = await generateAIChapters(from: transcriptLines, progress: progress)
+            guard Task.isCancelled == false else { return false }
             editorialCandidates = extractedData.compactMap { timecode, title in
                 guard let start = timecode.durationAsSeconds else { return nil }
                 let isAdvertisement = title.lowercased().hasPrefix("advertisement:")
+                if isAdvertisement {
+                    advertisementCandidates.append(GeneratedAdvertisementCandidate(start: start))
+                    return nil
+                }
                 let normalizedTitle = title
                     .replacingOccurrences(
                         of: #"(?i)^\s*advertisement\s*:\s*"#,
@@ -2217,7 +2231,7 @@ actor EpisodeActor {
                         options: .regularExpression
                     )
                     .trimmingCharacters(in: .whitespacesAndNewlines)
-                guard isAdvertisement == false, normalizedTitle.isEmpty == false else { return nil }
+                guard normalizedTitle.isEmpty == false else { return nil }
                 return GeneratedEditorialChapterCandidate(title: normalizedTitle, start: start)
             }
         }
@@ -2226,6 +2240,7 @@ actor EpisodeActor {
             for: episode,
             fileURL: fileURL,
             editorialCandidates: editorialCandidates,
+            advertisementCandidates: advertisementCandidates,
             adSegments: adSegments,
             audioVariantID: audioVariantID
         )
@@ -2235,6 +2250,7 @@ actor EpisodeActor {
         for episode: Episode,
         fileURL: URL,
         editorialCandidates: [GeneratedEditorialChapterCandidate],
+        advertisementCandidates: [GeneratedAdvertisementCandidate] = [],
         adSegments: [AdSegment],
         audioVariantID: String? = nil
     ) async -> Bool {
@@ -2244,12 +2260,13 @@ actor EpisodeActor {
         )
         let proposals = GeneratedChapterEngine.makeProposals(
             editorialCandidates: editorialCandidates,
+            advertisementCandidates: advertisementCandidates,
             adSegments: adSegments,
             existingTypes: (episode.chapters ?? []).map(\.type),
             episodeDuration: episode.duration,
             audioVariantID: resolvedAudioVariantID
         )
-        guard proposals.isEmpty == false else { return false }
+        guard proposals.isEmpty == false, Task.isCancelled == false else { return false }
 
         let newChapters = proposals.map { proposal in
             let chapter = Marker(
@@ -2367,6 +2384,13 @@ actor EpisodeActor {
     }
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
+        await generateAIChapters(from: transcript, progress: nil)
+    }
+
+    func generateAIChapters(
+        from transcript: [TranscriptLineAndTime],
+        progress: (@Sendable (String) -> Void)?
+    ) async -> [String: String] {
         let chapterGenerator = AIChapterGenerator()
         let orderedTranscript = transcript.enumerated().sorted { left, right in
             if left.element.startTime != right.element.startTime {
@@ -2383,7 +2407,7 @@ actor EpisodeActor {
                 endTime: $0.endTime
             )
         }
-        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(snapshots)
+        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(snapshots, progress: progress)
         return aiChapters
     }
     
@@ -2403,6 +2427,25 @@ actor EpisodeActor {
     @discardableResult
     func regenerateTranscriptChapters(for episodeURL: URL) async -> Bool {
         return await finalizeTranscriptChapters(for: episodeURL, force: true)
+    }
+
+    func hasTranscript(for episodeURL: URL) async -> Bool {
+        await fetchEpisode(byURL: episodeURL)?.transcriptLines?.isEmpty == false
+    }
+
+    @discardableResult
+    func generateChaptersOnDemand(
+        for episodeURL: URL,
+        progress: (@Sendable (String) -> Void)? = nil
+    ) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
+              episode.transcriptLines?.isEmpty == false else { return false }
+        return await generateEpisodeChapters(
+            for: episode,
+            fileURL: episodeURL,
+            force: true,
+            progress: progress
+        )
     }
     
     @discardableResult
@@ -2508,10 +2551,10 @@ actor EpisodeActor {
         }
     }
     
-    func downloadTranscript(_ episodeID: PersistentIdentifier) async throws {
+    func downloadTranscript(_ episodeID: PersistentIdentifier, manuallyRequested: Bool = false) async throws {
         print("downloading transcript")
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        guard await settingsActor.getTranscriptionsEnabled() else {
+        if manuallyRequested == false, await settingsActor.getTranscriptionsEnabled() == false {
             throw TranscriptError.noTranscriptFileFound
         }
 

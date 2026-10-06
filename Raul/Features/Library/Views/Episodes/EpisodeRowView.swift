@@ -14,6 +14,7 @@ struct EpisodeRowView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.esaVisualStyle) private var visualStyle
 
     @Bindable var episode: Episode
     let showsRemoveFromInboxAction: Bool
@@ -59,7 +60,7 @@ struct EpisodeRowView: View {
         let hasBookmarks = referenceAvailability.hasBookmarks
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
-        VStack(alignment: .leading, spacing: 12) {
+        let rowContent = VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
                         CoverImageView(episode: episode, maxPixelSize: 512)
@@ -69,7 +70,7 @@ struct EpisodeRowView: View {
                         if let episodeTypeBadgeText {
                             Text(episodeTypeBadgeText)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.primary)
+                                .esaForeground(.primary)
                                 .lineLimit(1)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
@@ -94,24 +95,24 @@ struct EpisodeRowView: View {
                         HStack(alignment: .top) {
                             Text(podcastTitle)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .lineLimit(2)
                             Spacer(minLength: 8)
                             Text(publishText)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
 
                         Text(episode.title)
                             .font(.headline)
                             .lineLimit(4)
-                            .foregroundStyle(.primary)
+                            .esaForeground(.primary)
 
                         Spacer(minLength: 0)
 
                         Text(timeDisplay)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
 
                         HStack(spacing: 10) {
                             if completionDate != nil {
@@ -138,7 +139,7 @@ struct EpisodeRowView: View {
 
                             DownloadControllView(episode: episode, showDelete: false)
                                 .symbolRenderingMode(.hierarchical)
-                                .foregroundColor(.primary)
+                                .esaForeground(.control)
                                 .labelStyle(.iconOnly)
                         }
                         .buttonStyle(.plain)
@@ -157,11 +158,12 @@ struct EpisodeRowView: View {
         .padding(8)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
-            if colorSchemeContrast == .standard {
+            if visualStyle == .artwork && colorSchemeContrast == .standard {
                 Rectangle().fill(.thinMaterial)
             }
         }
         .background {
+            if visualStyle == .artwork {
             BlurredCoverImageView(
                 imageURL: episode.imageURL ?? episode.podcast?.imageURL,
                 radius: 8,
@@ -170,6 +172,7 @@ struct EpisodeRowView: View {
             .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
             .clipped()
             .accessibilityHidden(true)
+            }
         }
         .overlay(alignment: .bottomLeading) {
             EpisodeRowPlaybackProgressView(
@@ -188,11 +191,11 @@ struct EpisodeRowView: View {
                                         .bounce.up.byLayer,
                                         options: reduceMotion ? .nonRepeating : .repeat(.continuous)
                                     )
-                                    .foregroundStyle(Color.primary)
+                                    .esaForeground(.primary)
                                     .font(.title.bold())
                             } else {
                                 Label("Now Playing", systemImage: "waveform.low")
-                                    .foregroundStyle(Color.primary)
+                                    .esaForeground(.primary)
                                     .font(.title.bold())
                             }
                         }
@@ -202,7 +205,7 @@ struct EpisodeRowView: View {
                     
              .background{
                  RoundedRectangle(cornerRadius:  20.0)
-                     .fill(.background.opacity(differentiateWithoutColor ? 0.5 : 0.3))
+                     .fill(Color.black.opacity(differentiateWithoutColor ? 0.5 : 0.3))
              }
           
              
@@ -225,6 +228,15 @@ struct EpisodeRowView: View {
             .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
                 handleEpisodeDownloadFinished(notification)
             }
+
+        if visualStyle == .artwork {
+            rowContent
+        } else {
+            rowContent.ESA_RowView(
+                image: episode.imageURL ?? episode.podcast?.imageURL,
+                minHeight: rowHeight
+            )
+        }
 
     }
 

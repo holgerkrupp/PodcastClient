@@ -223,6 +223,16 @@ struct TranscriptionSettingsView: View {
                                 }
                                 .font(.caption.weight(.semibold))
                             }
+                            Button(role: .destructive) {
+                                Task {
+                                    await TranscriptionManager.shared.cancel(episodeURL: entry.episodeURL)
+                                    await refreshQueue()
+                                }
+                            } label: {
+                                Label("Cancel", systemImage: "xmark.circle")
+                                    .font(.caption.weight(.semibold))
+                            }
+                            .accessibilityLabel("Cancel transcription")
                         }
                         .padding(.vertical, 3)
                     }

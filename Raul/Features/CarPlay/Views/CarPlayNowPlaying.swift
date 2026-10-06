@@ -8,6 +8,19 @@
 import Foundation
 import CarPlay
 import SwiftData
+
+private final class CarPlayNotificationObserver: @unchecked Sendable {
+    private let token: NSObjectProtocol
+
+    init(token: NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
+    }
+}
+
 @MainActor
 class CarPlayNowPlaying {
     var interfaceController: CPInterfaceController
@@ -16,11 +29,23 @@ class CarPlayNowPlaying {
     let player = Player.shared
     
     var template: CPNowPlayingTemplate = CPNowPlayingTemplate.shared
+    private var chapterDataObserver: CarPlayNotificationObserver?
     
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
         setupTempate(interfaceController: interfaceController)
-        
+
+        let observer = NotificationCenter.default.addObserver(
+            forName: .playerChapterDataDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.setupTempate(interfaceController: self.interfaceController)
+            }
+        }
+        chapterDataObserver = CarPlayNotificationObserver(token: observer)
     }
     
     func setupTempate(interfaceController: CPInterfaceController) {

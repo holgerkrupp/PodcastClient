@@ -199,7 +199,7 @@ struct PodcastBrowseView: View {
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }
@@ -265,7 +265,7 @@ struct PodcastBrowseView: View {
                     if viewModel.hasMoreEpisodes || viewModel.isLoadingMore {
                         Text("More episodes load as you scroll.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
@@ -341,7 +341,7 @@ private struct PodcastBrowseHeaderView: View {
                     if let subtitle = feed.subtitle, subtitle.isEmpty == false {
                         Text(subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(2)
                     }
                 }
@@ -439,7 +439,7 @@ private struct PodcastBrowseHeaderView: View {
 
             Text("This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
         }
     }
 }
@@ -496,7 +496,7 @@ private struct PodcastBrowseEpisodeRowView: View {
                         if let episodeTypeBadgeText {
                             Text(episodeTypeBadgeText)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.primary)
+                                .esaForeground(.primary)
                                 .lineLimit(1)
                                 .padding(.horizontal, 7)
                                 .padding(.vertical, 4)
@@ -512,24 +512,24 @@ private struct PodcastBrowseEpisodeRowView: View {
                         HStack(alignment: .top) {
                             Text(podcastFeed.title ?? "Untitled Podcast")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .lineLimit(2)
                             Spacer(minLength: 8)
                             Text(publishText)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
 
                         Text(episode.title)
                             .font(.headline)
                             .lineLimit(4)
-                            .foregroundStyle(.primary)
+                            .esaForeground(.primary)
 
                         Spacer(minLength: 0)
 
                         Text(displayTime)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
 
                         HStack(spacing: 10) {
                             Image(systemName: "cloud")

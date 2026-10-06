@@ -2,6 +2,29 @@ import XCTest
 @testable import UpNext
 
 final class AdDetectionTests: XCTestCase {
+    func testOnDemandChapterEvidenceRejectsAChangedAudioVariant() async {
+        let store = AdDetectionResultsStore()
+        let segment = AdSegment(
+            start: 20,
+            end: 50,
+            confidence: 0.95,
+            evidence: [],
+            state: .confirmed,
+            episodeIdentity: "episode"
+        )
+        await store.store(AdDetectionSnapshot(
+            episodeIdentity: "episode",
+            segments: [segment],
+            updatedAt: .now,
+            audioVariantID: "variant-before-dai-refresh"
+        ))
+
+        let matchingVariantSegments = await store.segments(for: "episode", audioVariantID: "variant-before-dai-refresh")
+        let staleVariantSegments = await store.segments(for: "episode", audioVariantID: "variant-after-dai-refresh")
+        XCTAssertEqual(matchingVariantSegments, [segment])
+        XCTAssertTrue(staleVariantSegments.isEmpty)
+    }
+
     func testFusionRequiresIndependentEvidenceToConfirmAnAd() {
         let thresholds = AdDetectionThresholds.default
         let observations = [

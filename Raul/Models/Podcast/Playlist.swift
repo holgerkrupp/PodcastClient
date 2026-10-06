@@ -259,6 +259,47 @@ class Playlist {
         visibleSorted(playlists).filter { $0.kind == .manual }
     }
 
+    /// Finds the built-in queue without repairing or creating it.
+    ///
+    /// Background entry points such as WatchConnectivity must use this lookup
+    /// rather than `ensureDefaultQueue(in:)`. The latter is intentionally a
+    /// foreground maintenance routine and can merge duplicate queues, which
+    /// requires walking every queue entry and its episode relationship.
+    static func existingDefaultQueue(in context: ModelContext) -> Playlist? {
+        let defaultQueueSyncID: String? = Self.defaultQueueSyncID
+        var syncIDDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.syncID == defaultQueueSyncID
+            }
+        )
+        syncIDDescriptor.fetchLimit = 1
+        if let playlist = try? context.fetch(syncIDDescriptor).first {
+            return playlist
+        }
+
+        let defaultQueueTitle = Self.defaultQueueTitle
+        var reservedTitleDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.title == defaultQueueTitle
+            }
+        )
+        reservedTitleDescriptor.fetchLimit = 1
+        if let playlist = try? context.fetch(reservedTitleDescriptor).first {
+            return playlist
+        }
+
+        // Older installations stored the display title directly. Keep that
+        // migration compatibility without resorting to an unbounded fetch.
+        let defaultQueueDisplayName = Self.defaultQueueDisplayName
+        var legacyTitleDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.title == defaultQueueDisplayName
+            }
+        )
+        legacyTitleDescriptor.fetchLimit = 1
+        return try? context.fetch(legacyTitleDescriptor).first
+    }
+
     static func ensureDefaultQueue(in context: ModelContext) -> Playlist {
         let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
         let isLegacyDefaultTitle: (String) -> Bool = { title in
@@ -324,9 +365,21 @@ class Playlist {
             return playlist.title == Playlist.defaultQueueTitle || isLegacyDefaultTitle(playlist.title)
         }
 
-        var mergedEpisodeURLs = Set(defaultPlaylist.ordered.compactMap { $0.episode?.url })
-        var mergedEpisodeIDs = Set(defaultPlaylist.ordered.compactMap { $0.episode?.persistentModelID })
-        var nextOrder = (defaultPlaylist.ordered.map(\.order).max() ?? -1) + 1
+        // Most launches have exactly one valid queue. Do not fault every
+        // queued Episode merely to prepare a duplicate-repair operation that
+        // will not run. Besides avoiding needless launch work, this keeps the
+        // explicit maintenance path out of Watch background refreshes.
+        guard duplicateCandidates.isEmpty == false else {
+            if changed {
+                context.saveIfNeeded()
+            }
+            return defaultPlaylist
+        }
+
+        var orderedEntries = defaultPlaylist.ordered
+        var mergedEpisodeURLs = Set(orderedEntries.compactMap { $0.episode?.url })
+        var mergedEpisodeIDs = Set(orderedEntries.compactMap { $0.episode?.persistentModelID })
+        var nextOrder = (orderedEntries.map(\.order).max() ?? -1) + 1
 
         for duplicate in duplicateCandidates {
             for entry in duplicate.ordered {
@@ -352,6 +405,7 @@ class Playlist {
                 entry.playlist = defaultPlaylist
                 entry.order = nextOrder
                 nextOrder += 1
+                orderedEntries.append(entry)
                 mergedEpisodeIDs.insert(episode.persistentModelID)
                 if let episodeURL = episode.url {
                     mergedEpisodeURLs.insert(episodeURL)
@@ -363,7 +417,7 @@ class Playlist {
             changed = true
         }
 
-        for (index, entry) in defaultPlaylist.ordered.enumerated() {
+        for (index, entry) in orderedEntries.sorted(by: { $0.order < $1.order }).enumerated() {
             if entry.order != index {
                 entry.order = index
                 changed = true

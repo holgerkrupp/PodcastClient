@@ -109,7 +109,10 @@ actor AIChapterGenerator{
         return await createChaptersFromTranscriptLines(snapshots)
     }
 
-    func createChaptersFromTranscriptLines(_ transcriptLines: [TranscriptLineSnapshot]) async -> [String:String] {
+    func createChaptersFromTranscriptLines(
+        _ transcriptLines: [TranscriptLineSnapshot],
+        progress: (@Sendable (String) -> Void)? = nil
+    ) async -> [String:String] {
         let model = SystemLanguageModel.default
         guard model.isAvailable else {
             return [:]
@@ -162,7 +165,9 @@ actor AIChapterGenerator{
         var carryOverContext: ChapterCarryOverContext?
 
         for (index, chunk) in chunks.enumerated() {
+            guard Task.isCancelled == false else { return [:] }
             let chunkLabel = "\(index + 1)/\(chunks.count)"
+            progress?(String(localized: "Generating chapters, section \(chunkLabel)…"))
             let chunkResult = await generateChapters(
                 from: chunk,
                 instructions: instructions,
@@ -475,7 +480,7 @@ actor AIChapterGenerator{
         chunkLabel: String,
         previousChapterContext: ChapterCarryOverContext?
     ) async -> TranscriptChunkGenerationResult {
-        guard chunk.lines.isEmpty == false else {
+        guard chunk.lines.isEmpty == false, Task.isCancelled == false else {
             return TranscriptChunkGenerationResult(chapters: [:], lastChapter: previousChapterContext)
         }
 
@@ -489,6 +494,9 @@ actor AIChapterGenerator{
                 includeSchemaInPrompt: false,
                 options: options
             )
+            guard Task.isCancelled == false else {
+                return TranscriptChunkGenerationResult(chapters: [:], lastChapter: previousChapterContext)
+            }
 
             let candidates = response.content.compactMap { $0 }
             let validChapters: [(String, String)] = candidates.compactMap { (chapter: TranscriptAIChapter) -> (String, String)? in

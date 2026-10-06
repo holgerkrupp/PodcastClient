@@ -15,6 +15,17 @@ import Observation
 import Synchronization
 import SwiftUI
 
+private enum ListenTogetherError: LocalizedError {
+    case libraryUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .libraryUnavailable:
+            "The podcast library is not available yet."
+        }
+    }
+}
+
 // MARK: - Activity
 
 struct ListenTogetherActivity: GroupActivity {
@@ -171,10 +182,19 @@ final class ListenTogetherController {
         if await Player.shared.fetchEpisode(with: activity.episodeURL) != nil {
             return activity.episodeURL
         }
+
+        // SharePlay can deliver an activity before the normal SwiftUI launch
+        // path has prepared SwiftData. Never use the manager's trapping
+        // convenience getter from this external entry point.
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint() else {
+            throw ListenTogetherError.libraryUnavailable
+        }
+
         return try await PodcastEpisodeShareImporter().importEpisode(
             episodeURL: activity.episodeURL,
             feedURL: activity.feedURL,
-            modelContext: ModelContainerManager.shared.container.mainContext
+            modelContext: container.mainContext
         )
     }
 

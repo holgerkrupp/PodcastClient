@@ -151,11 +151,10 @@ extension PodcastAudioItem {
             }
             return url
         case .show(let show):
-            guard let episode = try await LibraryEntityLookup.latestEpisode(ofFeedString: show.id) else {
+            guard let episode = try await LibraryEntityLookup.latestEpisode(ofFeedString: show.id),
+                  let url = URL(string: episode.id)
+            else {
                 throw PlayPodcastEpisodeError.episodeNotFound
-            }
-            guard let url = episode.url else {
-                throw PlayPodcastEpisodeError.episodeHasNoAudio
             }
             return url
         }

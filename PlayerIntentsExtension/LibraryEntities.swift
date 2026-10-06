@@ -37,6 +37,13 @@ struct EpisodeEntity: AppEntity {
         podcastTitle = episode.podcast?.title
         imageURL = episode.imageURL ?? episode.podcast?.imageURL
     }
+
+    init(snapshot: IntentEpisodeSnapshot) {
+        id = snapshot.id
+        title = snapshot.title
+        podcastTitle = snapshot.podcastTitle
+        imageURL = snapshot.imageURL
+    }
 }
 
 @available(iOS 27.0, macOS 27.0, *)
@@ -45,17 +52,17 @@ extension EpisodeEntity: SyncableEntity {}
 struct EpisodeEntityQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [EpisodeEntity.ID]) async throws -> [EpisodeEntity] {
-        try await LibraryEntityLookup.episodes(withURLStrings: identifiers).compactMap(EpisodeEntity.init(episode:))
+        try await LibraryEntityLookup.episodes(withURLStrings: identifiers).map(EpisodeEntity.init(snapshot:))
     }
 
     @MainActor
     func entities(matching string: String) async throws -> [EpisodeEntity] {
-        try await LibraryEntityLookup.episodes(matching: string).compactMap(EpisodeEntity.init(episode:))
+        try await LibraryEntityLookup.episodes(matching: string).map(EpisodeEntity.init(snapshot:))
     }
 
     @MainActor
     func suggestedEntities() async throws -> [EpisodeEntity] {
-        try await LibraryEntityLookup.upNextEpisodes().compactMap(EpisodeEntity.init(episode:))
+        try await LibraryEntityLookup.upNextEpisodes().map(EpisodeEntity.init(snapshot:))
     }
 }
 
@@ -86,6 +93,13 @@ struct PodcastEntity: AppEntity {
         author = podcast.author
         imageURL = podcast.imageURL
     }
+
+    init(snapshot: IntentPodcastSnapshot) {
+        id = snapshot.id
+        title = snapshot.title
+        author = snapshot.author
+        imageURL = snapshot.imageURL
+    }
 }
 
 @available(iOS 27.0, macOS 27.0, *)
@@ -94,40 +108,94 @@ extension PodcastEntity: SyncableEntity {}
 struct PodcastEntityQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [PodcastEntity.ID]) async throws -> [PodcastEntity] {
-        try await LibraryEntityLookup.podcasts(withFeedStrings: identifiers).compactMap(PodcastEntity.init(podcast:))
+        try await LibraryEntityLookup.podcasts(withFeedStrings: identifiers).map(PodcastEntity.init(snapshot:))
     }
 
     @MainActor
     func entities(matching string: String) async throws -> [PodcastEntity] {
-        try await LibraryEntityLookup.subscribedPodcasts(matching: string).compactMap(PodcastEntity.init(podcast:))
+        try await LibraryEntityLookup.subscribedPodcasts(matching: string).map(PodcastEntity.init(snapshot:))
     }
 
     @MainActor
     func suggestedEntities() async throws -> [PodcastEntity] {
-        try await LibraryEntityLookup.subscribedPodcasts().compactMap(PodcastEntity.init(podcast:))
+        try await LibraryEntityLookup.subscribedPodcasts().map(PodcastEntity.init(snapshot:))
     }
 }
 
 // MARK: - Lookup
 
-/// Library fetches shared by the entity queries here and the iOS 27 schema
-/// entity queries in PodcastSchemaEntities.swift.
-@MainActor
-enum LibraryEntityLookup {
-    private static let resultLimit = 25
+/// Value data extracted inside `AppIntentLibraryQueryActor`. App Intents must
+/// never carry SwiftData models beyond the context that fetched them.
+struct IntentEpisodeSnapshot: Sendable, Hashable {
+    let id: String
+    let title: String
+    let podcastTitle: String?
+    let podcastFeedID: String?
+    let podcastDescription: String?
+    let imageURL: URL?
+    let publishDate: Date?
+    let duration: Double?
+    let isDownloadable: Bool
+}
 
-    static func episodes(withURLStrings identifiers: [String]) async throws -> [Episode] {
-        let context = try await preparedIntentModelContainer().mainContext
-        return identifiers.compactMap { identifier in
-            guard let url = URL(string: identifier) else { return nil }
-            var descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.url == url })
-            descriptor.fetchLimit = 1
-            return try? context.fetch(descriptor).first
+struct IntentPodcastSnapshot: Sendable, Hashable {
+    let id: String
+    let title: String
+    let author: String?
+    let description: String?
+    let imageURL: URL?
+}
+
+/// The persistence boundary for App Entity discovery. Every method extracts
+/// the property values it needs before returning, which avoids faulting a live
+/// SwiftData relationship from App Intents after a concurrent store update.
+@ModelActor
+actor AppIntentLibraryQueryActor {
+    func upNextEpisodes(limit: Int) throws -> [IntentEpisodeSnapshot] {
+        guard limit > 0,
+              let queue = Playlist.existingDefaultQueue(in: modelContext)
+        else {
+            return []
+        }
+
+        return try playlistEpisodes(playlistID: queue.id, limit: limit)
+    }
+
+    func playlistEpisodes(playlistID: UUID, limit: Int) throws -> [IntentEpisodeSnapshot] {
+        guard limit > 0 else { return [] }
+        var descriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { entry in
+                entry.playlist?.id == playlistID
+            },
+            sortBy: [
+                SortDescriptor(\PlaylistEntry.order, order: .forward),
+                SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
+            ]
+        )
+        descriptor.fetchLimit = limit
+
+        return try modelContext.fetch(descriptor).compactMap { entry in
+            guard let episode = entry.episode else { return nil }
+            return makeEpisodeSnapshot(from: episode)
         }
     }
 
-    static func episodes(matching string: String) async throws -> [Episode] {
-        let context = try await preparedIntentModelContainer().mainContext
+    func playlistEpisodes(playlistEntityID: String, limit: Int) throws -> [IntentEpisodeSnapshot] {
+        guard let playlistID = try playlistID(forEntityID: playlistEntityID) else { return [] }
+        return try playlistEpisodes(playlistID: playlistID, limit: limit)
+    }
+
+    func episodes(withURLStrings identifiers: [String]) throws -> [IntentEpisodeSnapshot] {
+        identifiers.compactMap { identifier in
+            guard let url = URL(string: identifier) else { return nil }
+            var descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.url == url })
+            descriptor.fetchLimit = 1
+            guard let episode = try? modelContext.fetch(descriptor).first else { return nil }
+            return makeEpisodeSnapshot(from: episode)
+        }
+    }
+
+    func episodes(matching string: String, limit: Int) throws -> [IntentEpisodeSnapshot] {
         var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate { episode in
                 episode.title.localizedStandardContains(string)
@@ -135,48 +203,138 @@ enum LibraryEntityLookup {
             },
             sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
         )
-        descriptor.fetchLimit = resultLimit
-        return try context.fetch(descriptor)
+        descriptor.fetchLimit = limit
+        return try modelContext.fetch(descriptor).compactMap(makeEpisodeSnapshot)
     }
 
-    /// The Up Next queue, which is what people act on most.
-    static func upNextEpisodes() async throws -> [Episode] {
-        let player = try await preparedIntentPlayer()
-        guard let playlistActor = player.playlistActor else { return [] }
-        let urls = (try? await playlistActor.orderedEpisodeURLs()) ?? []
-        return try await episodes(withURLStrings: urls.prefix(resultLimit).map(\.absoluteString))
-    }
-
-    static func latestEpisode(ofFeedString feedString: String) async throws -> Episode? {
+    func latestEpisode(ofFeedString feedString: String) throws -> IntentEpisodeSnapshot? {
         guard let feed = URL(string: feedString) else { return nil }
-        let context = try await preparedIntentModelContainer().mainContext
         var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate { $0.podcast?.feed == feed },
             sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
         )
         descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
+        return try modelContext.fetch(descriptor).first.flatMap(makeEpisodeSnapshot)
     }
 
-    static func podcasts(withFeedStrings identifiers: [String]) async throws -> [Podcast] {
-        let context = try await preparedIntentModelContainer().mainContext
-        return identifiers.compactMap { identifier in
+    func podcasts(withFeedStrings identifiers: [String]) throws -> [IntentPodcastSnapshot] {
+        identifiers.compactMap { identifier in
             guard let feed = URL(string: identifier) else { return nil }
             var descriptor = FetchDescriptor<Podcast>(predicate: #Predicate { $0.feed == feed })
             descriptor.fetchLimit = 1
-            return try? context.fetch(descriptor).first
+            guard let podcast = try? modelContext.fetch(descriptor).first else { return nil }
+            return makePodcastSnapshot(from: podcast)
         }
     }
 
-    static func subscribedPodcasts(matching string: String? = nil) async throws -> [Podcast] {
-        let context = try await preparedIntentModelContainer().mainContext
-        let descriptor = FetchDescriptor<Podcast>(
+    func subscribedPodcasts(matching string: String?, limit: Int) throws -> [IntentPodcastSnapshot] {
+        var descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate { $0.metaData?.isSubscribed != false },
             sortBy: [SortDescriptor(\.title)]
         )
-        let podcasts = try context.fetch(descriptor)
-        guard let string else { return podcasts }
-        return podcasts.filter { $0.title.localizedStandardContains(string) }
+        descriptor.fetchLimit = limit
+        let podcasts = try modelContext.fetch(descriptor)
+        return podcasts.compactMap { podcast in
+            guard string.map({ podcast.title.localizedStandardContains($0) }) ?? true else { return nil }
+            return makePodcastSnapshot(from: podcast)
+        }
+    }
+
+    private func makeEpisodeSnapshot(from episode: Episode) -> IntentEpisodeSnapshot? {
+        guard let url = episode.url else { return nil }
+        let podcast = episode.podcast
+        return IntentEpisodeSnapshot(
+            id: url.absoluteString,
+            title: episode.title,
+            podcastTitle: podcast?.title,
+            podcastFeedID: podcast?.feed?.absoluteString,
+            podcastDescription: podcast?.desc,
+            imageURL: episode.imageURL ?? podcast?.imageURL,
+            publishDate: episode.publishDate,
+            duration: episode.duration,
+            isDownloadable: episode.source != .sideLoaded
+        )
+    }
+
+    private func makePodcastSnapshot(from podcast: Podcast) -> IntentPodcastSnapshot? {
+        guard let feed = podcast.feed else { return nil }
+        return IntentPodcastSnapshot(
+            id: feed.absoluteString,
+            title: podcast.title,
+            author: podcast.author,
+            description: podcast.desc,
+            imageURL: podcast.imageURL
+        )
+    }
+
+    private func playlistID(forEntityID entityID: String) throws -> UUID? {
+        if entityID == Playlist.defaultQueueSyncID {
+            return Playlist.existingDefaultQueue(in: modelContext)?.id
+        }
+
+        let syncID: String? = entityID
+        var syncIDDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.syncID == syncID
+            }
+        )
+        syncIDDescriptor.fetchLimit = 1
+        if let playlist = try modelContext.fetch(syncIDDescriptor).first {
+            return playlist.id
+        }
+
+        guard let localID = UUID(uuidString: entityID) else { return nil }
+        var localIDDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.id == localID
+            }
+        )
+        localIDDescriptor.fetchLimit = 1
+        return try modelContext.fetch(localIDDescriptor).first?.id
+    }
+}
+
+/// Library fetches shared by the entity queries here and the iOS 27 schema
+/// entity queries in PodcastSchemaEntities.swift.
+@MainActor
+enum LibraryEntityLookup {
+    private static let resultLimit = 25
+    private static let maximumQueueResultLimit = 50
+
+    static func episodes(withURLStrings identifiers: [String]) async throws -> [IntentEpisodeSnapshot] {
+        try await queryActor().episodes(withURLStrings: identifiers)
+    }
+
+    static func episodes(matching string: String) async throws -> [IntentEpisodeSnapshot] {
+        try await queryActor().episodes(matching: string, limit: resultLimit)
+    }
+
+    /// The Up Next queue, which is what people act on most.
+    static func upNextEpisodes(limit: Int = resultLimit) async throws -> [IntentEpisodeSnapshot] {
+        try await queryActor().upNextEpisodes(limit: min(max(limit, 0), maximumQueueResultLimit))
+    }
+
+    static func playlistEpisodes(playlistEntityID: String, limit: Int = maximumQueueResultLimit) async throws -> [IntentEpisodeSnapshot] {
+        try await queryActor().playlistEpisodes(
+            playlistEntityID: playlistEntityID,
+            limit: min(max(limit, 0), maximumQueueResultLimit)
+        )
+    }
+
+    static func latestEpisode(ofFeedString feedString: String) async throws -> IntentEpisodeSnapshot? {
+        try await queryActor().latestEpisode(ofFeedString: feedString)
+    }
+
+    static func podcasts(withFeedStrings identifiers: [String]) async throws -> [IntentPodcastSnapshot] {
+        try await queryActor().podcasts(withFeedStrings: identifiers)
+    }
+
+    static func subscribedPodcasts(matching string: String? = nil) async throws -> [IntentPodcastSnapshot] {
+        try await queryActor().subscribedPodcasts(matching: string, limit: resultLimit)
+    }
+
+    private static func queryActor() async throws -> AppIntentLibraryQueryActor {
+        AppIntentLibraryQueryActor(modelContainer: try await preparedIntentModelContainer())
     }
 }
 
@@ -220,11 +378,10 @@ struct PlayLatestEpisodeIntent: AudioPlaybackIntent {
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let player = try await preparedIntentPlayer()
-        guard let episode = try await LibraryEntityLookup.latestEpisode(ofFeedString: podcast.id) else {
+        guard let episode = try await LibraryEntityLookup.latestEpisode(ofFeedString: podcast.id),
+              let episodeURL = URL(string: episode.id)
+        else {
             throw PlayPodcastEpisodeError.episodeNotFound
-        }
-        guard let episodeURL = episode.url else {
-            throw PlayPodcastEpisodeError.episodeHasNoAudio
         }
 
         await player.playEpisode(episodeURL, playDirectly: true)

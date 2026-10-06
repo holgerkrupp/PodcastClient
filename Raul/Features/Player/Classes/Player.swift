@@ -305,6 +305,10 @@ class Player {
     let progressThreshold: Double = 0.99 // how much of an episode must be played before it is considered "played"
     
     static let shared = Player()
+    /// A headless BGTask can check playback without constructing `shared` and
+    /// starting its episode recovery. A new process has no active AVPlayer, so
+    /// the default is the correct state until this player starts playback.
+    private(set) static var hasActivePlaybackInProcess = false
 
     // These actors must not be created from stored-property initializers. App
     // Intents, notification actions, and background entry points can construct
@@ -438,6 +442,7 @@ class Player {
     var currentEpisode: Episode? {
         didSet {
             scheduleCurrentArtworkUpdate()
+            NotificationCenter.default.post(name: .playerChapterDataDidChange, object: nil)
         }
     }
     var currentEpisodeURL: URL?
@@ -487,10 +492,15 @@ class Player {
     var isPlaying: Bool = false {
         didSet {
             guard isPlaying != oldValue else { return }
+            let playbackStarted = isPlaying
+            Self.hasActivePlaybackInProcess = playbackStarted
             Task {
                 await StoreSplitWorkCoordinator.shared.notePlaybackActivityChanged(
-                    isPlaying: isPlaying
+                    isPlaying: playbackStarted
                 )
+                if playbackStarted {
+                    await TranscriptionManager.shared.cancelAutomaticTranscriptionsForPlayback()
+                }
             }
         }
     }
@@ -1330,6 +1340,7 @@ class Player {
         }
 
         chapters = currentEpisode.preferredChapters
+        NotificationCenter.default.post(name: .playerChapterDataDidChange, object: nil)
         rebuildChapterSkipPlan()
         configureChapterBoundaryObserver()
         RemoteCommandCenter.shared.updateSkipIntervals()
@@ -2053,6 +2064,25 @@ class Player {
                 origin: .automatic
             )
         }
+    }
+
+    /// Releases every model-backed playback reference before another context
+    /// deletes the active episode (or its parent podcast). This must run while
+    /// the row still exists: generated SwiftData accessors can trap after a
+    /// cascade delete invalidates the model retained by the player.
+    func prepareForLibraryDeletion(episodeURLs: Set<URL>) async {
+        guard let episodeURL = currentEpisodeURL,
+              episodeURLs.contains(episodeURL) else {
+            return
+        }
+
+        await captureCurrentPlaybackStateFromEngine(force: true)
+        engine.pause()
+        engine.replaceCurrentItem(with: nil)
+        isPlaying = false
+        nowPlayingInfoActor.clear()
+        await resetPlaybackStateForFinishedEpisode(refreshPresentation: true)
+        PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
     }
     
     

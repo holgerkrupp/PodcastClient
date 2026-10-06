@@ -313,7 +313,7 @@ struct AudioClipExportView: View {
                     .monospacedDigit()
                 Text("Length")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
             .accessibilityElement(children: .combine)
 
@@ -342,7 +342,7 @@ struct AudioClipExportView: View {
         VStack(spacing: 1) {
             title
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
             HStack(spacing: 6) {
                 Button {
                     onChange(time - Self.nudgeStep)
@@ -393,7 +393,7 @@ struct AudioClipExportView: View {
                 }
             }
             .font(.headline)
-            .foregroundStyle(.primary)
+            .esaForeground(.primary)
             .multilineTextAlignment(.center)
             .padding(24)
             .frame(width: 260)
@@ -686,7 +686,7 @@ struct AudioClipExportView: View {
                 Spacer()
                 Text(exportPlaybackRate.formattedPlaybackSpeed)
                     .monospacedDigit()
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
 
             Stepper(

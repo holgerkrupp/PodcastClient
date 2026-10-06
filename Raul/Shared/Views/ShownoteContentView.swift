@@ -1,12 +1,20 @@
 import SwiftUI
 import SwiftData
 import RichText
+import ESADesignKit
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 /// Renders shownotes from the source document and promotes podcast links that
 /// were already enriched during a feed refresh. The view never starts network
 /// enrichment itself.
 struct ShownoteContentView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.esaVisualStyle) private var visualStyle
+    @Environment(\.esaThemePalette) private var themePalette
     private let html: String
     @State private var document: ShownoteDocument?
     @State private var enrichmentResults: [URL: ShownoteEnrichmentResult] = [:]
@@ -94,14 +102,34 @@ struct ShownoteContentView: View {
 
     @ViewBuilder
     private func richText(_ value: String) -> some View {
+        let richText = RichText(html: value)
+            .backgroundColor(.transparent)
+            .customCSS("a { text-decoration: underline !important; }")
+        if visualStyle == .artwork {
 #if os(iOS)
-        RichText(html: value)
-            .linkColor(light: Color.secondary, dark: Color.secondary)
-            .backgroundColor(.transparent)
+            richText.linkColor(light: .secondary, dark: .secondary)
 #else
-        RichText(html: value)
-            .backgroundColor(.transparent)
+            richText
 #endif
+        } else {
+            let foreground = themePalette.primaryForeground
+            let linkColor = themePalette.accent ?? themePalette.controlForeground
+#if canImport(UIKit)
+            richText
+                .textColor(light: foreground, dark: foreground)
+                .linkColor(light: linkColor, dark: linkColor)
+                .colorPreference(forceColor: .all)
+#elseif canImport(AppKit)
+            richText
+                .textColor(light: NSColor(foreground), dark: NSColor(foreground))
+                .linkColor(light: NSColor(linkColor), dark: NSColor(linkColor))
+                .colorPreference(forceColor: .all)
+#else
+            richText
+                .textColor(light: foreground, dark: foreground)
+                .colorPreference(forceColor: .all)
+#endif
+        }
     }
 
     private func linkMarkup(for candidate: ShownoteLinkCandidate) -> String {
@@ -146,33 +174,33 @@ private struct ShownotePreviewCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.headline)
-                    .foregroundStyle(.primary)
+                    .esaForeground(.primary)
                     .lineLimit(2)
 
                 if let handle = metadata?.handle, handle != title {
                     Text(handle)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                         .lineLimit(1)
                 }
 
                 if let description = metadata?.description, description.isEmpty == false {
                     Text(description)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                         .lineLimit(3)
                 }
 
                 Text(siteLabel)
                     .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .esaForeground(.secondary)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 0)
             Image(systemName: "arrow.up.right")
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .esaForeground(.control)
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -212,7 +240,7 @@ private struct PreviewArtwork: View {
             RoundedRectangle(cornerRadius: isMastodon ? 32 : 10, style: .continuous)
                 .fill(Color.secondary.opacity(0.14))
             Image(systemName: isMastodon ? "mastodon.fill" : "globe")
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
         }
     }
 }

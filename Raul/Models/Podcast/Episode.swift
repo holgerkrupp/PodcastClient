@@ -192,6 +192,7 @@ enum EpisodeSource: String, Codable, CaseIterable, Hashable, Sendable {
 
 extension Notification.Name {
     static let episodeReferencesDidChange = Notification.Name("episodeReferencesDidChange")
+    static let playerChapterDataDidChange = Notification.Name("playerChapterDataDidChange")
 }
 
 enum EpisodeReferenceNotificationKey {
@@ -490,6 +491,10 @@ class EpisodeDownloadStatus{
 
     func displayTitle(for chapter: Marker) -> String {
         let ownTitle = chapter.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if chapter.type == .ai,
+           ownTitle.caseInsensitiveCompare("Advertisement") == .orderedSame {
+            return String(localized: "Advertisement")
+        }
         if isUsableChapterTitle(ownTitle, for: chapter) {
             return ownTitle
         }
@@ -573,7 +578,15 @@ class EpisodeDownloadStatus{
     }
 
     @Transient var hasDisplayableChaptersOrSoundbites: Bool {
-        preferredChapters.count > 1 || soundbitesForDisplay.isEmpty == false
+        hasChapterSelectionUI || soundbitesForDisplay.isEmpty == false
+    }
+
+    /// A lone chapter is useful for navigation when it starts after the
+    /// episode begins (for example, a single chapter covering the main topic).
+    @Transient var hasChapterSelectionUI: Bool {
+        let displayChapters = preferredChapters
+        return displayChapters.count > 1
+            || (displayChapters.first?.start ?? 0) > 0.5
     }
 
     init(

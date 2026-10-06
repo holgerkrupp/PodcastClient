@@ -267,7 +267,8 @@ struct InboxListView: View {
         await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
             modelContainer: modelContext.container
         )
-        errorMessage = PodcastRefreshCoordinator.shared.progress.errorMessage
+        // Per-feed failures are persisted on PodcastMetaData and shown on each
+        // podcast row. Keep the inbox alert for inbox loading/maintenance errors.
     }
 }
 

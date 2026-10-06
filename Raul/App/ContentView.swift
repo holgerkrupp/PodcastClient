@@ -8,6 +8,7 @@
 import SwiftUI
 import SwiftData
 import StoreKit
+import ESADesignKit
 
 
 
@@ -21,6 +22,7 @@ struct ContentView: View {
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
+    @AppStorage(UpNextVisualDesignPreference.whatsNewAcknowledgementKey) private var didAcknowledgeVisualDesignWhatsNew = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
     @SceneStorage("mainWindow.selectedSection") private var restoredSelection = AppSection.queue.rawValue
     @State private var inboxCount: Int = 0
@@ -28,6 +30,7 @@ struct ContentView: View {
     @State private var navigation = AppNavigationModel()
     @State private var didRestoreSelection = false
     @State private var showOnboarding: Bool = false
+    @State private var showVisualDesignWhatsNew = false
     @State private var didEvaluateOnboardingLaunch = false
     @State private var didCompleteInitialContentLoad = false
     @State private var isImportingSharedEpisodes = false
@@ -97,6 +100,9 @@ struct ContentView: View {
         }
         .task(id: phase) {
             await considerRequestingAppReview()
+        }
+        .task(id: visualDesignPresentationSignature) {
+            evaluateVisualDesignWhatsNewIfNeeded()
         }
         .onChange(of: phase, {
             SystemPressureGate.shared.setSceneActive(phase == .active)
@@ -194,6 +200,8 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showOnboarding, onDismiss: {
             didCompleteOnboarding = true
+            didAcknowledgeVisualDesignWhatsNew = true
+            evaluateVisualDesignWhatsNewIfNeeded()
         }) {
             OnboardingView(
                 requiresInitialCloudImport: ModelContainerManager.shared.requiresInitialCloudImport,
@@ -201,8 +209,18 @@ struct ContentView: View {
             )
                 .interactiveDismissDisabled()
         }
+        .sheet(isPresented: $showVisualDesignWhatsNew, onDismiss: {
+            evaluateVisualDesignWhatsNewIfNeeded()
+        }) {
+            VisualDesignWhatsNewSheet {
+                didAcknowledgeVisualDesignWhatsNew = true
+                showVisualDesignWhatsNew = false
+            }
+            .interactiveDismissDisabled()
+        }
         .onChange(of: subscribedPodcastCount) { _, _ in
             evaluateOnboardingLaunchIfNeeded()
+            evaluateVisualDesignWhatsNewIfNeeded()
         }
         .onAppear {
             if didRestoreSelection == false {
@@ -210,6 +228,7 @@ struct ContentView: View {
                 didRestoreSelection = true
             }
             evaluateOnboardingLaunchIfNeeded()
+            evaluateVisualDesignWhatsNewIfNeeded()
         }
         
 
@@ -483,6 +502,30 @@ struct ContentView: View {
         if didCompleteOnboarding == false {
             showOnboarding = true
         }
+    }
+
+    private func evaluateVisualDesignWhatsNewIfNeeded() {
+        guard didCompleteOnboarding,
+              didAcknowledgeVisualDesignWhatsNew == false,
+              showOnboarding == false,
+              incomingPodcastSubscription.isPresented == false,
+              podcastYearShareCoordinator.sheetRequest == nil,
+              sharedEpisodeRecovery == nil,
+              navigation.isPlayerPresented == false else { return }
+        showVisualDesignWhatsNew = true
+    }
+
+    private var visualDesignPresentationSignature: String {
+        [
+            String(didCompleteOnboarding),
+            String(didAcknowledgeVisualDesignWhatsNew),
+            String(showOnboarding),
+            String(incomingPodcastSubscription.isPresented),
+            String(podcastYearShareCoordinator.sheetRequest != nil),
+            String(sharedEpisodeRecovery != nil),
+            String(navigation.isPlayerPresented),
+            String(phase == .active)
+        ].joined(separator: ":")
     }
 
 }

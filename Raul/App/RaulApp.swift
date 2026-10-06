@@ -35,9 +35,11 @@ enum BackgroundTaskConfiguration {
     /// Upper bound on episodes handled in one background pass.
     static let automaticTranscriptionBackgroundEpisodeLimit = 6
     /// Feed processing rides along by importing published transcripts for
-    /// playlist episodes. Cheap downloads only — it never starts the analyzer.
-    static let feedProcessingTranscriptImportBudget: TimeInterval = 60
-    static let feedProcessingTranscriptImportLimit = 8
+    /// playlist episodes. Keep this short because it follows the feed refresh
+    /// in the same BGProcessingTask; together they must yield well before the
+    /// background CPU watchdog window rather than consuming the whole grant.
+    static let feedProcessingTranscriptImportBudget: TimeInterval = 15
+    static let feedProcessingTranscriptImportLimit = 3
     static let lastStorageCleanupKey = "LastStorageCleanup"
     static let lastForegroundDownloadCleanupKey = "LastForegroundDownloadCleanup"
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
@@ -196,6 +198,10 @@ struct RaulApp: App {
     @State private var deferredStoreSplitTask: Task<Void, Never>?
     @State private var deferredForegroundFeedRefreshTask: Task<Void, Never>?
     @State private var cloudImportReconciliationTask: Task<Void, Never>?
+    @State private var launchHealthTask: Task<Void, Never>?
+    @State private var foregroundCleanupTask: Task<Void, Never>?
+    @State private var foregroundStorageTask: Task<Void, Never>?
+    @State private var foregroundTranscriptionTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if os(macOS)
     @NSApplicationDelegateAdaptor(MacAppDelegate.self)
@@ -279,6 +285,14 @@ struct RaulApp: App {
             CrashBreadcrumbs.shared.record("scene_phase_changed", details: "\(phase)")
             switch phase {
             case .background:
+                launchHealthTask?.cancel()
+                launchHealthTask = nil
+                foregroundCleanupTask?.cancel()
+                foregroundCleanupTask = nil
+                foregroundStorageTask?.cancel()
+                foregroundStorageTask = nil
+                foregroundTranscriptionTask?.cancel()
+                foregroundTranscriptionTask = nil
                 modelContainerManager.pauseSplitStoreWorkForBackground()
                 deferredStoreSplitTask?.cancel()
                 deferredStoreSplitTask = nil
@@ -317,16 +331,28 @@ struct RaulApp: App {
              
                 
             case .active:
+                launchHealthTask?.cancel()
+                launchHealthTask = nil
+                foregroundCleanupTask?.cancel()
+                foregroundStorageTask?.cancel()
+                foregroundTranscriptionTask?.cancel()
                 guard modelContainerManager.preparedContainer != nil else { return }
                 SiriShortcutVocabularyCoordinator.scheduleRefresh()
                 modelContainerManager.resumeSplitStoreWorkForForeground()
-                Task(priority: .utility) {
+                launchHealthTask = Task(priority: .utility) {
                     // Do not clear the launch-health marker during the exporter
                     // crash window. A healthy checkpoint requires the app to
                     // remain usable long enough for the launch-time exporter to
                     // prove it is not immediately exhausting the CPU budget.
                     try? await Task.sleep(for: .seconds(75))
-                    guard Task.isCancelled == false, phase == .active else { return }
+                    guard Task.isCancelled == false else { return }
+#if canImport(UIKit)
+                    // `phase` belongs to the Scene value captured when this
+                    // task was created; query the live application state.
+                    guard UIApplication.shared.applicationState == .active else { return }
+#else
+                    guard phase == .active else { return }
+#endif
                     StoreSplitLaunchHealth.markHealthy()
                     CrashBreadcrumbs.shared.record("store_split_launch_marked_healthy")
                 }
@@ -337,27 +363,39 @@ struct RaulApp: App {
                     await Player.shared.enterForegroundPlaybackMode()
                     await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
                 }
-                Task(priority: .utility) {
+                foregroundCleanupTask = Task(priority: .utility) {
                     try? await Task.sleep(for: .seconds(4))
-                    guard Task.isCancelled == false, phase == .active else { return }
-                    cleanUp()
+                    guard Task.isCancelled == false,
+                          isAppActiveForForegroundWork else { return }
+                    await cleanUp()
                 }
-                Task(priority: .background) {
+                foregroundStorageTask = Task(priority: .background) {
                     try? await Task.sleep(for: .seconds(8))
-                    guard Task.isCancelled == false, phase == .active else { return }
+                    guard Task.isCancelled == false,
+                          isAppActiveForForegroundWork else { return }
                     await runScheduledStorageCleanupIfNeeded(
                         minimumInterval: BackgroundTaskConfiguration.weeklyStorageCleanupFallbackInterval,
                         reason: "active fallback"
                     )
                 }
-                Task(priority: .background) {
+                foregroundTranscriptionTask = Task(priority: .background) {
                     try? await Task.sleep(for: .seconds(10))
-                    guard Task.isCancelled == false, phase == .active else { return }
+                    guard Task.isCancelled == false,
+                          isAppActiveForForegroundWork else { return }
                     await RaulApp.runAutomaticTranscriptionSweep(reason: "active")
                 }
           
                 
-            default: break
+            case .inactive:
+                launchHealthTask?.cancel()
+                launchHealthTask = nil
+                foregroundCleanupTask?.cancel()
+                foregroundCleanupTask = nil
+                foregroundStorageTask?.cancel()
+                foregroundStorageTask = nil
+                foregroundTranscriptionTask?.cancel()
+                foregroundTranscriptionTask = nil
+            @unknown default: break
             }
         })
         .onChange(of: storeCloudKitMonitor.latestCompletedImport) { _, event in
@@ -389,6 +427,16 @@ struct RaulApp: App {
 #if os(iOS)
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
+            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+                // Re-arm without fetching subscription predictions or opening
+                // a CloudKit-backed container during active audio playback.
+                _ = await FeedRefreshScheduler.schedule(using: nil)
+                CrashBreadcrumbs.shared.record(
+                    "feed_refresh_background_task_skipped",
+                    details: "playback_active"
+                )
+                return
+            }
             await scheduleFeedRefresh()
             await schedulePredictedReleaseRefresh()
             await modelContainerManager.prepareContainer()
@@ -448,6 +496,7 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
+                    .upNextVisualDesignRoot()
             } else {
                 ModelContainerLaunchView(
                     errorMessage: modelContainerManager.initializationError,
@@ -472,6 +521,7 @@ struct RaulApp: App {
                     .modelContainer(container)
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
+                    .upNextVisualDesignRoot()
             } else {
                 ModelContainerLaunchView(
                     errorMessage: modelContainerManager.initializationError,
@@ -507,6 +557,7 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
+                    .upNextVisualDesignRoot()
             } else {
                 ModelContainerLaunchView(
                     errorMessage: modelContainerManager.initializationError,
@@ -539,6 +590,7 @@ struct RaulApp: App {
                     .environment(downloadedFilesManager)
                     .accentColor(.accent)
                     .withDeviceStyle()
+                    .upNextVisualDesignRoot()
             } else {
                 ModelContainerLaunchView(
                     errorMessage: modelContainerManager.initializationError,
@@ -571,6 +623,7 @@ struct RaulApp: App {
                 .environment(downloadedFilesManager)
                 .accentColor(.accent)
                 .withDeviceStyle()
+                .upNextVisualDesignRoot()
         } else {
             ModelContainerLaunchView(
                 errorMessage: modelContainerManager.initializationError,
@@ -595,7 +648,8 @@ struct RaulApp: App {
         deferredForegroundFeedRefreshTask?.cancel()
         deferredForegroundFeedRefreshTask = Task(priority: .utility) {
             try? await Task.sleep(for: .seconds(2))
-            guard Task.isCancelled == false, phase == .active else { return }
+            guard Task.isCancelled == false,
+                  isAppActiveForForegroundWork else { return }
 
             WatchSyncCoordinator.refreshSoon()
             await PlayNextWidgetSync.refresh(using: container)
@@ -610,6 +664,15 @@ struct RaulApp: App {
                 await MainActor.run {
                     deferredForegroundFeedRefreshTask = nil
                 }
+                return
+            }
+
+            guard Player.hasActivePlaybackInProcess == false else {
+                CrashBreadcrumbs.shared.record(
+                    "foreground_feed_refresh_skipped",
+                    details: "reason=playback_active"
+                )
+                deferredForegroundFeedRefreshTask = nil
                 return
             }
 
@@ -680,18 +743,26 @@ struct RaulApp: App {
     }
     
     
-    func cleanUp()  {
+    func cleanUp() async {
+        guard isAppActiveForForegroundWork,
+              Player.hasActivePlaybackInProcess == false else { return }
         guard let container = modelContainerManager.preparedContainer else { return }
         if let lastCleanup = getLastForegroundDownloadCleanupDate(),
            Date().timeIntervalSince(lastCleanup) < BackgroundTaskConfiguration.foregroundDownloadCleanupMinimumInterval {
             return
         }
 
+        await CleanUpActor(modelContainer: container).cleanUpOldDownloads()
+        guard Task.isCancelled == false else { return }
         setLastForegroundDownloadCleanupDate()
-        Task.detached(priority: .utility) {
-            let janitor = CleanUpActor(modelContainer: container)
-            await janitor.cleanUpOldDownloads()
-        }
+    }
+
+    private var isAppActiveForForegroundWork: Bool {
+#if canImport(UIKit)
+        UIApplication.shared.applicationState == .active
+#else
+        phase == .active
+#endif
     }
 
     func setLastRefreshDate(){
@@ -792,6 +863,13 @@ struct RaulApp: App {
 
     func runScheduledStorageCleanupIfNeeded(minimumInterval: TimeInterval, reason: String) async {
         guard let container = modelContainerManager.preparedContainer else { return }
+        guard Player.hasActivePlaybackInProcess == false else {
+            CrashBreadcrumbs.shared.record(
+                "storage_cleanup_skipped",
+                details: "\(reason):playback_active"
+            )
+            return
+        }
         CrashBreadcrumbs.shared.record("storage_cleanup_check_started", details: reason)
         if let lastCleanup = getLastStorageCleanupDate(),
            Date().timeIntervalSince(lastCleanup) < minimumInterval {
@@ -978,6 +1056,7 @@ private struct RootWindowView: View {
                 }
 #endif
             }
+            .upNextVisualDesignRoot()
         } else {
             ModelContainerLaunchView(
                 errorMessage: modelContainerManager.initializationError,

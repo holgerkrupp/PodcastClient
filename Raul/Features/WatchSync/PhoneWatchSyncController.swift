@@ -1,5 +1,8 @@
 import Foundation
 import SwiftData
+#if canImport(UIKit)
+import UIKit
+#endif
 #if canImport(WatchConnectivity)
 import WatchConnectivity
 
@@ -12,6 +15,7 @@ final class PhoneWatchSyncController: NSObject {
     private let maximumOutstandingFileTransfers = 2
     private let staleFileTransferTimeout: TimeInterval = 120
     private let refreshDebounceNanoseconds: UInt64 = 750_000_000
+    private static let cachedSnapshotDefaultsKey = "watch.sync.lastPushedSnapshot"
 
     private var lastStorageReport: WatchStorageReport?
     private var pendingTransferEpisodeIDs: Set<String> = []
@@ -29,7 +33,11 @@ final class PhoneWatchSyncController: NSObject {
     private let maximumHandledCommandIDs = 100
 
     private override init() {
+        lastPushedSnapshot = Self.loadCachedSnapshot()
         super.init()
+        if let lastPushedSnapshot {
+            lastPushedSnapshotSignature = snapshotSignature(lastPushedSnapshot)
+        }
     }
 
     func activate() {
@@ -52,10 +60,20 @@ final class PhoneWatchSyncController: NSObject {
     private func performRefreshSnapshotAndTransfers(forcePush: Bool) async {
         guard let session else { return }
         guard session.isPaired, session.isWatchAppInstalled else { return }
+        // WatchConnectivity may wake the phone while its scene is backgrounded.
+        // Rebuilding SwiftData state then has only a ten-second watchdog
+        // allowance. Re-deliver the durable last snapshot instead of opening
+        // the database and risking a scene-update watchdog termination.
+        guard isBackgrounded == false else {
+            pushCachedSnapshot(via: session)
+            return
+        }
+        guard Task.isCancelled == false else { return }
         guard let container = await ModelContainerManager.shared
             .prepareContainerForExternalEntryPoint() else {
             return
         }
+        guard Task.isCancelled == false, isBackgrounded == false else { return }
 
         // Building the snapshot now hands the main actor back, so a second
         // refresh can start while this one waits. Coalesce them: two runs
@@ -71,6 +89,7 @@ final class PhoneWatchSyncController: NSObject {
 
         var force = forcePush
         repeat {
+            guard Task.isCancelled == false, isBackgrounded == false else { break }
             needsAnotherRefresh = false
             await pushRefreshedSnapshot(forcePush: force, via: session, container: container)
             force = pendingForcePush
@@ -85,10 +104,13 @@ final class PhoneWatchSyncController: NSObject {
     ) async {
         reconcileOutstandingFileTransfers(via: session)
         let bundle = await makeSnapshotBundle(container: container)
+        guard Task.isCancelled == false, isBackgrounded == false else { return }
         pushSnapshot(bundle.snapshot, via: session, force: forcePush)
         let didQueueTransfers = syncPlaylistFilesIfPossible(bundle, via: session)
         if didQueueTransfers {
-            await pushSnapshot(makeSnapshotBundle(container: container).snapshot, via: session, force: true)
+            // Transfer state is the only part that changed. Reusing this
+            // bundle avoids a second full SwiftData snapshot build.
+            pushSnapshot(snapshotWithCurrentTransferState(from: bundle.snapshot), via: session, force: true)
         }
     }
 
@@ -164,6 +186,7 @@ final class PhoneWatchSyncController: NSObject {
             }
             lastPushedSnapshot = snapshot
             lastPushedSnapshotSignature = signature
+            persistCachedSnapshot(snapshot)
             #if DEBUG
             print("Watch sync pushed snapshot: playlist=\(snapshot.playlist.count), inbox=\(snapshot.inbox.count)")
             #endif
@@ -208,6 +231,35 @@ final class PhoneWatchSyncController: NSObject {
             progressSignature,
             phoneStateSignature
         ].joined(separator: "\u{1F}")
+    }
+
+    private var isBackgrounded: Bool {
+        #if canImport(UIKit)
+        UIApplication.shared.applicationState == .background
+        #else
+        false
+        #endif
+    }
+
+    private func pushCachedSnapshot(via session: WCSession) {
+        guard let lastPushedSnapshot else { return }
+        pushSnapshot(
+            snapshotWithCurrentTransferState(from: lastPushedSnapshot),
+            via: session,
+            force: true
+        )
+    }
+
+    private func persistCachedSnapshot(_ snapshot: WatchSyncSnapshot) {
+        guard let data = WatchSyncTransport.encode(snapshot) else { return }
+        defaults.set(data, forKey: Self.cachedSnapshotDefaultsKey)
+    }
+
+    private static func loadCachedSnapshot() -> WatchSyncSnapshot? {
+        guard let data = UserDefaults.standard.data(forKey: cachedSnapshotDefaultsKey) else {
+            return nil
+        }
+        return WatchSyncTransport.decode(WatchSyncSnapshot.self, from: data)
     }
 
     private func syncEpisodeSignature(_ episode: WatchSyncEpisode) -> String {
@@ -791,14 +843,16 @@ extension PhoneWatchSyncController: WCSessionDelegate {
 enum WatchSyncPlaylistEntryQuery {
     static func fetchOrdered(
         playlistID: UUID,
-        in context: ModelContext
+        in context: ModelContext,
+        limit: Int? = nil
     ) throws -> [PlaylistEntry] {
-        let descriptor = FetchDescriptor<PlaylistEntry>(
+        var descriptor = FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate<PlaylistEntry> { entry in
                 entry.playlist?.id == playlistID
             },
             sortBy: [SortDescriptor(\PlaylistEntry.order, order: .forward)]
         )
+        descriptor.fetchLimit = limit ?? 0
         return try context.fetch(descriptor)
     }
 }

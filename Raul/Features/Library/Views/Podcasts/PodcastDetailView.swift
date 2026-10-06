@@ -152,7 +152,7 @@ struct PodcastDetailView: View {
                 Spacer()
                 Text(refreshProgress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
 
             ProgressView(value: progress, total: 1)
@@ -202,7 +202,7 @@ struct PodcastDetailView: View {
                                 systemImage: "calendar"
                             )
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                         }
 #if DEBUG
                         Text(
@@ -211,7 +211,7 @@ struct PodcastDetailView: View {
                             } ?? "Next predicted release: Unavailable"
                         )
                         .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
 #endif
 
                         abandonedFeedCard
@@ -377,13 +377,13 @@ struct PodcastDetailView: View {
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
 
                         if podcast.isSubscribed == false {
                             Text("This podcast stays in the database, but it is skipped by bulk refresh.")
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
                     }
                     .fullPageScreenshotSupport()
@@ -404,7 +404,7 @@ struct PodcastDetailView: View {
                                 ProgressView()
                                     .frame(width: 100, height: 50)
                                 Text(message)
-                                    .foregroundStyle(Color.primary)
+                                    .esaForeground(.primary)
                                     .font(.title.bold())
                                     
                             }
@@ -851,7 +851,7 @@ private struct PodcastAbandonedFeedCard: View {
 
                 Text(assessment.detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
 
                 LabeledContent("Last visible") {
                     Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
@@ -896,7 +896,7 @@ private struct PodcastAbandonedFeedCard: View {
                 if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
                     Text(error)
                         .font(.caption2)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                         .textSelection(.enabled)
                 }
             }

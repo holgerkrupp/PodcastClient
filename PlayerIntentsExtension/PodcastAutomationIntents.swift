@@ -368,10 +368,8 @@ struct GetUpNextIntent: AppIntent {
     @MainActor
     func perform() async throws -> some ReturnsValue<[EpisodeEntity]> & ProvidesDialog {
         let limit = min(max(maximumEpisodes, 1), 50)
-        let player = try await preparedIntentPlayer()
-        let urls = try await player.playlistActor?.orderedEpisodeURLs() ?? []
-        let episodes = try await LibraryEntityLookup.episodes(withURLStrings: urls.prefix(limit).map(\.absoluteString))
-            .compactMap(EpisodeEntity.init(episode:))
+        let episodes = try await LibraryEntityLookup.upNextEpisodes(limit: limit)
+            .map(EpisodeEntity.init(snapshot:))
         return .result(value: episodes, dialog: episodes.isEmpty ? "Up Next is empty." : "Here are the next \(episodes.count) episodes.")
     }
 }
@@ -478,7 +476,7 @@ struct DownloadEpisodeIntent: AppIntent {
         let container = try await PodcastIntentSupport.container()
         let stored = try await LibraryEntityLookup.episodes(withURLStrings: [url.absoluteString]).first
         guard let stored else { throw PlayPodcastEpisodeError.episodeNotFound }
-        guard stored.source != .sideLoaded, stored.url != nil else {
+        guard stored.isDownloadable else {
             throw PodcastIntentError("This episode cannot be downloaded by Up Next.")
         }
         await EpisodeActor(modelContainer: container).download(episodeURL: url)
@@ -577,10 +575,8 @@ struct GetPlaylistEpisodesIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some ReturnsValue<[EpisodeEntity]> & ProvidesDialog {
-        let actor = try PodcastIntentSupport.playlistActor(for: playlist, in: try await PodcastIntentSupport.container())
-        let urls = try await actor.orderedEpisodeURLs()
-        let episodes = try await LibraryEntityLookup.episodes(withURLStrings: urls.prefix(50).map(\.absoluteString))
-            .compactMap(EpisodeEntity.init(episode:))
+        let episodes = try await LibraryEntityLookup.playlistEpisodes(playlistEntityID: playlist.id)
+            .map(EpisodeEntity.init(snapshot:))
         return .result(value: episodes, dialog: "\(episodes.count) episodes in \(playlist.title).")
     }
 }
@@ -666,10 +662,10 @@ struct SubscribeToPodcastIntent: AppIntent {
         }
         let container = try await PodcastIntentSupport.container()
         _ = try await SubscriptionManager(modelContainer: container).addToLibrary(feed, subscribe: true)
-        guard let podcast = try await LibraryEntityLookup.podcasts(withFeedStrings: [feedURL.absoluteString]).first,
-              let entity = PodcastEntity(podcast: podcast) else {
+        guard let podcast = try await LibraryEntityLookup.podcasts(withFeedStrings: [feedURL.absoluteString]).first else {
             throw PodcastIntentError("The podcast was subscribed, but its library entry is not ready yet.")
         }
+        let entity = PodcastEntity(snapshot: podcast)
         return .result(value: entity, dialog: "Subscribed to \(entity.title).")
     }
 }
@@ -757,7 +753,11 @@ struct LivePodcastEntityQuery: EntityStringQuery {
     private func liveEntities() async throws -> [LivePodcastEntity] {
         let container = try await preparedIntentModelContainer()
         let settings = try container.mainContext.fetch(FetchDescriptor<PodcastSettings>()).first { $0.title == PodcastSettingsView.defaultSettingsTitle }
-        let podcasts = try await LibraryEntityLookup.subscribedPodcasts()
+        let descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate { $0.metaData?.isSubscribed != false },
+            sortBy: [SortDescriptor(\.title)]
+        )
+        let podcasts = try container.mainContext.fetch(descriptor)
         return LivePodcastDiscovery.entries(from: podcasts, isEnabled: settings?.showLivePodcasts != false)
             .compactMap(LivePodcastEntity.init(entry:))
     }
@@ -798,8 +798,13 @@ struct PlayLivePodcastIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         let entities = try await LivePodcastEntityQuery().entities(for: [livePodcast.id])
         guard let entity = entities.first else { throw PodcastIntentError("That live podcast is no longer available.") }
-        let podcasts = try await LibraryEntityLookup.podcasts(withFeedStrings: [entity.feedID])
-        guard let podcast = podcasts.first,
+        let container = try await preparedIntentModelContainer()
+        guard let feed = URL(string: entity.feedID) else {
+            throw PodcastIntentError("That live podcast is no longer available.")
+        }
+        var descriptor = FetchDescriptor<Podcast>(predicate: #Predicate { $0.feed == feed })
+        descriptor.fetchLimit = 1
+        guard let podcast = try container.mainContext.fetch(descriptor).first,
               let item = podcast.liveItems.first(where: { $0.id == entity.itemID }) else {
             throw PodcastIntentError("That live podcast is no longer available.")
         }

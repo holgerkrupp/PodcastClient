@@ -22,6 +22,12 @@ actor AdDetectionResultsStore {
         snapshots[episodeIdentity]?.segments ?? []
     }
 
+    func segments(for episodeIdentity: String, audioVariantID: String) -> [AdSegment] {
+        guard let snapshot = snapshots[episodeIdentity],
+              snapshot.audioVariantID == audioVariantID else { return [] }
+        return snapshot.segments
+    }
+
     func remove(episodeIdentity: String) {
         snapshots.removeValue(forKey: episodeIdentity)
     }

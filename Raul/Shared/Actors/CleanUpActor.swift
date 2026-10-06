@@ -15,6 +15,7 @@ actor CleanUpActor {
 
     /// Deletes downloaded episode files once they are eligible for cleanup.
     func cleanUpOldDownloads() async {
+        guard Task.isCancelled == false else { return }
         let oneWeekAgo = Calendar.current.date(byAdding: .day, value: -7, to: Date()) ?? Date.distantPast
         let fetchDescriptor = FetchDescriptor<EpisodeMetaData>(
             predicate: #Predicate<EpisodeMetaData> { metadata in
@@ -45,6 +46,7 @@ actor CleanUpActor {
         }
 
         for metadata in metadataRecords {
+            guard Task.isCancelled == false else { return }
             let isArchived = metadata.isArchived == true
             let isStaleUnarchived: Bool
             if let lastPlayed = metadata.lastPlayed {

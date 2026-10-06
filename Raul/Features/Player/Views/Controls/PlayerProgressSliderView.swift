@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import ESADesignKit
 
 struct PlayerProgressSliderView: View {
+    @Environment(\.esaThemePalette) private var themePalette
     @Binding var value: Double
     @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
@@ -68,7 +70,7 @@ struct PlayerProgressSliderView: View {
                     ZStack {
                         ForEach(Array(chapterMarkerPositions.enumerated()), id: \.offset) { _, xPosition in
                             Rectangle()
-                                .fill(Color.primary.opacity(0.25))
+                                .fill(themePalette.primaryForeground.opacity(0.25))
                                 .frame(width: 1.5, height: gr.size.height)
                                 .position(x: xPosition, y: gr.size.height / 2)
                                 .shadow(color: .black.opacity(0.25), radius: 0.5, x: 0, y: 0)

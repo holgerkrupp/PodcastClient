@@ -41,6 +41,11 @@ enum StoreSplitFeedCacheWriter {
     struct FeedCacheBootstrapResult: Sendable {
         var processed = 0
         var failed = 0
+        /// `false` means the bounded pass yielded before reaching the end of
+        /// the legacy feed list. The caller can leave the checkpoint in place
+        /// and pick the work up on a later foreground pass without turning one
+        /// background grant into an unbounded Core Data walk.
+        var completed = true
     }
 
     /// Upserts a single feed's cache rows from the legacy store. Call after a feed
@@ -137,7 +142,8 @@ enum StoreSplitFeedCacheWriter {
     static func bootstrapMissingFeedsWithStatus(
         legacyContainer: ModelContainer,
         cacheContainer: ModelContainer,
-        limit: Int
+        limit: Int,
+        deadline: Date? = nil
     ) -> FeedCacheBootstrapResult {
         var bootstrapResult = FeedCacheBootstrapResult()
         guard limit > 0 else { return bootstrapResult }
@@ -145,6 +151,10 @@ enum StoreSplitFeedCacheWriter {
         var offset = 0
         let pageSize = 25
         while attempted < limit {
+            guard shouldContinue(deadline: deadline) else {
+                bootstrapResult.completed = false
+                return bootstrapResult
+            }
             let legacyContext = ModelContext(legacyContainer)
             let requestedLimit = min(pageSize, max(1, limit - attempted))
             var descriptor = FetchDescriptor<Podcast>(
@@ -156,7 +166,10 @@ enum StoreSplitFeedCacheWriter {
                   podcasts.isEmpty == false else { break }
 
             for podcast in podcasts {
-                guard shouldContinue(deadline: nil), attempted < limit else { break }
+                guard shouldContinue(deadline: deadline), attempted < limit else {
+                    bootstrapResult.completed = false
+                    return bootstrapResult
+                }
                 guard let feed = podcast.feed else { continue }
                 let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
                 let lookupContext = ModelContext(cacheContainer)
@@ -178,9 +191,13 @@ enum StoreSplitFeedCacheWriter {
                         result: &projectionResult
                     ),
                     into: cacheContext,
-                    deadline: nil,
+                    deadline: deadline,
                     result: &projectionResult
                 ) else {
+                    if shouldContinue(deadline: deadline) == false {
+                        bootstrapResult.completed = false
+                        return bootstrapResult
+                    }
                     recordCheckpoint(
                         feedKey: feedKey,
                         succeeded: false,

@@ -44,10 +44,10 @@ private struct DetailMetadataChip: View {
         HStack(spacing: 6) {
             Image(systemName: iconName)
                 .imageScale(.small)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
             Text(text)
                 .font(.footnote)
-                .foregroundStyle(.primary)
+                .esaForeground(.primary)
                 .lineLimit(1)
             if showsLinkIcon {
                 Image(systemName: "link")

@@ -98,6 +98,24 @@ final class PlaylistLibraryTests: XCTestCase {
         XCTAssertTrue(titles.contains(Playlist.defaultQueueTitle))
     }
 
+    func testExistingDefaultQueueLookupDoesNotRepairTheQueue() throws {
+        let context = try makeContext()
+        let queue = Playlist()
+        queue.title = Playlist.defaultQueueTitle
+        queue.syncID = "legacy-local-id"
+        queue.deleteable = true
+        queue.hidden = true
+        context.insert(queue)
+        try context.save()
+
+        let found = try XCTUnwrap(Playlist.existingDefaultQueue(in: context))
+
+        XCTAssertEqual(found.id, queue.id)
+        XCTAssertEqual(queue.syncID, "legacy-local-id")
+        XCTAssertTrue(queue.deleteable)
+        XCTAssertTrue(queue.hidden)
+    }
+
     private func makeContext() throws -> ModelContext {
         let configuration = ModelConfiguration(
             isStoredInMemoryOnly: true,

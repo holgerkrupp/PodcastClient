@@ -9,6 +9,19 @@ struct AdDetectionSnapshot: Sendable, Equatable {
     let episodeIdentity: String
     let segments: [AdSegment]
     let updatedAt: Date
+    let audioVariantID: String?
+
+    init(
+        episodeIdentity: String,
+        segments: [AdSegment],
+        updatedAt: Date,
+        audioVariantID: String? = nil
+    ) {
+        self.episodeIdentity = episodeIdentity
+        self.segments = segments
+        self.updatedAt = updatedAt
+        self.audioVariantID = audioVariantID
+    }
 }
 
 /// Coordinates signal providers while keeping cancellation and rolling state
@@ -21,6 +34,7 @@ actor AdDetectionEngine {
     private var observations: [AdDetectionObservation] = []
     private var segments: [AdSegment] = []
     private var generation: UInt64 = 0
+    private var currentAudioVariantID: String?
 
     init(
         configuration: AdDetectionConfiguration = .default,
@@ -44,6 +58,7 @@ actor AdDetectionEngine {
     func clear() {
         generation &+= 1
         currentEpisodeIdentity = nil
+        currentAudioVariantID = nil
         observations.removeAll(keepingCapacity: false)
         segments.removeAll(keepingCapacity: false)
     }
@@ -59,12 +74,24 @@ actor AdDetectionEngine {
     func detect(for request: AdDetectionRequest) async throws -> AdDetectionSnapshot {
         guard configuration.enabled, request.configuration.enabled else {
             clear()
-            return AdDetectionSnapshot(episodeIdentity: request.episodeIdentity, segments: [], updatedAt: Date())
+            return AdDetectionSnapshot(
+                episodeIdentity: request.episodeIdentity,
+                segments: [],
+                updatedAt: Date(),
+                audioVariantID: AudioVariantIdentity.make(
+                    episodeURL: URL(string: request.episodeIdentity) ?? request.mediaURL,
+                    mediaURL: request.mediaURL
+                )
+            )
         }
 
         generation &+= 1
         let requestGeneration = generation
         currentEpisodeIdentity = request.episodeIdentity
+        currentAudioVariantID = AudioVariantIdentity.make(
+            episodeURL: URL(string: request.episodeIdentity) ?? request.mediaURL,
+            mediaURL: request.mediaURL
+        )
         observations.removeAll(keepingCapacity: true)
         segments.removeAll(keepingCapacity: true)
 
@@ -98,11 +125,17 @@ actor AdDetectionEngine {
     func ingest(_ newObservations: [AdDetectionObservation], episodeIdentity: String) -> AdDetectionSnapshot {
         guard configuration.enabled else {
             clear()
-            return AdDetectionSnapshot(episodeIdentity: episodeIdentity, segments: [], updatedAt: Date())
+            return AdDetectionSnapshot(
+                episodeIdentity: episodeIdentity,
+                segments: [],
+                updatedAt: Date(),
+                audioVariantID: currentAudioVariantID
+            )
         }
 
         if currentEpisodeIdentity != episodeIdentity {
             currentEpisodeIdentity = episodeIdentity
+            currentAudioVariantID = nil
             observations.removeAll(keepingCapacity: true)
         }
         observations.append(contentsOf: newObservations)
@@ -123,8 +156,8 @@ actor AdDetectionEngine {
         AdDetectionSnapshot(
             episodeIdentity: currentEpisodeIdentity ?? "",
             segments: segments,
-            updatedAt: Date()
+            updatedAt: Date(),
+            audioVariantID: currentAudioVariantID
         )
     }
 }
-

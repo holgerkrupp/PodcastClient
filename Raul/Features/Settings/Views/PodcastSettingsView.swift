@@ -101,6 +101,7 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
+    @AppStorage(UpNextVisualDesignPreference.storageKey) private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
 #if os(macOS)
     @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
     private var isMacMenuBarPlayerEnabled = true
@@ -639,6 +640,17 @@ struct PodcastSettingsView: View {
 #if canImport(UIKit)
         return Section("Appearance") {
             NavigationLink {
+                VisualDesignSettingsView()
+            } label: {
+                SettingsNavigationRow(
+                    title: "Design",
+                    summary: UpNextVisualDesignPreference.displayName(for: ESAVisualStyle(rawValue: visualStyleRawValue) ?? .artwork),
+                    detail: "Choose how podcast artwork and colors appear across Up Next.",
+                    systemImage: "circle.lefthalf.filled"
+                )
+            }
+
+            NavigationLink {
                 AppIconSelectionView(
                     selectedAppIconID: $selectedAppIconID,
                     isChangingAppIcon: isChangingAppIcon,
@@ -661,6 +673,19 @@ struct PodcastSettingsView: View {
         }
 #elseif os(macOS)
         return Group {
+            Section("Appearance") {
+                NavigationLink {
+                    VisualDesignSettingsView()
+                } label: {
+                    SettingsNavigationRow(
+                        title: "Design",
+                        summary: UpNextVisualDesignPreference.displayName(for: ESAVisualStyle(rawValue: visualStyleRawValue) ?? .artwork),
+                        detail: "Choose how podcast artwork and colors appear across Up Next.",
+                        systemImage: "circle.lefthalf.filled"
+                    )
+                }
+            }
+
             if MacMenuBarPlayerSupport.isAvailable {
                 Section("Menu Bar Player") {
                     Toggle(

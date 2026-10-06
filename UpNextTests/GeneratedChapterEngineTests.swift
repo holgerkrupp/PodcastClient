@@ -1,4 +1,5 @@
 import XCTest
+@testable import UpNext
 
 final class GeneratedChapterEngineTests: XCTestCase {
     func testGeneratesEditorialAndAdvertisementChaptersWithoutPublisherChapters() {
@@ -74,6 +75,57 @@ final class GeneratedChapterEngineTests: XCTestCase {
 
         XCTAssertEqual(proposals.count, 2)
         XCTAssertEqual(proposals.map(\.start), [60, 120])
+    }
+
+    func testTranscriptSemanticAdCreatesAdAndExplicitEditorialResumeWithoutPlaybackEvidence() {
+        let proposals = GeneratedChapterEngine.makeProposals(
+            editorialCandidates: [
+                GeneratedEditorialChapterCandidate(title: "Opening", start: 0),
+                GeneratedEditorialChapterCandidate(title: "Back to the discussion", start: 420)
+            ],
+            advertisementCandidates: [GeneratedAdvertisementCandidate(start: 300)],
+            adSegments: [],
+            existingTypes: [],
+            episodeDuration: 900,
+            audioVariantID: "variant-a"
+        )
+
+        XCTAssertEqual(proposals.map(\.kind), [.editorial, .advertisement, .editorial])
+        XCTAssertEqual(proposals[1].start, 300)
+        XCTAssertEqual(proposals[1].end, 420)
+        XCTAssertEqual(proposals[2].start, 420)
+    }
+
+    func testMultipleSponsorBoundariesInOneContinuousBreakCollapseToOneAd() {
+        let proposals = GeneratedChapterEngine.makeProposals(
+            editorialCandidates: [GeneratedEditorialChapterCandidate(title: "Editorial resumes", start: 500)],
+            advertisementCandidates: [
+                GeneratedAdvertisementCandidate(start: 300),
+                GeneratedAdvertisementCandidate(start: 360)
+            ],
+            adSegments: [],
+            existingTypes: [],
+            episodeDuration: 900,
+            audioVariantID: "variant-a"
+        )
+
+        XCTAssertEqual(proposals.filter { $0.kind == .advertisement }.count, 1)
+        XCTAssertEqual(proposals.first(where: { $0.kind == .advertisement })?.end, 500)
+        XCTAssertEqual(proposals.last?.start, 500)
+    }
+
+    func testConfirmedDetectorBoundarySupersedesSemanticAdForSameRange() {
+        let proposals = GeneratedChapterEngine.makeProposals(
+            editorialCandidates: [GeneratedEditorialChapterCandidate(title: "Return", start: 450)],
+            advertisementCandidates: [GeneratedAdvertisementCandidate(start: 300)],
+            adSegments: [confirmedAd(start: 290, end: 455)],
+            existingTypes: [],
+            episodeDuration: 900,
+            audioVariantID: "variant-a"
+        )
+
+        XCTAssertEqual(proposals.filter { $0.kind == .advertisement }.count, 1)
+        XCTAssertEqual(proposals.first(where: { $0.kind == .advertisement })?.start, 290)
     }
 
     func testLegacyChapterSyncPayloadRemainsDecodable() throws {

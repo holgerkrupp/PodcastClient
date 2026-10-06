@@ -259,7 +259,7 @@ struct StatisticsView: View {
                             .lineLimit(1)
                         Text(isShowingCurrentSnapshot ? snapshot.selectedPodcastTitle : "Loading")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                     }
 
                     Spacer(minLength: 8)
@@ -283,7 +283,7 @@ struct StatisticsView: View {
                             .progressViewStyle(.linear)
                         Text(historyLoadingMessage)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                     }
                     .padding(.vertical, 4)
                 }
@@ -385,7 +385,7 @@ struct StatisticsView: View {
                                 Text(formatDuration(device.totalSeconds))
                                     .font(.caption)
                                     .monospacedDigit()
-                                    .foregroundStyle(.secondary)
+                                    .esaForeground(.secondary)
                             }
                         }
                         .accessibilityElement(children: .combine)
@@ -397,7 +397,7 @@ struct StatisticsView: View {
                 Section("Listening Trend") {
                     Text("Y-axis: listening time per \(listeningTrendUnitLabel).")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
 
                     Chart(snapshot.chartPoints) { point in
                         if usesAnnualListeningBars {
@@ -459,7 +459,7 @@ struct StatisticsView: View {
                             .font(.headline)
                         Text("Weekday totals and an hour-by-weekday heat map based on your listening history.")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
 
                         Chart(snapshot.weekdayTotals) { item in
                             BarMark(
@@ -512,7 +512,7 @@ struct StatisticsView: View {
                                     .font(.headline)
                                 Text(formatDuration(rollup.totalSeconds))
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .esaForeground(.secondary)
                             }
                             Spacer()
                             ProgressView(
@@ -585,7 +585,7 @@ struct StatisticsView: View {
                                         .font(.headline)
                                     Text(snapshot.selectedPodcastTitle)
                                         .font(.caption)
-                                        .foregroundStyle(.secondary)
+                                        .esaForeground(.secondary)
                                 }
                                 Spacer()
                                 Text(formatDuration(item.totalSeconds))
@@ -1408,12 +1408,12 @@ struct StatisticsView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
             ProgressView()
                 .controlSize(.small)
             Text("Loading")
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
         }
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
         .padding(14)
@@ -1441,13 +1441,13 @@ struct StatisticsView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
             Text(value)
                 .font(.title3.weight(.semibold))
                 .monospacedDigit()
             Text(detail)
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .esaForeground(.secondary)
                 .lineLimit(2)
         }
         .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
@@ -1482,7 +1482,7 @@ struct StatisticsView: View {
                         ForEach(0..<24, id: \.self) { hour in
                             Text(String(format: "%02d", hour))
                                 .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .frame(width: labelColumnWidth, height: cellHeight, alignment: .trailing)
                         }
                     }
@@ -1491,7 +1491,7 @@ struct StatisticsView: View {
                         VStack(spacing: rowSpacing) {
                             Text(weekdayLabels[index])
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .frame(width: columnWidth, height: headerHeight)
 
                             ForEach(0..<24, id: \.self) { hour in
@@ -1508,7 +1508,7 @@ struct StatisticsView: View {
             HStack(spacing: 10) {
                 Text("Less")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
                 LinearGradient(colors: [
                     heatColor(for: 0),
                     heatColor(for: snapshot.heatMap.maxSeconds * 0.35),
@@ -1518,7 +1518,7 @@ struct StatisticsView: View {
                 .clipShape(Capsule())
                 Text("More")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
         }
     }
@@ -2262,7 +2262,7 @@ private struct RecentListeningSessionRow: View {
                         .font(.headline)
                     Text(session.podcastName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                 }
                 Spacer()
                 Text(Self.formatDuration(session.listenedSeconds))
@@ -2276,7 +2276,7 @@ private struct RecentListeningSessionRow: View {
                 Text(session.endedCleanly ? "Ended cleanly" : "Recovered / interrupted")
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .esaForeground(.secondary)
 
             Label(
                 session.deviceModel.map { "\(session.sourceDeviceName) · \($0)" }
@@ -2284,12 +2284,12 @@ private struct RecentListeningSessionRow: View {
                 systemImage: "iphone.and.arrow.forward"
             )
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .esaForeground(.secondary)
 
             if let startPosition = session.startPosition, let endPosition = session.endPosition {
                 Text("From \(Self.formatTimestamp(startPosition)) to \(Self.formatTimestamp(endPosition))")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
         }
         .padding(.vertical, 4)

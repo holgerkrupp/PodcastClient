@@ -766,12 +766,79 @@ struct PodcastAccessResolver: Sendable {
         try? credentialStore.credential(for: profile)
     }
 
+    /// Recovers the profile used by early private-feed releases for an HTTP
+    /// Basic subscription whose server later canonicalized the feed path.
+    ///
+    /// The credential is never copied or exposed: the recovered profile keeps
+    /// the legacy Keychain account identifier and uses the current
+    /// credential-free URL as its resource boundary. This is deliberately
+    /// limited to the same URL with a trailing-slash or HTTP/HTTPS spelling
+    /// variation, rather than trying arbitrary hosts or paths.
+    func recoverLegacyHTTPBasicProfile(
+        for resourceURL: URL,
+        providerID: PremiumPodcastProviderID? = nil
+    ) -> PodcastAccessProfile? {
+        for candidateURL in legacyHTTPBasicIdentityCandidates(for: resourceURL) {
+            let candidate = PodcastAccessProfile.make(
+                for: candidateURL,
+                kind: .httpBasic,
+                providerID: providerID
+            )
+            guard case .httpBasic? = credential(for: candidate) else { continue }
+            return PodcastAccessProfile(
+                id: candidate.id,
+                kind: .httpBasic,
+                resourceURL: resourceURL,
+                providerID: providerID ?? candidate.providerID
+            )
+        }
+        return nil
+    }
+
     func save(_ credential: PodcastCredential, for profile: PodcastAccessProfile) throws {
         try credentialStore.save(credential, for: profile)
     }
 
     func removeCredential(for profile: PodcastAccessProfile) throws {
         try credentialStore.removeCredential(for: profile)
+    }
+
+    private func legacyHTTPBasicIdentityCandidates(for resourceURL: URL) -> [URL] {
+        let safeURL = resourceURL.podcastNonSecretURL
+        guard var components = URLComponents(url: safeURL, resolvingAgainstBaseURL: false) else {
+            return [safeURL]
+        }
+
+        var pathCandidates = [safeURL]
+        let path = components.percentEncodedPath
+        if path.count > 1 {
+            components.percentEncodedPath = path.hasSuffix("/")
+                ? String(path.dropLast())
+                : path + "/"
+            if let pathVariant = components.url {
+                pathCandidates.append(pathVariant)
+            }
+        }
+
+        // A same-host HTTP-to-HTTPS redirect is a normal canonicalization for
+        // feeds. The original identifier is still safe to probe because it
+        // contains no credential material.
+        var candidates = pathCandidates
+        for pathCandidate in pathCandidates {
+            guard var schemeComponents = URLComponents(
+                url: pathCandidate,
+                resolvingAgainstBaseURL: false
+            ), let scheme = schemeComponents.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+                continue
+            }
+            schemeComponents.scheme = scheme == "http" ? "https" : "http"
+            if let schemeVariant = schemeComponents.url {
+                candidates.append(schemeVariant)
+            }
+        }
+
+        var seen = Set<String>()
+        return candidates.filter { seen.insert($0.absoluteString).inserted }
     }
 
     /// Produces a deterministic, side-effect-free bootstrap decision. Callers

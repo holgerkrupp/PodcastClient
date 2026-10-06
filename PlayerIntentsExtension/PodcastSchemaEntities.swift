@@ -32,12 +32,26 @@ struct PodcastShowSchemaEntity {
         )
     }
 
+    init(id: String, title: String, showDescription: String?, imageURL: URL?) {
+        self.id = id
+        self.title = title
+        self.showDescription = showDescription
+        self.imageURL = imageURL
+    }
+
     init?(podcast: Podcast) {
         guard let feed = podcast.feed else { return nil }
         id = feed.absoluteString
         title = podcast.title
         showDescription = podcast.desc
         imageURL = podcast.imageURL
+    }
+
+    init(snapshot: IntentPodcastSnapshot) {
+        id = snapshot.id
+        title = snapshot.title
+        showDescription = snapshot.description
+        imageURL = snapshot.imageURL
     }
 }
 
@@ -48,17 +62,17 @@ extension PodcastShowSchemaEntity: SyncableEntity {}
 struct PodcastShowSchemaEntityQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [PodcastShowSchemaEntity.ID]) async throws -> [PodcastShowSchemaEntity] {
-        try await LibraryEntityLookup.podcasts(withFeedStrings: identifiers).compactMap(PodcastShowSchemaEntity.init(podcast:))
+        try await LibraryEntityLookup.podcasts(withFeedStrings: identifiers).map(PodcastShowSchemaEntity.init(snapshot:))
     }
 
     @MainActor
     func entities(matching string: String) async throws -> [PodcastShowSchemaEntity] {
-        try await LibraryEntityLookup.subscribedPodcasts(matching: string).compactMap(PodcastShowSchemaEntity.init(podcast:))
+        try await LibraryEntityLookup.subscribedPodcasts(matching: string).map(PodcastShowSchemaEntity.init(snapshot:))
     }
 
     @MainActor
     func suggestedEntities() async throws -> [PodcastShowSchemaEntity] {
-        try await LibraryEntityLookup.subscribedPodcasts().compactMap(PodcastShowSchemaEntity.init(podcast:))
+        try await LibraryEntityLookup.subscribedPodcasts().map(PodcastShowSchemaEntity.init(snapshot:))
     }
 }
 
@@ -98,6 +112,23 @@ struct PodcastEpisodeSchemaEntity {
         imageURL = episode.imageURL ?? episode.podcast?.imageURL
     }
 
+    init(snapshot: IntentEpisodeSnapshot) {
+        id = snapshot.id
+        title = snapshot.title
+        showName = snapshot.podcastTitle
+        show = snapshot.podcastFeedID.map {
+            PodcastShowSchemaEntity(
+                id: $0,
+                title: snapshot.podcastTitle ?? "Podcast",
+                showDescription: snapshot.podcastDescription,
+                imageURL: snapshot.imageURL
+            )
+        }
+        releaseDate = snapshot.publishDate
+        duration = snapshot.duration
+        imageURL = snapshot.imageURL
+    }
+
     /// Built from the lightweight queue summary, which has no show record,
     /// release date or duration.
     init?(summary: EpisodeSummary) {
@@ -119,17 +150,17 @@ extension PodcastEpisodeSchemaEntity: SyncableEntity {}
 struct PodcastEpisodeSchemaEntityQuery: EntityStringQuery {
     @MainActor
     func entities(for identifiers: [PodcastEpisodeSchemaEntity.ID]) async throws -> [PodcastEpisodeSchemaEntity] {
-        try await LibraryEntityLookup.episodes(withURLStrings: identifiers).compactMap(PodcastEpisodeSchemaEntity.init(episode:))
+        try await LibraryEntityLookup.episodes(withURLStrings: identifiers).map(PodcastEpisodeSchemaEntity.init(snapshot:))
     }
 
     @MainActor
     func entities(matching string: String) async throws -> [PodcastEpisodeSchemaEntity] {
-        try await LibraryEntityLookup.episodes(matching: string).compactMap(PodcastEpisodeSchemaEntity.init(episode:))
+        try await LibraryEntityLookup.episodes(matching: string).map(PodcastEpisodeSchemaEntity.init(snapshot:))
     }
 
     @MainActor
     func suggestedEntities() async throws -> [PodcastEpisodeSchemaEntity] {
-        try await LibraryEntityLookup.upNextEpisodes().compactMap(PodcastEpisodeSchemaEntity.init(episode:))
+        try await LibraryEntityLookup.upNextEpisodes().map(PodcastEpisodeSchemaEntity.init(snapshot:))
     }
 }
 

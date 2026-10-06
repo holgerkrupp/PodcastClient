@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ChapterRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.esaThemePalette) private var themePalette
     @Bindable var chapter: Marker
     var isCurrentChapter: Bool? = nil
     var markerLabel: String = "chapter"
@@ -42,11 +43,11 @@ struct ChapterRowView: View {
                         if resolvedIsCurrentChapter {
                             Label("Current chapter", systemImage: "speaker.wave.2.fill")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         } else if chapter.shouldPlay == false {
                             Label("Will be skipped", systemImage: "forward.fill")
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
                     }
                     HStack {
@@ -109,7 +110,9 @@ struct ChapterRowView: View {
                 }
             }
             .foregroundStyle(
-                chapter.shouldPlay == false ? Color.secondary : resolvedIsCurrentChapter ? Color.accent : Color.primary
+                chapter.shouldPlay == false
+                    ? themePalette.secondaryForeground
+                    : resolvedIsCurrentChapter ? (themePalette.accent ?? Color.accentColor) : themePalette.primaryForeground
             )
         
     }

@@ -6,11 +6,15 @@
 //
 import SwiftUI
 import SwiftData
+import ESADesignKit
 
 struct PodcastRowView: View {
     let podcast: Podcast
+    var previewArtwork: Image? = nil
+    var previewArtworkSource: ESAImageSource? = nil
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.esaVisualStyle) private var visualStyle
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
 
@@ -27,17 +31,26 @@ struct PodcastRowView: View {
         let abandonmentAssessment = podcast.metaData?.feedAbandonmentAssessment
         let isAbandoned = abandonmentAssessment != nil
 
-        ZStack {
-            if colorSchemeContrast == .increased {
+        let rowContent = ZStack {
+            if visualStyle == .artwork && colorSchemeContrast == .increased {
                 Rectangle()
                     .fill(Color(white: colorScheme == .dark ? 0 : 1))
                     .accessibilityHidden(true)
-            } else {
-                BlurredCoverImageView(
-                    podcast: podcast,
-                    maxPixelSize: 512,
-                    loadDelay: .milliseconds(200)
-                )
+            } else if visualStyle == .artwork {
+                Group {
+                    if let previewArtwork {
+                        previewArtwork
+                            .resizable()
+                            .scaledToFill()
+                            .blur(radius: 18)
+                    } else {
+                        BlurredCoverImageView(
+                            podcast: podcast,
+                            maxPixelSize: 512,
+                            loadDelay: .milliseconds(200)
+                        )
+                    }
+                }
                     .scaledToFill()
                     .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
                     .clipped()
@@ -45,11 +58,19 @@ struct PodcastRowView: View {
             }
 
             HStack(spacing: 14) {
-                CoverImageView(
-                    podcast: podcast,
-                    maxPixelSize: 512,
-                    loadDelay: .milliseconds(200)
-                )
+                Group {
+                    if let previewArtwork {
+                        previewArtwork
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        CoverImageView(
+                            podcast: podcast,
+                            maxPixelSize: 512,
+                            loadDelay: .milliseconds(200)
+                        )
+                    }
+                }
                     .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
 
@@ -57,18 +78,19 @@ struct PodcastRowView: View {
                     Text(podcast.title)
                         .font(.headline)
                         .lineLimit(2)
+                        .esaForeground(.primary)
 
                     if let author = podcast.author, author.isEmpty == false {
                         Text(author)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(1)
                     }
 
                     if let desc = podcast.desc, desc.isEmpty == false {
                         Text(desc.plainTextFromHTML() ?? desc)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(3)
                     }
 
@@ -85,7 +107,7 @@ struct PodcastRowView: View {
             .padding(8)
             .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
             .background {
-                if colorSchemeContrast == .standard {
+                if visualStyle == .artwork && colorSchemeContrast == .standard {
                     Rectangle().fill(.thinMaterial)
                 }
             }
@@ -105,6 +127,16 @@ struct PodcastRowView: View {
                     .accessibilityLabel(label)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            if let feedIssueDescription {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.orange)
+                    .padding(9)
+                    .accessibilityLabel(feedIssueDescription)
+                    .help(feedIssueDescription)
+            }
+        }
         .overlay {
             if  let message = podcast.message {
                 ZStack {
@@ -116,7 +148,7 @@ struct PodcastRowView: View {
                         ProgressView()
                             .frame(width: 100, height: 50)
                         Text(message)
-                            .foregroundStyle(Color.primary)
+                            .esaForeground(.primary)
                             .font(.title.bold())
                             
                     }
@@ -129,6 +161,31 @@ struct PodcastRowView: View {
                         .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
             }
         }
+
+        if visualStyle == .artwork {
+            rowContent
+        } else if let previewArtworkSource {
+            ESARowView(image: previewArtworkSource, minHeight: rowHeight) {
+                rowContent
+            }
+        } else {
+            rowContent.ESA_RowView(image: podcast.imageURL, minHeight: rowHeight)
+        }
+    }
+
+    private var feedIssueDescription: String? {
+        if let assessment = podcast.metaData?.feedAbandonmentAssessment {
+            return "\(assessment.title). \(assessment.detail)"
+        }
+        guard let metadata = podcast.metaData,
+              metadata.lastFeedFailureDate != nil else {
+            return nil
+        }
+
+        let reason = metadata.feedFailureStatusDescription
+            ?? metadata.lastFeedFailureMessage
+            ?? "The podcast feed could not be refreshed."
+        return "Podcast feed issue: \(reason)"
     }
 }
 

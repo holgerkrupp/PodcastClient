@@ -28,7 +28,7 @@ struct EpisodeProgressView: View {
                     Text(Duration.seconds(remainingTime).formatted(.units(width: .narrow)) + " remaining")
                         .font(.caption)
                         .monospacedDigit()
-                        .foregroundColor(.primary)
+                        .esaForeground(.primary)
                 } else {
                     Text(Duration.seconds(episode.duration ?? 0.0).formatted(.units(width: .narrow)))
                         .font(.caption)
@@ -39,7 +39,7 @@ struct EpisodeProgressView: View {
                 Text((episode.publishDate?.formatted(date: .numeric, time: .shortened) ?? ""))
                     .font(.caption)
                     .monospacedDigit()
-                    .foregroundColor(.primary)
+                    .esaForeground(.primary)
             }
             
         }

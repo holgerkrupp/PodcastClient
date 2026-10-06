@@ -50,9 +50,10 @@ actor PodcastEpisodeFilterActor {
                     return false
                 }
                 if request.searchInTranscript,
-                   episode.transcriptLines?.contains(where: {
-                       $0.text.localizedStandardContains(request.query)
-                   }) == true {
+                   transcriptContains(
+                    request.query,
+                    forEpisodeID: episode.persistentModelID
+                   ) {
                     return false
                 }
                 return true
@@ -79,5 +80,22 @@ actor PodcastEpisodeFilterActor {
         }
 
         return episodes.map(\.persistentModelID)
+    }
+
+    /// Queries transcript rows directly rather than faulting
+    /// `episode.transcriptLines`, which can be replaced while transcription or
+    /// an import is running in another model context.
+    private func transcriptContains(
+        _ query: String,
+        forEpisodeID episodeID: PersistentIdentifier
+    ) -> Bool {
+        var descriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { line in
+                line.episode?.persistentModelID == episodeID
+                    && line.text.localizedStandardContains(query)
+            }
+        )
+        descriptor.fetchLimit = 1
+        return (try? modelContext.fetch(descriptor).isEmpty == false) ?? false
     }
 }

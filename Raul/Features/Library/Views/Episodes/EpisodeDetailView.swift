@@ -24,14 +24,10 @@ struct EpisodeDetailView: View {
     private let transcriptSearchNavigation: TranscriptSearchNavigation?
     @Bindable private var player = Player.shared
     @State private var shareURL: IdentifiableURL?
+    @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
 
     @State private var errorMessage: String? = nil
-    @State private var liveTranscriptionItem: TranscriptionItem?
-    @State private var transcriptionQueueEntries: [TranscriptionQueueEntry] = []
     @State private var isLoadingTranscript: Bool = false
-    @State private var isStartingTranscription: Bool = false
-    @State private var isGeneratingTranscriptChapters: Bool = false
-    @State private var chapterGenerationMessage: String?
     @State private var showTranscriptSheet: Bool = false
 #if DEBUG
     @State private var isDeletingTranscript = false
@@ -51,7 +47,6 @@ struct EpisodeDetailView: View {
         let _ = episode.refresh
         let hasLoadedTranscript = episode.transcriptLines?.isEmpty == false
         let hasRemoteTranscript = episode.externalFiles.contains(where: { $0.category == .transcript })
-        let activeTranscriptionItem = liveTranscriptionItem ?? episode.transcriptionItem
         
             ZStack {
                 ScrollView {
@@ -142,61 +137,24 @@ struct EpisodeDetailView: View {
                                 .accessibilityLabel("Open captions and transcript")
                                 .accessibilityHint("Opens episode captions if available")
                                 .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
-                            } else if let item = activeTranscriptionItem, item.isTranscribing || isStartingTranscription {
-                                TranscriptionProgressView(
-                                    item: item,
-                                    queueEntry: transcriptionQueueEntries.first { $0.episodeURL == item.episodeURL },
-                                    activeEpisodeTitle: transcriptionQueueEntries.first {
-                                        if case .active = $0.state { return true }
-                                        return false
-                                    }?.episodeTitle,
-                                    moveToNext: {
-                                        Task { await moveTranscriptionToNext(for: item.episodeURL) }
-                                    }
+                            }
+                            if let url = episode.url {
+                                EpisodeAIGenerationControl(
+                                    action: EpisodeAIGenerationPolicy.action(
+                                        isAvailable: AppleIntelligenceAvailability.isAvailable,
+                                        hasTranscript: hasLoadedTranscript,
+                                        hasUsableChapters: episode.hasDisplayableChaptersOrSoundbites
+                                    ),
+                                    state: aiGeneration.state(for: url),
+                                    start: { action in
+                                        aiGeneration.start(action: action, episodeURL: url, modelContainer: context.container)
+                                    },
+                                    cancel: { Task { await aiGeneration.cancel(episodeURL: url) } }
                                 )
-                                    .padding()
-                            } else if let url = episode.url {
-                                Button(action: {
-                                    Task { await startTranscription(from: url) }
-                                }) {
-                                    Label("Transcribe", systemImage: "quote.bubble.fill")
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .padding()
-                                .disabled(isStartingTranscription)
-                                .accessibilityLabel("Generate captions")
-                                .accessibilityHint("Creates an on-device transcript to use as captions")
-                                .accessibilityInputLabels([Text("Generate captions"), Text("Transcribe episode")])
+                                .padding(.horizontal)
+                                .padding(.vertical, 8)
                             }
 #if DEBUG
-                    if let url = episode.url {
-                        
-                        if let chapterGenerationMessage {
-                            Text(chapterGenerationMessage)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal)
-                        }else if isGeneratingTranscriptChapters{
-                            ProgressView()
-                                .controlSize(.small)
-                        }else if canGenerateTranscriptChapters{
-                            
-                            Button {
-                                Task { await generateTranscriptChaptersOnDemand(for: url) }
-                            } label: {
-                                Label(
-                                    isGeneratingTranscriptChapters ? "Generating…" : "Generate Chapters",
-                                    systemImage: "sparkles"
-                                )
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .tint(.blue)
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .disabled(isGeneratingTranscriptChapters || canGenerateTranscriptChapters == false)
-                            
-                        }
-
                         if hasLoadedTranscript {
                             Button(role: .destructive) {
                                 showDeleteTranscriptConfirmation = true
@@ -216,9 +174,6 @@ struct EpisodeDetailView: View {
 
                             Spacer()
                         
-
-
-                    }
 #endif
                         }
                     
@@ -271,7 +226,7 @@ struct EpisodeDetailView: View {
                                     .frame(width: 50, height: 50)
                                 Text(podcast.title)
                                     .font(.title2)
-                                    .foregroundColor(.primary)
+                                    .esaForeground(.primary)
                             }
                              */
                         }
@@ -343,27 +298,10 @@ struct EpisodeDetailView: View {
             }
             .task(id: episode.url) {
                 SystemPressureGate.shared.noteUserInteraction()
-                liveTranscriptionItem = await currentTranscriptionItem()
-            }
-            .task(id: activeTranscriptionItem?.id) {
-                repeat {
-                    await refreshTranscriptionQueue()
-                    guard activeTranscriptionItem?.isTranscribing == true else { break }
-                    try? await Task.sleep(for: .seconds(1))
-                } while Task.isCancelled == false
-            }
-            .onChange(of: activeTranscriptionItem?.state) {
-                if case .finished = activeTranscriptionItem?.state {
-                    liveTranscriptionItem = nil
-                }
             }
         
         //.navigationTitle(episode.title)
         .platformInlineNavigationTitle()
-    }
-
-    private var canGenerateTranscriptChapters: Bool {
-        episode.transcriptLines?.isEmpty == false
     }
 
     private var isCurrentEpisode: Bool {
@@ -539,71 +477,6 @@ struct EpisodeDetailView: View {
             }
     }
 
-    @MainActor
-    private func startTranscription(from url: URL) async {
-        guard !isStartingTranscription else { return }
-        isStartingTranscription = true
-        errorMessage = nil
-
-        if let existingItem = await currentTranscriptionItem() {
-            liveTranscriptionItem = existingItem
-        } else {
-            let placeholder = TranscriptionItem(episodeURL: url, sourceURL: url)
-            placeholder.setState(.queued, progress: 0.0, status: "Queued")
-            liveTranscriptionItem = placeholder
-        }
-
-        defer {
-            isStartingTranscription = false
-        }
-
-        do {
-            let actor = EpisodeActor(modelContainer: context.container)
-            try await actor.transcribe(url)
-            if let item = await currentTranscriptionItem() {
-                liveTranscriptionItem = item
-            }
-        } catch {
-            errorMessage = error.localizedDescription
-            liveTranscriptionItem?.setState(.failed(error: error.localizedDescription), status: "Failed")
-        }
-    }
-
-    @MainActor
-    private func generateTranscriptChaptersOnDemand(for episodeURL: URL) async {
-        guard isGeneratingTranscriptChapters == false else { return }
-        guard canGenerateTranscriptChapters else {
-            chapterGenerationMessage = "Transcript lines are not available yet."
-            return
-        }
-
-        isGeneratingTranscriptChapters = true
-        chapterGenerationMessage = nil
-        defer {
-            isGeneratingTranscriptChapters = false
-        }
-
-        let actor = EpisodeActor(modelContainer: context.container)
-        let didGenerate = await actor.regenerateTranscriptChapters(for: episodeURL)
-        chapterGenerationMessage = didGenerate ? "Transcript chapters generated." : "No transcript chapters were created."
-    }
-
-    private func currentTranscriptionItem() async -> TranscriptionItem? {
-        guard let episodeURL = episode.url else { return nil }
-        return await TranscriptionManager.shared.item(for: episodeURL)
-    }
-
-    @MainActor
-    private func refreshTranscriptionQueue() async {
-        transcriptionQueueEntries = await TranscriptionManager.shared.queueEntries()
-    }
-
-    @MainActor
-    private func moveTranscriptionToNext(for episodeURL: URL) async {
-        await TranscriptionManager.shared.moveToFrontOfQueue(episodeURL: episodeURL)
-        await refreshTranscriptionQueue()
-    }
-
 #if DEBUG
     @MainActor
     private func deleteTranscript() async {
@@ -620,7 +493,6 @@ struct EpisodeDetailView: View {
             episode.transcriptLines = nil
             episode.refresh.toggle()
             context.saveIfNeeded()
-            liveTranscriptionItem = nil
             showTranscriptSheet = false
         } catch {
             errorMessage = error.localizedDescription
@@ -677,6 +549,7 @@ private struct TranscriptionProgressView: View {
     let queueEntry: TranscriptionQueueEntry?
     let activeEpisodeTitle: String?
     let moveToNext: () -> Void
+    let cancel: () -> Void
     
     var body: some View {
         HStack(spacing: 10) {
@@ -708,7 +581,7 @@ private struct TranscriptionProgressView: View {
                         Text("\(progressValue.clamped(to: 0...1), format: .percent.precision(.fractionLength(0)))")
                             .font(.caption2)
                             .monospacedDigit()
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                     }
                 }
                 ProgressView(value: progressValue, total: 1.0)
@@ -716,13 +589,13 @@ private struct TranscriptionProgressView: View {
                     .tint(.accent)
                 Text(statusTitle)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
                     .lineLimit(2)
                 if case let .queued(position)? = queueEntry?.state {
                     if let activeEpisodeTitle {
                         Text("Currently transcribing: \(activeEpisodeTitle)")
                             .font(.caption2)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(2)
                     }
                     if position > 1 {
@@ -734,6 +607,12 @@ private struct TranscriptionProgressView: View {
                             .foregroundStyle(.accent)
                     }
                 }
+                Button(role: .destructive, action: cancel) {
+                    Label("Cancel", systemImage: "xmark.circle")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel transcription")
             }
         }
         .frame(width: progressCardWidth, alignment: .leading)

@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import Synchronization
 #if os(macOS) && !targetEnvironment(macCatalyst)
 import AppKit
 #endif
@@ -22,8 +23,43 @@ enum AudioClipExporter {
     }
 
     private final class FrameWritingState: @unchecked Sendable {
+        private struct CompletionState {
+            var continuation: CheckedContinuation<Void, Error>?
+            var didComplete = false
+        }
+
+        private let completionState = Mutex(CompletionState())
+
+        // These are accessed exclusively on the serial writer queue below.
         var currentFrame = 0
-        var didComplete = false
+        var isFinishing = false
+
+        func install(_ continuation: CheckedContinuation<Void, Error>) {
+            completionState.withLock { state in
+                state.continuation = continuation
+            }
+        }
+
+        func isCompleted() -> Bool {
+            completionState.withLock { $0.didComplete }
+        }
+
+        func complete(_ result: Result<Void, Error>) {
+            let continuation: CheckedContinuation<Void, Error>? = completionState.withLock { state in
+                guard state.didComplete == false else { return nil }
+                state.didComplete = true
+                defer { state.continuation = nil }
+                return state.continuation
+            }
+            guard let continuation else { return }
+
+            switch result {
+            case .success:
+                continuation.resume()
+            case .failure(let error):
+                continuation.resume(throwing: error)
+            }
+        }
     }
 
     // MARK: - Export Clip
@@ -96,58 +132,71 @@ enum AudioClipExporter {
         let adaptorBox = UnsafeSendableBox(adaptor)
         let videoWriterBox = UnsafeSendableBox(videoWriter)
         let state = FrameWritingState()
+        let writerQueue = DispatchQueue(
+            label: "AudioClipExporter.FrameWriter",
+            qos: .userInitiated
+        )
 
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            videoInputBox.value.requestMediaDataWhenReady(on: DispatchQueue.global(qos: .userInitiated)) {
-                guard !state.didComplete else { return }
+        try await withTaskCancellationHandler(operation: {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                state.install(continuation)
+                videoInputBox.value.requestMediaDataWhenReady(on: writerQueue) {
+                    guard state.isCompleted() == false, state.isFinishing == false else { return }
 
-                while videoInputBox.value.isReadyForMoreMediaData && state.currentFrame < frameCount {
-                    let appendSucceeded = autoreleasepool {
-                        let frameProgress = Double(state.currentFrame) / Double(frameCount)
-                        guard let buffer = createPixelBuffer(
-                            from: template,
-                            size: videoSize,
-                            progress: frameProgress,
-                            startTime: startTime,
-                            endTime: endTime,
-                            playbackRate: playbackRate,
-                            title: title
-                        ) else {
-                            return false
+                    while videoInputBox.value.isReadyForMoreMediaData && state.currentFrame < frameCount {
+                        let appendSucceeded = autoreleasepool {
+                            let frameProgress = Double(state.currentFrame) / Double(frameCount)
+                            guard let buffer = createPixelBuffer(
+                                from: template,
+                                size: videoSize,
+                                progress: frameProgress,
+                                startTime: startTime,
+                                endTime: endTime,
+                                playbackRate: playbackRate,
+                                title: title
+                            ) else {
+                                return false
+                            }
+                            let time = CMTime(seconds: Double(state.currentFrame) / Double(fps), preferredTimescale: 600)
+                            guard adaptorBox.value.append(buffer, withPresentationTime: time) else {
+                                return false
+                            }
+                            state.currentFrame += 1
+                            progress(Double(state.currentFrame) / Double(frameCount))
+                            return true
                         }
-                        let time = CMTime(seconds: Double(state.currentFrame) / Double(fps), preferredTimescale: 600)
-                        guard adaptorBox.value.append(buffer, withPresentationTime: time) else {
-                            return false
+
+                        guard appendSucceeded else {
+                            videoInputBox.value.markAsFinished()
+                            videoWriterBox.value.cancelWriting()
+                            state.complete(.failure(ExportError.failedToAppendFrame))
+                            return
                         }
-                        state.currentFrame += 1
-                        progress(Double(state.currentFrame) / Double(frameCount))
-                        return true
                     }
 
-                    guard appendSucceeded else {
-                        state.didComplete = true
-                        videoInputBox.value.markAsFinished()
-                        videoWriterBox.value.cancelWriting()
-                        continuation.resume(throwing: ExportError.failedToAppendFrame)
+                    guard state.currentFrame >= frameCount else {
                         return
                     }
-                }
 
-                guard state.currentFrame >= frameCount else {
-                    return
-                }
-
-                state.didComplete = true
-                videoInputBox.value.markAsFinished()
-                videoWriterBox.value.finishWriting {
-                    if videoWriterBox.value.status == .completed {
-                        continuation.resume()
-                    } else {
-                        continuation.resume(throwing: videoWriterBox.value.error ?? ExportError.failedToAppendFrame)
+                    state.isFinishing = true
+                    videoInputBox.value.markAsFinished()
+                    videoWriterBox.value.finishWriting {
+                        if videoWriterBox.value.status == .completed {
+                            state.complete(.success(()))
+                        } else {
+                            state.complete(.failure(videoWriterBox.value.error ?? ExportError.failedToAppendFrame))
+                        }
                     }
                 }
             }
-        }
+        }, onCancel: {
+            writerQueue.async {
+                guard state.isCompleted() == false else { return }
+                videoInputBox.value.markAsFinished()
+                videoWriterBox.value.cancelWriting()
+                state.complete(.failure(ExportError.taskCancelled))
+            }
+        })
 
         // MARK: Merge audio track
         let finalURL = FileManager.default.temporaryDirectory

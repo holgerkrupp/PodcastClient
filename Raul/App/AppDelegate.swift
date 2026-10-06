@@ -182,12 +182,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         StoreSplitMigrationDebugLog.record("background pass launched by iOS")
 #endif
         let processingTask = Task(priority: .utility) {
-            await ModelContainerManager.shared.prepareContainer()
-            guard ModelContainerManager.shared.preparedContainer != nil else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-
             await ModelContainerManager.shared.runStoreSplitMigrationBackgroundPass()
 
             // Re-arm only if work remains (state still pre-completion).
@@ -340,13 +334,21 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private func handleFeedProcessing(task: BGProcessingTask) {
         CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
         let processingTask = Task(priority: .utility) {
+            Self.scheduleFeedProcessing()
+            guard Player.hasActivePlaybackInProcess == false else {
+                CrashBreadcrumbs.shared.record(
+                    "feed_processing_background_task_skipped",
+                    details: "playback_active"
+                )
+                task.setTaskCompleted(success: true)
+                return
+            }
             await ModelContainerManager.shared.prepareContainer()
             guard let container = ModelContainerManager.shared.preparedContainer else {
                 task.setTaskCompleted(success: false)
                 return
             }
 
-            Self.scheduleFeedProcessing()
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
             await PredictedReleaseRefreshScheduler.schedule(using: container)
             guard Task.isCancelled == false else {
@@ -360,13 +362,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // `TranscriptionManager.shared` builds itself on the main actor, so
             // reach it from there: this task can be the first thing to touch it
             // in a background launch of the process.
-            let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
-            let importedTranscriptCount = await transcriptionManager
-                .runAutomaticTranscriptionsFromPlaylists(
-                    allowOnDeviceFallback: false,
-                    episodeLimit: BackgroundTaskConfiguration.feedProcessingTranscriptImportLimit,
-                    budget: BackgroundTaskConfiguration.feedProcessingTranscriptImportBudget
-                )
+            let importedTranscriptCount: Int
+            if Player.hasActivePlaybackInProcess {
+                importedTranscriptCount = 0
+            } else {
+                let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+                importedTranscriptCount = await transcriptionManager
+                    .runAutomaticTranscriptionsFromPlaylists(
+                        allowOnDeviceFallback: false,
+                        episodeLimit: BackgroundTaskConfiguration.feedProcessingTranscriptImportLimit,
+                        budget: BackgroundTaskConfiguration.feedProcessingTranscriptImportBudget
+                    )
+            }
             guard Task.isCancelled == false else {
                 task.setTaskCompleted(success: false)
                 return
@@ -386,6 +393,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
         let processingTask = Task(priority: .utility) {
+            guard Player.hasActivePlaybackInProcess == false else {
+                CrashBreadcrumbs.shared.record(
+                    "automatic_transcription_background_task_skipped",
+                    details: "playback_active"
+                )
+                task.setTaskCompleted(success: true)
+                return
+            }
             await ModelContainerManager.shared.prepareContainer()
             guard ModelContainerManager.shared.preparedContainer != nil else {
                 task.setTaskCompleted(success: false)

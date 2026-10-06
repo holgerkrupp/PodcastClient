@@ -257,6 +257,16 @@
         }
       }
     },
+    "%@. %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@. %2$@"
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -926,6 +936,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Passt die aktuelle Wiedergabeposition an"
+          }
+        }
+      }
+    },
+    "Advertisement" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Werbung"
           }
         }
       }
@@ -1648,7 +1668,20 @@
     "Cancel both the minute-based and after-episode sleep timer." : {
 
     },
+    "Cancel generation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generierung abbrechen"
+          }
+        }
+      }
+    },
     "Cancel Sleep Timer" : {
+
+    },
+    "Cancel transcription" : {
 
     },
     "Caption" : {
@@ -2208,6 +2241,7 @@
       }
     },
     "Creates an on-device transcript to use as captions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3618,11 +3652,22 @@
 
     },
     "Generate captions" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Untertitel generieren"
+          }
+        }
+      }
+    },
+    "Generate chapters" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapitel generieren"
           }
         }
       }
@@ -3650,17 +3695,41 @@
         }
       }
     },
-    "Generate Transcript" : {
-
-    },
-    "Generate Transcript and Chapters" : {
-
-    },
     "Generated Chapters" : {
 
     },
     "Generated editorial chapters use the on-device transcript model. Confirmed detected advertisements are added as separate chapters and never enable ad skipping." : {
 
+    },
+    "Generating chapters, section %@…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapitel werden generiert, Abschnitt %@ …"
+          }
+        }
+      }
+    },
+    "Generating chapters…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapitel werden generiert …"
+          }
+        }
+      }
+    },
+    "Generation cancelled" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Generierung abgebrochen"
+          }
+        }
+      }
     },
     "Gentle preserves more pauses; stronger levels shorten more silence." : {
       "localizations" : {
@@ -5581,6 +5650,16 @@
     },
     "No Chapters" : {
 
+    },
+    "No chapters could be generated from this transcript." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus diesem Transkript konnten keine Kapitel erstellt werden."
+          }
+        }
+      }
     },
     "No Downloads" : {
       "localizations" : {
@@ -7880,6 +7959,36 @@
     "Premium Podcasts" : {
 
     },
+    "Preparing speech model…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprachmodell wird vorbereitet …"
+          }
+        }
+      }
+    },
+    "Preparing transcript chapters…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptkapitel werden vorbereitet …"
+          }
+        }
+      }
+    },
+    "Preparing transcript…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript wird vorbereitet …"
+          }
+        }
+      }
+    },
     "Preset" : {
       "localizations" : {
         "de" : {
@@ -8064,6 +8173,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position in der Warteschlange"
+          }
+        }
+      }
+    },
+    "Queued for transcription" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für Transkription vorgemerkt"
           }
         }
       }
@@ -8833,6 +8952,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Speichert die aktuelle Wiedergabeposition als Lesezeichen"
+          }
+        }
+      }
+    },
+    "Saving transcript…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript wird gespeichert …"
           }
         }
       }
@@ -10100,6 +10229,16 @@
     "Stops live playback and restores the previous episode and its position" : {
 
     },
+    "Stops transcript and chapter generation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stoppt die Transkript- und Kapitelerstellung"
+          }
+        }
+      }
+    },
     "Storage" : {
       "localizations" : {
         "de" : {
@@ -10497,6 +10636,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Die Gesamtdauer des erzeugten Clips in Sekunden."
+          }
+        }
+      }
+    },
+    "The transcript could not be created. Download the episode and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Transkript konnte nicht erstellt werden. Lade die Episode herunter und versuche es erneut."
           }
         }
       }
@@ -10963,7 +11112,18 @@
         }
       }
     },
+    "Transcribe & generate chapters" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkribieren und Kapitel generieren"
+          }
+        }
+      }
+    },
     "Transcribe episode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10989,6 +11149,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Audio wird transkribiert … %@"
+          }
+        }
+      }
+    },
+    "Transcribing…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkription läuft …"
           }
         }
       }
@@ -11025,6 +11195,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transkriptzeilen"
+          }
+        }
+      }
+    },
+    "Transcript ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkript fertig"
           }
         }
       }
@@ -11479,6 +11659,26 @@
         }
       }
     },
+    "Use the chapter row to generate a transcript on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwende die Kapitelzeile, um auf diesem Gerät ein Transkript zu erstellen."
+          }
+        }
+      }
+    },
+    "Use the chapter row to generate chapters on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwende die Kapitelzeile, um auf diesem Gerät Kapitel zu erstellen."
+          }
+        }
+      }
+    },
     "Use the configured skip intervals." : {
 
     },
@@ -11530,6 +11730,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Benutzername"
+          }
+        }
+      }
+    },
+    "Uses Apple Intelligence on this device" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verwendet Apple Intelligence auf diesem Gerät"
           }
         }
       }
@@ -11714,6 +11924,9 @@
 
     },
     "What podcasts are live in Up Next?" : {
+
+    },
+    "What's New" : {
 
     },
     "When" : {

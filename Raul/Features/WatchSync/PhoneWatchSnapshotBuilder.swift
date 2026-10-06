@@ -58,7 +58,12 @@ enum WatchSyncChapterIdentity {
 /// running.
 @ModelActor
 actor PhoneWatchSnapshotBuilder {
+    /// A Watch snapshot must fit inside the background scene-update budget.
+    /// The watch UI remains useful with a recent queue window; trying to
+    /// serialize an unbounded queue can fault thousands of SwiftData objects.
+    private let maximumPlaylistSnapshotEpisodes = 100
     private let maximumInboxSnapshotEpisodes = 25
+    private let maximumVisibleWatchPlaylists = 50
     private let maximumSnapshotChaptersPerEpisode = 100
 
     private struct PlaylistSelection {
@@ -71,17 +76,20 @@ actor PhoneWatchSnapshotBuilder {
         let selection = resolvePlaylistSelection()
         let playlistEntries = (try? WatchSyncPlaylistEntryQuery.fetchOrdered(
             playlistID: selection.selectedPlaylist.id,
-            in: modelContext
+            in: modelContext,
+            limit: maximumPlaylistSnapshotEpisodes
         )) ?? []
+        let playlistEpisodes = playlistEntries.compactMap(\.episode)
         let inboxEpisodes = fetchInboxEpisodes()
         let settings = fetchStandardSettings()
-        let enabledSettingsByFeed = fetchEnabledPodcastSettingsByFeed()
+        let enabledSettingsByFeed = fetchEnabledPodcastSettingsByFeed(
+            for: playlistEpisodes + inboxEpisodes
+        )
         let globalPlaybackSettings = makePlaybackSettings(from: settings, isPodcastSpecific: false)
         let watchPlaylists = makeSyncPlaylists(from: selection)
 
         var transferCandidates: [String: WatchTransferCandidate] = [:]
-        let playlist = playlistEntries.compactMap { entry -> WatchSyncEpisode? in
-            guard let episode = entry.episode else { return nil }
+        let playlist = playlistEpisodes.compactMap { episode -> WatchSyncEpisode? in
             guard let syncEpisode = makeSyncEpisode(
                 from: episode,
                 globalSettings: settings,
@@ -132,12 +140,19 @@ actor PhoneWatchSnapshotBuilder {
 
     private func resolvePlaylistSelection() -> PlaylistSelection {
         let defaults = UserDefaults.standard
-        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
-        let allPlaylists = (try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [defaultPlaylist]
-        let manualPlaylists = Playlist.manualVisibleSorted(allPlaylists)
-        let fallbackPlaylist = manualPlaylists.first(where: { $0.id == defaultPlaylist.id })
+        // Snapshot creation is a read-only background path. Default-queue
+        // repair can fault every queued episode, so it belongs to foreground
+        // maintenance rather than this selection lookup.
+        let defaultPlaylist = Playlist.existingDefaultQueue(in: modelContext)
+        let manualPlaylists = fetchVisibleManualPlaylists()
+        let fallbackPlaylist = defaultPlaylist.flatMap { defaultPlaylist in
+            manualPlaylists.first(where: { $0.id == defaultPlaylist.id })
+        }
             ?? manualPlaylists.first
             ?? defaultPlaylist
+            // A missing queue is repaired during foreground maintenance. Use
+            // a detached fallback here so a Watch refresh remains read-only.
+            ?? Playlist()
 
         let storedPlaylistID = Playlist.resolvePlaylistID(
             from: defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID)
@@ -153,8 +168,24 @@ actor PhoneWatchSnapshotBuilder {
         return PlaylistSelection(
             selectedPlaylist: selectedPlaylist,
             manualPlaylists: manualPlaylists.isEmpty ? [selectedPlaylist] : manualPlaylists,
-            defaultPlaylistID: defaultPlaylist.id
+            defaultPlaylistID: defaultPlaylist?.id
         )
+    }
+
+    private func fetchVisibleManualPlaylists() -> [Playlist] {
+        let manualKindRawValue = Playlist.Kind.manual.rawValue
+        var descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { playlist in
+                playlist.hidden == false
+                    && playlist.kindRawValue == manualKindRawValue
+            }
+        )
+        descriptor.fetchLimit = maximumVisibleWatchPlaylists
+        let playlists = (try? modelContext.fetch(descriptor)) ?? []
+        // This list is required for the Watch playlist picker. Unlike the old
+        // unfiltered fetch, it neither evaluates hidden/smart playlists nor
+        // accesses a playlist's entries.
+        return Playlist.manualVisibleSorted(playlists)
     }
 
     private func makeSyncPlaylists(from selection: PlaylistSelection) -> [WatchSyncPlaylist] {
@@ -198,16 +229,20 @@ actor PhoneWatchSnapshotBuilder {
         return settings
     }
 
-    private func fetchEnabledPodcastSettingsByFeed() -> [URL: PodcastSettings] {
-        let descriptor = FetchDescriptor<PodcastSettings>(
-            predicate: #Predicate<PodcastSettings> { setting in
-                setting.isEnabled == true
+    private func fetchEnabledPodcastSettingsByFeed(
+        for episodes: [Episode]
+    ) -> [URL: PodcastSettings] {
+        let feeds = Set(episodes.compactMap { $0.podcast?.feed })
+        return feeds.reduce(into: [:]) { result, feed in
+            var descriptor = FetchDescriptor<PodcastSettings>(
+                predicate: #Predicate<PodcastSettings> { setting in
+                    setting.isEnabled == true && setting.podcast?.feed == feed
+                }
+            )
+            descriptor.fetchLimit = 1
+            if let setting = try? modelContext.fetch(descriptor).first {
+                result[feed] = setting
             }
-        )
-        let settings = (try? modelContext.fetch(descriptor)) ?? []
-        return settings.reduce(into: [:]) { result, setting in
-            guard let feed = setting.podcast?.feed else { return }
-            result[feed] = setting
         }
     }
 

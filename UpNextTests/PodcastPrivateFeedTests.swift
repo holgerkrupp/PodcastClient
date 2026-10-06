@@ -285,6 +285,38 @@ final class PodcastPrivateFeedTests: XCTestCase {
         )
     }
 
+    func testLegacyHTTPBasicCredentialRecoversAfterCanonicalTrailingSlash() throws {
+        // The original username/password URL is never persisted. This fixture
+        // models an older Keychain entry whose feed was later canonicalized by
+        // the server from /feed/plus to /feed/plus/.
+        let legacyURL = URL(
+            string: "http://fixture%40example.com:p%40ss%3Aword@www.example.com/feed/plus"
+        )!
+        let canonicalURL = URL(string: "http://www.example.com/feed/plus/")!
+        let legacyProfile = PodcastAccessProfile.make(for: legacyURL, kind: .httpBasic)
+        let store = InMemoryPodcastCredentialStore()
+        let resolver = PodcastAccessResolver(credentialStore: store)
+        try store.save(
+            .httpBasic(username: "fixture@example.com", password: "p@ss:word"),
+            for: legacyProfile
+        )
+
+        let recovered = try XCTUnwrap(
+            resolver.recoverLegacyHTTPBasicProfile(for: canonicalURL)
+        )
+        let request = try resolver.request(for: canonicalURL, profile: recovered)
+
+        XCTAssertEqual(recovered.id, legacyProfile.id)
+        XCTAssertEqual(recovered.kind, .httpBasic)
+        XCTAssertEqual(recovered.resourceURL, canonicalURL)
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "Authorization"),
+            "Basic Zml4dHVyZUBleGFtcGxlLmNvbTpwQHNzOndvcmQ="
+        )
+        XCTAssertFalse(recovered.resourceURL?.absoluteString.contains("fixture") == true)
+        XCTAssertFalse(recovered.resourceURL?.absoluteString.contains("p%40ss") == true)
+    }
+
     func testProtectedArtworkCacheScopeIsSeparateFromPublicArtwork() {
         let artworkURL = URL(string: "https://example.com/artwork.jpg")!
         XCTAssertNotEqual(

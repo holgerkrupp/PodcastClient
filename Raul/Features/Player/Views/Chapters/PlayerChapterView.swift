@@ -20,7 +20,7 @@ struct PlayerChapterView: View {
     }
     
     var body: some View {
-        if player.currentEpisode?.preferredChapters.count ?? 0 > 1{
+        if player.currentEpisode?.hasChapterSelectionUI == true {
           //  GlassEffectContainer(spacing: 20){
                 HStack(spacing: 0.0) {
                     Spacer()
@@ -71,13 +71,13 @@ struct PlayerChapterView: View {
                             } label: {
                                 VStack{
                                     Text(player.currentChapter?.displayTitle ?? "unknown current Chapter")
-                                        .foregroundStyle(Color.primary)
+                                        .esaForeground(.primary)
                                         .minimumScaleFactor(0.5)
                                     if let remaining = player.currentChapter?.remainingTime {
                                         Text(Duration.seconds(remaining).formatted(.units(width: .narrow)))
                                             .font(.caption)
                                             .monospacedDigit()
-                                            .foregroundStyle(.secondary)
+                                            .esaForeground(.secondary)
                                     }
                                 }
                                 

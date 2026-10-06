@@ -677,6 +677,77 @@ private final class RawNamespaceNodeBuilder {
 // MARK: - RFC 5005 Paged Feed Aggregation
 
 extension PodcastParser {
+    private struct FeedParseAttempt {
+        let parser: PodcastParser
+        let xmlParser: XMLParser
+        let parsedSuccessfully: Bool
+
+        var didIntentionallyStop: Bool {
+            parser.didHitEpisodeLimit
+                || parser.didStopAtKnownEpisode
+                || (
+                    (error as NSError?)?.domain == XMLParser.errorDomain
+                        && (error as NSError?)?.code == 111
+                )
+        }
+
+        var isAcceptable: Bool {
+            parsedSuccessfully || didIntentionallyStop
+        }
+
+        var error: Error? {
+            parser.parseError ?? xmlParser.parserError
+        }
+
+        var isXMLSyntaxFailure: Bool {
+            guard let error else { return false }
+            let nsError = error as NSError
+            return nsError.domain == XMLParser.errorDomain && nsError.code != 111
+        }
+    }
+
+    private static func attemptParse(
+        data: Data,
+        maximumEpisodes: Int?,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
+    ) -> FeedParseAttempt {
+        let parser = PodcastParser()
+        parser.maximumEpisodeCount = maximumEpisodes
+        parser.knownEpisodeIdentifiers = knownEpisodeIdentifiers
+
+        let xmlParser = XMLParser(data: data)
+        xmlParser.shouldProcessNamespaces = true
+        xmlParser.delegate = parser
+
+        return FeedParseAttempt(
+            parser: parser,
+            xmlParser: xmlParser,
+            parsedSuccessfully: xmlParser.parse()
+        )
+    }
+
+    private static func parserError(for attempt: FeedParseAttempt) -> PodcastParserError {
+        if let error = attempt.error {
+            return .xmlParserError(
+                error,
+                line: attempt.xmlParser.lineNumber,
+                column: attempt.xmlParser.columnNumber
+            )
+        }
+        return .notAPodcastFeed
+    }
+
+    private static func recordSuccessfulRepair(
+        _ repair: PodcastFeedXMLRepairResult,
+        originalAttempt: FeedParseAttempt
+    ) {
+        let errorCode = (originalAttempt.error as NSError?)?.code ?? 0
+        CrashBreadcrumbs.shared.record(
+            "feed_xml_repaired",
+            details: "errorCode=\(errorCode) line=\(originalAttempt.xmlParser.lineNumber) column=\(originalAttempt.xmlParser.columnNumber) bareAmpersands=\(repair.bareAmpersands) escapedLessThan=\(repair.escapedLessThan) attributeQuotes=\(repair.attributeQuotes) invalidControls=0"
+        )
+    }
+
     static func downloadFeed(
         from url: URL,
         profile: PodcastAccessProfile? = nil
@@ -715,33 +786,34 @@ extension PodcastParser {
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
     ) async throws -> PodcastFeedPage {
         try await Task.detached(priority: .utility) {
-            let parser = PodcastParser()
-            parser.maximumEpisodeCount = maximumEpisodes
-            parser.knownEpisodeIdentifiers = knownEpisodeIdentifiers
+            let originalAttempt = attemptParse(
+                data: document.data,
+                maximumEpisodes: maximumEpisodes,
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers
+            )
+            let parser: PodcastParser
 
-            let xmlParser = XMLParser(data: document.data)
-            xmlParser.shouldProcessNamespaces = true
-            xmlParser.delegate = parser
-
-            let parsedSuccessfully = xmlParser.parse()
-            if parsedSuccessfully == false,
-               parser.didHitEpisodeLimit == false,
-               parser.didStopAtKnownEpisode == false {
-                let error = parser.parseError ?? xmlParser.parserError
-                let nsError = error as NSError?
-                if nsError?.domain == XMLParser.errorDomain,
-                   nsError?.code == 111 {
-                    // libxml reports XML_ERR_USER_STOP when parsing is stopped by client code.
-                    // Treat it as a partial parse if the delegate already captured feed data.
-                } else if let error {
-                    throw PodcastParserError.xmlParserError(
-                        error,
-                        line: xmlParser.lineNumber,
-                        column: xmlParser.columnNumber
-                    )
-                } else {
-                    throw PodcastParserError.notAPodcastFeed
+            if originalAttempt.isAcceptable {
+                parser = originalAttempt.parser
+            } else {
+                let originalError = parserError(for: originalAttempt)
+                guard originalAttempt.isXMLSyntaxFailure,
+                      let repair = PodcastFeedXMLRepairer.repairIfNeeded(from: document.data)
+                else {
+                    throw originalError
                 }
+
+                let repairedAttempt = attemptParse(
+                    data: repair.data,
+                    maximumEpisodes: maximumEpisodes,
+                    knownEpisodeIdentifiers: knownEpisodeIdentifiers
+                )
+                guard repairedAttempt.isAcceptable else {
+                    throw originalError
+                }
+
+                recordSuccessfulRepair(repair, originalAttempt: originalAttempt)
+                parser = repairedAttempt.parser
             }
 
             guard parser.podcastDictArr.isEmpty == false else {

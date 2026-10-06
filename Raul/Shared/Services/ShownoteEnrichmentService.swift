@@ -1,5 +1,8 @@
 import Foundation
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 private enum ShownoteEnrichmentPerformance {
     static let log = OSLog(subsystem: "de.holgerkrupp.PodcastClient", category: "Shownotes")
@@ -291,9 +294,25 @@ actor ShownoteEnrichmentService {
         Task(priority: .utility) {
             for html in sources {
                 guard Task.isCancelled == false else { return }
+                // Enrichment is speculative and never needed to play an
+                // episode or persist a feed. A feed update may finish just as
+                // the app backgrounds or audio starts; do not keep parsing
+                // every shownote and fetching its links in that state.
+                guard await mayRunAutomaticEnrichment() else { return }
                 let document = await ShownoteParser.shared.parse(html)
-                _ = await enrich(document.candidates)
+                _ = await enrich(document.candidates, whileAppIsIdle: true)
             }
+        }
+    }
+
+    private func mayRunAutomaticEnrichment() async -> Bool {
+        await MainActor.run {
+#if canImport(UIKit)
+            UIApplication.shared.applicationState == .active
+                && Player.hasActivePlaybackInProcess == false
+#else
+            Player.hasActivePlaybackInProcess == false
+#endif
         }
     }
 
@@ -314,7 +333,10 @@ actor ShownoteEnrichmentService {
         }
     }
 
-    func enrich(_ candidates: [ShownoteLinkCandidate]) async -> [ShownoteEnrichmentResult] {
+    func enrich(
+        _ candidates: [ShownoteLinkCandidate],
+        whileAppIsIdle: Bool = false
+    ) async -> [ShownoteEnrichmentResult] {
         let unique = Array(
             Dictionary(grouping: candidates.filter { candidate in
                 ["http", "https"].contains(candidate.normalizedURL.scheme?.lowercased())
@@ -326,6 +348,7 @@ actor ShownoteEnrichmentService {
 
         var results: [ShownoteEnrichmentResult] = []
         for batch in stride(from: 0, to: unique.count, by: 3) {
+            if whileAppIsIdle, await mayRunAutomaticEnrichment() == false { break }
             let end = min(batch + 3, unique.count)
             let batchResults = await withTaskGroup(of: ShownoteEnrichmentResult.self) { group in
                 for candidate in unique[batch..<end] {

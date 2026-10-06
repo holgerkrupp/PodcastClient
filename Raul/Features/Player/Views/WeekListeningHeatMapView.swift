@@ -116,7 +116,7 @@ struct WeekListeningHeatMapView: View {
                             Text(String(format: "%02d:00", hour))
                                 .monospacedDigit()
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .frame(width: labelColumnWidth, height: blockHeight, alignment: .trailing)
                         }
                     }
@@ -125,7 +125,7 @@ struct WeekListeningHeatMapView: View {
                         VStack(spacing: 0) {
                             Text(column.label)
                                 .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                                 .frame(width: blockWidth, height: 18)
 
                             ForEach(hours, id: \.self) { hour in
@@ -150,7 +150,7 @@ struct WeekListeningHeatMapView: View {
             HStack(spacing: 10) {
                 Text("Less")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
                 LinearGradient(colors: [
                     heatColor(for: 0),
                     heatColor(for: heatMap.maxSeconds * 0.35),
@@ -160,7 +160,7 @@ struct WeekListeningHeatMapView: View {
                 .clipShape(Capsule())
                 Text("More")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .esaForeground(.secondary)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

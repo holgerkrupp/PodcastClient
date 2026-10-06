@@ -33,17 +33,18 @@ struct BookmarkRowView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(episode?.displayPodcastTitle ?? episode?.title ?? "")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                         .lineLimit(1)
                     
                     Text(marker.title)
                         .font(.headline)
                         .lineLimit(2)
+                        .esaForeground(.primary)
                     
                     if let start = marker.start {
                         Text("at \(Duration.seconds(start).formatted(.units(width: .abbreviated)))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                     }
                     
                     Spacer(minLength: 0)

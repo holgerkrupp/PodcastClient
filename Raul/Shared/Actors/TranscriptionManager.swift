@@ -123,6 +123,10 @@ actor TranscriptionManager {
         episodeURL: URL,
         origin: TranscriptionStartOrigin = .manual
     ) async -> TranscriptionItem? {
+        if origin == .automatic,
+           await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+            return nil
+        }
         guard let container = await preparedModelContainer() else {
             return nil
         }
@@ -194,6 +198,10 @@ actor TranscriptionManager {
 
             do {
                 try Task.checkCancellation()
+                if origin == .automatic,
+                   await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+                    throw CancellationError()
+                }
                 await MainActor.run {
                     uiItem.setState(.preparingModel, progress: 0.02, status: "Preparing model…")
                 }
@@ -240,6 +248,7 @@ actor TranscriptionManager {
                         userInfo: [NSLocalizedDescriptionKey: "The transcription finished without transcript data."]
                     )
                 }
+                try Task.checkCancellation()
 
                 // Persist the transcript first. Chapter generation is optional enrichment
                 // and can involve several on-device language-model calls; keeping it out
@@ -248,6 +257,7 @@ actor TranscriptionManager {
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
                 }
+                try Task.checkCancellation()
                 let transcriptSnapshots = try await episodeActor.decodeAndSetTranscript(
                     for: episodeURL,
                     vtt: vtt
@@ -256,6 +266,7 @@ actor TranscriptionManager {
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")
                 }
+                try Task.checkCancellation()
                 await episodeActor.saveTranscriptionRecord(
                     for: snapshot,
                     localeIdentifier: transcriber.language.identifier(.bcp47),
@@ -342,6 +353,14 @@ actor TranscriptionManager {
     }
 
     func cancelAutomaticTranscriptionsForBackground() async {
+        await cancelAutomaticTranscriptions(status: "Deferred until app is active")
+    }
+
+    func cancelAutomaticTranscriptionsForPlayback() async {
+        await cancelAutomaticTranscriptions(status: "Deferred during playback")
+    }
+
+    private func cancelAutomaticTranscriptions(status: String) async {
         let automaticEpisodeURLs = taskOrigins.compactMap { (episodeURL, origin) in
             origin == .automatic ? episodeURL : nil
         }
@@ -353,7 +372,7 @@ actor TranscriptionManager {
             await transcriptionQueue.cancel(episodeURL)
             if let item = items[episodeURL] {
                 await MainActor.run {
-                    item.setState(.cancelled, status: "Deferred until app is active")
+                    item.setState(.cancelled, status: status)
                 }
             }
             tasks[episodeURL] = nil
@@ -379,6 +398,9 @@ actor TranscriptionManager {
         respectSweepCooldown: Bool = true,
         deadline: Date? = nil
     ) async -> URL? {
+        guard await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
+            return nil
+        }
         guard let container = await preparedModelContainer() else {
             return nil
         }
@@ -421,6 +443,7 @@ actor TranscriptionManager {
         for candidate in candidates {
             if Task.isCancelled { return nil }
             if let deadline, Date() >= deadline { return nil }
+            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) { return nil }
             let episodeURL = candidate.episodeURL
 
             try? await episodeActor.transcribe(
@@ -474,6 +497,10 @@ actor TranscriptionManager {
         while processedCount < episodeLimit {
             if Task.isCancelled { break }
             if let deadline, Date() >= deadline { break }
+            // An analyzer is optional work. Playback can start after a
+            // background sweep begins, so check between episodes as well as
+            // at the BGProcessing entry point.
+            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) { break }
             // Back-to-back analyzer runs heat the device up. Stop handing out
             // more work once the system says it is under pressure; the next
             // background pass picks up where this one stopped.

@@ -68,19 +68,64 @@ actor PodcastModelActor {
         for metadata: PodcastMetaData?,
         feedURL: URL?
     ) -> PodcastAccessProfile? {
-        guard let metadata,
-              let feedURL,
-              let id = metadata.accessProfileID,
-              let rawKind = metadata.accessKindRawValue,
-              let kind = PodcastAccessKind(rawValue: rawKind) else {
+        guard let feedURL else { return nil }
+        let providerID = metadata?.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        let resolver = PodcastAccessResolver()
+
+        if let metadata,
+           let id = metadata.accessProfileID,
+           let rawKind = metadata.accessKindRawValue,
+           let kind = PodcastAccessKind(rawValue: rawKind) {
+            let profile = PodcastAccessProfile(
+                id: id,
+                kind: kind,
+                resourceURL: feedURL,
+                providerID: providerID
+            )
+
+            // Some early private-feed records retained a canonicalized feed
+            // URL but lost their access metadata. If the stored identifier no
+            // longer locates a Basic credential, recover the bounded legacy
+            // identifier (for example /feed/plus versus /feed/plus/) before
+            // declaring the subscription unauthenticated.
+            if kind != .httpBasic || resolver.credentialState(for: profile) == .available {
+                return profile
+            }
+            if let recovered = resolver.recoverLegacyHTTPBasicProfile(
+                for: feedURL,
+                providerID: providerID
+            ) {
+                applyAccessProfile(recovered, to: metadata)
+                return recovered
+            }
+            return profile
+        }
+
+        // A metadata row can be absent on pre-private-feed installations.
+        // Probe only deterministic, local legacy identifiers; this lets the
+        // Keychain credential restore the profile without treating ordinary
+        // 401/403 responses as an authentication challenge.
+        guard let recovered = resolver.recoverLegacyHTTPBasicProfile(
+            for: feedURL,
+            providerID: providerID
+        ) else {
             return nil
         }
-        return PodcastAccessProfile(
-            id: id,
-            kind: kind,
-            resourceURL: feedURL,
-            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
-        )
+        if let metadata {
+            applyAccessProfile(recovered, to: metadata)
+        }
+        return recovered
+    }
+
+    private func applyAccessProfile(
+        _ profile: PodcastAccessProfile,
+        to metadata: PodcastMetaData
+    ) {
+        metadata.accessProfileID = profile.id
+        metadata.accessKindRawValue = profile.kind.rawValue
+        metadata.accessProviderID = profile.providerID?.rawValue
+        metadata.credentialState = .available
+        metadata.authenticationRetryAfter = nil
     }
 
     private func configureAccessMetadata(for feedURL: URL, metadata: PodcastMetaData?) {
@@ -171,22 +216,6 @@ actor PodcastModelActor {
         return identifiers
     }
 
-    private func shownoteEnrichmentSources(for podcast: Podcast) -> [String] {
-        var sources: [String] = []
-        if let description = podcast.desc {
-            sources.append(description)
-        }
-        for episode in podcast.episodes ?? [] {
-            if let content = episode.content {
-                sources.append(content)
-            }
-            if let description = episode.desc {
-                sources.append(description)
-            }
-        }
-        return sources
-    }
-
     private func reportProgress(
         _ update: SubscriptionProgressUpdate,
         using progressHandler: SubscriptionProgressHandler?
@@ -272,7 +301,16 @@ actor PodcastModelActor {
         }
 
         do {
-            guard let podcast = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate)).first else {
+            let exactMatch = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate)).first
+            let podcast: Podcast?
+            if let exactMatch {
+                podcast = exactMatch
+            } else {
+                podcast = try modelContext.fetch(FetchDescriptor<Podcast>()).first(where: {
+                    $0.matchesFeedURL(podcastFeed)
+                })
+            }
+            guard let podcast else {
                 return nil
             }
 
@@ -569,7 +607,6 @@ actor PodcastModelActor {
         try Task.checkCancellation()
         guard let podcast = await fetchPodcast(byFeed: podcastFeed) else { return false }
         guard let feedURL = podcast.feed else { return false }
-        let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
 
         let podcastIDRef = podcast.persistentModelID
         var metaIDRef = podcast.metaData?.persistentModelID
@@ -581,6 +618,8 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
             metaIDRef = meta.persistentModelID
         }
+
+        let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
 
         if let accessProfile,
            PodcastAccessResolver().credentialState(for: accessProfile) != .available {
@@ -772,7 +811,6 @@ actor PodcastModelActor {
         let knownEpisodeIdentifiers = force == true
             ? KnownPodcastEpisodeIdentifiers()
             : knownEpisodeIdentifiers(for: podcast)
-        let storedEnrichmentSources = shownoteEnrichmentSources(for: podcast)
 
         // ⚠️ After this point: do not use `podcast` directly across awaits
         // ----------------------------------------------------------------
@@ -818,7 +856,9 @@ actor PodcastModelActor {
                     }
                     modelContext.saveIfNeeded()
                 }
-                await ShownoteEnrichmentService.shared.enqueue(htmlSources: storedEnrichmentSources)
+                // A 304 response contains no new shownotes. Re-parsing every
+                // stored episode and following its links on each status check
+                // used to launch a large, unstructured background workload.
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
                 logRefreshResult("not-modified")
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
@@ -1471,6 +1511,9 @@ actor PodcastModelActor {
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return }
         let source = episode.source
         let episodeURL = episode.url
+        if let episodeURL {
+            await Player.shared.prepareForLibraryDeletion(episodeURLs: [episodeURL])
+        }
         if source != .sideLoaded {
             await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episodeURL)
         }
@@ -1491,6 +1534,18 @@ actor PodcastModelActor {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
               let feedURL = podcast.feed else { return }
         let profile = storedPodcastAccessProfile(for: podcast)
+
+        // Query children directly instead of faulting `podcast.episodes`.
+        // The player must release a current episode before this cascade delete
+        // can invalidate the SwiftData model it retains.
+        let episodeDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                episode.podcast?.persistentModelID == podcastID
+            }
+        )
+        let episodeURLs = Set(try modelContext.fetch(episodeDescriptor).compactMap(\.url))
+        await Player.shared.prepareForLibraryDeletion(episodeURLs: episodeURLs)
+
         guard try deletePodcastRow(podcastID) != nil else { return }
         await updateSplitSubscription(
             feedURL: feedURL,

@@ -607,10 +607,16 @@ actor SubscriptionManager:NSObject{
                 )
             case .processing:
                 return .init(
-                    maxPodcastsPerRun: 12,
+                    // BGProcessingTask is a scheduling grant, not permission
+                    // to consume a full two-minute CPU window. Core Data feed
+                    // imports can fan out into CloudKit persistent-history
+                    // work; keeping one pass below the watchdog window lets
+                    // iOS stop and reschedule cleanly instead of killing the
+                    // app after roughly 48 seconds of CPU.
+                    maxPodcastsPerRun: 5,
                     maxConcurrentPodcastUpdates: 1,
-                    maxRuntime: 120,
-                    perPodcastRuntimeLimit: 12,
+                    maxRuntime: 24,
+                    perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 4,
                     notifyNewEpisodes: true
                 )
@@ -1209,6 +1215,10 @@ actor SubscriptionManager:NSObject{
     }
 
     func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
+        guard await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
+            CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
+            return
+        }
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
             return
@@ -1221,11 +1231,11 @@ actor SubscriptionManager:NSObject{
         
         let startedAt = Date()
         let policy = BackgroundFeedRefreshPolicy.forReason(reason)
-        setLastRefreshDate()
         fetchData()
         var updated = 0
         var processed = 0
         var timedOut = 0
+        var stoppedForPlayback = false
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
 #endif
@@ -1245,6 +1255,14 @@ actor SubscriptionManager:NSObject{
         while candidateIndex < candidates.count {
             if Task.isCancelled {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=cancelled")
+                break
+            }
+            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+                stoppedForPlayback = true
+                CrashBreadcrumbs.shared.record(
+                    "bgupdate_feeds_stopped",
+                    details: "reason=playback_started"
+                )
                 break
             }
 
@@ -1337,6 +1355,13 @@ actor SubscriptionManager:NSObject{
             "bgupdate_feeds_completed",
             details: "processed=\(processed),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
+        // A sweep interrupted before touching a feed must remain eligible on
+        // the next foreground entry. An empty candidate set is a completed
+        // check and can keep the ordinary refresh cadence.
+        if stoppedForPlayback == false, Task.isCancelled == false,
+           (processed > 0 || candidates.isEmpty) {
+            setLastRefreshDate()
+        }
 #if DEBUG
         await RefreshHistoryStore.shared.record(
             RefreshHistoryEntry(

@@ -132,7 +132,7 @@ struct LibrarySearchView: View {
                             ProgressView()
                             Text("Updating search results...")
                                 .font(.footnote)
-                                .foregroundStyle(.secondary)
+                                .esaForeground(.secondary)
                         }
                         .listRowBackground(Color.clear)
                     }
@@ -232,13 +232,13 @@ struct LibrarySearchView: View {
                     if let author = group.podcast.author, author.isEmpty == false {
                         Text(author)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(1)
                     }
 
                     Text(group.resultCountLabel)
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -265,18 +265,18 @@ struct LibrarySearchView: View {
                     if let author = result.author, author.isEmpty == false {
                         Text(author)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(1)
                     }
 
                     Text("Matched in podcast metadata")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .esaForeground(.secondary)
 
                     if let snippet = result.snippet, snippet.isEmpty == false {
                         Text(snippet)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(2)
                     }
                 }
@@ -301,16 +301,16 @@ struct LibrarySearchView: View {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(result.episodeTitle)
                             .font(.headline)
-                            .foregroundStyle(.primary)
+                            .esaForeground(.primary)
                             .lineLimit(2)
 
                         Text(result.kind.label)
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
 
                         Text(result.snippet)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .esaForeground(.secondary)
                             .lineLimit(2)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
