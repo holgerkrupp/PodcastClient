@@ -21,6 +21,30 @@ enum PodcastFeedSwitchError: LocalizedError {
     }
 }
 
+enum PodcastFeedEndpointRecoveryError: LocalizedError {
+    case identityCouldNotBeVerified
+    case feedCouldNotBeValidated
+
+    var errorDescription: String? {
+        switch self {
+        case .identityCouldNotBeVerified:
+            return "The recovered feed could not be verified as this podcast."
+        case .feedCouldNotBeValidated:
+            return "The replacement feed could not be validated."
+        }
+    }
+}
+
+/// A deliberately small, value-only result suitable for presenting a feed
+/// repair preview. The parsed XML remains inside `PodcastModelActor`; it is
+/// never used as a reason to mutate a subscription before validation finishes.
+struct PodcastFeedReplacementPreview: Sendable {
+    let resolvedURL: URL
+    let title: String
+    let episodeCount: Int
+    let matchesExistingEpisodes: Bool
+}
+
 struct PodcastBulkRefreshError: LocalizedError {
     let failedCount: Int
     let totalCount: Int
@@ -216,6 +240,203 @@ actor PodcastModelActor {
         return identifiers
     }
 
+    private func recoveredEndpointMatchesExistingPodcast(
+        _ parsedFeed: [String: Any],
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
+    ) -> Bool {
+        guard knownEpisodeIdentifiers.isEmpty == false,
+              let episodes = parsedFeed["episodes"] as? [[String: Any]] else {
+            return false
+        }
+
+        var matchingURLs = Set<String>()
+        for episode in episodes {
+            if let guid = episode["guid"] as? String,
+               knownEpisodeIdentifiers.guids.contains(guid) {
+                // Feed GUIDs are the strongest cross-endpoint identity.
+                return true
+            }
+            if let enclosureURL = EpisodeMedia.playableEnclosure(
+                from: episode["enclosure"] as? [[String: Any]]
+            )?["url"] as? String,
+               knownEpisodeIdentifiers.urls.contains(enclosureURL) {
+                matchingURLs.insert(enclosureURL)
+            }
+            for key in ["url", "link"] {
+                if let value = episode[key] as? String,
+                   knownEpisodeIdentifiers.urls.contains(value) {
+                    matchingURLs.insert(value)
+                }
+            }
+        }
+        // Enclosure URLs can be reused by unrelated feeds. Require more than
+        // one when a GUID is unavailable before an automatic migration.
+        return matchingURLs.count >= 2
+    }
+
+    /// Commits a feed endpoint only after its caller has resolved HTML,
+    /// redirects and RSS/Atom parsing and verified it belongs to this podcast.
+    /// Updating the existing row deliberately preserves its episodes, playback
+    /// state, bookmarks, playlists and preferences.
+    private func commitValidatedFeedEndpoint(
+        for podcast: Podcast,
+        from oldURL: URL,
+        to validatedEndpoint: URL,
+        accessProfile: PodcastAccessProfile?,
+        reason: FeedAliasReason
+    ) async throws {
+        let shouldRedactEndpoint = accessProfile.map { $0.kind != .publicFeed } ?? false
+        let persistedEndpoint = (shouldRedactEndpoint || validatedEndpoint.isLikelyPrivatePodcastURL)
+            ? validatedEndpoint.podcastNonSecretURL
+            : validatedEndpoint
+        guard oldURL != persistedEndpoint else { return }
+
+        let existingDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.feed == persistedEndpoint }
+        )
+        if let existingPodcast = try? modelContext.fetch(existingDescriptor).first,
+           existingPodcast.persistentModelID != podcast.persistentModelID {
+            throw PodcastFeedSwitchError.feedAlreadyExists
+        }
+
+        podcast.feed = persistedEndpoint
+        podcast.metaData?.feedUpdated = nil
+        podcast.metaData?.feedUpdateCheckDate = nil
+        if let accessProfile, let metadata = podcast.metaData {
+            let migratedProfile = PodcastAccessProfile(
+                id: accessProfile.id,
+                kind: accessProfile.kind,
+                resourceURL: persistedEndpoint,
+                providerID: accessProfile.providerID
+            )
+            applyAccessProfile(migratedProfile, to: metadata)
+        } else if validatedEndpoint.isLikelyPrivatePodcastURL {
+            configureAccessMetadata(for: validatedEndpoint, metadata: podcast.metaData)
+        } else if let metadata = podcast.metaData {
+            // A manually repaired public endpoint must not retain stale
+            // credentials from the old subscription.
+            metadata.accessProfileID = nil
+            metadata.accessKindRawValue = nil
+            metadata.accessProviderID = nil
+            metadata.credentialState = .available
+            metadata.authenticationRetryAfter = nil
+        }
+        modelContext.saveIfNeeded()
+
+        await recordFeedAlias(
+            from: oldURL,
+            to: persistedEndpoint,
+            reason: reason
+        )
+        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
+        CrashBreadcrumbs.shared.record(
+            "feed_endpoint_recovered",
+            details: "method=validated_endpoint identity=episode_identifiers migration=success"
+        )
+    }
+
+    private func candidateAccessProfile(
+        _ profile: PodcastAccessProfile?,
+        oldURL: URL,
+        candidateURL: URL
+    ) -> PodcastAccessProfile? {
+        guard let profile else { return nil }
+        // Credentials are never sent to another origin while validating a
+        // suggested replacement. Same-origin path changes remain supported.
+        guard oldURL.host?.caseInsensitiveCompare(candidateURL.host ?? "") == .orderedSame,
+              oldURL.scheme?.caseInsensitiveCompare(candidateURL.scheme ?? "") == .orderedSame else {
+            return nil
+        }
+        return profile
+    }
+
+    private func validateReplacement(
+        for podcast: Podcast,
+        candidateURL: URL,
+        requiresExistingIdentity: Bool
+    ) async throws -> (preview: PodcastFeedReplacementPreview, parsedFeed: [String: Any], endpoint: URL, profile: PodcastAccessProfile?) {
+        guard let oldURL = podcast.feed else {
+            throw PodcastFeedEndpointRecoveryError.feedCouldNotBeValidated
+        }
+        let oldProfile = accessProfile(for: podcast.metaData, feedURL: oldURL)
+        let profile = candidateAccessProfile(oldProfile, oldURL: oldURL, candidateURL: candidateURL)
+        let resolvedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
+            from: candidateURL,
+            profile: profile
+        )
+        let endpoint = resolvedFeed.url ?? candidateURL
+        let parsedFeed = try await PodcastParser.fetchAllPages(
+            from: endpoint,
+            knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers(),
+            profile: profile
+        )
+        let matchesExistingEpisodes = recoveredEndpointMatchesExistingPodcast(
+            parsedFeed,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers(for: podcast)
+        )
+        if requiresExistingIdentity, endpoint != oldURL, matchesExistingEpisodes == false {
+            throw PodcastFeedEndpointRecoveryError.identityCouldNotBeVerified
+        }
+        let title = (parsedFeed["title"] as? String) ?? resolvedFeed.title ?? "Podcast feed"
+        let episodeCount = (parsedFeed["episodes"] as? [[String: Any]])?.count ?? 0
+        return (
+            PodcastFeedReplacementPreview(
+                resolvedURL: endpoint.podcastNonSecretURL,
+                title: title,
+                episodeCount: episodeCount,
+                matchesExistingEpisodes: matchesExistingEpisodes
+            ),
+            parsedFeed,
+            endpoint,
+            profile
+        )
+    }
+
+    func previewFeedReplacement(
+        _ podcastID: PersistentIdentifier,
+        candidateURL: URL
+    ) async throws -> PodcastFeedReplacementPreview {
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else {
+            throw PodcastFeedEndpointRecoveryError.feedCouldNotBeValidated
+        }
+        return try await validateReplacement(
+            for: podcast,
+            candidateURL: candidateURL,
+            requiresExistingIdentity: false
+        ).preview
+    }
+
+    func replacePodcastFeed(
+        _ podcastID: PersistentIdentifier,
+        candidateURL: URL,
+        allowUnverifiedIdentity: Bool = false,
+        reason: FeedAliasReason = .explicitSwitch,
+        progress: SubscriptionProgressHandler? = nil
+    ) async throws {
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              let oldURL = podcast.feed else { return }
+        let validation = try await validateReplacement(
+            for: podcast,
+            candidateURL: candidateURL,
+            requiresExistingIdentity: allowUnverifiedIdentity == false
+        )
+        guard let freshPodcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
+        try await commitValidatedFeedEndpoint(
+            for: freshPodcast,
+            from: oldURL,
+            to: validation.endpoint,
+            accessProfile: validation.profile,
+            reason: reason
+        )
+        guard let committedPodcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
+        _ = try await updateDetails(
+            committedPodcast,
+            fullPodcast: validation.parsedFeed,
+            silent: true,
+            progress: progress
+        )
+    }
+
     private func reportProgress(
         _ update: SubscriptionProgressUpdate,
         using progressHandler: SubscriptionProgressHandler?
@@ -258,8 +479,6 @@ actor PodcastModelActor {
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
-        let metaData = ensureMetadata(for: podcast)
-        let previousFeedURL = podcast.feed
         let alternativeFeedURL: URL? = alternativeFeed.url
         let existingDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.feed == alternativeFeedURL }
@@ -270,21 +489,16 @@ actor PodcastModelActor {
             throw PodcastFeedSwitchError.feedAlreadyExists
         }
 
-        podcast.feed = alternativeFeed.url
-        metaData.feedUpdated = nil
-        metaData.feedUpdateCheckDate = nil
-        modelContext.saveIfNeeded()
-
-        if let previousFeedURL {
-            await recordFeedAlias(
-                from: previousFeedURL,
-                to: alternativeFeed.url,
-                reason: .explicitSwitch
-            )
-        }
-
-        _ = try await updatePodcast(alternativeFeed.url, force: true, silent: true, progress: progress)
-        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
+        try await replacePodcastFeed(
+            podcastID,
+            candidateURL: alternativeFeed.url,
+            // An alternative advertised by the podcast is still not proof of
+            // identity. Empty/new subscriptions have no episode evidence, so
+            // retain the existing behaviour only for that narrow case.
+            allowUnverifiedIdentity: (podcast.episodes ?? []).isEmpty,
+            reason: .explicitSwitch,
+            progress: progress
+        )
     }
 
     
@@ -517,18 +731,9 @@ actor PodcastModelActor {
         }
 
        
-        if let newURL = status?.newURL, newURL != feedURL, status?.statusCode == 301 {
-            freshPodcast.feed = newURL
-            modelContext.saveIfNeeded()
-            if let feedURL {
-                await recordFeedAlias(
-                    from: feedURL,
-                    to: newURL,
-                    reason: .permanentRedirect
-                )
-            }
-            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        }
+        // A redirect is evidence to refresh, never permission to overwrite a
+        // subscription. `updatePodcast` resolves, parses and verifies it
+        // before committing a replacement endpoint.
         
         await setFeedUpdated(freshMeta.persistentModelID, to: nil)
 
@@ -584,20 +789,10 @@ actor PodcastModelActor {
     }
     
     func updateFeedURL(_ podcastFeed: URL) async{
-        guard let podcast = await fetchPodcast(byFeed: podcastFeed)  else { return  }
-        guard let feedURL = podcast.feed else { return  }
-
-        let reachable = await feedURL.absoluteString.reachabilityStatus()
-        if let newURL = reachable?.finalURL, newURL != feedURL{
-            podcast.feed = newURL
-            modelContext.saveIfNeeded()
-            await recordFeedAlias(
-                from: feedURL,
-                to: newURL,
-                reason: .permanentRedirect
-            )
-            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        }
+        // Kept for callers on older refresh paths. Do not persist the result
+        // of a reachability probe: it might be HTML, a login page or a
+        // temporary redirect. A forced refresh performs the validated path.
+        _ = try? await updatePodcast(podcastFeed, force: true, silent: true)
     }
 
     func bootstrapPodcast(
@@ -808,9 +1003,22 @@ actor PodcastModelActor {
 
         // Snapshot some plain values if needed
         let titleSnapshot = podcast.title
+        let existingEpisodeIdentifiers = knownEpisodeIdentifiers(for: podcast)
         let knownEpisodeIdentifiers = force == true
             ? KnownPodcastEpisodeIdentifiers()
-            : knownEpisodeIdentifiers(for: podcast)
+            : existingEpisodeIdentifiers
+        let recoveryCandidates: [URL] = {
+            var seen = Set<String>()
+            var candidates = podcast.alternativeFeeds.map(\.url)
+            if let link = podcast.link {
+                candidates.insert(link, at: 0)
+            }
+            return candidates.compactMap { candidate in
+                guard candidate != feedURL,
+                      seen.insert(candidate.absoluteString).inserted else { return nil }
+                return candidate
+            }
+        }()
 
         // ⚠️ After this point: do not use `podcast` directly across awaits
         // ----------------------------------------------------------------
@@ -831,8 +1039,60 @@ actor PodcastModelActor {
         await reportProgress(SubscriptionProgressUpdate(0.12, "Checking feed status"), using: progress)
         try checkRefreshDeadline(deadline)
 
+        // Resolve HTML/web-page URLs before handing bytes to the XML parser.
+        // This also validates any HTTP redirect destination and keeps private
+        // credentials scoped to the existing endpoint during autodiscovery.
+        let resolvedEndpoint: URL
+        let resolvedAccessProfile: PodcastAccessProfile?
+        do {
+            let resolvedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
+                from: feedURL,
+                profile: accessProfile
+            )
+            resolvedEndpoint = resolvedFeed.url ?? feedURL
+            resolvedAccessProfile = accessProfile
+        } catch {
+            // Do not guess a URL. The podcast's own website and advertised
+            // alternatives are the only bounded fallbacks; each still has to
+            // parse as a feed and pass the identity gate below.
+            var recovered: (URL, PodcastAccessProfile?)?
+            for candidate in recoveryCandidates {
+                do {
+                    let candidateProfile = candidateAccessProfile(
+                        accessProfile,
+                        oldURL: feedURL,
+                        candidateURL: candidate
+                    )
+                    let feed = try await PodcastFeedResolver.resolveExistingEndpoint(
+                        from: candidate,
+                        profile: candidateProfile
+                    )
+                    recovered = (feed.url ?? candidate, candidateProfile)
+                    break
+                } catch {
+                    continue
+                }
+            }
+            guard let recovered else {
+                if error is PodcastFeedResolverError {
+                    CrashBreadcrumbs.shared.record(
+                        "feed_endpoint_recovery_failed",
+                        details: "stage=endpoint_validation"
+                    )
+                }
+                throw error
+            }
+            resolvedEndpoint = recovered.0
+            resolvedAccessProfile = recovered.1
+        }
+        let shouldRedactResolvedEndpoint = resolvedAccessProfile.map { $0.kind != .publicFeed } ?? false
+        let persistedResolvedEndpoint = (shouldRedactResolvedEndpoint || resolvedEndpoint.isLikelyPrivatePodcastURL)
+            ? resolvedEndpoint.podcastNonSecretURL
+            : resolvedEndpoint
+        let endpointChanged = persistedResolvedEndpoint != feedURL
+
         // --- FIRST await boundary ---
-        if force == false {
+        if force == false, endpointChanged == false {
             let statusStartedAt = ContinuousClock.now
             let feedWasUpdated = await checkIfFeedHasBeenUpdated(podcastFeed)
             statusDuration = statusStartedAt.duration(to: .now)
@@ -887,9 +1147,11 @@ actor PodcastModelActor {
             // Parse XML
             let downloadAndParseStartedAt = ContinuousClock.now
             let fullPodcast = try await PodcastParser.fetchAllPages(
-                from: feedURL,
-                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
-                profile: accessProfile
+                from: resolvedEndpoint,
+                knownEpisodeIdentifiers: endpointChanged
+                    ? KnownPodcastEpisodeIdentifiers()
+                    : knownEpisodeIdentifiers,
+                profile: resolvedAccessProfile
             )
             downloadAndParseDuration = downloadAndParseStartedAt.duration(to: .now)
             try checkRefreshDeadline(deadline)
@@ -899,6 +1161,26 @@ actor PodcastModelActor {
                 let finalPodcast: Podcast = modelContext.existingModel(for: podcastIDRef)
             else {
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+            }
+
+            if endpointChanged {
+                guard recoveredEndpointMatchesExistingPodcast(
+                    fullPodcast,
+                    knownEpisodeIdentifiers: existingEpisodeIdentifiers
+                ) else {
+                    CrashBreadcrumbs.shared.record(
+                        "feed_endpoint_recovery_failed",
+                        details: "stage=identity_verification"
+                    )
+                    throw PodcastFeedEndpointRecoveryError.identityCouldNotBeVerified
+                }
+                try await commitValidatedFeedEndpoint(
+                    for: finalPodcast,
+                    from: feedURL,
+                    to: resolvedEndpoint,
+                    accessProfile: resolvedAccessProfile,
+                    reason: .endpointRecovery
+                )
             }
 
             // Update podcast details safely

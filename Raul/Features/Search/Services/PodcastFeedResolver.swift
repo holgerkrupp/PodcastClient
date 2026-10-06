@@ -59,6 +59,30 @@ enum PodcastFeedResolver {
         }
     }
 
+    /// Validates an already stored subscription endpoint before a refresh
+    /// parses it. Unlike the onboarding API this retains the caller's access
+    /// profile, so private feeds keep their credentials while same-origin HTML
+    /// autodiscovery is attempted. The returned URL is always one that was
+    /// fetched and parsed as RSS/Atom; callers must still verify podcast
+    /// identity before persisting a changed endpoint.
+    static func resolveExistingEndpoint(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil,
+        client: PodcastHTTPClient = .shared
+    ) async throws -> PodcastFeed {
+        let input = try unwrapIncomingURL(url)
+        guard case .remote(let candidates) = input,
+              let candidate = candidates.first else {
+            throw PodcastFeedResolverError.unsupportedURL
+        }
+        return try await resolveRemote(
+            candidate,
+            visited: [],
+            client: client,
+            profile: profile
+        )
+    }
+
     /// Resolves a feed with a credential that has not yet been persisted. This
     /// keeps Bearer tokens out of URLs while still allowing the same parser and
     /// redirect policy to be used during onboarding.

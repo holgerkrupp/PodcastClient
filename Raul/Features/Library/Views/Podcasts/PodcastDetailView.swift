@@ -35,6 +35,7 @@ struct PodcastDetailView: View {
     @Bindable var podcast: Podcast
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
+    @State private var showFeedRepair = false
     @State private var refreshProgress: Double = 0
     @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
@@ -374,6 +375,14 @@ struct PodcastDetailView: View {
                             .disabled(isLoading || isSwitchingAlternativeFeed)
                         }
 
+                        Button {
+                            showFeedRepair = true
+                        } label: {
+                            Label("Repair Feed URL", systemImage: "wrench.and.screwdriver")
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .disabled(isLoading)
+
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.caption)
@@ -528,6 +537,15 @@ struct PodcastDetailView: View {
                         title: "Search \(podcast.title)",
                         emptyDescription: "Search every locally available transcript in this podcast."
                     )
+                }
+            }
+            .sheet(isPresented: $showFeedRepair) {
+                FeedURLRepairSheet(
+                    podcastID: podcast.persistentModelID,
+                    currentURL: podcast.feed,
+                    modelContainer: modelContext.container
+                ) {
+                    applyEpisodeFilters()
                 }
             }
 #if DEBUG
@@ -912,6 +930,150 @@ private struct PodcastAbandonedFeedCard: View {
             }
             .padding(.top, 6)
         }
+    }
+}
+
+private struct FeedURLRepairSheet: View {
+    let podcastID: PersistentIdentifier
+    let currentURL: URL?
+    let modelContainer: ModelContainer
+    let didSave: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var candidate = ""
+    @State private var preview: PodcastFeedReplacementPreview?
+    @State private var isValidating = false
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+    @State private var showIdentityWarning = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Current feed") {
+                    Text(currentURL?.redactedPodcastURLString ?? "No feed URL")
+                        .font(.footnote)
+                        .textSelection(.enabled)
+                }
+
+                Section("Replacement feed") {
+                    TextField("https://example.com/feed.xml", text: $candidate, axis: .vertical)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .keyboardType(.URL)
+                        .onChange(of: candidate) { _, _ in
+                            preview = nil
+                            errorMessage = nil
+                        }
+
+                    Button {
+                        Task { await validate() }
+                    } label: {
+                        if isValidating {
+                            ProgressView()
+                        } else {
+                            Label("Validate Feed", systemImage: "checkmark.shield")
+                        }
+                    }
+                    .disabled(candidateURL == nil || isValidating || isSaving)
+                }
+
+                if let preview {
+                    Section("Validated feed") {
+                        LabeledContent("Title", value: preview.title)
+                        LabeledContent("Episodes", value: "\(preview.episodeCount)")
+                        LabeledContent("Resolved URL") {
+                            Text(preview.resolvedURL.redactedPodcastURLString)
+                                .font(.footnote)
+                                .textSelection(.enabled)
+                        }
+                        if preview.matchesExistingEpisodes == false {
+                            Label(
+                                "No existing episode identifiers matched. Saving will require confirmation.",
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Repair Feed URL")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        guard let preview else { return }
+                        if preview.matchesExistingEpisodes {
+                            Task { await save(allowUnverifiedIdentity: false) }
+                        } else {
+                            showIdentityWarning = true
+                        }
+                    }
+                    .disabled(preview == nil || isSaving || isValidating)
+                }
+            }
+            .confirmationDialog(
+                "This feed could not be matched to existing episodes.",
+                isPresented: $showIdentityWarning,
+                titleVisibility: .visible
+            ) {
+                Button("Save Replacement Feed", role: .destructive) {
+                    Task { await save(allowUnverifiedIdentity: true) }
+                }
+            } message: {
+                Text("Your existing episodes and playback data will be retained. Only save if this is the same podcast.")
+            }
+        }
+    }
+
+    private var candidateURL: URL? {
+        URL(string: candidate.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    @MainActor
+    private func validate() async {
+        guard let candidateURL else { return }
+        isValidating = true
+        preview = nil
+        errorMessage = nil
+        do {
+            preview = try await PodcastModelActor(modelContainer: modelContainer)
+                .previewFeedReplacement(podcastID, candidateURL: candidateURL)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isValidating = false
+    }
+
+    @MainActor
+    private func save(allowUnverifiedIdentity: Bool) async {
+        guard let candidateURL else { return }
+        isSaving = true
+        errorMessage = nil
+        do {
+            try await PodcastModelActor(modelContainer: modelContainer).replacePodcastFeed(
+                podcastID,
+                candidateURL: candidateURL,
+                allowUnverifiedIdentity: allowUnverifiedIdentity,
+                reason: .explicitSwitch
+            )
+            didSave()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isSaving = false
     }
 }
 

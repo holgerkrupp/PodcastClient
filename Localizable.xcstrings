@@ -2290,6 +2290,9 @@
         }
       }
     },
+    "Current feed" : {
+
+    },
     "Current Period" : {
       "localizations" : {
         "de" : {
@@ -4032,6 +4035,9 @@
     "How to get your private feed" : {
 
     },
+    "https://example.com/feed.xml" : {
+
+    },
     "iCloud Account" : {
       "localizations" : {
         "de" : {
@@ -5690,6 +5696,9 @@
           }
         }
       }
+    },
+    "No existing episode identifiers matched. Saving will require confirmation." : {
+
     },
     "No Files for This Podcast" : {
       "localizations" : {
@@ -8739,6 +8748,9 @@
     "Removes this episode from the playlist without changing archive or inbox membership" : {
 
     },
+    "Repair Feed URL" : {
+
+    },
     "Repeat" : {
       "localizations" : {
         "de" : {
@@ -8748,6 +8760,9 @@
           }
         }
       }
+    },
+    "Replacement feed" : {
+
     },
     "Rescan" : {
       "localizations" : {
@@ -8773,6 +8788,9 @@
 
     },
     "Resolve and subscribe to a podcast feed or podcast page." : {
+
+    },
+    "Resolved URL" : {
 
     },
     "Restart Current Chapter" : {
@@ -8939,6 +8957,9 @@
           }
         }
       }
+    },
+    "Save Replacement Feed" : {
+
     },
     "Save the current playback position." : {
 
@@ -10751,6 +10772,9 @@
     "This episode does not have a transcript yet." : {
 
     },
+    "This feed could not be matched to existing episodes." : {
+
+    },
     "This feed link is personal and will be stored securely. It is not included in sync or export." : {
 
     },
@@ -11784,6 +11808,12 @@
         }
       }
     },
+    "Validate Feed" : {
+
+    },
+    "Validated feed" : {
+
+    },
     "Video Size" : {
       "localizations" : {
         "de" : {
@@ -12141,6 +12171,9 @@
           }
         }
       }
+    },
+    "Your existing episodes and playback data will be retained. Only save if this is the same podcast." : {
+
     },
     "Your Inbox is empty" : {
       "localizations" : {

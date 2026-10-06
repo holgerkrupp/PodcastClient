@@ -704,6 +704,7 @@ final class CachedHourlyListeningStat: Identifiable {
 enum FeedAliasReason: String, Codable, Sendable {
     case permanentRedirect
     case explicitSwitch
+    case endpointRecovery
 }
 
 /// Local mapping between an obsolete feed key and the accepted replacement.

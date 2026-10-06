@@ -156,10 +156,14 @@ class PodcastFeed: Hashable, @unchecked Sendable {
         fallbackURL: URL? = nil,
         preservingAccessFrom sourceURL: URL? = nil
     ) {
-        if let selfURLString = parsedFeed["selfURL"] as? String,
-           let resolvedURL = URL(string: selfURLString, relativeTo: fallbackURL ?? url)?.absoluteURL {
-            url = resolvedURL.preservingFeedAccessComponents(from: sourceURL ?? fallbackURL ?? url)
-        } else if url == nil {
+        // `url` is the endpoint which was successfully fetched. A feed's
+        // atom:link rel="self" is useful metadata, but it is not proof that
+        // the advertised URL serves this RSS/Atom document. In particular, a
+        // web page or a canonical URL without required query access could
+        // otherwise replace the subscription endpoint and later get persisted
+        // to OPML. Endpoint migration is handled only after the candidate has
+        // been fetched and validated by the refresh recovery flow.
+        if url == nil {
             url = fallbackURL
         }
 
