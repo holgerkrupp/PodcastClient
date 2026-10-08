@@ -17,8 +17,10 @@ struct PlaylistsSettingsSections: View {
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
     private var playlists: [Playlist]
 
-    @State private var showCreatePlaylistSheet = false
     @State private var playlistPendingDeletion: Playlist?
+
+    /// Presented by the stable parent Settings Form, not by a Section inside it.
+    let onCreatePlaylist: () -> Void
 
     private var visiblePlaylists: [Playlist] {
         Playlist.visibleSorted(playlists)
@@ -53,7 +55,7 @@ struct PlaylistsSettingsSections: View {
             }
 
             Button {
-                showCreatePlaylistSheet = true
+                onCreatePlaylist()
             } label: {
                 Label("New Playlist…", systemImage: "plus")
             }
@@ -62,17 +64,6 @@ struct PlaylistsSettingsSections: View {
             Text("Playlists")
         } footer: {
             Text("Open a playlist to rename it, change its icon, and set how its episodes are downloaded. Swipe to delete a playlist; the built-in queue cannot be deleted.")
-        }
-        .sheet(isPresented: $showCreatePlaylistSheet) {
-            NewPlaylistSheet { draft in
-                PlaylistLibrary.create(
-                    name: draft.name,
-                    symbolName: draft.symbolName,
-                    kind: draft.kind,
-                    smartFilter: draft.smartFilter,
-                    in: modelContext
-                )
-            }
         }
         .confirmationDialog(
             deletionTitle,
