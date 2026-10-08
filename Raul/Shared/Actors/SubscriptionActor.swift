@@ -193,7 +193,7 @@ actor SubscriptionActor:NSObject{
             for feed in newPodcastFeeds{
                 if let feed{
                     print("updating podcast: \(feed.redactedPodcastURLString)")
-                    _ = try await worker.updatePodcast(feed, force: true, silent: true)
+                    _ = try await worker.updatePodcast(feed, policy: .validatedImport, silent: true)
                 }
             }
             await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)

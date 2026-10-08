@@ -89,9 +89,14 @@ struct SmartPlaylistFilterEditor: View {
                             Text(comparator.displayName).tag(comparator)
                         }
                     }
+#if os(iOS)
                     TextField("Match text", text: $rule.query)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
+#else
+                    TextField("Match text", text: $rule.query)
+                        .autocorrectionDisabled()
+#endif
                     Button("Remove Filter", systemImage: "minus.circle", role: .destructive) {
                         filter.rules.removeAll { $0.id == rule.id }
                     }

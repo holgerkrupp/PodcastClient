@@ -15,12 +15,19 @@ struct AutoDownloadEpisodeFilterEditor: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Episode Eligibility")
                 .font(.headline)
+#if os(iOS)
             TextField("Include keywords (comma-separated)", text: $includeKeywords)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
             TextField("Exclude keywords (comma-separated)", text: $excludeKeywords)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
+#else
+            TextField("Include keywords (comma-separated)", text: $includeKeywords)
+                .autocorrectionDisabled()
+            TextField("Exclude keywords (comma-separated)", text: $excludeKeywords)
+                .autocorrectionDisabled()
+#endif
             TextField("Minimum duration in seconds", text: $minimumDuration)
             TextField("Maximum duration in seconds", text: $maximumDuration)
             TextField("Only episodes from the last N days", text: $maximumAgeDays)

@@ -61,6 +61,6 @@ struct PodcastFeedEpisodePager {
     }
 
     private static func pageKey(for url: URL) -> String {
-        url.podcastFeedComparisonKeys.sorted().first ?? url.absoluteString
+        url.podcastPageTraversalKey
     }
 }

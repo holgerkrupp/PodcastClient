@@ -142,9 +142,7 @@ extension URL{
         if sourceQueryItems.isEmpty == false {
             var queryItems = components.queryItems ?? []
             for sourceItem in sourceQueryItems {
-                let alreadyPresent = queryItems.contains {
-                    $0.name == sourceItem.name && $0.value == sourceItem.value
-                }
+                let alreadyPresent = queryItems.contains { $0.name == sourceItem.name }
                 if alreadyPresent == false {
                     queryItems.append(sourceItem)
                 }
@@ -250,6 +248,24 @@ extension URL{
         }
 
         return keys
+    }
+
+    /// Page traversal must retain the query: feeds often publish `?page=2`
+    /// on the same path. Subscription identity deliberately has a queryless
+    /// alias, which would incorrectly make every continuation look cyclic.
+    var podcastPageTraversalKey: String {
+        guard var components = URLComponents(url: absoluteURL, resolvingAgainstBaseURL: false) else {
+            return absoluteString
+        }
+        components.fragment = nil
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        if components.scheme == "http", components.port == 80 {
+            components.port = nil
+        } else if components.scheme == "https", components.port == 443 {
+            components.port = nil
+        }
+        return components.string ?? absoluteString
     }
 
     var podcastWebComparisonKeys: Set<String> {

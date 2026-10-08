@@ -6,11 +6,16 @@
 //
 
 import Foundation
+import os
 import SwiftData
 
 
 @ModelActor
 actor SubscriptionManager:NSObject{
+    private static let refreshPerformanceLog = OSLog(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: .pointsOfInterest
+    )
     
 
     var podcasts : [Podcast] = []
@@ -192,6 +197,8 @@ actor SubscriptionManager:NSObject{
             }
         }
 
+        let preparedInitialPage = try podcastFeed.initialImportSeed.map(PreparedPodcastFeedSeed.init)
+
         // Keep ordinary public query parameters in the stored feed identity.
         // Only a private/authenticated flow treats the URL query as sensitive
         // credential material.
@@ -259,7 +266,7 @@ actor SubscriptionManager:NSObject{
                     }
                     scheduleEpisodeImport(
                         feedURL: feed,
-                        firstPage: podcastFeed.initialImportSeed,
+                        firstPage: preparedInitialPage,
                         podcastFeed: podcastFeed
                     )
                     if let progress {
@@ -269,9 +276,9 @@ actor SubscriptionManager:NSObject{
                     let worker = PodcastModelActor(modelContainer: modelContainer)
                     _ = try await worker.updatePodcastWithSummary(
                         feed,
-                        force: true,
+                        policy: .validatedImport,
                         silent: true,
-                        initialPage: podcastFeed.initialImportSeed,
+                        initialPage: preparedInitialPage,
                         progress: progress
                     )
                 }
@@ -501,21 +508,19 @@ actor SubscriptionManager:NSObject{
 
     private nonisolated func scheduleEpisodeImport(
         feedURL: URL,
-        firstPage: PodcastFeedImportSeed?,
+        firstPage: PreparedPodcastFeedSeed?,
         podcastFeed: PodcastFeed
     ) {
         let container = modelContainer
         Task.detached(priority: .utility) {
             do {
-                let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
-                    try await PodcastModelActor(modelContainer: container)
-                        .updatePodcastWithSummary(
-                            feedURL,
-                            force: true,
-                            silent: true,
-                            initialPage: firstPage
-                        )
-                }
+                let summary = try await PodcastModelActor(modelContainer: container)
+                    .updatePodcastWithSummary(
+                        feedURL,
+                        policy: .validatedImport,
+                        silent: true,
+                        initialPage: firstPage
+                    )
                 await MainActor.run {
                     podcastFeed.isImportingEpisodes = false
                     podcastFeed.importNeedsRetry = summary.isPartial
@@ -539,7 +544,7 @@ actor SubscriptionManager:NSObject{
             for feed in feeds {
                 do {
                     print("background importing podcast: \(feed.redactedPodcastURLString)")
-                    _ = try await worker.updatePodcast(feed, force: true, silent: true)
+                    _ = try await worker.updatePodcast(feed, policy: .validatedImport, silent: true)
                 } catch {
                     print("could not import podcast feed \(feed.redactedPodcastURLString): \(error)")
                 }
@@ -692,12 +697,6 @@ actor SubscriptionManager:NSObject{
             }
     }
 
-    private func markBackgroundFeedCheckAttempt(for podcast: Podcast) {
-        let metaData = ensureMetadata(for: podcast)
-        metaData.feedUpdateCheckDate = Date()
-        modelContext.saveIfNeeded()
-    }
-
     private func makeBackgroundFeedRefreshCandidates(
         startedAt: Date,
         policy: BackgroundFeedRefreshPolicy
@@ -739,6 +738,7 @@ actor SubscriptionManager:NSObject{
 
     private func updatePodcastWithTimeBudget(
         _ feed: URL,
+        refreshRunID: UUID,
         timeBudget: TimeInterval,
         notifyNewEpisodes: Bool,
         forceParse: Bool = false
@@ -749,12 +749,13 @@ actor SubscriptionManager:NSObject{
         do {
             let summary = try await worker.updatePodcastWithSummary(
                 feed,
-                force: forceParse,
+                policy: forceParse ? .dueRelease : .regular,
+                refreshRunID: refreshRunID,
                 silent: true,
                 processNewEpisodesDuringSilentRefresh: notifyNewEpisodes,
                 deadline: deadline
             )
-            let result: TimedPodcastUpdateResult = Date() >= deadline
+            let result: TimedPodcastUpdateResult = Date() >= deadline && summary.didUpdateFeed == false
                 ? .timedOut
                 : .completed(summary.didUpdateFeed)
             return (result, summary.newEpisodeCount, nil)
@@ -973,6 +974,11 @@ actor SubscriptionManager:NSObject{
         retryDelay: TimeInterval = BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay,
         now: Date = Date()
     ) async -> Int {
+        let signpostID = OSSignpostID(log: Self.refreshPerformanceLog)
+        os_signpost(.begin, log: Self.refreshPerformanceLog, name: "Predicted podcast refresh run", signpostID: signpostID)
+        defer {
+            os_signpost(.end, log: Self.refreshPerformanceLog, name: "Predicted podcast refresh run", signpostID: signpostID)
+        }
         guard await MainActor.run(body: {
             Player.hasActivePlaybackInProcess == false
                 && ModelContainerManager.shared.isCloudKitExportInProgress == false
@@ -992,6 +998,7 @@ actor SubscriptionManager:NSObject{
         }
 
         let startedAt = Date()
+        let refreshRunID = UUID()
         let maxPodcasts = max(1, limit)
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
@@ -1119,6 +1126,7 @@ actor SubscriptionManager:NSObject{
             // the feed in full rather than trusting a possibly-stale Last-Modified.
             let (result, newEpisodeCount, errorMessage) = await updatePodcastWithTimeBudget(
                 target.feed,
+                refreshRunID: refreshRunID,
                 timeBudget: timeBudget,
                 notifyNewEpisodes: true,
                 forceParse: true
@@ -1210,8 +1218,12 @@ actor SubscriptionManager:NSObject{
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
 
-                // Tie-break on the last *actual* parse so the daily floor cycles
-                // through the least-recently-refreshed feeds first.
+                // A HEAD-only unchanged result still counts as an actual
+                // check. Rotate short background grants to feeds that have
+                // waited longest without marking queued work as checked.
+                let lhsCheck = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+                let rhsCheck = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+                if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
                 return (lhs.podcast.metaData?.lastRefresh ?? .distantPast)
                     < (rhs.podcast.metaData?.lastRefresh ?? .distantPast)
             }
@@ -1273,6 +1285,11 @@ actor SubscriptionManager:NSObject{
     }
 
     func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
+        let signpostID = OSSignpostID(log: Self.refreshPerformanceLog)
+        os_signpost(.begin, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
+        defer {
+            os_signpost(.end, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
+        }
         guard await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
             return
@@ -1294,6 +1311,7 @@ actor SubscriptionManager:NSObject{
        //  AppDiagnostics.log("bgupdateFeeds")
         
         let startedAt = Date()
+        let refreshRunID = UUID()
         let policy = BackgroundFeedRefreshPolicy.forReason(reason)
         fetchData()
         var updated = 0
@@ -1360,15 +1378,10 @@ actor SubscriptionManager:NSObject{
 
             await withTaskGroup(of: BackgroundFeedRefreshResult.self) { group in
                 for candidate in batch {
-                    if let podcast = podcasts.first(where: { $0.feed == candidate.feed }) {
-                        // Mark only work that is actually launched. Candidate
-                        // preparation may outlive an app-refresh task, and marking
-                        // everything up front made untouched feeds look checked.
-                        markBackgroundFeedCheckAttempt(for: podcast)
-                    }
                     group.addTask {
                         let (result, newEpisodeCount, errorMessage) = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
+                            refreshRunID: refreshRunID,
                             timeBudget: policy.perPodcastRuntimeLimit,
                             notifyNewEpisodes: policy.notifyNewEpisodes,
                             forceParse: candidate.forceParse
@@ -1430,12 +1443,11 @@ actor SubscriptionManager:NSObject{
             "bgupdate_feeds_completed",
             details: "processed=\(processed),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
-        // A sweep interrupted before touching a feed must remain eligible on
-        // the next foreground entry. An empty candidate set is a completed
-        // check and can keep the ordinary refresh cadence.
+        // A sweep that did not actually start a feed leaves the ordinary
+        // cadence eligible for the next grant.
         if stoppedForPlayback == false, stoppedForExporter == false,
            Task.isCancelled == false,
-           (processed > 0 || candidates.isEmpty) {
+           processed > 0 {
             setLastRefreshDate()
         }
 #if DEBUG

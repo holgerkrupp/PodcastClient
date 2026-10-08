@@ -7,6 +7,11 @@ import SwiftData
 actor PodcastEpisodeImportRetryQueue {
     static let shared = PodcastEpisodeImportRetryQueue()
     private static let maximumAttempts = 12
+    private let storageURL: URL?
+
+    init(storageURL: URL? = nil) {
+        self.storageURL = storageURL
+    }
 
     private struct Job: Codable, Identifiable {
         var id: String
@@ -25,6 +30,7 @@ actor PodcastEpisodeImportRetryQueue {
     private var scheduledRetryDate: Date?
 
     private var fileURL: URL {
+        if let storageURL { return storageURL }
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
         return base.appendingPathComponent("PodcastEpisodeImportRetries.json", isDirectory: false)
@@ -67,7 +73,7 @@ actor PodcastEpisodeImportRetryQueue {
             attempts: attempts,
             nextAttemptAt: nextAttempt,
             authenticationRequired: pausedForAuthentication,
-            resumeURL: resumeURL?.podcastNonSecretURL.absoluteString ?? previous?.resumeURL
+            resumeURL: resumeURL?.podcastNonSecretContinuationURL.absoluteString ?? previous?.resumeURL
         )
         await save()
         scheduleNextAttempt()
@@ -94,10 +100,16 @@ actor PodcastEpisodeImportRetryQueue {
             attempts: previous?.attempts ?? 0,
             nextAttemptAt: previous?.nextAttemptAt ?? Date().addingTimeInterval(Self.backoffSeconds(attempt: 1)),
             authenticationRequired: previous?.authenticationRequired ?? false,
-            resumeURL: resumeURL.podcastNonSecretURL.absoluteString
+            resumeURL: resumeURL.podcastNonSecretContinuationURL.absoluteString
         )
         await save()
         scheduleNextAttempt()
+    }
+
+    func pendingResumeURL(for feedURL: URL) async -> URL? {
+        await loadIfNeeded()
+        return jobs[PodcastFeedIdentity.normalizedFeedURLString(feedURL)]?
+            .resumeURL.flatMap(URL.init(string:))
     }
 
     func removeAll() async {
@@ -141,15 +153,12 @@ actor PodcastEpisodeImportRetryQueue {
                 continue
             }
             do {
-                let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
-                    try await PodcastModelActor(modelContainer: modelContainer)
-                        .updatePodcastWithSummary(
-                            feedURL,
-                            force: true,
-                            silent: true,
-                            startingAt: job.resumeURL.flatMap(URL.init(string:))
-                        )
-                }
+                let summary = try await PodcastModelActor(modelContainer: modelContainer)
+                    .updatePodcastWithSummary(
+                        feedURL,
+                        silent: true,
+                        startingAt: job.resumeURL.flatMap(URL.init(string:))
+                    )
                 if summary.isPartial == false {
                     jobs[job.id] = nil
                 }

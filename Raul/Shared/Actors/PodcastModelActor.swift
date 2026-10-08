@@ -7,8 +7,46 @@
 
 import SwiftData
 import Foundation
+import CryptoKit
+import os
 import OSLog
 import mp3ChapterReader
+
+/// Describes the freshness check independently from whether the caller needs
+/// an authoritative feed body. A due release still probes the server but does
+/// not trust an unchanged HEAD response to suppress its GET.
+struct PodcastRefreshRequestPolicy: Sendable, Equatable {
+    let performHEAD: Bool
+    let forceGETRegardlessOfHEAD: Bool
+
+    func shouldGET(
+        afterHEADResult feedWasUpdated: Bool?,
+        hasTimeSensitiveLiveItem: Bool = false
+    ) -> Bool {
+        forceGETRegardlessOfHEAD || hasTimeSensitiveLiveItem || feedWasUpdated != false
+    }
+
+    static let regular = PodcastRefreshRequestPolicy(
+        performHEAD: true,
+        forceGETRegardlessOfHEAD: false
+    )
+    static let manualBulk = PodcastRefreshRequestPolicy(
+        performHEAD: true,
+        forceGETRegardlessOfHEAD: false
+    )
+    static let manualSingle = PodcastRefreshRequestPolicy(
+        performHEAD: false,
+        forceGETRegardlessOfHEAD: true
+    )
+    static let dueRelease = PodcastRefreshRequestPolicy(
+        performHEAD: true,
+        forceGETRegardlessOfHEAD: true
+    )
+    static let validatedImport = PodcastRefreshRequestPolicy(
+        performHEAD: false,
+        forceGETRegardlessOfHEAD: true
+    )
+}
 
 enum PodcastFeedSwitchError: LocalizedError {
     case feedAlreadyExists
@@ -101,6 +139,28 @@ struct PodcastUpdateSummary: Sendable {
     }
 }
 
+/// Values captured before any refresh network await. The model objects used
+/// to build this snapshot remain in the lexical snapshot scope; the prepare
+/// and commit stages use fresh identities instead of carrying live models.
+private struct PodcastRefreshSnapshot: Sendable {
+    let feedURL: URL
+    let podcastID: PersistentIdentifier
+    let metadataID: PersistentIdentifier?
+    let accessProfile: PodcastAccessProfile?
+    let hadSuccessfulImport: Bool
+    let title: String
+    let knownEpisodes: KnownPodcastEpisodeIdentifiers
+    let hasTimeSensitiveLiveItem: Bool
+}
+
+private struct PodcastHEADSnapshot: Sendable {
+    let feedURL: URL
+    let podcastID: PersistentIdentifier
+    let metadataID: PersistentIdentifier
+    let lastRefresh: Date?
+    let accessProfile: PodcastAccessProfile?
+}
+
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
@@ -109,18 +169,36 @@ actor PodcastModelActor {
         subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
         category: "PodcastRefresh"
     )
-    /// A refresh worker performs network parsing and SwiftData mutations in the
-    /// same operation. SwiftData contexts may be separate, but concurrent
-    /// refreshes can still interleave relationship updates and cascade work in
-    /// the shared store, which can trip an internal context assertion while
-    /// saving. Keep the fan-out at one writer; feed downloads remain async.
-    static let maximumConcurrentRefreshes = 1
+    private static let refreshSignpostLog = OSLog(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: .pointsOfInterest
+    )
+    /// Foreground Refresh All overlaps feed network and parse work while the
+    /// commit coordinator serializes SwiftData writes. The device-local key
+    /// remains a rollback control for slower or memory-constrained devices.
+    static var maximumConcurrentRefreshes: Int {
+        let configured = UserDefaults.standard.integer(forKey: "PodcastRefreshNetworkConcurrency")
+        return configured == 0 ? 4 : min(max(configured, 1), 4)
+    }
 
     private static func logRefresh(_ message: String) {
         refreshLogger.info("\(message, privacy: .public)")
         Task { @MainActor in
             AppDiagnostics.log("[PodcastRefresh] \(message)")
         }
+    }
+
+    private static func feedCorrelationID(_ feedURL: URL) -> String {
+        var components = URLComponents(url: feedURL, resolvingAgainstBaseURL: false)
+        components?.user = nil
+        components?.password = nil
+        components?.query = nil
+        components?.fragment = nil
+        let identity = components?.string ?? feedURL.host ?? "unknown-feed"
+        return SHA256.hash(data: Data(identity.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
     }
 
     private static func feedFailureStatusCode(from error: Error) -> Int? {
@@ -475,6 +553,25 @@ actor PodcastModelActor {
         reason: FeedAliasReason = .explicitSwitch,
         progress: SubscriptionProgressHandler? = nil
     ) async throws {
+        guard let oldURL = modelContext.existingModel(for: podcastID)?.feed else { return }
+        try await PodcastMutationCoordinator.shared.withExclusive(feedURL: oldURL) {
+            try await self.performReplacePodcastFeed(
+                podcastID,
+                candidateURL: candidateURL,
+                allowUnverifiedIdentity: allowUnverifiedIdentity,
+                reason: reason,
+                progress: progress
+            )
+        }
+    }
+
+    private func performReplacePodcastFeed(
+        _ podcastID: PersistentIdentifier,
+        candidateURL: URL,
+        allowUnverifiedIdentity: Bool,
+        reason: FeedAliasReason,
+        progress: SubscriptionProgressHandler?
+    ) async throws {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
               let oldURL = podcast.feed else { return }
         let validation = try await validateReplacement(
@@ -748,33 +845,31 @@ actor PodcastModelActor {
     }
     
     func checkIfFeedHasBeenUpdated(_ podcastFeed: URL) async -> Bool? {
-        // 1. Fetch podcast
-        guard let podcast = await fetchPodcast(byFeed: podcastFeed)  else { return nil }
-        let podcastID = podcast.persistentModelID
-
-        // Ensure metaData exists
-        var metaID = podcast.metaData?.persistentModelID
-        if metaID == nil {
-            let meta = PodcastMetaData()
-            modelContext.insert(meta)
-            podcast.metaData = meta
-            try? modelContext.save()
-            metaID = meta.persistentModelID
+        let snapshot: PodcastHEADSnapshot
+        do {
+            guard let podcast = await fetchPodcast(byFeed: podcastFeed),
+                  let feedURL = podcast.feed else { return nil }
+            let podcastID = podcast.persistentModelID
+            var metadataID = podcast.metaData?.persistentModelID
+            if metadataID == nil {
+                let metadata = PodcastMetaData()
+                modelContext.insert(metadata)
+                podcast.metaData = metadata
+                modelContext.saveIfNeeded()
+                metadataID = metadata.persistentModelID
+            }
+            guard let metadataID else { return nil }
+            snapshot = PodcastHEADSnapshot(
+                feedURL: feedURL,
+                podcastID: podcastID,
+                metadataID: metadataID,
+                lastRefresh: safeFetchMeta(metadataID)?.lastRefresh,
+                accessProfile: accessProfile(for: podcast.metaData, feedURL: feedURL)
+            )
         }
 
-        // --- SAFELY snapshot lastRefresh ---
-        var lastRefreshSnapshot: Date? = nil
-        if let metaID,
-           let freshMeta = safeFetchMeta(metaID) {
-            lastRefreshSnapshot = freshMeta.lastRefresh
-        }
-
-        // Snapshot value properties (safe)
-        let feedURL = podcast.feed
-        let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
-
-        // --- Async work with only value types ---
-        let status = try? await feedURL?.status(profile: accessProfile)
+        let status = try? await snapshot.feedURL.status(profile: snapshot.accessProfile)
+        if Task.isCancelled { return nil }
         let serverLastModified = status?.lastModified
         let now = Date()
         
@@ -783,9 +878,9 @@ actor PodcastModelActor {
 
         // --- Re-fetch fresh models after await ---
         guard
-            (modelContext.existingModel(for: podcastID) as Podcast?) != nil,
-            let metaID,
-            let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaID)
+            let freshPodcast: Podcast = modelContext.existingModel(for: snapshot.podcastID),
+            freshPodcast.feed == snapshot.feedURL,
+            let freshMeta: PodcastMetaData = modelContext.existingModel(for: snapshot.metadataID)
         else {
             return nil
         }
@@ -829,12 +924,12 @@ actor PodcastModelActor {
             return nil
         }
 
-        if serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
+        if serverLastModified > (snapshot.lastRefresh ?? .distantPast) {
             feedWasUpdated = true
             return true
         }
 
-        if let lastRefreshSnapshot,
+        if let lastRefreshSnapshot = snapshot.lastRefresh,
            now.timeIntervalSince(lastRefreshSnapshot) > maximumTrustedHeaderSkipInterval {
             return nil
         }
@@ -851,14 +946,14 @@ actor PodcastModelActor {
         let metaData = try? modelContext.fetch(descriptor).first
         metaData?.lastRefresh = Date()
         metaData?.feedUpdateCheckDate = Date()
-        modelContext.saveIfNeeded()
+        // The refresh caller saves this with the imported feed graph.
     }
     
     func updateFeedURL(_ podcastFeed: URL) async{
         // Kept for callers on older refresh paths. Do not persist the result
         // of a reachability probe: it might be HTML, a login page or a
         // temporary redirect. A forced refresh performs the validated path.
-        _ = try? await updatePodcast(podcastFeed, force: true, silent: true)
+        _ = try? await updatePodcast(podcastFeed, policy: .validatedImport, silent: true)
     }
 
     func bootstrapPodcast(
@@ -972,18 +1067,20 @@ actor PodcastModelActor {
 
     func updatePodcast(
         _ podcastFeed: URL,
-        force: Bool? = false,
+        policy: PodcastRefreshRequestPolicy = .regular,
+        refreshRunID: UUID = UUID(),
         silent: Bool? = false,
         resolveExistingMissingDurations: Bool = true,
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
-        initialPage: PodcastFeedImportSeed? = nil,
+        initialPage: PreparedPodcastFeedSeed? = nil,
         startingAt: URL? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
         let summary = try await updatePodcastWithSummary(
             podcastFeed,
-            force: force,
+            policy: policy,
+            refreshRunID: refreshRunID,
             silent: silent,
             resolveExistingMissingDurations: resolveExistingMissingDurations,
             processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
@@ -997,15 +1094,101 @@ actor PodcastModelActor {
 
     func updatePodcastWithSummary(
         _ podcastFeed: URL,
-        force: Bool? = false,
+        policy: PodcastRefreshRequestPolicy = .regular,
+        refreshRunID: UUID = UUID(),
         silent: Bool? = false,
         resolveExistingMissingDurations: Bool = true,
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
-        initialPage: PodcastFeedImportSeed? = nil,
+        initialPage: PreparedPodcastFeedSeed? = nil,
         startingAt: URL? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PodcastUpdateSummary {
+        let operation: @Sendable (SubscriptionProgressHandler?) async throws -> PodcastUpdateSummary = { activeProgress in
+            try await PodcastMutationCoordinator.shared.withExclusive(feedURL: podcastFeed) {
+                try await self.performUpdatePodcastWithSummary(
+                    podcastFeed,
+                    policy: policy,
+                    refreshRunID: refreshRunID,
+                    silent: silent,
+                    resolveExistingMissingDurations: resolveExistingMissingDurations,
+                    processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
+                    deadline: deadline,
+                    initialPage: initialPage,
+                    startingAt: startingAt,
+                    progress: activeProgress
+                )
+            }
+        }
+
+        // Imports and page continuations carry a specific validated seed or
+        // checkpoint. They still use the mutation lock, but must not join a
+        // general refresh that would discard that input.
+        if initialPage != nil || startingAt != nil {
+            return try await operation(progress)
+        }
+
+        let profileScope: String?
+        if let currentPodcast = await fetchPodcast(byFeed: podcastFeed) {
+            profileScope = accessProfile(
+                for: currentPodcast.metaData,
+                feedURL: currentPodcast.feed
+            )?.id
+        } else {
+            profileScope = nil
+        }
+
+        return try await FeedRefreshCoordinator.shared.run(
+            feedURL: podcastFeed,
+            profileScope: profileScope,
+            intent: .init(
+                requiresGET: policy.forceGETRegardlessOfHEAD,
+                visible: silent != true,
+                resolvesMissingDurations: resolveExistingMissingDurations,
+                processesNewEpisodes: processNewEpisodesDuringSilentRefresh,
+                deadline: deadline
+            ),
+            progress: progress,
+            operation: operation
+        )
+    }
+
+    private func performUpdatePodcastWithSummary(
+        _ podcastFeed: URL,
+        policy: PodcastRefreshRequestPolicy,
+        refreshRunID: UUID,
+        silent: Bool?,
+        resolveExistingMissingDurations: Bool,
+        processNewEpisodesDuringSilentRefresh: Bool,
+        deadline: Date?,
+        initialPage: PreparedPodcastFeedSeed?,
+        startingAt: URL?,
+        progress: SubscriptionProgressHandler?
+    ) async throws -> PodcastUpdateSummary {
+        let refreshSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+        os_signpost(
+            .begin,
+            log: Self.refreshSignpostLog,
+            name: "Podcast feed refresh",
+            signpostID: refreshSignpostID
+        )
+        os_signpost(
+            .event,
+            log: Self.refreshSignpostLog,
+            name: "Podcast refresh correlation",
+            signpostID: refreshSignpostID,
+            "run_id=%{public}@ feed_id=%{public}@",
+            refreshRunID.uuidString as NSString,
+            Self.feedCorrelationID(podcastFeed) as NSString
+        )
+        defer {
+            os_signpost(
+                .end,
+                log: Self.refreshSignpostLog,
+                name: "Podcast feed refresh",
+                signpostID: refreshSignpostID
+            )
+        }
         let refreshStartedAt = ContinuousClock.now
         var statusDuration: Duration = .zero
         var downloadAndParseDuration: Duration = .zero
@@ -1016,6 +1199,8 @@ actor PodcastModelActor {
             let totalDuration = refreshStartedAt.duration(to: .now)
             Self.logRefresh(
                 "feed=\(podcastFeed.redactedPodcastURLString) "
+                    + "run_id=\(refreshRunID.uuidString) "
+                    + "feed_id=\(Self.feedCorrelationID(podcastFeed)) "
                     + "result=\(result) "
                     + "stage=\(refreshStage) "
                     + "status=\(Self.milliseconds(statusDuration))ms "
@@ -1026,72 +1211,74 @@ actor PodcastModelActor {
         }
 
         try checkRefreshDeadline(deadline)
-        // Fetch podcast just long enough to snapshot IDs & primitives
-        guard let podcast = await fetchPodcast(byFeed: podcastFeed) else {
-            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
-        }
-        guard let feedURL = podcast.feed else {
-            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
-        }
-
-
-        
-    //    print("updating podcast: \(podcast.title ?? "unknown")")
-        let podcastIDRef = podcast.persistentModelID
-        var metaIDRef = podcast.metaData?.persistentModelID
-
-        // Ensure metaData exists before any await
-        if podcast.metaData == nil {
-            let meta = PodcastMetaData()
-            modelContext.insert(meta)
-            podcast.metaData = meta
-            modelContext.saveIfNeeded()
-            metaIDRef = meta.persistentModelID
-        }
-
-        let accessProfile = accessProfile(
-            for: podcast.metaData,
-            feedURL: feedURL
-        )
-
-        if let accessProfile,
-           PodcastAccessResolver().credentialState(for: accessProfile) != .available {
-            if let metaIDRef,
-               let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
-                metadata.credentialState = .missing
-                metadata.authenticationRetryAfter = nil
-                metadata.lastFeedFailureStatusCode = nil
-                metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(accessProfile.id).localizedDescription
+        let snapshot: PodcastRefreshSnapshot
+        do {
+            guard let podcast = await fetchPodcast(byFeed: podcastFeed),
+                  let feedURL = podcast.feed else {
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
-            modelContext.saveIfNeeded()
-            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
-        }
-
-        if force != true,
-           let metaIDRef,
-           let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
-           let retryAfter = metadata.authenticationRetryAfter,
-           retryAfter > Date() {
-            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
-        }
-
-        // Snapshot some plain values if needed
-        let titleSnapshot = podcast.title
-        let existingEpisodeIdentifiers = knownEpisodeIdentifiers(for: podcast)
-        // `force` bypasses the HEAD freshness check. It must not turn a
-        // background release check into a complete back-catalogue import.
-        let knownEpisodeIdentifiers = existingEpisodeIdentifiers
-        // ⚠️ After this point: do not use `podcast` directly across awaits
-        // ----------------------------------------------------------------
-
-        // Update messages (still safe, no await yet)
-        if silent != true {
-            if let metaIDRef, let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
-                freshMeta.message = "Refreshing Podcast ..."
-                freshMeta.isUpdating = true
+            let podcastID = podcast.persistentModelID
+            var metadataID = podcast.metaData?.persistentModelID
+            if podcast.metaData == nil {
+                let metadata = PodcastMetaData()
+                modelContext.insert(metadata)
+                podcast.metaData = metadata
+                modelContext.saveIfNeeded()
+                metadataID = metadata.persistentModelID
             }
-            modelContext.saveIfNeeded()
+
+            let profile = accessProfile(for: podcast.metaData, feedURL: feedURL)
+            if let profile,
+               PodcastAccessResolver().credentialState(for: profile) != .available {
+                if let metadataID,
+                   let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) {
+                    metadata.credentialState = .missing
+                    metadata.authenticationRetryAfter = nil
+                    metadata.lastFeedFailureStatusCode = nil
+                    metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(profile.id).localizedDescription
+                }
+                modelContext.saveIfNeeded()
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+            }
+            if policy.forceGETRegardlessOfHEAD == false,
+               let metadataID,
+               let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID),
+               let retryAfter = metadata.authenticationRetryAfter,
+               retryAfter > Date() {
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+            }
+
+            let liveVerificationHorizon = Date().addingTimeInterval(24 * 60 * 60)
+            let liveNeedsGET = podcast.liveItems.contains { item in
+                item.status == .live
+                    || item.status == .pending
+                        && (item.start.map { $0 <= liveVerificationHorizon } ?? true)
+            }
+            if silent != true, let metadataID,
+               let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) {
+                metadata.message = "Refreshing Podcast ..."
+                metadata.isUpdating = true
+            }
+            snapshot = PodcastRefreshSnapshot(
+                feedURL: feedURL,
+                podcastID: podcastID,
+                metadataID: metadataID,
+                accessProfile: profile,
+                hadSuccessfulImport: podcast.metaData?.lastRefresh != nil,
+                title: podcast.title,
+                knownEpisodes: knownEpisodeIdentifiers(for: podcast),
+                hasTimeSensitiveLiveItem: liveNeedsGET
+            )
         }
+        let feedURL = snapshot.feedURL
+        let podcastIDRef = snapshot.podcastID
+        let metaIDRef = snapshot.metadataID
+        let accessProfile = snapshot.accessProfile
+        let hadSuccessfulImport = snapshot.hadSuccessfulImport
+        let titleSnapshot = snapshot.title
+        let knownEpisodeIdentifiers = snapshot.knownEpisodes
+        let existingEpisodeIdentifiers = snapshot.knownEpisodes
+        let hasTimeSensitiveLiveItem = snapshot.hasTimeSensitiveLiveItem
         /*
         if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
             freshPodcast.message = "Refreshing Podcast ..."
@@ -1099,15 +1286,23 @@ actor PodcastModelActor {
          */
         await reportProgress(SubscriptionProgressUpdate(0.12, "Checking feed status"), using: progress)
         try checkRefreshDeadline(deadline)
+        var headWasInconclusive = false
 
         // Probe the saved endpoint before downloading or parsing its body.
         // A successful unchanged HEAD should end this refresh without a GET.
-        if force == false, startingAt == nil, initialPage?.matches(feedURL) != true {
+        if policy.performHEAD, startingAt == nil, initialPage?.matches(feedURL) != true {
             refreshStage = "status_check"
+            let statusSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+            os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh HEAD", signpostID: statusSignpostID)
             let statusStartedAt = ContinuousClock.now
             let feedWasUpdated = await checkIfFeedHasBeenUpdated(feedURL)
+            headWasInconclusive = feedWasUpdated == nil
+            os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh HEAD", signpostID: statusSignpostID)
             statusDuration = statusStartedAt.duration(to: .now)
-            guard feedWasUpdated != false else {
+            guard policy.shouldGET(
+                afterHEADResult: feedWasUpdated,
+                hasTimeSensitiveLiveItem: hasTimeSensitiveLiveItem
+            ) else {
                 print("\(titleSnapshot) not updated")
 
                 if silent != true {
@@ -1118,7 +1313,6 @@ actor PodcastModelActor {
                     if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                         freshPodcast.message = nil
                     }
-                    modelContext.saveIfNeeded()
                 }
                 if let metaIDRef {
                     recordFeedRefreshSuccess(metadataID: metaIDRef)
@@ -1137,12 +1331,25 @@ actor PodcastModelActor {
         try checkRefreshDeadline(deadline)
         refreshStage = "endpoint_resolution"
 
+        let conditionalValidator = policy.performHEAD
+            && policy.forceGETRegardlessOfHEAD == false
+            && hasTimeSensitiveLiveItem == false
+            && headWasInconclusive
+            && hadSuccessfulImport
+            && startingAt == nil
+            && initialPage == nil
+            ? await PodcastHTTPValidatorStore.shared.validated(for: feedURL, profile: accessProfile)
+            : nil
+        let feedClient = conditionalValidator.map {
+            PodcastHTTPClient(conditionalFeedURL: feedURL, conditionalValidator: $0)
+        } ?? .shared
+
         // Resolve only the stored feed URL. URLSession may follow an HTTP
         // redirect for this request, but website discovery must not choose a
         // different RSS feed during an ordinary refresh.
         let resolvedEndpoint: URL
         let resolvedAccessProfile: PodcastAccessProfile?
-        let resolvedInitialPage: PodcastFeedImportSeed?
+        let resolvedInitialPage: PreparedPodcastFeedSeed?
         if startingAt != nil {
             // A persisted continuation was created from a previously validated
             // feed. Resume at that page instead of downloading the first page
@@ -1155,17 +1362,38 @@ actor PodcastModelActor {
             resolvedAccessProfile = accessProfile
             resolvedInitialPage = initialPage
         } else {
+            let endpointSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+            os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
             do {
-                let resolvedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
+                let resolvedFeed = try await PodcastRefreshNetworkPreparer.resolveEndpoint(
                     from: feedURL,
                     profile: accessProfile,
-                    allowHTMLDiscovery: false,
-                    knownEpisodeIdentifiers: knownEpisodeIdentifiers
+                    knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                    client: feedClient
                 )
-                resolvedEndpoint = resolvedFeed.url ?? feedURL
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
+                resolvedEndpoint = resolvedFeed.url
                 resolvedAccessProfile = accessProfile
-                resolvedInitialPage = resolvedFeed.initialImportSeed
+                resolvedInitialPage = resolvedFeed.firstPage
             } catch {
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
+                if error is PodcastHTTPNotModified, conditionalValidator != nil,
+                   let metaIDRef,
+                   let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                    metadata.feedUpdateCheckDate = Date()
+                    metadata.feedUpdated = false
+                    metadata.isUpdating = false
+                    metadata.message = nil
+                    if let currentPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
+                        currentPodcast.message = nil
+                        PodcastReleasePredictor.updateCachedPrediction(for: currentPodcast, after: Date())
+                    }
+                    recordFeedRefreshSuccess(metadataID: metaIDRef)
+                    modelContext.saveIfNeeded()
+                    await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
+                    logRefreshResult("not-modified-304")
+                    return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+                }
                 let primaryError = error as NSError
                 Self.logRefresh(
                     "endpoint_primary_failure feed=\(feedURL.redactedPodcastURLString) "
@@ -1182,7 +1410,9 @@ actor PodcastModelActor {
                    let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                     freshMeta.isUpdating = false
                     freshMeta.message = nil
-                    freshMeta.feedUpdateCheckDate = Date()
+                    if error is CancellationError == false {
+                        freshMeta.feedUpdateCheckDate = Date()
+                    }
                 }
                 if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                     freshPodcast.message = nil
@@ -1237,7 +1467,6 @@ actor PodcastModelActor {
         if silent != true {
             freshMeta.message = "Reading Podcast Feed."
             freshPodcast.message = "Reading Podcast Feed."
-            modelContext.saveIfNeeded()
         }
         await reportProgress(SubscriptionProgressUpdate(0.32, "Downloading and parsing feed"), using: progress)
         try checkRefreshDeadline(deadline)
@@ -1252,21 +1481,37 @@ actor PodcastModelActor {
                // have completed; importing it here and then again in
                // `updateDetails` needlessly touches every episode twice and can
                // keep CloudKit's import background task alive for too long.
-               resolvedInitialPage.shouldCommitBeforeContinuation,
-               let seedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
+               resolvedInitialPage.shouldCommitBeforeContinuation {
                 // Make the already validated first page visible and durable
                 // before downloading the rest of a large back catalogue.
-                initialPageNewEpisodeCount = try await updateDetails(
-                    seedPodcast,
-                    fullPodcast: knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(
-                        in: resolvedInitialPage.parsedFeed
-                    ),
-                    silent: true,
-                    resolveExistingMissingDurations: false,
-                    processNewEpisodesDuringSilentRefresh: false,
-                    deadline: deadline
-                )
-                modelContext.saveIfNeeded()
+                let commitCoordinator = PodcastFeedCommitCoordinator.shared
+                try await commitCoordinator.acquire()
+                guard let seedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef),
+                      seedPodcast.feed == feedURL else {
+                    await commitCoordinator.release()
+                    return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+                }
+                do {
+                    try checkRefreshDeadline(deadline)
+                    let seedFeed = try resolvedInitialPage.feed.importDictionary
+                    initialPageNewEpisodeCount = try await updateDetails(
+                        seedPodcast,
+                        fullPodcast: knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(
+                            in: seedFeed
+                        ),
+                        silent: true,
+                        resolveExistingMissingDurations: false,
+                        processNewEpisodesDuringSilentRefresh: false,
+                        deadline: deadline,
+                        writerAlreadyHeld: true,
+                        updateCache: false
+                    )
+                    modelContext.saveIfNeeded()
+                } catch {
+                    await commitCoordinator.release()
+                    throw error
+                }
+                await commitCoordinator.release()
                 if let checkpoint = resolvedInitialPage.nextPageURL {
                     await PodcastEpisodeImportRetryQueue.shared.checkpoint(
                         feedURL: feedURL,
@@ -1278,19 +1523,49 @@ actor PodcastModelActor {
             // Parse XML
             refreshStage = "feed_parse"
             let downloadAndParseStartedAt = ContinuousClock.now
-            let fullPodcast = try await PodcastParser.fetchAllPages(
-                from: resolvedEndpoint,
-                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
-                profile: resolvedAccessProfile,
-                firstPage: startingAt == nil ? resolvedInitialPage : nil,
-                startingAt: startingAt
-            )
+            let parseSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+            os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh GET and parse", signpostID: parseSignpostID)
+            let preparedOutcome: PodcastRefreshNetworkPreparer.Outcome
+            do {
+                preparedOutcome = try await PodcastRefreshNetworkPreparer.preparePages(
+                    from: resolvedEndpoint,
+                    knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                    profile: resolvedAccessProfile,
+                    firstPage: startingAt == nil ? resolvedInitialPage : nil,
+                    startingAt: startingAt,
+                    client: feedClient
+                )
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh GET and parse", signpostID: parseSignpostID)
+            } catch {
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh GET and parse", signpostID: parseSignpostID)
+                throw error
+            }
+            let preparedFeed = preparedOutcome.feed
             downloadAndParseDuration = downloadAndParseStartedAt.duration(to: .now)
             try checkRefreshDeadline(deadline)
 
+            let commitCoordinator = PodcastFeedCommitCoordinator.shared
+            let writerWaitStartedAt = ContinuousClock.now
+            try await commitCoordinator.acquire()
+            var writerHeld = true
+            defer {
+                if writerHeld { Task { await commitCoordinator.release() } }
+            }
+            os_signpost(
+                .event,
+                log: Self.refreshSignpostLog,
+                name: "Podcast feed writer acquired",
+                "wait_ms=%{public}lld buffered_bytes=%{public}lld",
+                Self.milliseconds(writerWaitStartedAt.duration(to: .now)),
+                Int64(preparedFeed.bufferedByteCount)
+            )
+            try checkRefreshDeadline(deadline)
+            let fullPodcast = try preparedFeed.importDictionary
+
             guard
                 let finalMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
-                let finalPodcast: Podcast = modelContext.existingModel(for: podcastIDRef)
+                let finalPodcast: Podcast = modelContext.existingModel(for: podcastIDRef),
+                finalPodcast.feed == feedURL
             else {
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
@@ -1326,21 +1601,31 @@ actor PodcastModelActor {
             if silent != true {
                 finalMeta.message = "Updating Podcast details"
                 finalPodcast.message = "Updating Podcast details"
-                modelContext.saveIfNeeded()
             }
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
             refreshStage = "episode_import"
             let databaseStartedAt = ContinuousClock.now
-            let newEpisodeCount = try await updateDetails(
-                finalPodcast,
-                fullPodcast: importPodcast,
-                silent: silent,
-                resolveExistingMissingDurations: resolveExistingMissingDurations,
-                processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
-                deadline: deadline,
-                progress: progress
-            )
+            let writeSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+            os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
+            let newEpisodeCount: Int
+            do {
+                newEpisodeCount = try await updateDetails(
+                    finalPodcast,
+                    fullPodcast: importPodcast,
+                    silent: silent,
+                    resolveExistingMissingDurations: resolveExistingMissingDurations,
+                    processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
+                    deadline: deadline,
+                    progress: progress,
+                    writerAlreadyHeld: true,
+                    updateCache: false
+                )
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
+            } catch {
+                os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
+                throw error
+            }
             let totalNewEpisodeCount = initialPageNewEpisodeCount + newEpisodeCount
 
             var enrichmentSources: [String] = []
@@ -1357,8 +1642,6 @@ actor PodcastModelActor {
                     }
                 }
             }
-            await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
-
             if silent != true {
                 finalPodcast.message = nil
                 finalMeta.message = nil
@@ -1366,7 +1649,7 @@ actor PodcastModelActor {
             }
             refreshStage = "finalization"
             finalMeta.feedUpdated = true
-            let importIsPartial = fullPodcast["isPartial"] as? Bool == true
+            let importIsPartial = preparedOutcome.isPartial
             if importIsPartial {
                 finalMeta.feedUpdated = false
                 finalMeta.lastFeedFailureDate = Date()
@@ -1394,6 +1677,22 @@ actor PodcastModelActor {
             }
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
+            // The cache projection reads the just-committed graph and writes a
+            // shared cache store. Keep it behind the same writer gate so only
+            // one large materialized feed and cache projection are active.
+            await updateFeedCache(
+                feedURL: feedURL,
+                parsedFeed: fullPodcast,
+                deadline: deadline
+            )
+            writerHeld = false
+            await commitCoordinator.release()
+            await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
+            if importIsPartial {
+                await PodcastHTTPValidatorStore.shared.invalidate(for: feedURL, profile: accessProfile)
+            } else {
+                await PodcastHTTPValidatorStore.shared.commit(for: feedURL, profile: accessProfile)
+            }
             await reconcileLiveNotifications(for: finalPodcast)
             databaseDuration = databaseStartedAt.duration(to: .now)
             await reportProgress(
@@ -1420,7 +1719,7 @@ actor PodcastModelActor {
             }
             await reportProgress(SubscriptionProgressUpdate(1.0, "Refresh paused"), using: progress)
             logRefreshResult("cancelled")
-            return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+            throw CancellationError()
         } catch {
             let nsError = error as NSError
             print(
@@ -1481,8 +1780,35 @@ actor PodcastModelActor {
         resolveExistingMissingDurations: Bool = true,
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
-        progress: SubscriptionProgressHandler? = nil
+        progress: SubscriptionProgressHandler? = nil,
+        writerAlreadyHeld: Bool = false,
+        updateCache: Bool = true
     ) async throws -> Int {
+        let commitCoordinator = PodcastFeedCommitCoordinator.shared
+        if writerAlreadyHeld == false {
+            let writerWaitStartedAt = ContinuousClock.now
+            try await commitCoordinator.acquire()
+            let writerWait = writerWaitStartedAt.duration(to: .now)
+            os_signpost(
+                .event,
+                log: Self.refreshSignpostLog,
+                name: "Podcast feed writer acquired",
+                "wait_ms=%{public}lld",
+                Self.milliseconds(writerWait)
+            )
+        }
+        defer {
+            if writerAlreadyHeld == false {
+                Task { await commitCoordinator.release() }
+            }
+        }
+        try Task.checkCancellation()
+        try checkRefreshDeadline(deadline)
+        let detailsSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+        os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast updateDetails", signpostID: detailsSignpostID)
+        defer {
+            os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast updateDetails", signpostID: detailsSignpostID)
+        }
         print("updateDetails for \(podcast.title)")
         var newEpisodeCount = 0
 
@@ -1578,6 +1904,7 @@ actor PodcastModelActor {
             await reportProgress(SubscriptionProgressUpdate(0.7, "Creating database entries"), using: progress)
 
             let totalEpisodes = max(episodesData.count, 1)
+            let progressStep = max(1, episodesData.count / 100)
             let podcastTitle = podcast.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let progressPodcastTitle = podcastTitle.isEmpty ? "podcast" : podcastTitle
             var unsavedSilentEpisodeChanges = 0
@@ -1597,15 +1924,20 @@ actor PodcastModelActor {
             }
 
             for (index, episodeData) in episodesData.enumerated() {
-                try checkRefreshDeadline(deadline)
-                let episodeProgress = 0.7 + (Double(index) / Double(totalEpisodes)) * 0.25
-                await reportProgress(
-                    SubscriptionProgressUpdate(
-                        episodeProgress,
-                        "Importing episodes for \(progressPodcastTitle) \(index + 1)/\(episodesData.count)"
-                    ),
-                    using: progress
-                )
+                // Once the writer starts a feed graph commit, finish it before
+                // yielding. A deadline midway through this array would leave
+                // a saved prefix; first-known-episode stopping on the next run
+                // could then hide the uncommitted suffix.
+                if index == 0 || index % progressStep == 0 || index == episodesData.count - 1 {
+                    let episodeProgress = 0.7 + (Double(index) / Double(totalEpisodes)) * 0.25
+                    await reportProgress(
+                        SubscriptionProgressUpdate(
+                            episodeProgress,
+                            "Importing episodes for \(progressPodcastTitle) \(index + 1)/\(episodesData.count)"
+                        ),
+                        using: progress
+                    )
+                }
 
                 let episodeIdentifier = episodeIdentifier(from: episodeData)
                 let candidateEpisodeURL = episodeURL(from: episodeData)
@@ -1630,10 +1962,6 @@ actor PodcastModelActor {
                             currentDuration: existingEpisode.duration
                         )
                     }
-                    if silent != true {
-                        modelContext.saveIfNeeded()
-                    }
-
                     if silent == true, unsavedSilentEpisodeChanges >= 25 {
                         modelContext.saveIfNeeded()
                         unsavedSilentEpisodeChanges = 0
@@ -1734,9 +2062,10 @@ actor PodcastModelActor {
             }
 
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
-            try checkRefreshDeadline(deadline)
 
-            if let podcastFeed = podcast.feed {
+            if Task.isCancelled == false,
+               deadline.map({ Date() < $0 }) ?? true,
+               let podcastFeed = podcast.feed {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
             }
         }
@@ -1744,11 +2073,13 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            await updateFeedCache(
-                feedURL: podcastFeed,
-                parsedFeed: fullPodcast,
-                deadline: deadline
-            )
+            if updateCache {
+                await updateFeedCache(
+                    feedURL: podcastFeed,
+                    parsedFeed: fullPodcast,
+                    deadline: deadline
+                )
+            }
         }
 
         return newEpisodeCount
@@ -1765,6 +2096,12 @@ actor PodcastModelActor {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             return
+        }
+        let cacheStartedAt = ContinuousClock.now
+        let cacheSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+        os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh cache projection", signpostID: cacheSignpostID)
+        defer {
+            os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh cache projection", signpostID: cacheSignpostID)
         }
         guard deadline.map({ Date() < $0 }) ?? true else { return }
         await ModelContainerManager.shared.prepareSplitStores()
@@ -1809,6 +2146,7 @@ actor PodcastModelActor {
                 + "fetches=\(projection.fetchCount) "
                 + "saves=\(projection.saveCount)"
                 + " extensions=\(extensionCount)"
+                + " duration_ms=\(Self.milliseconds(cacheStartedAt.duration(to: .now)))"
         )
         if projection.completed == false {
             CrashBreadcrumbs.shared.record(
@@ -1999,6 +2337,11 @@ actor PodcastModelActor {
     func refreshAllPodcasts(
         progress: (@Sendable (_ completed: Int, _ total: Int) async -> Void)? = nil
     ) async throws {
+        let bulkSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
+        os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh all", signpostID: bulkSignpostID)
+        defer {
+            os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh all", signpostID: bulkSignpostID)
+        }
         let descriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { podcast in
                 podcast.metaData?.isSubscribed != false
@@ -2010,6 +2353,7 @@ actor PodcastModelActor {
         let maxConcurrent = Self.maximumConcurrentRefreshes
         let refreshStartedAt = ContinuousClock.now
         let runStartedAt = Date()
+        let refreshRunID = UUID()
         await progress?(0, feeds.count)
         guard feeds.isEmpty == false else { return }
 
@@ -2032,12 +2376,12 @@ actor PodcastModelActor {
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
                     do {
-                        let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feed) {
-                            try await worker.updatePodcastWithSummary(
-                                feed,
-                                resolveExistingMissingDurations: false
-                            )
-                        }
+                        let summary = try await worker.updatePodcastWithSummary(
+                            feed,
+                            policy: .manualBulk,
+                            refreshRunID: refreshRunID,
+                            resolveExistingMissingDurations: false
+                        )
                         let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             true,
@@ -2099,6 +2443,7 @@ actor PodcastModelActor {
             let totalDuration = refreshStartedAt.duration(to: .now)
             Self.logRefresh(
                 "bulk feeds=\(feeds.count) "
+                    + "run_id=\(refreshRunID.uuidString) "
                     + "concurrency=\(maxConcurrent) "
                     + "failed=\(failed) "
                     + "total=\(Self.milliseconds(totalDuration))ms"

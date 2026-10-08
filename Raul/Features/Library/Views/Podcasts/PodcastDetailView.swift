@@ -702,12 +702,10 @@ struct PodcastDetailView: View {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
                 let startedAt = Date()
-                let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feed) {
-                    try await actor.updatePodcastWithSummary(feed, force: true) { update in
-                        await MainActor.run {
-                            refreshProgress = update.fractionCompleted
-                            refreshProgressMessage = update.message
-                        }
+                let summary = try await actor.updatePodcastWithSummary(feed, policy: .manualSingle) { update in
+                    await MainActor.run {
+                        refreshProgress = update.fractionCompleted
+                        refreshProgressMessage = update.message
                     }
                 }
 #if DEBUG
@@ -966,6 +964,7 @@ private struct FeedURLRepairSheet: View {
                 }
 
                 Section("Replacement feed") {
+#if os(iOS)
                     TextField("https://example.com/feed.xml", text: $candidate, axis: .vertical)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -974,6 +973,14 @@ private struct FeedURLRepairSheet: View {
                             preview = nil
                             errorMessage = nil
                         }
+#else
+                    TextField("https://example.com/feed.xml", text: $candidate, axis: .vertical)
+                        .autocorrectionDisabled()
+                        .onChange(of: candidate) { _, _ in
+                            preview = nil
+                            errorMessage = nil
+                        }
+#endif
 
                     Button {
                         Task { await validate() }

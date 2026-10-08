@@ -39,6 +39,30 @@ enum PodcastFeedResolverError: LocalizedError {
 }
 
 enum PodcastFeedResolver {
+    struct PreparedExistingEndpoint: Sendable {
+        let url: URL
+        let firstPage: PreparedPodcastFeedSeed?
+    }
+
+    static func resolvePreparedExistingEndpoint(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
+        client: PodcastHTTPClient = .shared
+    ) async throws -> PreparedExistingEndpoint {
+        let resolved = try await resolveExistingEndpoint(
+            from: url,
+            profile: profile,
+            allowHTMLDiscovery: false,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+            client: client
+        )
+        return try PreparedExistingEndpoint(
+            url: resolved.url ?? url,
+            firstPage: resolved.initialImportSeed.map(PreparedPodcastFeedSeed.init)
+        )
+    }
+
     static func canResolve(_ url: URL) -> Bool {
         (try? unwrapIncomingURL(url)) != nil
     }

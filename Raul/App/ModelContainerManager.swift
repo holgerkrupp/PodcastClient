@@ -1435,6 +1435,13 @@ class ModelContainerManager: ObservableObject {
 
     func runLaunchStoreMaintenance() async {
 #if DEBUG
+        // The unsigned simulator XCTest host has no usable CloudKit container.
+        // Test cases create their own in-memory stores and must not start the
+        // app's delayed iCloud maintenance in parallel with those stores.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+            || NSClassFromString("XCTestCase") != nil {
+            return
+        }
         guard developmentResetRequiresRelaunch == false else {
             recordMigrationBlocker("Development reset requires a relaunch")
             return
@@ -3274,7 +3281,7 @@ class ModelContainerManager: ObservableObject {
                 do {
                     let refreshed = try await PodcastModelActor(
                         modelContainer: legacyContainer
-                    ).updatePodcast(feed, force: true, silent: true)
+                    ).updatePodcast(feed, policy: .validatedImport, silent: true)
                     didRefreshAny = true
                     if refreshed == false {
                         self.missingFeedRefreshAttempts.removeValue(forKey: key)

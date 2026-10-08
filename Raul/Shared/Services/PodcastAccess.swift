@@ -468,7 +468,7 @@ final class KeychainPodcastCredentialStore: PodcastCredentialStore, @unchecked S
     }
 
     private func baseQuery(for profile: PodcastAccessProfile) -> [CFString: Any] {
-        var query: [CFString: Any] = [
+        let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: profile.id,
@@ -1022,6 +1022,195 @@ enum PodcastURLSessionTransportError: Error, Sendable {
     case missingResponse
 }
 
+struct PodcastHTTPNotModified: Error, Sendable {}
+
+/// Device-local response validators become reusable only after the caller has
+/// successfully parsed and committed the feed. The key contains no endpoint
+/// or credential text, and a periodic unconditional GET limits damage from
+/// publishers that leave stale ETags in place.
+actor PodcastHTTPValidatorStore {
+    static let shared = PodcastHTTPValidatorStore()
+
+    struct Validator: Codable, Sendable {
+        let etag: String?
+        let lastModified: String?
+        let validatedAt: Date
+
+        var isUsable: Bool { etag != nil || lastModified != nil }
+    }
+
+    private enum StagedValidator {
+        case valid(Validator)
+        case absent
+    }
+    private var pending: [String: StagedValidator] = [:]
+    private let maximumAge: TimeInterval = 6 * 60 * 60
+
+    private func key(for url: URL, profile: PodcastAccessProfile?) -> String {
+        let resource = url.podcastNonSecretURL
+        var scope = PodcastFeedIdentity.normalizedResourceURLString(resource)
+            + "|" + (profile?.id ?? "public")
+        if let profile, profile.kind != .publicFeed {
+            // A token or account rotation must not reuse an earlier account's
+            // 304 even when the profile's non-secret ID remains stable.
+            let authorized = try? PodcastAccessResolver().request(for: url, profile: profile)
+            let credentialMaterial = [
+                authorized?.value(forHTTPHeaderField: "Authorization") ?? "",
+                authorized?.url?.query ?? "",
+                authorized?.url?.user ?? "",
+                authorized?.url?.password ?? ""
+            ].joined(separator: "|")
+            let credentialDigest = SHA256.hash(data: Data(credentialMaterial.utf8))
+            scope += "|" + credentialDigest.map { String(format: "%02x", $0) }.joined()
+        }
+        let digest = SHA256.hash(data: Data(scope.utf8))
+        return "PodcastFeedValidator." + digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    func validated(for url: URL, profile: PodcastAccessProfile?) -> Validator? {
+        let storageKey = key(for: url, profile: profile)
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let validator = try? JSONDecoder().decode(Validator.self, from: data),
+              validator.isUsable,
+              Date().timeIntervalSince(validator.validatedAt) < maximumAge else {
+            return nil
+        }
+        return validator
+    }
+
+    func stage(_ response: HTTPURLResponse, for url: URL, profile: PodcastAccessProfile?) {
+        let candidate = Validator(
+            etag: response.value(forHTTPHeaderField: "ETag"),
+            lastModified: response.value(forHTTPHeaderField: "Last-Modified"),
+            validatedAt: Date()
+        )
+        pending[key(for: url, profile: profile)] = candidate.isUsable ? .valid(candidate) : .absent
+    }
+
+    func commit(for url: URL, profile: PodcastAccessProfile?) {
+        let storageKey = key(for: url, profile: profile)
+        guard let staged = pending.removeValue(forKey: storageKey) else { return }
+        guard case .valid(let candidate) = staged,
+              let data = try? JSONEncoder().encode(candidate) else {
+            UserDefaults.standard.removeObject(forKey: storageKey)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    func invalidate(for url: URL, profile: PodcastAccessProfile?) {
+        let storageKey = key(for: url, profile: profile)
+        pending[storageKey] = nil
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+}
+
+/// Limits feed requests to two concurrent requests per origin. A 429's
+/// Retry-After pauses later requests to that origin without stalling other
+/// hosts. Cancellation removes queued work promptly.
+actor PodcastHostRequestLimiter {
+    static let shared = PodcastHostRequestLimiter()
+
+    private struct Waiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Void, any Error>
+    }
+
+    private let maximumPerHost = 2
+    private var active: [String: Int] = [:]
+    private var waiters: [String: [Waiter]] = [:]
+    private var retryAfter: [String: Date] = [:]
+
+    private func key(for url: URL) -> String {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let host = url.host?.lowercased() ?? ""
+        let port = url.port.map(String.init) ?? ""
+        return scheme + "://" + host + ":" + port
+    }
+
+    func withPermit<T: Sendable>(
+        for url: URL,
+        operation: @Sendable () async throws -> T
+    ) async throws -> T {
+        let key = key(for: url)
+        try await acquire(key)
+        do {
+            try Task.checkCancellation()
+            let value = try await operation()
+            release(key)
+            return value
+        } catch {
+            release(key)
+            throw error
+        }
+    }
+
+    func pause(for url: URL, until date: Date?) {
+        let key = key(for: url)
+        let requested = date ?? Date().addingTimeInterval(2)
+        retryAfter[key] = max(retryAfter[key] ?? .distantPast, requested)
+    }
+
+    private func waitForCooldown(_ key: String) async throws {
+        while let remaining = retryAfter[key]?.timeIntervalSinceNow, remaining > 0 {
+            try await Task.sleep(for: .seconds(remaining))
+        }
+    }
+
+    private func acquire(_ key: String) async throws {
+        try Task.checkCancellation()
+        try await waitForCooldown(key)
+        if active[key, default: 0] < maximumPerHost,
+           waiters[key]?.isEmpty != false {
+            active[key, default: 0] += 1
+            return
+        }
+
+        let waiterID = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                // Recheck after installing the cancellation handler; the
+                // previous holder may have released during that suspension.
+                if active[key, default: 0] < maximumPerHost,
+                   waiters[key]?.isEmpty != false {
+                    active[key, default: 0] += 1
+                    continuation.resume(returning: ())
+                } else {
+                    waiters[key, default: []].append(Waiter(id: waiterID, continuation: continuation))
+                }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(key, id: waiterID) }
+        }
+        do {
+            try Task.checkCancellation()
+            try await waitForCooldown(key)
+        } catch {
+            release(key)
+            throw error
+        }
+    }
+
+    private func cancelWaiter(_ key: String, id: UUID) {
+        guard var queued = waiters[key],
+              let index = queued.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = queued.remove(at: index)
+        waiters[key] = queued.isEmpty ? nil : queued
+        waiter.continuation.resume(throwing: CancellationError())
+    }
+
+    private func release(_ key: String) {
+        if var queued = waiters[key], queued.isEmpty == false {
+            let next = queued.removeFirst()
+            waiters[key] = queued.isEmpty ? nil : queued
+            next.continuation.resume(returning: ())
+        } else {
+            active[key, default: 1] -= 1
+            if active[key] == 0 { active[key] = nil }
+        }
+    }
+}
+
 private final class PodcastURLSessionTaskCancellationBox: @unchecked Sendable {
     private let lock = NSLock()
     private var task: URLSessionDataTask?
@@ -1097,13 +1286,19 @@ final class PodcastHTTPClient: @unchecked Sendable {
 
     private let injectedResolver: PodcastAccessResolver?
     private let transport: any PodcastHTTPTransport
+    private let conditionalFeedURL: URL?
+    private let conditionalValidator: PodcastHTTPValidatorStore.Validator?
 
     init(
         resolver: PodcastAccessResolver? = nil,
-        transport: any PodcastHTTPTransport = URLSessionPodcastHTTPTransport()
+        transport: any PodcastHTTPTransport = URLSessionPodcastHTTPTransport(),
+        conditionalFeedURL: URL? = nil,
+        conditionalValidator: PodcastHTTPValidatorStore.Validator? = nil
     ) {
         self.injectedResolver = resolver
         self.transport = transport
+        self.conditionalFeedURL = conditionalFeedURL
+        self.conditionalValidator = conditionalValidator
     }
 
     private var resolver: PodcastAccessResolver {
@@ -1115,7 +1310,7 @@ final class PodcastHTTPClient: @unchecked Sendable {
         profile: PodcastAccessProfile? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let activeResolver = resolver
-        let request = try activeResolver.request(for: url, profile: profile)
+        let request = conditionalRequest(try activeResolver.request(for: url, profile: profile))
         return try await perform(
             request: request,
             profile: profile,
@@ -1128,11 +1323,11 @@ final class PodcastHTTPClient: @unchecked Sendable {
         profile: PodcastAccessProfile? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let activeResolver = resolver
-        let authorizedRequest = try requestUsingCurrentCredential(
+        let authorizedRequest = conditionalRequest(try requestUsingCurrentCredential(
             for: request,
             profile: profile,
             resolver: activeResolver
-        )
+        ))
         return try await perform(
             request: authorizedRequest,
             profile: profile,
@@ -1166,27 +1361,63 @@ final class PodcastHTTPClient: @unchecked Sendable {
         return result
     }
 
+    private func conditionalRequest(_ request: URLRequest) -> URLRequest {
+        guard request.httpMethod?.uppercased() == "GET",
+              let requestedURL = request.url,
+              let conditionalFeedURL,
+              requestedURL.podcastNonSecretURL == conditionalFeedURL.podcastNonSecretURL,
+              let conditionalValidator else { return request }
+        var result = request
+        if let etag = conditionalValidator.etag {
+            result.setValue(etag, forHTTPHeaderField: "If-None-Match")
+        }
+        if let lastModified = conditionalValidator.lastModified {
+            result.setValue(lastModified, forHTTPHeaderField: "If-Modified-Since")
+        }
+        return result
+    }
+
     private func perform(
         request: URLRequest,
         profile: PodcastAccessProfile?,
         resolver: PodcastAccessResolver
     ) async throws -> (Data, HTTPURLResponse) {
         let requestedURL = request.url ?? URL(string: "about:blank")!
-        let (data, response) = try await transport.data(
-            for: request,
-            profile: profile,
-            resolver: resolver
-        )
+        let (data, response) = try await PodcastHostRequestLimiter.shared.withPermit(for: requestedURL) {
+            let result = try await self.transport.data(
+                for: request,
+                profile: profile,
+                resolver: resolver
+            )
+            if let http = result.1 as? HTTPURLResponse, http.statusCode == 429 {
+                await PodcastHostRequestLimiter.shared.pause(
+                    for: requestedURL,
+                    until: Self.retryDate(from: http.value(forHTTPHeaderField: "Retry-After"))
+                )
+            }
+            return result
+        }
         guard let httpResponse = response as? HTTPURLResponse else {
             throw PodcastHTTPError.invalidResponse(response.url ?? requestedURL)
         }
+        if httpResponse.statusCode == 304 {
+            if request.value(forHTTPHeaderField: "If-None-Match") != nil
+                || request.value(forHTTPHeaderField: "If-Modified-Since") != nil {
+                throw PodcastHTTPNotModified()
+            }
+            throw PodcastHTTPError.httpStatus(code: 304, url: requestedURL, wwwAuthenticate: nil)
+        }
         guard (200..<400).contains(httpResponse.statusCode) else {
+            let retryAfter = Self.retryDate(from: httpResponse.value(forHTTPHeaderField: "Retry-After"))
             throw PodcastHTTPError.httpStatus(
                 code: httpResponse.statusCode,
                 url: httpResponse.url ?? requestedURL,
                 wwwAuthenticate: httpResponse.value(forHTTPHeaderField: "WWW-Authenticate"),
-                retryAfter: Self.retryDate(from: httpResponse.value(forHTTPHeaderField: "Retry-After"))
+                retryAfter: retryAfter
             )
+        }
+        if request.httpMethod?.uppercased() == "GET" && httpResponse.statusCode == 200 {
+            await PodcastHTTPValidatorStore.shared.stage(httpResponse, for: requestedURL, profile: profile)
         }
         return (data, httpResponse)
     }
@@ -1273,6 +1504,25 @@ extension URL {
         components.query = nil
         components.fragment = nil
         return components.url ?? self
+    }
+
+    /// Durable RFC 5005 retries need their page cursor, while the retry file
+    /// must not persist private-feed credentials from the source URL.
+    var podcastNonSecretContinuationURL: URL {
+        guard var components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            return podcastNonSecretURL
+        }
+        let paginationNames: Set<String> = [
+            "page", "paged", "page_number", "pagenumber", "pageindex",
+            "offset", "start", "cursor", "after", "before", "batch", "p"
+        ]
+        components.user = nil
+        components.password = nil
+        components.fragment = nil
+        components.queryItems = components.queryItems?.filter {
+            paginationNames.contains($0.name.lowercased())
+        }
+        return components.url ?? podcastNonSecretURL
     }
 
     var redactedPodcastURLString: String {

@@ -37,6 +37,180 @@ struct PodcastFeedDocument: Sendable {
     }
 }
 
+/// Immutable transport for a parsed feed. XMLParser builds heterogeneous
+/// dictionaries locally, but no mutable `Any` tree crosses into the model
+/// actor's commit stage. Unknown parser output fails explicitly rather than
+/// silently dropping a tag during conversion.
+indirect enum PreparedPodcastFeedValue: Codable, Sendable {
+    case string(String)
+    case integer(Int)
+    case number(Double)
+    case boolean(Bool)
+    case array([PreparedPodcastFeedValue])
+    case object([String: PreparedPodcastFeedValue])
+    case optionalTags(PodcastNamespaceOptionalTags)
+    case extensionElement(ParsedFeedExtensionElement)
+    case externalFile(ExternalFile)
+
+    init(_ value: Any) throws {
+        switch value {
+        case let value as String: self = .string(value)
+        case let value as Bool: self = .boolean(value)
+        case let value as Int: self = .integer(value)
+        case let value as Double: self = .number(value)
+        case let value as PodcastNamespaceOptionalTags: self = .optionalTags(value)
+        case let value as ParsedFeedExtensionElement: self = .extensionElement(value)
+        case let value as ExternalFile: self = .externalFile(value)
+        case let value as [String: Any]:
+            self = .object(try value.mapValues { try Self($0) })
+        case let value as [Any]:
+            self = .array(try value.map { try Self($0) })
+        default:
+            throw PreparedPodcastFeedError.unsupportedValue(String(describing: type(of: value)))
+        }
+    }
+
+    var materializedValue: Any {
+        switch self {
+        case .string(let value): value
+        case .integer(let value): value
+        case .number(let value): value
+        case .boolean(let value): value
+        case .array(let value): value.map(\.materializedValue)
+        case .object(let value): value.mapValues(\.materializedValue)
+        case .optionalTags(let value): value
+        case .extensionElement(let value): value
+        case .externalFile(let value): value
+        }
+    }
+
+    var estimatedBytes: Int {
+        switch self {
+        case .string(let value): value.utf8.count
+        case .integer, .number, .boolean: 8
+        case .array(let values): values.reduce(0) { $0 + $1.estimatedBytes }
+        case .object(let values): values.reduce(0) { $0 + $1.key.utf8.count + $1.value.estimatedBytes }
+        case .optionalTags(let value):
+            // Namespace trees can be large; use their serialized byte count
+            // when deciding whether to spill the prepared payload.
+            (try? JSONEncoder().encode(value).count) ?? 0
+        case .extensionElement(let value):
+            (try? JSONEncoder().encode(value).count) ?? 0
+        case .externalFile(let value):
+            value.url.utf8.count + (value.fileType?.utf8.count ?? 0)
+        }
+    }
+}
+
+enum PreparedPodcastFeedError: LocalizedError {
+    case unsupportedValue(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unsupportedValue(let type):
+            "Unsupported parsed feed value: \(type)"
+        }
+    }
+}
+
+struct PreparedPodcastFeed: Sendable {
+    private final class SpoolFile: @unchecked Sendable {
+        let url: URL
+
+        init(url: URL) { self.url = url }
+
+        deinit { try? FileManager.default.removeItem(at: url) }
+    }
+
+    private enum Storage: Sendable {
+        case memory([String: PreparedPodcastFeedValue])
+        case spool(SpoolFile)
+    }
+
+    private let storage: Storage
+    let bufferedByteCount: Int
+    let isPartial: Bool
+    private static let maximumBufferedBytes = 6 * 1024 * 1024
+
+    init(_ parsedFeed: [String: Any]) throws {
+        isPartial = parsedFeed["isPartial"] as? Bool == true
+        let values = try parsedFeed.mapValues { try PreparedPodcastFeedValue($0) }
+        let estimatedBytes = values.reduce(0) { $0 + $1.key.utf8.count + $1.value.estimatedBytes }
+        if estimatedBytes <= Self.maximumBufferedBytes {
+            storage = .memory(values)
+            bufferedByteCount = estimatedBytes
+        } else {
+            let directory = FileManager.default.temporaryDirectory
+                .appending(path: "PodcastClient/PreparedFeeds", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appending(path: UUID().uuidString + ".json")
+            try JSONEncoder().encode(values).write(to: url, options: .atomic)
+            storage = .spool(SpoolFile(url: url))
+            bufferedByteCount = 0
+        }
+    }
+
+    /// Only the writer reconstructs the parser's legacy import shape.
+    var importDictionary: [String: Any] {
+        get throws {
+            let values: [String: PreparedPodcastFeedValue]
+            switch storage {
+            case .memory(let buffered): values = buffered
+            case .spool(let file):
+                values = try JSONDecoder().decode(
+                    [String: PreparedPodcastFeedValue].self,
+                    from: Data(contentsOf: file.url)
+                )
+            }
+            return values.mapValues(\.materializedValue)
+        }
+    }
+}
+
+/// Safe first-page handoff from endpoint validation to the refresh actor.
+/// The resolver's mutable preview model and raw episode dictionaries stay
+/// inside its network task; a continuation reconstructs the legacy seed only
+/// within the parser or the serialized writer.
+struct PreparedPodcastFeedSeed: Sendable {
+    let sourceURL: URL
+    let feed: PreparedPodcastFeed
+    let nextPageURL: URL?
+    let isPartial: Bool
+    let didStopAtKnownEpisode: Bool
+
+    init(_ seed: PodcastFeedImportSeed) throws {
+        sourceURL = seed.sourceURL
+        feed = try PreparedPodcastFeed(seed.parsedFeed)
+        nextPageURL = seed.nextPageURL
+        isPartial = seed.isPartial
+        didStopAtKnownEpisode = seed.didStopAtKnownEpisode
+    }
+
+    var shouldCommitBeforeContinuation: Bool {
+        (nextPageURL != nil && didStopAtKnownEpisode == false) || isPartial
+    }
+
+    func matches(_ url: URL) -> Bool {
+        sourceURL == url || sourceURL.podcastNonSecretURL == url.podcastNonSecretURL
+    }
+
+    func importSeed() throws -> PodcastFeedImportSeed {
+        let parsedFeed = try feed.importDictionary
+        let episodes = (parsedFeed["episodes"] as? [[String: Any]] ?? [])
+            .compactMap(PodcastEpisodeDraft.init(episodeData:))
+        let page = PodcastFeedPage(
+            parsedFeed: parsedFeed,
+            feed: PodcastFeed(url: sourceURL, fetchMetadataIfNeeded: false),
+            episodes: episodes,
+            extensionElements: [],
+            nextPageURL: nextPageURL,
+            isPartial: isPartial,
+            didStopAtKnownEpisode: didStopAtKnownEpisode
+        )
+        return PodcastFeedImportSeed(page: page, sourceURL: sourceURL)
+    }
+}
+
 /// The decoded first page travels with a just-validated feed so subscription
 /// can persist it and begin ingestion without another GET or XML parse.
 struct PodcastFeedImportSeed: @unchecked Sendable {
@@ -283,6 +457,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:])  {
+        guard Task.isCancelled == false else {
+            parser.abortParsing()
+            return
+        }
        // // print("\(qName ?? "") - \(namespaceURI) - \(elementName)")
         currentValue = ""
         currentElement = qName ?? elementName
@@ -460,6 +638,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
     
     
     func parser(_ parser: XMLParser, foundCharacters string: String)  {
+        guard Task.isCancelled == false else {
+            parser.abortParsing()
+            return
+        }
         
         if !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             currentValue += string
@@ -474,6 +656,10 @@ class PodcastParser:NSObject, XMLParserDelegate{
     }
     
     func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?)  {
+        guard Task.isCancelled == false else {
+            parser.abortParsing()
+            return
+        }
         
         
         switch isHeader{
@@ -849,12 +1035,14 @@ extension PodcastParser {
         maximumEpisodes: Int? = nil,
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
     ) async throws -> PodcastFeedPage {
-        try await Task.detached(priority: .utility) {
+        let parseTask = Task.detached(priority: .utility) {
+            try Task.checkCancellation()
             let originalAttempt = attemptParse(
                 data: document.data,
                 maximumEpisodes: maximumEpisodes,
                 knownEpisodeIdentifiers: knownEpisodeIdentifiers
             )
+            try Task.checkCancellation()
             let parser: PodcastParser
 
             if originalAttempt.isAcceptable {
@@ -872,6 +1060,7 @@ extension PodcastParser {
                     maximumEpisodes: maximumEpisodes,
                     knownEpisodeIdentifiers: knownEpisodeIdentifiers
                 )
+                try Task.checkCancellation()
                 guard repairedAttempt.isAcceptable else {
                     throw originalError
                 }
@@ -883,6 +1072,7 @@ extension PodcastParser {
             guard parser.podcastDictArr.isEmpty == false else {
                 throw PodcastParserError.notAPodcastFeed
             }
+            try Task.checkCancellation()
 
             var parsedFeed = parser.podcastDictArr
             parsedFeed["episodes"] = parser.episodesArray
@@ -933,12 +1123,38 @@ extension PodcastParser {
                 isPartial: parser.didHitEpisodeLimit,
                 didStopAtKnownEpisode: parser.didStopAtKnownEpisode
             )
-        }.value
+        }
+        return try await withTaskCancellationHandler {
+            try await parseTask.value
+        } onCancel: {
+            parseTask.cancel()
+        }
     }
 
     /// Fetches and aggregates all podcast data and episodes from all paged feed documents, following RFC 5005.
     /// - Parameter url: The URL of the first (or any) feed page.
     /// - Returns: The merged podcast dictionary with all episodes.
+    static func prepareAllPages(
+        from url: URL,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
+        profile: PodcastAccessProfile? = nil,
+        firstPage: PreparedPodcastFeedSeed? = nil,
+        startingAt: URL? = nil,
+        client: PodcastHTTPClient = .shared
+    ) async throws -> PreparedPodcastFeed {
+        let decodedFirstPage = try firstPage?.importSeed()
+        let parsed = try await fetchAllPages(
+            from: url,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+            profile: profile,
+            firstPage: decodedFirstPage,
+            startingAt: startingAt,
+            client: client
+        )
+        try Task.checkCancellation()
+        return try PreparedPodcastFeed(parsed)
+    }
+
     static func fetchAllPages(
         from url: URL,
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
@@ -961,7 +1177,8 @@ extension PodcastParser {
         var stoppedAtKnownEpisode = false
         var resumeURL: URL?
         while let currentURL = nextURL {
-            let pageKey = currentURL.podcastFeedComparisonKeys.sorted().first ?? currentURL.absoluteString
+            try Task.checkCancellation()
+            let pageKey = currentURL.podcastPageTraversalKey
             guard visitedPageKeys.insert(pageKey).inserted else {
                 CrashBreadcrumbs.shared.record("feed_pagination_stopped", details: "reason=cycle pages=\(visitedPageKeys.count)")
                 stoppedAtLimit = true
@@ -987,7 +1204,11 @@ extension PodcastParser {
                         profile: profile,
                         client: client
                     )
+                    try Task.checkCancellation()
                 } catch {
+                    if error is CancellationError {
+                        throw error
+                    }
                     // Keep already parsed pages importable. The caller commits
                     // this partial batch and resumes from the failed page URL.
                     guard allEpisodes.isEmpty == false else { throw error }

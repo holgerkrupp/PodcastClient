@@ -144,7 +144,7 @@ struct PodcastPodrollItem: Hashable, Identifiable, Sendable {
     }
 }
 
-struct PodcastNamespaceOptionalTags: Codable, Hashable {
+struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
     var alternateEnclosure: [NamespaceNode]?
     var block: [NamespaceNode]?
     var chat: [NamespaceNode]?

@@ -121,7 +121,9 @@ struct TranscriptionSettingsView: View {
                                 }
                                 Task {
                                     await TranscriptSynchronizationService.shared.setEnabled(enabled)
+#if os(iOS)
                                     await AppDelegate.schedulePublisherTranscriptSynchronizationIfNeeded()
+#endif
                                 }
                                 NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
                             }

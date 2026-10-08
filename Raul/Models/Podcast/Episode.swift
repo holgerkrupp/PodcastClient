@@ -23,9 +23,9 @@ struct EpisodeSummary: Sendable, Hashable {
     let maxPlayProgress: Double
 }
 
-struct ExternalFile: Codable, Hashable {
+struct ExternalFile: Codable, Hashable, Sendable {
     
-    enum FileType: String, Codable{
+    enum FileType: String, Codable, Sendable{
         case transcript, chapter, image
     }
     

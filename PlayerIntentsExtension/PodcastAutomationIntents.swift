@@ -641,7 +641,7 @@ struct RefreshPodcastIntent: AppIntent {
     func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let feed = URL(string: podcast.id) else { throw PodcastIntentError("That podcast feed is invalid.") }
         let container = try await PodcastIntentSupport.container()
-        _ = try await PodcastModelActor(modelContainer: container).updatePodcast(feed, force: true, silent: true)
+        _ = try await PodcastModelActor(modelContainer: container).updatePodcast(feed, policy: .manualSingle, silent: true)
         return .result(dialog: "Refreshed \(podcast.title).")
     }
 }
