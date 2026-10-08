@@ -134,6 +134,7 @@ struct PodcastSettingsView: View {
     @State private var showAppIconError = false
     @State private var preparedGlobalSettings: PodcastSettings?
     @State private var selectedGlobalCategory: GlobalSettingsCategory? = .playback
+    @State private var showCreatePlaylistFromSettings = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -537,6 +538,19 @@ struct PodcastSettingsView: View {
         .formStyle(.grouped)
         .navigationTitle(category.title)
         .platformInlineNavigationTitle()
+        // Present from the stable Form. Section modifiers inside a Form can
+        // lose their presentation anchor during SwiftUI reconciliation.
+        .sheet(isPresented: $showCreatePlaylistFromSettings) {
+            NewPlaylistSheet { draft in
+                PlaylistLibrary.create(
+                    name: draft.name,
+                    symbolName: draft.symbolName,
+                    kind: draft.kind,
+                    smartFilter: draft.smartFilter,
+                    in: context
+                )
+            }
+        }
     }
 
     @ViewBuilder
@@ -554,7 +568,9 @@ struct PodcastSettingsView: View {
             globalPodcastBehaviorSections(settings: effectiveSettings)
             liveNotificationsSection(settings: globalSettings, isGlobal: true)
         case .playlists:
-            PlaylistsSettingsSections()
+            PlaylistsSettingsSections(onCreatePlaylist: {
+                showCreatePlaylistFromSettings = true
+            })
         case .transcriptions:
             transcriptionSection(settings: globalSettings)
         case .appearance:
