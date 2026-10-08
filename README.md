@@ -14,4 +14,62 @@ Key principles of the project:
 * Independent of proprietary servers (all refreshes run locally on-device)
 * 100% open source and free to use
 * No locked features or restrictions
-* No App-side Ads (ads within episodes can't be controlledBuxte)
+* No app-side ads (ads inserted by podcast publishers are outside the app's control)
+
+## What makes Up Next different?
+
+- **Search what was said — in every podcast.** Full-text search across **all locally stored episode transcripts** in your library, or restrict the search to **one podcast**. Find matching passages and jump back into the audio. Unlike a search limited to episode titles, descriptions, or the one transcript currently open, this searches the words actually spoken.
+- **Create missing transcripts on your device.** Transcribe episodes with Apple's on-device speech recognition, manually or automatically after downloads. Publisher-provided transcripts are used when available; no Up Next transcription server is required.
+- **Generate chapters from transcripts.** Use on-device Apple Intelligence to create chapter markers when publishers haven't supplied any. Up Next also reads chapters from podcast feeds, audio metadata and supported show-note formats. AI generation requires a compatible device/model.
+- **Skip chapters automatically by keyword.** Match chapter titles using **contains**, **equals**, **starts with** or **ends with** rules; configure global or per-podcast behavior. You can also toggle individual chapters on and off.
+- **Recover from accidental skips.** Undo an unintended seek or skip and return to the previous episode and position.
+- **Follow live podcasts.** Discover and play currently live episodes from Podcasting 2.0 `podcast:liveItem` metadata in your subscriptions.
+- **Choose your own listening workflow.** Curate multiple playlists, route podcasts to playlists, configure playlist-specific downloads, save timestamped bookmarks, export audio/video clips, and listen together with SharePlay.
+- **Keep podcasting open.** Free and MIT-licensed, without a premium tier, in-app ads, or an Up Next account. Feed refresh and analysis run on your devices, while optional Apple iCloud/CloudKit keeps your listening state in sync.
+
+## Feature comparison
+
+_Updated October 2026. Focused on distinctive listening, transcript, and chapter features rather than basic play/pause/download capabilities._
+
+| Feature | **Up Next** | Apple Podcasts | Overcast | Pocket Casts | Castro | opencast | AntennaPod |
+|:--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **On-device transcription for missing episodes** | **✅** | — | ✅ | — | — | ✅ | — |
+| **Automatically transcribe after download** | **✅** | — | — | — | — | — | — |
+| **Full-library transcript search (across episodes)** | **✅** | — | — | — | — | ✅ | — |
+| **Search spoken text within a podcast/show** | **✅** | ✅¹ | — | — | — | — | — |
+| Search the current episode's transcript | ✅ | ✅ | ✅ | ✅ | — | ✅ | — |
+| **Generate missing chapters on-device with AI** | **✅** | — | — | — | — | — | — |
+| Automatically generated chapters (any method) | ✅ | ✅² | — | ◐³ | — | ◐⁴ | — |
+| **Automatic chapter skipping by keyword rules** | **✅** | — | ◐⁵ | — | — | — | — |
+| Manually choose which chapters play | ✅ | — | ◐⁵ | ◐⁶ | — | — | — |
+| **Detect / automatically skip inserted ads** | **🧪** | — | — | — | — | ✅ | — |
+| **Dedicated Podcasting 2.0 live-podcast player** | **✅** | — | — | — | — | — | — |
+| **Accidental seek/skip undo** | **✅** | — | — | — | — | — | — |
+| Timestamped episode bookmarks | ✅ | — | — | ◐⁶ | — | — | — |
+| Audio/video clip creation and sharing | ✅ | ◐⁷ | ✅ | ◐⁸ | — | — | — |
+| Multiple manually curated playlists | ✅ | — | ✅ | ✅ | — | — | — |
+| Playlist-specific automatic downloads | ✅ | — | ◐ | ✅ | — | — | — |
+| **Browse dedicated public-broadcaster directories** | **✅** | — | — | — | — | — | — |
+| Synchronized listening via SharePlay | ✅ | — | — | — | — | — | — |
+| Native iPhone **and** macOS apps | ✅ | ✅ | — | ◐⁹ | — | — | — |
+| Completely free app without premium features | ✅ | ✅¹⁰ | — | — | — | — | ✅ |
+| Open-source app | ✅ | — | — | ✅ | — | ✅ | ✅ |
+
+**Legend:** ✅ Supported · ◐ Partial, different approach, or paid feature · 🧪 Implemented experimentally / optional (not a promise of perfect detection) · — No equivalent confirmed in the linked public documentation. Entries describe capabilities, not reliability or quality. Features vary by app version, subscription, device and region.
+
+**Important distinctions and limitations**
+
+1. **Apple Podcasts** introduced **Search in Show** in iOS 27, including matches from a show's transcripts. This is not the same as searching transcript text across *your entire library*.
+2. **Apple Podcasts** automatically creates chapters for eligible English-language catalog episodes on Apple's side; it does not provide Up Next's on-device chapter generator for arbitrary locally available transcripts.
+3. **Pocket Casts** has supported server-generated AI chapters, but its [documentation currently says that generation is temporarily switched off](https://support.pocketcasts.com/knowledge-base/chapters/).
+4. **opencast** offers generated chapters/summaries via optional transcript-processing services/paid usage; its transcription can also run on-device.
+5. **Overcast** added on-device transcription and single-episode transcript search in 2026. Its premium chapter preselection can remember *recurring chapter titles* across episodes, but is not the same as Up Next's configurable contains/equals/starts-with/ends-with keyword rules.
+6. **Pocket Casts Plus/Patron** supports manually preselecting chapters and timestamped bookmarks. It also has multiple manual and smart playlists, plus playlist auto-download.
+7. **Apple Podcasts** can share from a transcript position; that is not the same as exporting a standalone edited clip file.
+8. **Pocket Casts** supports clip sharing with a playable share link, rather than the same local audio/video file-export workflow.
+9. **Pocket Casts** offers desktop players, but they are not native SwiftUI macOS apps.
+10. **Apple Podcasts** is free to use as a client, while individual publisher subscriptions can be paid. Likewise, paid podcast feeds are compatible with Up Next without creating an Up Next premium tier.
+
+**Up Next implementation links:** [transcription](Raul/Features/Transcripts/Services/AITranscripts.swift) · [**full transcript search**](Raul/Features/Transcripts/Services/TranscriptSearchService.swift) · [on-device chapter generation](Raul/Features/Chapters/Models/AIChapter.swift) · [keyword-based chapter skipping](Raul/Shared/Actors/EpisodeActor.swift) · [live podcasts](Raul/Features/Playlist/Views/LivePodcastsView.swift) · [skip recovery](Raul/Features/Player/Classes/Player.swift) · [SharePlay](Raul/Features/SharePlay/ListenTogether.swift).
+
+**Competitor documentation:** [Apple Podcasts chapters](https://podcasters.apple.com/support/5482-using-chapters-on-apple-podcasts) · [Apple Podcasts iOS 27 Search in Show](https://podcasters.apple.com/support/5612-iOS-27-whats-new-for-apple-podcasts) · [Overcast features](https://overcast.fm/) / [2026 app updates](https://apps.apple.com/us/app/overcast-podcast-app/id888422857) · [Pocket Casts transcripts](https://support.pocketcasts.com/knowledge-base/episode-transcripts/) / [chapter preselection](https://support.pocketcasts.com/knowledge-base/preselect-chapters/) / [playlists](https://support.pocketcasts.com/knowledge-base/playlists/) · [Castro](https://apps.apple.com/us/app/castro-podcast-app-player/id1080840241) · [opencast](https://apps.apple.com/us/app/opencast-podcast-player/id6766770733) · [AntennaPod](https://antennapod.org/documentation/).
