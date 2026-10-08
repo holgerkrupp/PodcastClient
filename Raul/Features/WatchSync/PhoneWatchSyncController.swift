@@ -637,41 +637,43 @@ final class PhoneWatchSyncController: NSObject {
                 playDirectly: true,
                 startingAt: command.playPosition
             )
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remotePause:
             Player.shared.pause()
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteResume:
             Player.shared.play()
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSeek:
+            // The signature omits rapid play-position changes, so remote
+            // seeks/skips must force the Watch to receive the new position.
             guard let playPosition = command.playPosition else { return }
             await Player.shared.jumpTo(time: playPosition)
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSkipBackward:
             Player.shared.remoteSkipBack()
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSkipForward:
             Player.shared.remoteSkipForward()
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSkipToChapterStart:
             await Player.shared.skipToChapterStart(protectLargeSeek: false)
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSkipToNextChapter:
             await Player.shared.skipToNextChapter(protectLargeSeek: false)
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteSetPlaybackRate:
             guard let playbackRate = command.playbackRate else { return }
             Player.shared.playbackRate = playbackRate
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .remoteRemovePlaylistEpisode:
             guard let episodeURLString = command.episodeURL,
