@@ -28,18 +28,21 @@ struct ShownoteContentView: View {
             if let document {
                 // Without any cached rich cards, one RichText avoids creating
                 // a WebKit instance for every extracted standalone link.
-                if needsEnrichedBlocks {
+                if ShownoteRenderingPolicy.needsEnrichedBlocks(
+                    in: document,
+                    enrichmentResults: enrichmentResults
+                ) {
                     ForEach(document.blocks) { block in
-                    switch block {
-                    case .html(_, let value):
-                        richText(value)
-                    case .link(_, let candidate):
-                        if let result = enrichmentResults[candidate.normalizedURL] {
-                            enrichedLink(candidate: candidate, result: result)
-                        } else {
-                            plainLink(candidate)
+                        switch block {
+                        case .html(_, let value):
+                            richText(value)
+                        case .link(_, let candidate):
+                            if let result = enrichmentResults[candidate.normalizedURL] {
+                                enrichedLink(candidate: candidate, result: result)
+                            } else {
+                                plainLink(candidate)
+                            }
                         }
-                    }
                     }
                 } else if document.linkifiedHTML.isEmpty == false {
                     richText(document.linkifiedHTML)
@@ -80,24 +83,6 @@ struct ShownoteContentView: View {
         }
         .onAppear {
             os_signpost(.event, log: ShownoteViewPerformance.log, name: "Shownote visible")
-        }
-    }
-
-    private var needsEnrichedBlocks: Bool {
-        guard let document else { return false }
-        return document.blocks.contains { block in
-            guard case .link(_, let candidate) = block,
-                  let result = enrichmentResults[candidate.normalizedURL] else {
-                return false
-            }
-            switch result.classification {
-            case .web, .mastodon:
-                return true
-            case .podcast:
-                return result.podcastFeed != nil
-            case .unknown, .podcastCandidate, .unsupported:
-                return false
-            }
         }
     }
 
@@ -174,7 +159,30 @@ struct ShownoteContentView: View {
 #endif
         }
     }
+}
 
+enum ShownoteRenderingPolicy {
+    /// A full HTML document uses one WebKit view unless the cached enrichment
+    /// actually needs an inline native card.
+    static func needsEnrichedBlocks(
+        in document: ShownoteDocument,
+        enrichmentResults: [URL: ShownoteEnrichmentResult]
+    ) -> Bool {
+        return document.blocks.contains { block in
+            guard case .link(_, let candidate) = block,
+                  let result = enrichmentResults[candidate.normalizedURL] else {
+                return false
+            }
+            switch result.classification {
+            case .web, .mastodon:
+                return true
+            case .podcast:
+                return result.podcastFeed != nil
+            case .unknown, .podcastCandidate, .unsupported:
+                return false
+            }
+        }
+    }
 }
 
 private enum ShownoteViewPerformance {
