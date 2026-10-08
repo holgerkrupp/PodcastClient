@@ -21,13 +21,15 @@ actor ShownoteParser {
 
     private var cachedDocuments: [String: ShownoteDocument] = [:]
     private var cacheOrder: [String] = []
-    private let cacheLimit = 2
+    private let cacheLimit = 64
 
     func parse(_ html: String) -> ShownoteDocument {
         let key = SHA256.hash(data: Data(html.utf8))
             .map { String(format: "%02x", $0) }
             .joined()
         if let cached = cachedDocuments[key] {
+            cacheOrder.removeAll { $0 == key }
+            cacheOrder.append(key)
             return cached
         }
         let signpostID = OSSignpostID(log: ShownotePerformance.log)

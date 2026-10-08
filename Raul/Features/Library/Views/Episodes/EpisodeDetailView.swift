@@ -7,7 +7,6 @@
 
 import SwiftUI
 import SwiftData
-import RichText
 import ESADesignKit
 
 private struct IdentifiableURL: Identifiable, Equatable {
