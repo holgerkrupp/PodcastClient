@@ -3,6 +3,63 @@ import XCTest
 @testable import UpNext
 
 final class ShownotesEnrichmentTests: XCTestCase {
+    func testUnenrichedStandaloneLinksCanUseOneHTMLView() {
+        let document = ShownoteDocument(html: """
+        <p><a href="https://example.com/first">First</a></p>
+        <p><a href="https://example.com/second">Second</a></p>
+        """)
+
+        XCTAssertFalse(document.linkifiedHTML.isEmpty)
+        XCTAssertFalse(ShownoteRenderingPolicy.needsEnrichedBlocks(
+            in: document,
+            enrichmentResults: [:]
+        ))
+    }
+
+    func testUncachedAndUnsupportedLinksDoNotRequireSeparateWebViews() throws {
+        let document = ShownoteDocument(
+            html: #"<p><a href="https://example.com/first">First</a></p>"#
+        )
+        let candidate = try XCTUnwrap(document.candidates.first)
+        let result = ShownoteEnrichmentResult(
+            candidateID: candidate.id,
+            normalizedURL: candidate.normalizedURL,
+            finalURL: nil,
+            statusCode: nil,
+            mimeType: nil,
+            classification: .unsupported,
+            podcastFeed: nil,
+            preview: nil,
+            expiresAt: .distantFuture
+        )
+        XCTAssertFalse(ShownoteRenderingPolicy.needsEnrichedBlocks(
+            in: document,
+            enrichmentResults: [candidate.normalizedURL: result]
+        ))
+    }
+
+    func testCachedWebPreviewKeepsInlineCardLayout() throws {
+        let document = ShownoteDocument(
+            html: #"<p><a href="https://example.com/first">First</a></p>"#
+        )
+        let candidate = try XCTUnwrap(document.candidates.first)
+        let result = ShownoteEnrichmentResult(
+            candidateID: candidate.id,
+            normalizedURL: candidate.normalizedURL,
+            finalURL: candidate.originalURL,
+            statusCode: 200,
+            mimeType: "text/html",
+            classification: .web,
+            podcastFeed: nil,
+            preview: nil,
+            expiresAt: .distantFuture
+        )
+        XCTAssertTrue(ShownoteRenderingPolicy.needsEnrichedBlocks(
+            in: document,
+            enrichmentResults: [candidate.normalizedURL: result]
+        ))
+    }
+
     func testExtractsPlainURLsWithoutDoubleLinkifyingPublisherAnchors() throws {
         let html = """
         <p>Mehr Infos: https://example.com/show?id=42&amp;from=notes.</p>
