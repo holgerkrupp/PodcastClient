@@ -13,7 +13,6 @@ import AppKit
 /// were already enriched during a feed refresh. The view never starts network
 /// enrichment itself.
 struct ShownoteContentView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaThemePalette) private var themePalette
     private let html: String
@@ -27,7 +26,10 @@ struct ShownoteContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             if let document {
-                ForEach(document.blocks) { block in
+                // Without any cached rich cards, one RichText avoids creating
+                // a WebKit instance for every extracted standalone link.
+                if needsEnrichedBlocks {
+                    ForEach(document.blocks) { block in
                     switch block {
                     case .html(_, let value):
                         richText(value)
@@ -35,9 +37,12 @@ struct ShownoteContentView: View {
                         if let result = enrichmentResults[candidate.normalizedURL] {
                             enrichedLink(candidate: candidate, result: result)
                         } else {
-                            richText(linkMarkup(for: candidate))
+                            plainLink(candidate)
                         }
                     }
+                    }
+                } else if document.linkifiedHTML.isEmpty == false {
+                    richText(document.linkifiedHTML)
                 }
             } else if html.isEmpty == false {
                 Label("Preparing shownotes", systemImage: "text.alignleft")
@@ -57,26 +62,53 @@ struct ShownoteContentView: View {
             }
             let parsedDocument = await ShownoteParser.shared.parse(html)
             guard Task.isCancelled == false else { return }
-            document = parsedDocument
-            guard parsedDocument.candidates.isEmpty == false else { return }
-            let results = await ShownoteEnrichmentService.shared.cachedResults(
-                for: parsedDocument.candidates
-            )
-            guard Task.isCancelled == false else { return }
+            // Resolve cached cards before showing any HTML. Previously the
+            // initial un-enriched fragments launched WebKit processes, then
+            // the animated card substitution rebuilt most of them.
             var cachedResults: [URL: ShownoteEnrichmentResult] = [:]
-            for result in results {
-                cachedResults[result.normalizedURL] = result
-            }
-            if reduceMotion {
-                enrichmentResults = cachedResults
-            } else {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    enrichmentResults = cachedResults
+            if parsedDocument.candidates.isEmpty == false {
+                let results = await ShownoteEnrichmentService.shared.cachedResults(
+                    for: parsedDocument.candidates
+                )
+                for result in results {
+                    cachedResults[result.normalizedURL] = result
                 }
             }
+            guard Task.isCancelled == false else { return }
+            enrichmentResults = cachedResults
+            document = parsedDocument
         }
         .onAppear {
             os_signpost(.event, log: ShownoteViewPerformance.log, name: "Shownote visible")
+        }
+    }
+
+    private var needsEnrichedBlocks: Bool {
+        guard let document else { return false }
+        return document.blocks.contains { block in
+            guard case .link(_, let candidate) = block,
+                  let result = enrichmentResults[candidate.normalizedURL] else {
+                return false
+            }
+            switch result.classification {
+            case .web, .mastodon:
+                return true
+            case .podcast:
+                return result.podcastFeed != nil
+            case .unknown, .podcastCandidate, .unsupported:
+                return false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func plainLink(_ candidate: ShownoteLinkCandidate) -> some View {
+        Link(destination: candidate.originalURL) {
+            Text(candidate.displayText.isEmpty
+                 ? candidate.originalURL.absoluteString
+                 : candidate.displayText)
+                .underline()
+                .multilineTextAlignment(.leading)
         }
     }
 
@@ -93,7 +125,7 @@ struct ShownoteContentView: View {
                     .accessibilityElement(children: .contain)
                     .accessibilityLabel("Podcast recommendation: \(feed.title ?? candidate.displayText)")
             } else {
-                richText(linkMarkup(for: candidate))
+                plainLink(candidate)
             }
         case .web, .mastodon:
             Link(destination: result.finalURL ?? result.preview?.canonicalURL ?? candidate.originalURL) {
@@ -107,7 +139,7 @@ struct ShownoteContentView: View {
             .buttonStyle(.plain)
             .padding(.vertical, 6)
         case .unknown, .podcastCandidate, .unsupported:
-            richText(linkMarkup(for: candidate))
+            plainLink(candidate)
         }
     }
 
@@ -143,15 +175,6 @@ struct ShownoteContentView: View {
         }
     }
 
-    private func linkMarkup(for candidate: ShownoteLinkCandidate) -> String {
-        if candidate.occurrenceKind == .publisherAnchor {
-            return candidate.sourceMarkup
-        }
-        let href = candidate.originalURL.absoluteString
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-        return "<a href=\"\(href)\">\(candidate.displayText)</a>"
-    }
 }
 
 private enum ShownoteViewPerformance {
