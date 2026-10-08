@@ -66,7 +66,7 @@ struct PodcastRowView: View {
                     } else {
                         CoverImageView(
                             podcast: podcast,
-                            maxPixelSize: 512,
+                            maxPixelSize: 384,
                             loadDelay: .milliseconds(200)
                         )
                     }

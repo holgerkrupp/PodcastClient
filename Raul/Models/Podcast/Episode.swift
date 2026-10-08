@@ -192,6 +192,7 @@ enum EpisodeSource: String, Codable, CaseIterable, Hashable, Sendable {
 
 extension Notification.Name {
     static let episodeReferencesDidChange = Notification.Name("episodeReferencesDidChange")
+    static let smartPlaylistEpisodeDataDidChange = Notification.Name("smartPlaylistEpisodeDataDidChange")
     static let playerChapterDataDidChange = Notification.Name("playerChapterDataDidChange")
 }
 

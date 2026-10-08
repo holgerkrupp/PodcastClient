@@ -660,7 +660,7 @@ enum StoreSplitFeedCacheWriter {
                 episode.transcriptLines ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
-                source: transcriptionRecords.isEmpty ? .publisher : .localAI,
+                fallbackSource: transcriptionRecords.isEmpty ? .unknown : .localAI,
                 existing: transcriptLinesByEpisodeID[episodeID] ?? [],
                 into: cacheContext,
                 result: &result
@@ -803,7 +803,7 @@ enum StoreSplitFeedCacheWriter {
         _ legacyLines: [TranscriptLineAndTime],
         feedKey: String,
         episodeID: String,
-        source: CachedTranscriptSource,
+        fallbackSource: CachedTranscriptSource,
         existing: [CachedTranscriptLine],
         into context: ModelContext,
         result: inout FeedCacheProjectionResult
@@ -839,6 +839,7 @@ enum StoreSplitFeedCacheWriter {
             changed |= assignIfChanged(cached, \.startTime, line.startTime)
             changed |= assignIfChanged(cached, \.endTime, line.endTime)
             changed |= assignIfChanged(cached, \.ordinal, ordinal)
+            let source = line.transcriptSource ?? fallbackSource
             changed |= assignIfChanged(cached, \.sourceRawValue, source.rawValue)
             if changed { cached.updatedAt = .now; result.updated += 1 }
             else { result.unchanged += 1 }

@@ -279,6 +279,7 @@ final class PodcastPreferenceSync: Identifiable {
     var silenceGapReductionLevelRawValue: String?
     var voiceEnhancementEnabled: Bool = false
     var autoSkipKeywordsJSON: String = "[]"
+    var autoDownloadFilterJSON: String?
     var cutFront: Double?
     var cutEnd: Double?
     var skipForwardSeconds: Int = 30
@@ -309,6 +310,7 @@ final class PodcastPreferenceSync: Identifiable {
         silenceGapReductionLevelRawValue: String? = nil,
         voiceEnhancementEnabled: Bool = false,
         autoSkipKeywordsJSON: String = "[]",
+        autoDownloadFilterJSON: String? = nil,
         cutFront: Double? = nil,
         cutEnd: Double? = nil,
         skipForwardSeconds: Int = 30,
@@ -340,6 +342,7 @@ final class PodcastPreferenceSync: Identifiable {
         self.silenceGapReductionLevelRawValue = silenceGapReductionLevelRawValue
         self.voiceEnhancementEnabled = voiceEnhancementEnabled
         self.autoSkipKeywordsJSON = autoSkipKeywordsJSON
+        self.autoDownloadFilterJSON = autoDownloadFilterJSON
         self.cutFront = cutFront
         self.cutEnd = cutEnd
         self.skipForwardSeconds = skipForwardSeconds

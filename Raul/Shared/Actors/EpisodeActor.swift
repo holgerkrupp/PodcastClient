@@ -590,6 +590,9 @@ actor EpisodeActor {
 
         modelContext.saveIfNeeded()
         await persistLocalEpisodeClassification(episodes)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
         for episode in episodes {
             await publishSplitEpisodeState(episode)
         }
@@ -613,6 +616,9 @@ actor EpisodeActor {
         }
         modelContext.saveIfNeeded()
         await persistLocalEpisodeClassification(episodes)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
         for episode in episodes {
             await publishSplitEpisodeState(episode)
         }
@@ -822,6 +828,7 @@ actor EpisodeActor {
         let playlistID = policy.playlistID
         let networkMode = policy.networkMode
         let includesBackCatalogEpisodes = policy.includesArchivedEpisodes
+        let episodeFilter = policy.episodeFilter
         await logAutoDownload(
             "policy/config feed=\(podcastFeed.redactedPodcastURLString) keep=\(keepCount) selection=\(selection.rawValue) queuePosition=\(queuePosition) playlistID=\(playlistID?.uuidString ?? "nil") network=\(networkMode.rawValue) includeBackCatalog=\(includesBackCatalogEpisodes)"
         )
@@ -952,9 +959,20 @@ actor EpisodeActor {
             return lhsKey.localizedStandardCompare(rhsKey) == .orderedAscending
         }
 
-        let targetEpisodes = Array(sortedEpisodes.prefix(keepCount))
+        // The established queue and retention policy uses this stable set. New
+        // metadata rules only gate downloads, so they never alter queue membership.
+        let policyTargetEpisodes = Array(sortedEpisodes.prefix(keepCount))
+        let targetEpisodes = policyTargetEpisodes.filter { episode in
+            episodeFilter.allows(
+                title: episode.title,
+                duration: episode.duration,
+                publishDate: episode.publishDate,
+                type: episode.type
+            )
+        }
         let overflowEpisodes = Array(sortedEpisodes.dropFirst(keepCount))
-        let targetEpisodeURLs = Set(targetEpisodes.compactMap(\.url))
+        let targetEpisodeURLs = Set(policyTargetEpisodes.compactMap(\.url))
+        let downloadTargetURLs = Set(targetEpisodes.compactMap(\.url))
         let playlistActor = playlistActor(for: playlistID)
         let canScheduleDownloads = await canScheduleAutoDownloads(for: networkMode)
         await logAutoDownload(
@@ -965,7 +983,7 @@ actor EpisodeActor {
             await logAutoDownload("policy/target-episodes feed=\(podcastFeed.redactedPodcastURLString) \(targetIDs)")
         }
 
-        for episode in targetEpisodes {
+        for episode in policyTargetEpisodes {
             guard let episodeURL = episode.url else { continue }
             let isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
 
@@ -1008,7 +1026,9 @@ actor EpisodeActor {
                 await logAutoDownload("policy/queue-skip feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) reason=queue-position-none")
             }
 
-            if canScheduleDownloads && isDownloaded == false {
+            if downloadTargetURLs.contains(episodeURL) == false {
+                await logAutoDownload("policy/download feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) action=skip-filter")
+            } else if canScheduleDownloads && isDownloaded == false {
                 await logAutoDownload("policy/download feed=\(podcastFeed.redactedPodcastURLString) episode=\(episodeURL.redactedPodcastURLString) action=start")
                 await download(episodeURL: episodeURL)
             } else if canScheduleDownloads == false && isDownloaded == false {
@@ -2590,7 +2610,7 @@ actor EpisodeActor {
                     guard let episode: Episode = modelContext.existingModel(for: episodeID) else {
                         throw TranscriptError.episodeNotFound
                     }
-                    try await replaceTranscriptLines(for: episode, with: snapshots)
+                    try await replaceTranscriptLines(for: episode, with: snapshots, source: .publisher)
                     episode.refresh.toggle()
                     if let episodeURL = episode.url {
                         await finalizeTranscriptChapters(for: episodeURL)
@@ -2620,7 +2640,11 @@ actor EpisodeActor {
                 endTime: $0.endTime
             )
         }
-        try await replaceTranscriptLines(for: episode, with: snapshots)
+        try await replaceTranscriptLines(
+            for: episode,
+            with: snapshots,
+            source: lines.first?.transcriptSource ?? .unknown
+        )
         episode.refresh.toggle()
         await finalizeTranscriptChapters(for: episodeURL)
     }
@@ -2674,14 +2698,15 @@ actor EpisodeActor {
             throw TranscriptError.episodeNotFound
         }
         let snapshots = decodeTranscriptSnapshots(vtt)
-        try await replaceTranscriptLines(for: episode, with: snapshots)
+        try await replaceTranscriptLines(for: episode, with: snapshots, source: .localAI)
         episode.refresh.toggle()
         return snapshots
     }
 
     private func replaceTranscriptLines(
         for episode: Episode,
-        with snapshots: [TranscriptLineSnapshot]
+        with snapshots: [TranscriptLineSnapshot],
+        source: CachedTranscriptSource
     ) async throws {
         let batchSize = 100
         let episodeID = episode.persistentModelID
@@ -2712,7 +2737,8 @@ actor EpisodeActor {
                 speaker: snapshot.speaker,
                 text: snapshot.text,
                 startTime: snapshot.startTime,
-                endTime: snapshot.endTime
+                endTime: snapshot.endTime,
+                source: source
             )
             // Insert first so SwiftData uses managed backing storage for the inverse
             // relationship update. Setting the relationship on an uninserted model

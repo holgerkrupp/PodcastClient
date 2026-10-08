@@ -11,6 +11,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
     var silenceGapReductionLevelRawValue: String?
     var voiceEnhancementEnabled: Bool
     var autoSkipKeywordsJSON: String
+    var autoDownloadFilterJSON: String?
     var cutFront: Double?
     var cutEnd: Double?
     var skipForwardSeconds: Int
@@ -39,6 +40,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             .map { String(decoding: $0, as: UTF8.self) } ?? ""
         let keywords = (try? encoder.encode(settings.autoSkipKeywords))
             .map { String(decoding: $0, as: UTF8.self) } ?? "[]"
+        let autoDownloadFilterJSON = settings.autoDownloadFilterJSON
         return PortablePodcastPreferenceSnapshot(
             feedURL: feedURL,
             isEnabled: settings.isEnabled,
@@ -49,6 +51,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             silenceGapReductionLevelRawValue: settings.silenceGapReductionLevelRawValue,
             voiceEnhancementEnabled: settings.voiceEnhancementEnabled,
             autoSkipKeywordsJSON: keywords,
+            autoDownloadFilterJSON: autoDownloadFilterJSON,
             cutFront: settings.cutFront.map(Double.init),
             cutEnd: settings.cutEnd.map(Double.init),
             skipForwardSeconds: settings.skipForward.rawValue,
@@ -84,6 +87,7 @@ actor StoreSplitPreferenceSyncWriter {
             silenceGapReductionLevelRawValue: value.silenceGapReductionLevelRawValue,
             voiceEnhancementEnabled: value.voiceEnhancementEnabled,
             autoSkipKeywordsJSON: value.autoSkipKeywordsJSON,
+            autoDownloadFilterJSON: value.autoDownloadFilterJSON,
             cutFront: value.cutFront,
             cutEnd: value.cutEnd,
             skipForwardSeconds: value.skipForwardSeconds,
@@ -120,6 +124,7 @@ actor StoreSplitPreferenceSyncWriter {
             current.silenceGapReductionLevelRawValue = candidate.silenceGapReductionLevelRawValue
             current.voiceEnhancementEnabled = candidate.voiceEnhancementEnabled
             current.autoSkipKeywordsJSON = candidate.autoSkipKeywordsJSON
+            current.autoDownloadFilterJSON = candidate.autoDownloadFilterJSON
             current.cutFront = candidate.cutFront
             current.cutEnd = candidate.cutEnd
             current.skipForwardSeconds = candidate.skipForwardSeconds

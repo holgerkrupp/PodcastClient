@@ -11,6 +11,8 @@ import SwiftData
 struct PodcastSearchView: View {
     @StateObject private var viewModel: PodcastSearchViewModel
     @Environment(\.modelContext) private var context
+    @Query private var allPodcasts: [Podcast]
+    @State private var subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: [])
     @Binding var search: String
 
     // Local state for basic auth prompt
@@ -54,7 +56,7 @@ struct PodcastSearchView: View {
                     viewModel.searchText = search
                 }
 
-            if viewModel.isLoading {
+            if viewModel.isLoading && (viewModel.isDirectURLInput || viewModel.searchResults.isEmpty) {
                 if viewModel.isDirectURLInput {
                     Label("Add Podcast from URL", systemImage: "link")
                         .font(.subheadline.weight(.medium))
@@ -63,7 +65,7 @@ struct PodcastSearchView: View {
                 ProgressView()
             }
             else if let singlePodcast = viewModel.singlePodcast{
-                SubscribeToPodcastView(newPodcastFeed: singlePodcast)
+                SubscribeToPodcastView(newPodcastFeed: singlePodcast, existingPodcast: existingPodcast(for: singlePodcast))
                     .modelContext(context)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -72,20 +74,18 @@ struct PodcastSearchView: View {
                                          bottom: 0,
                                          trailing: 0))
             } else if !viewModel.searchResults.isEmpty{
-                ForEach(viewModel.searchResults, id: \.self) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
-                        .modelContext(context)
+                if viewModel.isLoading {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Showing previous results while searching")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
                 }
-                .navigationTitle("Subscribe")
-            } else if !viewModel.results.isEmpty{
-                ForEach(viewModel.results, id: \.self) { podcast in
-                    SubscribeToPodcastView(newPodcastFeed: podcast)
+                ForEach(viewModel.searchResults, id: \.self) { podcast in
+                    SubscribeToPodcastView(newPodcastFeed: podcast, existingPodcast: existingPodcast(for: podcast))
                         .modelContext(context)
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -181,6 +181,16 @@ struct PodcastSearchView: View {
         .onDisappear {
             viewModel.cancelPendingSearch()
         }
+        .task {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
+        .onChange(of: allPodcasts.map(PodcastDiscoverySubscriptionLookup.signature(for:))) {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
+    }
+
+    private func existingPodcast(for feed: PodcastFeed) -> Podcast? {
+        subscriptionLookup.existingPodcast(for: feed, context: context)
     }
 
     private func submitAuth() {

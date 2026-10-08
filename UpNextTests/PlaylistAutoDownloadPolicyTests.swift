@@ -39,6 +39,21 @@ final class PlaylistAutoDownloadPolicyTests: XCTestCase {
         )
     }
 
+    func testEligibilityRulesFilterDownloadsWithoutChangingQueueEntries() async throws {
+        let fixture = try makeFixture()
+        try queueEpisodes([0, 1, 2], in: fixture.playlist, fixture: fixture)
+        try enableAutoDownload(limit: nil, in: fixture)
+        let globalSettings = PodcastSettings(defaultSettings: true)
+        globalSettings.autoDownloadFilter = AutoDownloadEpisodeFilter(includedKeywords: ["Episode 1"])
+        fixture.context.insert(globalSettings)
+        try fixture.context.save()
+
+        let pending = await service(fixture).pendingDownloadURLs(for: fixture.playlist.id)
+
+        XCTAssertEqual(pending, [fixture.episodes[1].url].compactMap { $0 })
+        XCTAssertEqual(try fixture.context.fetchCount(FetchDescriptor<PlaylistEntry>()), 3)
+    }
+
     /// A downloaded episode still occupies its slot in the limit, so the episode
     /// below it must not be pulled forward just because nothing is left to fetch.
     func testDownloadedEpisodesConsumeTheirSlotInTheLimit() async throws {

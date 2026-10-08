@@ -572,6 +572,9 @@ class Player {
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
             await loadSkipProtectionSettings()
+            TranscriptSynchronizationStore.shared.setEnabled(
+                await settingsActor?.getPublisherTranscriptSynchronizationEnabled() ?? false
+            )
         }
         
     }
@@ -963,6 +966,9 @@ class Player {
                 await self?.loadPlaybackAudioProcessingSettings()
                 await self?.loadPlaybackTrimSettings(applyToCurrentPlayback: true)
                 await self?.reloadAdvertisementDetection()
+                TranscriptSynchronizationStore.shared.setEnabled(
+                    await self?.settingsActor?.getPublisherTranscriptSynchronizationEnabled() ?? false
+                )
                 if let currentItem = self?.videoPlayer.currentItem {
                     await self?.configurePlaybackAudioProcessing(for: currentItem)
                 }

@@ -12,14 +12,14 @@ final class PodcastBrowseViewModel: ObservableObject {
     @Published var isSubscribed = false
     @Published var playingEpisodeID: String?
     @Published var errorMessage: String?
+    @Published var pageLoadFailed = false
 
     private let modelContainer: ModelContainer
-    private let episodeBatchSize = 20
     private var initialPageLoaded = false
-    private var currentPageDocument: PodcastFeedDocument?
-    private var currentPageNextURL: URL?
-    private var currentPageIsPartial = false
-    private var currentPageLoadedEpisodeCount = 0
+    private var episodePager = PodcastFeedEpisodePager(batchSize: 20)
+    private var displayedEpisodeIDs = Set<String>()
+    private var requestGeneration = 0
+    private var activePageDownload: Task<PodcastFeedDocument, Error>?
 
     init(feed: PodcastFeed, modelContainer: ModelContainer) {
         self.podcastFeed = feed
@@ -29,18 +29,32 @@ final class PodcastBrowseViewModel: ObservableObject {
     func loadInitialPageIfNeeded() async {
         guard initialPageLoaded == false else { return }
         initialPageLoaded = true
-        await loadPage(from: podcastFeed.url, maximumEpisodes: episodeBatchSize, isInitialLoad: true)
+        await loadPage(from: podcastFeed.url, isInitialLoad: true)
     }
 
     func reload() async {
+        requestGeneration &+= 1
+        activePageDownload?.cancel()
+        activePageDownload = nil
         initialPageLoaded = false
-        currentPageDocument = nil
-        currentPageNextURL = nil
-        currentPageIsPartial = false
-        currentPageLoadedEpisodeCount = 0
-        episodes.removeAll()
+        isLoading = false
+        isLoadingMore = false
+        episodePager.reset()
         errorMessage = nil
+        pageLoadFailed = false
         await loadInitialPageIfNeeded()
+    }
+
+    func retryPageLoad() async {
+        guard pageLoadFailed else { return }
+        pageLoadFailed = false
+        errorMessage = nil
+        if episodes.isEmpty {
+            initialPageLoaded = false
+            await loadInitialPageIfNeeded()
+        } else {
+            await loadMoreEpisodesIfNeeded()
+        }
     }
 
     func loadNextPageIfNeeded(for episode: PodcastEpisodeDraft) async {
@@ -49,7 +63,7 @@ final class PodcastBrowseViewModel: ObservableObject {
     }
 
     var hasMoreEpisodes: Bool {
-        currentPageIsPartial || currentPageNextURL != nil
+        episodePager.hasMoreEpisodes
     }
 
     func queue(_ episode: PodcastEpisodeDraft, to position: Playlist.Position) async -> Bool {
@@ -76,8 +90,7 @@ final class PodcastBrowseViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            let episodeURL = try await SubscriptionManager(modelContainer: modelContainer)
-                .prepareBrowseEpisodeForPlayback(episode, from: podcastFeed)
+            let episodeURL = try await prepareEpisodeForAction(episode)
             await Player.shared.playEpisode(episodeURL, playDirectly: true)
             guard Player.shared.currentEpisodeURL == episodeURL else {
                 errorMessage = "Could not start this episode."
@@ -88,6 +101,11 @@ final class PodcastBrowseViewModel: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func prepareEpisodeForAction(_ episode: PodcastEpisodeDraft) async throws -> URL {
+        try await SubscriptionManager(modelContainer: modelContainer)
+            .prepareBrowseEpisodeForPlayback(episode, from: podcastFeed)
     }
 
     func subscribe() async -> Bool {
@@ -118,7 +136,7 @@ final class PodcastBrowseViewModel: ObservableObject {
     }
 
     func loadAlternativeFeed(_ alternativeFeed: PodcastAlternativeFeed) async {
-        guard isLoading == false, isSubscribing == false else { return }
+        guard isSubscribing == false else { return }
 
         let replacementFeed = PodcastFeed(
             url: alternativeFeed.url,
@@ -129,49 +147,82 @@ final class PodcastBrowseViewModel: ObservableObject {
             fetchMetadataIfNeeded: false
         )
         podcastFeed = replacementFeed
+        episodes.removeAll()
+        displayedEpisodeIDs.removeAll()
         await reload()
     }
 
     private func loadMoreEpisodesIfNeeded() async {
-        guard isLoadingMore == false else { return }
-        if currentPageIsPartial, let currentPageDocument {
-            let nextLimit = currentPageLoadedEpisodeCount + episodeBatchSize
-            await loadPage(document: currentPageDocument, maximumEpisodes: nextLimit, isInitialLoad: false)
+        guard isLoadingMore == false, isLoading == false else { return }
+        if episodePager.hasUndeliveredEpisodes {
+            appendUnique(episodePager.nextBatch())
             return
         }
 
-        guard let currentPageNextURL else { return }
-        await loadPage(from: currentPageNextURL, maximumEpisodes: episodeBatchSize, isInitialLoad: false)
+        guard let nextPageURL = episodePager.nextPageURL else { return }
+        await loadPage(from: nextPageURL, isInitialLoad: false)
     }
 
-    private func loadPage(from url: URL?, maximumEpisodes: Int, isInitialLoad: Bool) async {
+    private func loadPage(from url: URL?, isInitialLoad: Bool) async {
         guard let url else {
             errorMessage = "This podcast does not expose a feed URL."
             return
         }
 
+        guard isLoading == false, isLoadingMore == false else { return }
+        guard episodePager.hasVisited(url) == false else {
+            errorMessage = "This feed links to a page that has already been loaded."
+            return
+        }
+        if isInitialLoad { isLoading = true } else { isLoadingMore = true }
+        pageLoadFailed = false
+        let generation = requestGeneration
+        let retainedEpisodes = isInitialLoad ? episodes : []
+        defer {
+            if generation == requestGeneration {
+                isLoading = false
+                isLoadingMore = false
+                activePageDownload = nil
+            }
+        }
+        let downloadSignpostID = PodcastDiscoverySignposts.begin("Browse Feed Download")
         do {
-            let document = try await PodcastParser.downloadFeed(from: url, profile: accessProfile)
-            await loadPage(document: document, maximumEpisodes: maximumEpisodes, isInitialLoad: isInitialLoad)
+            let downloadTask = Task {
+                try await PodcastParser.downloadFeed(from: url, profile: accessProfile)
+            }
+            activePageDownload = downloadTask
+            let document = try await downloadTask.value
+            PodcastDiscoverySignposts.end("Browse Feed Download", id: downloadSignpostID)
+            guard generation == requestGeneration else { return }
+            await loadPage(
+                document: document,
+                requestedURL: url,
+                isInitialLoad: isInitialLoad,
+                retainedEpisodes: retainedEpisodes,
+                generation: generation
+            )
         } catch {
+            PodcastDiscoverySignposts.end("Browse Feed Download", id: downloadSignpostID)
+            guard generation == requestGeneration else { return }
             errorMessage = error.localizedDescription
+            pageLoadFailed = true
         }
     }
 
-    private func loadPage(document: PodcastFeedDocument, maximumEpisodes: Int, isInitialLoad: Bool) async {
-        if isInitialLoad {
-            isLoading = true
-        } else {
-            isLoadingMore = true
-        }
-
-        defer {
-            isLoading = false
-            isLoadingMore = false
-        }
-
+    private func loadPage(
+        document: PodcastFeedDocument,
+        requestedURL: URL,
+        isInitialLoad: Bool,
+        retainedEpisodes: [PodcastEpisodeDraft],
+        generation: Int
+    ) async {
+        let parseSignpostID = PodcastDiscoverySignposts.begin("Browse Feed Parse")
         do {
-            let page = try await PodcastParser.parsePage(from: document, maximumEpisodes: maximumEpisodes)
+            // Parse each XML document once. Subsequent scroll batches expose
+            // already-decoded drafts instead of reparsing from the beginning.
+            let page = try await PodcastParser.parsePage(from: document)
+            PodcastDiscoverySignposts.end("Browse Feed Parse", id: parseSignpostID, count: page.episodes.count)
+            guard generation == requestGeneration else { return }
 
             if isInitialLoad {
                 let mergedFeed = page.feed
@@ -186,16 +237,30 @@ final class PodcastBrowseViewModel: ObservableObject {
                 mergedFeed.accessKind = podcastFeed.accessKind
                 podcastFeed = mergedFeed
             }
-            currentPageDocument = document
-            let currentEpisodes = episodes
-            episodes.append(contentsOf: page.episodes.filter { currentEpisodes.contains($0) == false })
-            currentPageNextURL = page.nextPageURL
-            currentPageIsPartial = page.isPartial
-            currentPageLoadedEpisodeCount = page.episodes.count
+            let refreshedBatch = episodePager.appendPage(
+                page.episodes,
+                requestedURL: requestedURL,
+                nextPageURL: page.nextPageURL
+            )
+            if isInitialLoad, retainedEpisodes.isEmpty == false {
+                var refreshedIDs = Set(refreshedBatch.map(\.id))
+                episodes = refreshedBatch + retainedEpisodes.filter { refreshedIDs.insert($0.id).inserted }
+                displayedEpisodeIDs = Set(episodes.map(\.id))
+            } else {
+                appendUnique(refreshedBatch)
+            }
             errorMessage = nil
+            pageLoadFailed = false
         } catch {
+            PodcastDiscoverySignposts.end("Browse Feed Parse", id: parseSignpostID)
+            guard generation == requestGeneration else { return }
             errorMessage = error.localizedDescription
+            pageLoadFailed = true
         }
+    }
+
+    private func appendUnique(_ newEpisodes: [PodcastEpisodeDraft]) {
+        episodes.append(contentsOf: newEpisodes.filter { displayedEpisodeIDs.insert($0.id).inserted })
     }
 
     private var accessProfile: PodcastAccessProfile? {
@@ -223,11 +288,19 @@ struct PodcastBrowseView: View {
     var body: some View {
         List {
             if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(.footnote)
-                    .esaForeground(.secondary)
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(errorMessage)
+                        .font(.footnote)
+                        .esaForeground(.secondary)
+                    if viewModel.pageLoadFailed {
+                        Button("Retry loading episodes") {
+                            Task { await viewModel.retryPageLoad() }
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
 
             Section {
@@ -270,10 +343,14 @@ struct PodcastBrowseView: View {
                             playAction: {
                                 await viewModel.play(episode)
                             },
+                            prepareAction: {
+                                try await viewModel.prepareEpisodeForAction(episode)
+                            },
                             subscribeAction: {
                                 await viewModel.subscribe()
                             }
                         )
+                        .equatable()
                         .onAppear {
                             Task {
                                 await viewModel.loadNextPageIfNeeded(for: episode)
@@ -330,6 +407,7 @@ private struct PodcastBrowseHeaderView: View {
     let subscribeAction: () async -> Void
     let alternativeFeedAction: (PodcastAlternativeFeed) async -> Void
     @Environment(\.deviceUIStyle) var style
+    @State private var isDetailsExpanded = false
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
         feed.alternativeFeeds.filter { $0.url != feed.url }
@@ -345,20 +423,6 @@ private struct PodcastBrowseHeaderView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                if let lastUpdatedText {
-                    Text("Last updated: \(lastUpdatedText)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                Spacer()
-                if let lastRefreshText {
-                    Text("Last refresh: \(lastRefreshText)")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-            }
-
             HStack(alignment: .top, spacing: 14) {
                 CoverImageView(imageURL: feed.artworkURL)
                     .frame(width: 50, height: 50)
@@ -381,59 +445,81 @@ private struct PodcastBrowseHeaderView: View {
                 }
             }
 
-            if feed.funding.isEmpty == false {
-                HStack {
-                    ForEach(feed.funding) { fund in
-                        Link(destination: fund.url) {
-                            Label(fund.label, systemImage: style.currencySFSymbolName)
+            DisclosureGroup(isExpanded: $isDetailsExpanded) {
+                if isDetailsExpanded {
+                    VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        if let lastUpdatedText {
+                            Text("Last updated: \(lastUpdatedText)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.glass(.clear))
-
-                        if fund != feed.funding.last {
-                            Spacer()
+                        Spacer()
+                        if let lastRefreshText {
+                            Text("Last refresh: \(lastRefreshText)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
                         }
                     }
+
+                    if feed.funding.isEmpty == false {
+                        HStack {
+                            ForEach(feed.funding) { fund in
+                                Link(destination: fund.url) {
+                                    Label(fund.label, systemImage: style.currencySFSymbolName)
+                                }
+                                .buttonStyle(.glass(.clear))
+
+                                if fund != feed.funding.last {
+                                    Spacer()
+                                }
+                            }
+                        }
+                    }
+
+                    PodcastValueSplitView(optionalTags: feed.optionalTags, funding: feed.funding)
+
+                    if let copyright = feed.copyright, copyright.isEmpty == false {
+                        Text(copyright)
+                            .font(.caption)
+                    }
+
+                    if feed.social.isEmpty == false {
+                        SocialView(socials: feed.social)
+                            .padding()
+                    }
+
+                    if feed.people.isEmpty == false {
+                        PeopleView(people: feed.people)
+                            .padding()
+                    }
+
+                    if let optionalTags = feed.optionalTags {
+                        PodcastNamespaceMetadataView(
+                            optionalTags: optionalTags,
+                            title: "Podcast Metadata",
+                            hidesRenderableValueBlocks: true,
+                            showsLiveMetadata: showsLiveMetadata
+                        )
+                        .padding()
+                    }
+
+                    if let description = feed.description, description.isEmpty == false {
+                        ShownoteContentView(html: description)
+                            .padding()
+                    }
+
+                    if let link = feed.link {
+                        Link(destination: link) {
+                            Label("Open in Browser", systemImage: "safari")
+                                .labelStyle(.iconOnly)
+                        }
+                        .buttonStyle(.glass(.clear))
+                    }
+                    }
                 }
-            }
-
-            PodcastValueSplitView(optionalTags: feed.optionalTags, funding: feed.funding)
-
-            if let copyright = feed.copyright, copyright.isEmpty == false {
-                Text(copyright)
-                    .font(.caption)
-            }
-
-            if feed.social.isEmpty == false {
-                SocialView(socials: feed.social)
-                    .padding()
-            }
-
-            if feed.people.isEmpty == false {
-                PeopleView(people: feed.people)
-                    .padding()
-            }
-
-            if let optionalTags = feed.optionalTags {
-                PodcastNamespaceMetadataView(
-                    optionalTags: optionalTags,
-                    title: "Podcast Metadata",
-                    hidesRenderableValueBlocks: true,
-                    showsLiveMetadata: showsLiveMetadata
-                )
-                    .padding()
-            }
-
-            if let description = feed.description, description.isEmpty == false {
-                ShownoteContentView(html: description)
-                    .padding()
-            }
-
-            if let link = feed.link {
-                Link(destination: link) {
-                    Label("Open in Browser", systemImage: "safari")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.glass(.clear))
+            } label: {
+                Label("Podcast details", systemImage: "info.circle")
             }
 
             if availableAlternativeFeeds.isEmpty == false {
@@ -478,13 +564,14 @@ private struct PodcastBrowseHeaderView: View {
     }
 }
 
-private struct PodcastBrowseEpisodeRowView: View {
+private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
     let episode: PodcastEpisodeDraft
     let podcastFeed: PodcastFeed
     let isSubscribed: Bool
     let isPlaying: Bool
     let queueAction: (Playlist.Position) async -> Bool
     let playAction: () async -> Bool
+    let prepareAction: () async throws -> URL
     let subscribeAction: () async -> Bool
 
     @State private var isQueueing = false
@@ -492,6 +579,22 @@ private struct PodcastBrowseEpisodeRowView: View {
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
+
+    static func == (lhs: PodcastBrowseEpisodeRowView, rhs: PodcastBrowseEpisodeRowView) -> Bool {
+        lhs.episode.id == rhs.episode.id
+            && lhs.episode.title == rhs.episode.title
+            && lhs.episode.desc == rhs.episode.desc
+            && lhs.episode.content == rhs.episode.content
+            && lhs.episode.publishDate == rhs.episode.publishDate
+            && lhs.episode.episodeURL == rhs.episode.episodeURL
+            && lhs.episode.imageURL == rhs.episode.imageURL
+            && lhs.episode.duration == rhs.episode.duration
+            && lhs.episode.type == rhs.episode.type
+            && lhs.episode.deeplinks == rhs.episode.deeplinks
+            && lhs.podcastFeed.previewRefreshID == rhs.podcastFeed.previewRefreshID
+            && lhs.isSubscribed == rhs.isSubscribed
+            && lhs.isPlaying == rhs.isPlaying
+    }
 
     private var displayTime: String {
         let duration = episode.duration ?? 0
@@ -541,12 +644,14 @@ private struct PodcastBrowseEpisodeRowView: View {
                         podcastFeed: podcastFeed,
                         isSubscribed: isSubscribed,
                         queueAction: queueAction,
+                        playAction: playAction,
+                        prepareAction: prepareAction,
                         subscribeAction: subscribeAction
                     )
                 } label: {
                     HStack(alignment: .top, spacing: 14) {
                     ZStack {
-                        CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
+        CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL, maxPixelSize: 384)
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 
@@ -612,65 +717,71 @@ private struct PodcastBrowseEpisodeRowView: View {
                 .buttonStyle(.plain)
                 .accessibilityHint("Opens episode details")
 
-                GlassEffectContainer(spacing: 20.0) {
-                    HStack(spacing: 0.0) {
-                        Button {
-                            startQueue(.front)
-                        } label: {
-                            Label("Add to Up Next", systemImage: "arrow.up.to.line")
-                                .labelStyle(.iconOnly)
+                HStack {
+                    Button {
+                        startPlayback()
+                    } label: {
+                        if isPlaying || isStartingPlayback {
+                            ProgressView()
+                                .frame(width: 50, height: 50)
+                        } else {
+                            Label("Play", systemImage: "play.fill")
                                 .symbolRenderingMode(.hierarchical)
                                 .scaledToFit()
+                                .esaForeground(.control)
                                 .padding(5)
                                 .minimumScaleFactor(0.5)
-                                .frame(width: 50)
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .clipShape(Circle())
-                        .disabled(isQueueing || isStartingPlayback)
-
-                        Button {
-                            startQueue(.end)
-                        } label: {
-                            Label("Add to End", systemImage: "arrow.down.to.line")
                                 .labelStyle(.iconOnly)
-                                .symbolRenderingMode(.hierarchical)
-                                .scaledToFit()
-                                .padding(5)
-                                .minimumScaleFactor(0.5)
+                                .clipShape(Circle())
                                 .frame(width: 50)
                         }
-                        .buttonStyle(.glass(.clear))
-                        .clipShape(Circle())
-                        .disabled(isQueueing || isStartingPlayback)
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityLabel("Play episode")
+                    .accessibilityHint("Starts this episode immediately")
+                    .disabled(isQueueing || isStartingPlayback)
 
-                        Button {
-                            startPlayback()
-                        } label: {
-                            if isPlaying || isStartingPlayback {
-                                ProgressView()
-                                    .frame(width: 50, height: 50)
-                            } else {
-                                Label("Play Episode", systemImage: "play.fill")
+                    Spacer()
+
+                    GlassEffectContainer(spacing: 20.0) {
+                        HStack(spacing: 0.0) {
+                            Button {
+                                startQueue(.front)
+                            } label: {
+                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
                                     .labelStyle(.iconOnly)
                                     .symbolRenderingMode(.hierarchical)
+                                    .esaForeground(.control)
                                     .scaledToFit()
                                     .padding(5)
                                     .minimumScaleFactor(0.5)
                                     .frame(width: 50)
                             }
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .clipShape(Circle())
-                        .disabled(isQueueing || isStartingPlayback)
-                        .accessibilityLabel("Play Episode")
+                            .buttonStyle(.glass(.clear))
+                            .clipShape(Circle())
+                            .disabled(isQueueing || isStartingPlayback)
+                            .accessibilityLabel("Add to Up Next")
 
-                        Spacer()
-
-                        if isQueueing {
-                            ProgressView()
+                            Button {
+                                startQueue(.end)
+                            } label: {
+                                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                                    .labelStyle(.iconOnly)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .esaForeground(.control)
+                                    .scaledToFit()
+                                    .padding(5)
+                                    .minimumScaleFactor(0.5)
+                                    .frame(width: 50)
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .clipShape(Circle())
+                            .disabled(isQueueing || isStartingPlayback)
+                            .accessibilityLabel("Add to End")
                         }
                     }
+
+                    Spacer()
                 }
                 .frame(minHeight: controlsHeight)
             }
@@ -690,24 +801,34 @@ private struct PodcastBrowseEpisodeDetailView: View {
     let episode: PodcastEpisodeDraft
     let podcastFeed: PodcastFeed
     let queueAction: (Playlist.Position) async -> Bool
+    let playAction: () async -> Bool
+    let prepareAction: () async throws -> URL
     let subscribeAction: () async -> Bool
 
     @Environment(\.deviceUIStyle) private var style
+    @Environment(\.modelContext) private var modelContext
     @State private var isQueueing = false
     @State private var isSubscribing = false
+    @State private var isPlaying = false
+    @State private var isPreparingDownload = false
     @State private var isSubscribed: Bool
     @State private var actionError: String?
+    @State private var materializedEpisode: Episode?
 
     init(
         episode: PodcastEpisodeDraft,
         podcastFeed: PodcastFeed,
         isSubscribed: Bool,
         queueAction: @escaping (Playlist.Position) async -> Bool,
+        playAction: @escaping () async -> Bool,
+        prepareAction: @escaping () async throws -> URL,
         subscribeAction: @escaping () async -> Bool
     ) {
         self.episode = episode
         self.podcastFeed = podcastFeed
         self.queueAction = queueAction
+        self.playAction = playAction
+        self.prepareAction = prepareAction
         self.subscribeAction = subscribeAction
         self._isSubscribed = State(initialValue: isSubscribed)
     }
@@ -768,24 +889,98 @@ private struct PodcastBrowseEpisodeDetailView: View {
                     }
                 }
 
-                HStack(spacing: 14) {
-                    Button {
-                        queue(.front)
-                    } label: {
-                        Label("Add to Up Next", systemImage: "arrow.up.to.line")
+                HStack {
+                    if let materializedEpisode {
+                        DownloadControllView(episode: materializedEpisode, showDelete: false)
+                            .frame(width: 50, height: 50)
+                    } else {
+                        Button {
+                            prepareDownload()
+                        } label: {
+                            if isPreparingDownload {
+                                ProgressView()
+                                    .frame(width: 50, height: 50)
+                            } else {
+                                Label("Download", systemImage: "arrow.down.circle")
+                                    .labelStyle(.iconOnly)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .esaForeground(.control)
+                                    .frame(width: 50, height: 50)
+                            }
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .accessibilityLabel("Download episode")
+                        .accessibilityHint("Downloads this episode for offline playback")
+                        .disabled(isPreparingDownload)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(isQueueing)
+
+                    Spacer()
 
                     Button {
-                        queue(.end)
+                        startPlayback()
                     } label: {
-                        Label("Add to End", systemImage: "arrow.down.to.line")
+                        if isPlaying {
+                            ProgressView()
+                                .frame(width: 50, height: 50)
+                        } else {
+                            Label("Play", systemImage: "play.fill")
+                                .symbolRenderingMode(.hierarchical)
+                                .scaledToFit()
+                                .esaForeground(.control)
+                                .padding(5)
+                                .minimumScaleFactor(0.5)
+                                .labelStyle(.iconOnly)
+                                .clipShape(Circle())
+                                .frame(width: 50)
+                        }
                     }
-                    .buttonStyle(.bordered)
-                    .disabled(isQueueing)
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityLabel("Play episode")
+                    .accessibilityHint("Starts this episode immediately")
+                    .disabled(isQueueing || isPlaying)
+
+                    Spacer()
+
+                    GlassEffectContainer(spacing: 20.0) {
+                        HStack(spacing: 0.0) {
+                            Button {
+                                queue(.front)
+                            } label: {
+                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                                    .labelStyle(.iconOnly)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .esaForeground(.control)
+                                    .scaledToFit()
+                                    .padding(5)
+                                    .minimumScaleFactor(0.5)
+                                    .frame(width: 50)
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .clipShape(Circle())
+                            .disabled(isQueueing || isPlaying)
+                            .accessibilityLabel("Add to Up Next")
+
+                            Button {
+                                queue(.end)
+                            } label: {
+                                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                                    .labelStyle(.iconOnly)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .esaForeground(.control)
+                                    .scaledToFit()
+                                    .padding(5)
+                                    .minimumScaleFactor(0.5)
+                                    .frame(width: 50)
+                            }
+                            .buttonStyle(.glass(.clear))
+                            .clipShape(Circle())
+                            .disabled(isQueueing || isPlaying)
+                            .accessibilityLabel("Add to End")
+                        }
+                    }
+
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: 50)
 
                 Button {
                     subscribe()
@@ -887,6 +1082,13 @@ private struct PodcastBrowseEpisodeDetailView: View {
                             Label("Podcast Website", systemImage: "globe")
                         }
                     }
+                    Spacer()
+                    ShareLink(item: episode.link ?? episode.episodeURL) {
+                        Label("Share Episode", systemImage: "square.and.arrow.up")
+                            .labelStyle(.iconOnly)
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .accessibilityLabel("Share episode")
                 }
 
                 ForEach(episode.deeplinks, id: \.self) { link in
@@ -909,10 +1111,57 @@ private struct PodcastBrowseEpisodeDetailView: View {
         Task {
             let succeeded = await queueAction(position)
             if succeeded == false {
-                actionError = "Could not add this episode to Up Next."
+                actionError = position == .front
+                    ? "Could not add this episode to Up Next."
+                    : "Could not add this episode to the end of the playlist."
+            } else {
+                await refreshMaterializedEpisode()
             }
             isQueueing = false
         }
+    }
+
+    private func startPlayback() {
+        guard isPlaying == false else { return }
+        isPlaying = true
+        Task {
+            let succeeded = await playAction()
+            if succeeded == false {
+                actionError = "Could not start this episode."
+            } else {
+                await refreshMaterializedEpisode()
+            }
+            isPlaying = false
+        }
+    }
+
+    private func prepareDownload() {
+        guard isPreparingDownload == false else { return }
+        isPreparingDownload = true
+        Task {
+            do {
+                let episodeURL = try await prepareAction()
+                materializedEpisode = try fetchMaterializedEpisode(at: episodeURL)
+            } catch {
+                actionError = error.localizedDescription
+            }
+            isPreparingDownload = false
+        }
+    }
+
+    private func refreshMaterializedEpisode() async {
+        guard let episodeURL = try? await prepareAction() else { return }
+        materializedEpisode = try? fetchMaterializedEpisode(at: episodeURL)
+    }
+
+    private func fetchMaterializedEpisode(at episodeURL: URL) throws -> Episode {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.url == episodeURL }
+        )
+        guard let episode = try modelContext.fetch(descriptor).first else {
+            throw PodcastBrowseEpisodeActionError.episodeUnavailable
+        }
+        return episode
     }
 
     private func subscribe() {
@@ -934,5 +1183,13 @@ private struct PodcastBrowseEpisodeDetailView: View {
             return Duration.seconds(value).formatted(.time(pattern: .minuteSecond))
         }
         return ""
+    }
+}
+
+private enum PodcastBrowseEpisodeActionError: LocalizedError {
+    case episodeUnavailable
+
+    var errorDescription: String? {
+        "This episode is no longer available."
     }
 }

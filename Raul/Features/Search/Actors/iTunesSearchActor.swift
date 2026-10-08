@@ -9,9 +9,10 @@
 //
 
 import Foundation
+import CryptoKit
 
 /// A node in the Apple Podcasts genre tree (used for category browsing).
-struct AppleGenre: Identifiable, Hashable {
+struct AppleGenre: Identifiable, Hashable, Sendable {
     let id: Int
     let name: String
     let subgenres: [AppleGenre]
@@ -196,6 +197,22 @@ actor ITunesSearchActor {
     /// - Parameter limit: Maximum number of results, or `nil` for Apple's default.
     func search(for term: String, limit: Int? = nil) async -> [PodcastFeed]? {
         guard term.isEmpty == false else { return nil }
+        let storefront = country
+        let normalizedTerm = term
+            .folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        let queryDigest = SHA256.hash(data: Data(normalizedTerm.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let cacheKey = "search:\(storefront):\(queryDigest):\(limit.map(String.init) ?? "default")"
+        let cached = await PodcastDiscoveryCatalogCache.shared.feeds(for: cacheKey, ttl: 90) {
+            await self.searchUncached(for: term, limit: limit, country: storefront) ?? []
+        }
+        return cached
+    }
+
+    private func searchUncached(for term: String, limit: Int?, country: String) async -> [PodcastFeed]? {
         guard let encodedTerm = term.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             return nil
         }
@@ -241,6 +258,13 @@ actor ITunesSearchActor {
 
     /// Returns the Apple Podcasts genre tree (top-level genres with their subgenres).
     func getGenres() async -> [AppleGenre] {
+        let storefront = country
+        return await PodcastDiscoveryCatalogCache.shared.genres(for: "genres:\(storefront)", ttl: 86_400) {
+            await self.getGenresUncached(country: storefront)
+        }
+    }
+
+    private func getGenresUncached(country: String) async -> [AppleGenre] {
         let urlString = "https://itunes.apple.com/WebObjects/MZStoreServices.woa/ws/genres?id=26&cc=\(country)"
         guard let requestURL = URL(string: urlString) else { return [] }
 
@@ -274,7 +298,15 @@ actor ITunesSearchActor {
     /// - Parameters:
     ///   - genreID: An Apple genre id, or `nil` for the overall chart.
     ///   - limit: Maximum number of podcasts to return.
-    func getTopPodcasts(genreID: Int? = nil, limit: Int = 50) async -> [PodcastFeed] {
+    func getTopPodcasts(genreID: Int? = nil, limit: Int = 50, country requestedCountry: String? = nil) async -> [PodcastFeed] {
+        let storefront = (requestedCountry ?? country).lowercased()
+        let cacheKey = "chart:\(storefront):\(genreID.map(String.init) ?? "all"):\(limit)"
+        return await PodcastDiscoveryCatalogCache.shared.feeds(for: cacheKey, ttl: 600) {
+            await self.getTopPodcastsUncached(genreID: genreID, limit: limit, country: storefront)
+        }
+    }
+
+    private func getTopPodcastsUncached(genreID: Int?, limit: Int, country: String) async -> [PodcastFeed] {
         var urlString = "https://itunes.apple.com/\(country)/rss/toppodcasts/limit=\(limit)"
         if let genreID {
             urlString += "/genre=\(genreID)"
@@ -304,16 +336,16 @@ actor ITunesSearchActor {
 
         guard ids.isEmpty == false else { return [] }
 
-        return await lookupPodcasts(ids: ids)
+        return await lookupPodcasts(ids: ids, country: country)
     }
 
     // MARK: - Lookup
 
     /// Resolves Apple collection ids into `PodcastFeed`s (which carry the RSS `feedUrl`),
     /// preserving the order of the supplied ids.
-    private func lookupPodcasts(ids: [String]) async -> [PodcastFeed] {
+    private func lookupPodcasts(ids: [String], country: String? = nil) async -> [PodcastFeed] {
         let joined = ids.joined(separator: ",")
-        let urlString = "https://itunes.apple.com/lookup?id=\(joined)&country=\(country)&entity=podcast"
+        let urlString = "https://itunes.apple.com/lookup?id=\(joined)&country=\(country ?? self.country)&entity=podcast"
         guard let requestURL = URL(string: urlString) else { return [] }
 
         guard let json = await fetchJSON(from: requestURL) as? [String: Any],

@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import ESADesignKit
+import os
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -13,9 +14,7 @@ struct PlayerView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var contentTab: PlayerContentTab = .shownotes
-    @State private var refreshedContentEpisodeURL: URL?
-    @State private var refreshedTranscriptLines: [TranscriptLineAndTime] = []
-    @State private var refreshedChapterMarkers: [Marker] = []
+    @State private var contentAvailability: PlayerContentAvailability?
     @State private var isTransportPinned = false
     @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
 
@@ -65,14 +64,18 @@ struct PlayerView: View {
                     }
                 }
             }
+            .onAppear {
+                PlayerOpeningPerformance.firstMeaningfulFrame(artworkReady: player.currentArtworkImage != nil)
+            }
             .background {
                 ESADesignKit.ESAFullBackground(image: currentArtworkSource)
             }
             .onChange(of: episode.url) { _, _ in
                 isTransportPinned = false
+                contentAvailability = nil
             }
             .task(id: episode.url) {
-                await refreshGenerationState(for: episode)
+                await refreshContentAvailability(for: episode)
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .episodeReferencesDidChange)
@@ -80,7 +83,12 @@ struct PlayerView: View {
             ) { notification in
                 guard notificationMatchesEpisode(notification, episode: episode) else { return }
                 Task { @MainActor in
-                    await refreshGenerationState(for: episode)
+                    await refreshContentAvailability(for: episode, forceRefresh: true)
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .playerChapterDataDidChange)) { _ in
+                Task { @MainActor in
+                    await refreshContentAvailability(for: episode, forceRefresh: true)
                 }
             }
         } else {
@@ -106,6 +114,8 @@ struct PlayerView: View {
             PlayerControllView(
                 mediaHeight: min(size.width, size.height) * 0.33,
                 showsInlineTranscript: false,
+                usesCachedContentAvailability: true,
+                contentAvailability: contentAvailability,
                 generationAction: generationAction(for: episode),
                 generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
                 generateAction: { action in startAIGeneration(action, for: episode) },
@@ -119,9 +129,6 @@ struct PlayerView: View {
     }
 
     private func playerContentPane(episode: Episode) -> some View {
-        let transcriptLines = availableTranscriptLines(for: episode)
-        let chapterMarkers = availableChapterMarkers(for: episode)
-
         return VStack(spacing: 0) {
             Picker("Player content", selection: $contentTab) {
                 ForEach(PlayerContentTab.allCases) { tab in
@@ -144,6 +151,7 @@ struct PlayerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 case .transcript:
+                    let transcriptLines = episode.transcriptLines ?? []
                     if transcriptLines.isEmpty == false {
                         TranscriptListView(
                             transcriptLines: transcriptLines,
@@ -154,6 +162,7 @@ struct PlayerView: View {
                         missingTranscriptView(episode: episode)
                     }
                 case .chapters:
+                    let chapterMarkers = episode.chapters ?? []
                     if hasDisplayableChapters(in: chapterMarkers, for: episode) {
                         ChapterListView(
                             episode: episode,
@@ -201,6 +210,8 @@ struct PlayerView: View {
                     showsMedia: !usesArtworkHero,
                     showsTranscriptOverHero: usesArtworkHero,
                     showsPlaybackUtilities: false,
+                    usesCachedContentAvailability: true,
+                    contentAvailability: contentAvailability,
                     generationAction: generationAction(for: episode),
                     generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
                     generateAction: { action in startAIGeneration(action, for: episode) },
@@ -267,6 +278,9 @@ struct PlayerView: View {
             .padding(.trailing, onDismiss == nil ? 0 : 48)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
+            .onAppear {
+                PlayerOpeningPerformance.controlsResponsive()
+            }
     }
 
     private func compactShownotes(episode: Episode) -> some View {
@@ -334,6 +348,8 @@ struct PlayerView: View {
     private func compactPlayer(episode: Episode) -> some View {
         VStack(spacing: 0) {
             PlayerControllView(
+                usesCachedContentAvailability: true,
+                contentAvailability: contentAvailability,
                 generationAction: generationAction(for: episode),
                 generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
                 generateAction: { action in startAIGeneration(action, for: episode) },
@@ -356,29 +372,16 @@ struct PlayerView: View {
     private func generationAction(for episode: Episode) -> EpisodeAIGenerationAction? {
         EpisodeAIGenerationPolicy.action(
             isAvailable: AppleIntelligenceAvailability.isAvailable,
-            hasTranscript: availableTranscriptLines(for: episode).isEmpty == false,
-            hasUsableChapters: episode.hasDisplayableChaptersOrSoundbites
+            hasTranscript: contentAvailability?.episodeURL == episode.url
+                && contentAvailability?.hasTranscript == true,
+            hasUsableChapters: contentAvailability?.episodeURL == episode.url
+                && contentAvailability?.hasUsableChapters == true
         )
     }
 
     private func startAIGeneration(_ action: EpisodeAIGenerationAction, for episode: Episode) {
         guard let episodeURL = episode.url else { return }
         aiGeneration.start(action: action, episodeURL: episodeURL, modelContainer: modelContext.container)
-    }
-
-    private func availableTranscriptLines(for episode: Episode) -> [TranscriptLineAndTime] {
-        if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
-            return transcriptLines
-        }
-        guard refreshedContentEpisodeURL == episode.url else { return [] }
-        return refreshedTranscriptLines
-    }
-
-    private func availableChapterMarkers(for episode: Episode) -> [Marker] {
-        if refreshedContentEpisodeURL == episode.url, refreshedChapterMarkers.isEmpty == false {
-            return refreshedChapterMarkers
-        }
-        return episode.chapters ?? []
     }
 
     private func hasDisplayableChapters(in markers: [Marker], for episode: Episode) -> Bool {
@@ -391,29 +394,18 @@ struct PlayerView: View {
     }
 
     @MainActor
-    private func refreshGenerationState(for episode: Episode) async {
+    private func refreshContentAvailability(for episode: Episode, forceRefresh: Bool = false) async {
         guard let episodeURL = episode.url else { return }
-        if refreshedContentEpisodeURL != episodeURL {
-            refreshedContentEpisodeURL = episodeURL
-            refreshedTranscriptLines = []
-            refreshedChapterMarkers = []
+        if contentAvailability?.episodeURL != episodeURL {
+            contentAvailability = nil
         }
-
-        let transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-            predicate: #Predicate { line in
-                line.episode?.url == episodeURL
-            },
-            sortBy: [SortDescriptor(\.startTime)]
-        )
-        refreshedTranscriptLines = (try? modelContext.fetch(transcriptDescriptor)) ?? []
-
-        let chapterDescriptor = FetchDescriptor<Marker>(
-            predicate: #Predicate { marker in
-                marker.episode?.url == episodeURL
-            }
-        )
-        refreshedChapterMarkers = ((try? modelContext.fetch(chapterDescriptor)) ?? [])
-            .sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        let worker = PlayerContentAvailabilityModelActor(modelContainer: modelContext.container)
+        if forceRefresh {
+            await worker.invalidate(episodeURL: episodeURL)
+        }
+        let snapshot = await worker.availability(for: episodeURL)
+        guard Task.isCancelled == false, player.currentEpisode?.url == episodeURL else { return }
+        contentAvailability = snapshot
     }
 
     private func notificationMatchesEpisode(_ notification: Notification, episode: Episode) -> Bool {
@@ -430,6 +422,88 @@ struct PlayerView: View {
         queryItems.append(URLQueryItem(name: "t", value: "\(Int(player.playPosition))"))
         components.queryItems = queryItems
         return components.url ?? url
+    }
+}
+
+struct PlayerContentAvailability: Sendable, Equatable {
+    let episodeURL: URL
+    let hasTranscript: Bool
+    let hasChapterSelectionUI: Bool
+    let hasUsableChapters: Bool
+}
+
+private actor PlayerContentAvailabilitySnapshotCache {
+    static let shared = PlayerContentAvailabilitySnapshotCache()
+
+    private var snapshots: [URL: PlayerContentAvailability] = [:]
+    private var order: [URL] = []
+    private let limit = 24
+
+    func snapshot(for episodeURL: URL) -> PlayerContentAvailability? {
+        snapshots[episodeURL]
+    }
+
+    func store(_ snapshot: PlayerContentAvailability) {
+        snapshots[snapshot.episodeURL] = snapshot
+        order.removeAll { $0 == snapshot.episodeURL }
+        order.append(snapshot.episodeURL)
+        if order.count > limit {
+            let evictedURL = order.removeFirst()
+            snapshots.removeValue(forKey: evictedURL)
+        }
+    }
+
+    func invalidate(episodeURL: URL) {
+        snapshots.removeValue(forKey: episodeURL)
+        order.removeAll { $0 == episodeURL }
+    }
+}
+
+@ModelActor
+actor PlayerContentAvailabilityModelActor {
+    func availability(for episodeURL: URL) async -> PlayerContentAvailability {
+        if let cached = await PlayerContentAvailabilitySnapshotCache.shared.snapshot(for: episodeURL) {
+            os_signpost(.event, log: PlayerOpeningPerformance.log, name: "Player availability cache hit")
+            return cached
+        }
+
+        let signpostID = OSSignpostID(log: PlayerOpeningPerformance.log)
+        os_signpost(.begin, log: PlayerOpeningPerformance.log, name: "Player availability query", signpostID: signpostID)
+        defer { os_signpost(.end, log: PlayerOpeningPerformance.log, name: "Player availability query", signpostID: signpostID) }
+
+        let episodeDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.url == episodeURL }
+        )
+        let episode = (try? modelContext.fetch(episodeDescriptor))?.first
+
+        var transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { $0.episode?.url == episodeURL }
+        )
+        transcriptDescriptor.fetchLimit = 1
+        let hasTranscript = (try? modelContext.fetch(transcriptDescriptor))?.isEmpty == false
+
+        let markerDescriptor = FetchDescriptor<Marker>(
+            predicate: #Predicate { $0.episode?.url == episodeURL }
+        )
+        let markers = (try? modelContext.fetch(markerDescriptor)) ?? []
+        let displayChapters = episode?.chaptersForDisplay(from: markers) ?? []
+        let hasChapterSelectionUI = displayChapters.count > 1
+            || (displayChapters.first?.start ?? 0) > 0.5
+        let hasUsableChapters = hasChapterSelectionUI
+            || markers.contains(where: { $0.type == .soundbite })
+        let snapshot = PlayerContentAvailability(
+            episodeURL: episodeURL,
+            hasTranscript: hasTranscript,
+            hasChapterSelectionUI: hasChapterSelectionUI,
+            hasUsableChapters: hasUsableChapters
+        )
+
+        await PlayerContentAvailabilitySnapshotCache.shared.store(snapshot)
+        return snapshot
+    }
+
+    func invalidate(episodeURL: URL) async {
+        await PlayerContentAvailabilitySnapshotCache.shared.invalidate(episodeURL: episodeURL)
     }
 }
 

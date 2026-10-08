@@ -7,6 +7,12 @@
 import SwiftData
 import Foundation
 
+enum SmartShuffleResult: Sendable, Equatable {
+    case reordered(entryCount: Int)
+    case alreadyBalanced
+    case unavailable
+}
+
 actor PlaylistModelActor {
     enum RemovalOrigin: Sendable {
         case user
@@ -866,6 +872,59 @@ actor PlaylistModelActor {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
             WatchSyncCoordinator.refreshSoon(force: true)
         }
+    }
+
+    /// Balances a manual playlist across podcasts while keeping each show's
+    /// existing relative episode order. The currently playing entry stays at
+    /// its current position, and ungrouped episodes each form their own group.
+    func smartShuffle() async throws -> SmartShuffleResult {
+        guard let playlist = try fetchPlaylist(), playlist.isSmartPlaylist == false else {
+            return .unavailable
+        }
+        let sorted = try fetchOrderedEntries()
+        guard sorted.count > 1 else { return .unavailable }
+
+        let nowPlayingURL = await currentPlayingEpisodeURL()
+        let pinnedIndex = nowPlayingURL.flatMap { url in
+            sorted.firstIndex { $0.episode?.url == url }
+        }
+        var anonymousGroupIndex = 0
+        let keys = sorted.map { entry -> String in
+            guard let episode = entry.episode else {
+                defer { anonymousGroupIndex += 1 }
+                return "entry-\(anonymousGroupIndex)"
+            }
+            if let feedURL = episode.podcast?.feed {
+                return "feed:\(PodcastFeedIdentity.normalizedFeedURLString(feedURL))"
+            }
+            if let podcastLink = episode.podcast?.link {
+                return "site:\(podcastLink.absoluteString.lowercased())"
+            }
+            if let podcast = episode.podcast {
+                return "podcast:\(podcast.persistentModelID)"
+            }
+            defer { anonymousGroupIndex += 1 }
+            return "entry-\(anonymousGroupIndex)"
+        }
+        let order = SmartShuffleOrdering.interleavedIndices(groupKeys: keys, pinnedIndex: pinnedIndex)
+        guard order.count == sorted.count else { return .unavailable }
+        guard order.enumerated().contains(where: { $0.offset != $0.element }) else {
+            return .alreadyBalanced
+        }
+
+        for (index, sourceIndex) in order.enumerated() {
+            sorted[sourceIndex].order = index
+        }
+        if modelContext.hasChanges {
+            try modelContext.save()
+        }
+        await publishSplitStorePlaylist(playlist)
+        scheduleAutoDownloadPolicy()
+        Task {
+            await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
+            WatchSyncCoordinator.refreshSoon(force: true)
+        }
+        return .reordered(entryCount: sorted.count)
     }
 
     func removeFromAllPlaylists(episodeURL: URL) async throws {

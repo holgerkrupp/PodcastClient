@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 enum AppSection: String, CaseIterable, Identifiable, Codable, Hashable {
     case queue
@@ -170,6 +171,45 @@ struct OpenPlayerAction {
     }
 }
 
+enum PlayerOpeningPerformance {
+    static let log = OSLog(subsystem: "de.holgerkrupp.PodcastClient", category: "PlayerOpening")
+
+    @MainActor private static var activeID: OSSignpostID?
+
+    @MainActor
+    static func beginOpen() {
+        let id = OSSignpostID(log: log)
+        activeID = id
+        os_signpost(.begin, log: log, name: "Mini player open", signpostID: id)
+        event("Mini player tap")
+    }
+
+    @MainActor
+    static func presentationStateChanged(_ isPresented: Bool) {
+        event(isPresented ? "Player presentation requested" : "Player presentation dismissed")
+    }
+
+    @MainActor
+    static func firstMeaningfulFrame(artworkReady: Bool) {
+        event("Player first meaningful frame")
+        event(artworkReady ? "Artwork hero prepared" : "Artwork hero awaiting image")
+    }
+
+    @MainActor
+    static func controlsResponsive() {
+        event("Player transport controls responsive")
+        if let activeID {
+            os_signpost(.end, log: log, name: "Mini player open", signpostID: activeID)
+            self.activeID = nil
+        }
+    }
+
+    @MainActor
+    static func event(_ name: StaticString) {
+        os_signpost(.event, log: log, name: name)
+    }
+}
+
 private struct OpenPlayerActionKey: EnvironmentKey {
     static let defaultValue = OpenPlayerAction {
         Player.shared.isPlayerSheetPresented = true
@@ -223,6 +263,7 @@ private struct IOSPlayerPresentationHost: ViewModifier {
             .environment(
                 \.openPlayer,
                 OpenPlayerAction {
+                    PlayerOpeningPerformance.beginOpen()
                     navigation.isPlayerPresented = true
                 }
             )
@@ -261,9 +302,13 @@ private struct IOSPlayerPresentationHost: ViewModifier {
             }
         }
         .animation(.smooth, value: navigation.isPlayerPresented)
+        .onChange(of: navigation.isPlayerPresented) { _, isPresented in
+            PlayerOpeningPerformance.presentationStateChanged(isPresented)
+        }
         .onChange(of: Player.shared.isPlayerSheetPresented) { _, isPresented in
                 guard isPresented else { return }
                 Player.shared.isPlayerSheetPresented = false
+                PlayerOpeningPerformance.beginOpen()
                 navigation.isPlayerPresented = true
         }
     }

@@ -336,10 +336,12 @@ enum StoreSplitCompatibilityProjectionService {
         episode.transcriptLines = cachedLines.map { cached in
             result.transcriptLines += 1
             return TranscriptLineAndTime(
+                id: cached.sourceUUID.flatMap(UUID.init(uuidString:)) ?? UUID(),
                 speaker: cached.speaker,
                 text: cached.text,
                 startTime: cached.startTime,
-                endTime: cached.endTime
+                endTime: cached.endTime,
+                source: CachedTranscriptSource(rawValue: cached.sourceRawValue) ?? .unknown
             )
         }
         return episode

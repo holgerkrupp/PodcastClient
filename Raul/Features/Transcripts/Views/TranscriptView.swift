@@ -16,6 +16,7 @@ import Combine
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
 
     let transcriptLines: [TranscriptLineAndTime]
     @Binding var currentTime: TimeInterval
@@ -127,8 +128,11 @@ struct TranscriptView: View {
     }
 
     private var activeSegmentID: UUID? {
-        guard currentTime.isFinite else { return nil }
-        return segmentID(at: currentTime)
+        guard let transcriptTime = synchronizationStore.transcriptTime(
+            forAudioTime: currentTime,
+            episodeURL: Player.shared.currentEpisodeURL
+        ), transcriptTime.isFinite else { return nil }
+        return segmentID(at: transcriptTime)
     }
 
     private func scroll(to id: UUID?, with proxy: ScrollViewProxy, animated: Bool) {

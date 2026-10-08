@@ -27,6 +27,7 @@ struct AutoDownloadPolicySnapshot: Sendable {
     let playlistID: UUID?
     let networkMode: AutoDownloadNetworkMode
     let includesArchivedEpisodes: Bool
+    let episodeFilter: AutoDownloadEpisodeFilter
 }
 
 @ModelActor
@@ -557,6 +558,10 @@ actor PodcastSettingsModelActor {
         await standardSettings().enableAutomaticOnDeviceTranscriptions
     }
 
+    func getPublisherTranscriptSynchronizationEnabled() async -> Bool {
+        await standardSettings().enablePublisherTranscriptSynchronization
+    }
+
     func getAutomaticOnDeviceTranscriptionsRequiresCharging() async -> Bool {
         await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
     }
@@ -772,7 +777,8 @@ actor PodcastSettingsModelActor {
             queuePosition: resolvedQueuePosition,
             playlistID: resolvedPlaylistID,
             networkMode: settings.autoDownloadNetworkMode,
-            includesArchivedEpisodes: settings.autoDownloadIncludesArchivedEpisodes
+            includesArchivedEpisodes: settings.autoDownloadIncludesArchivedEpisodes,
+            episodeFilter: settings.autoDownloadFilter
         )
     }
 }

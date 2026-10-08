@@ -21,7 +21,7 @@ struct PlaylistsSettingsSections: View {
     @State private var playlistPendingDeletion: Playlist?
 
     private var visiblePlaylists: [Playlist] {
-        Playlist.manualVisibleSorted(playlists)
+        Playlist.visibleSorted(playlists)
     }
 
     var body: some View {
@@ -68,6 +68,8 @@ struct PlaylistsSettingsSections: View {
                 PlaylistLibrary.create(
                     name: draft.name,
                     symbolName: draft.symbolName,
+                    kind: draft.kind,
+                    smartFilter: draft.smartFilter,
                     in: modelContext
                 )
             }
@@ -110,7 +112,8 @@ private struct PlaylistSettingsRow: View {
     let playlist: Playlist
 
     private var episodeCount: Int {
-        playlist.ordered.reduce(into: 0) { partialResult, entry in
+        guard playlist.isSmartPlaylist == false else { return 0 }
+        return playlist.ordered.reduce(into: 0) { partialResult, entry in
             if entry.episode != nil {
                 partialResult += 1
             }
@@ -128,7 +131,7 @@ private struct PlaylistSettingsRow: View {
                 Text(playlist.displayTitle)
                     .lineLimit(1)
 
-                Text("^[\(episodeCount) episode](inflect: true)")
+                Text(playlist.isSmartPlaylist ? "Smart playlist" : "^[\(episodeCount) episode](inflect: true)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

@@ -11,16 +11,18 @@ struct PlayerChapterView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @State var player = Player.shared
     @State var presentingModal = false
+    var hasChapterSelectionUI: Bool?
 
     
-    init(){
+    init(hasChapterSelectionUI: Bool? = nil) {
+        self.hasChapterSelectionUI = hasChapterSelectionUI
         // print("PlayerChapterView \(player.currentEpisode?.id.uuidString ?? "NO UUID")")
         // print("loading PlayerChapterView with \(String(describing: player.currentEpisode?.preferredChapters.count.description)) Chapters")
         // print("currentChapter: \(player.currentChapter?.title ?? "nil")")
     }
     
     var body: some View {
-        if player.currentEpisode?.hasChapterSelectionUI == true {
+        if (hasChapterSelectionUI ?? player.currentEpisode?.hasChapterSelectionUI) == true {
           //  GlassEffectContainer(spacing: 20){
                 HStack(spacing: 0.0) {
                     Spacer()

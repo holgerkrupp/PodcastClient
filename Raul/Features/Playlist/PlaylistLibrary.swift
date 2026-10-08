@@ -14,9 +14,11 @@ enum PlaylistLibrary {
     static func create(
         name: String,
         symbolName: String,
+        kind: Playlist.Kind = .manual,
+        smartFilter: SmartPlaylistFilter? = nil,
         in context: ModelContext
     ) -> Playlist {
-        let existing = Playlist.manualVisibleSorted(
+        let existing = Playlist.visibleSorted(
             (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
         )
 
@@ -25,12 +27,12 @@ enum PlaylistLibrary {
         playlist.deleteable = true
         playlist.hidden = false
         playlist.sortIndex = (existing.map(\.sortIndex).max() ?? 0) + 1
-        playlist.kind = .manual
+        playlist.kind = kind
         playlist.symbolName = Playlist.normalizedSymbolName(
             symbolName,
             fallback: Playlist.defaultManualSymbolName
         )
-        playlist.smartFilter = nil
+        playlist.smartFilter = kind == .smart ? (smartFilter ?? SmartPlaylistFilter()) : nil
 
         context.insert(playlist)
         context.saveIfNeeded()

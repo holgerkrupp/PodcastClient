@@ -35,7 +35,7 @@ struct PlaylistView: View {
     @State private var showsLivePodcasts = false
 
     private var visiblePlaylists: [Playlist] {
-        Playlist.manualVisibleSorted(playlists)
+        Playlist.visibleSorted(playlists)
     }
 
     private var selectedPlaylist: Playlist? {
@@ -80,8 +80,14 @@ struct PlaylistView: View {
 
             Group {
                 if let selectedPlaylist {
-                    ManualPlaylistPageView(playlist: selectedPlaylist)
-                        .id(selectedPlaylist.id)
+                    Group {
+                        if selectedPlaylist.isSmartPlaylist {
+                            SmartPlaylistPageView(playlist: selectedPlaylist)
+                        } else {
+                            ManualPlaylistPageView(playlist: selectedPlaylist)
+                        }
+                    }
+                    .id(selectedPlaylist.id)
                 } else {
                     PlaylistLaunchPlaceholder()
                 }
@@ -214,6 +220,8 @@ struct PlaylistView: View {
         let playlist = PlaylistLibrary.create(
             name: draft.name,
             symbolName: draft.symbolName,
+            kind: draft.kind,
+            smartFilter: draft.smartFilter,
             in: modelContext
         )
         selectedPlaylistID = playlist.id.uuidString
@@ -306,6 +314,8 @@ private struct ManualPlaylistPageView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Query private var playlistEntries: [PlaylistEntry]
+    @State private var isSmartShuffling = false
+    @State private var smartShuffleMessage: String?
     private let reorderTip = ReorderPlaylistTip()
     init(playlist: Playlist) {
         self.playlist = playlist
@@ -336,9 +346,8 @@ private struct ManualPlaylistPageView: View {
             )
         } else {
             List {
-                
                 TipView(reorderTip, arrowEdge: .none)
-                                    .listRowSeparator(.hidden)
+                    .listRowSeparator(.hidden)
                 
                 ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                     if episode.url != nil {
@@ -396,6 +405,55 @@ private struct ManualPlaylistPageView: View {
                 }
             }
             .listStyle(.plain)
+            .toolbar {
+                if episodes.count > 1 {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(action: smartShuffle) {
+                            if isSmartShuffling {
+                                Label("Shuffling…", systemImage: "shuffle")
+                            } else {
+                                Label("Smart Shuffle", systemImage: "shuffle")
+                            }
+                        }
+                        .disabled(isSmartShuffling)
+                        .accessibilityHint("Balances episodes across podcasts while keeping the playing episode in place")
+                    }
+                }
+            }
+            .alert(
+                "Smart Shuffle",
+                isPresented: Binding(
+                    get: { smartShuffleMessage != nil },
+                    set: { if $0 == false { smartShuffleMessage = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { smartShuffleMessage = nil }
+            } message: {
+                Text(smartShuffleMessage ?? "")
+            }
+        }
+    }
+
+    private func smartShuffle() {
+        Task {
+            isSmartShuffling = true
+            defer { isSmartShuffling = false }
+            do {
+                let actor = try PlaylistModelActor(
+                    modelContainer: modelContext.container,
+                    playlistID: playlist.id
+                )
+                switch try await actor.smartShuffle() {
+                case .reordered(let entryCount):
+                    smartShuffleMessage = "Smart Shuffle reordered \(entryCount) episodes."
+                case .alreadyBalanced:
+                    smartShuffleMessage = "This playlist is already balanced across podcasts."
+                case .unavailable:
+                    smartShuffleMessage = "Add at least two episodes to use Smart Shuffle."
+                }
+            } catch {
+                smartShuffleMessage = "Smart Shuffle couldn’t update this playlist: \(error.localizedDescription)"
+            }
         }
     }
 

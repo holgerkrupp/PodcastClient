@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import RichText
 import ESADesignKit
+import os
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -38,8 +39,11 @@ struct ShownoteContentView: View {
                         }
                     }
                 }
-            } else {
-                richText(html)
+            } else if html.isEmpty == false {
+                Label("Preparing shownotes", systemImage: "text.alignleft")
+                    .font(.caption)
+                    .esaForeground(.secondary)
+                    .accessibilityLabel("Preparing shownotes")
             }
         }
         .onChange(of: html) { _, _ in
@@ -47,6 +51,10 @@ struct ShownoteContentView: View {
             enrichmentResults.removeAll()
         }
         .task(id: html) {
+            guard html.isEmpty == false else {
+                document = ShownoteDocument(html: "")
+                return
+            }
             let parsedDocument = await ShownoteParser.shared.parse(html)
             guard Task.isCancelled == false else { return }
             document = parsedDocument
@@ -66,6 +74,9 @@ struct ShownoteContentView: View {
                     enrichmentResults = cachedResults
                 }
             }
+        }
+        .onAppear {
+            os_signpost(.event, log: ShownoteViewPerformance.log, name: "Shownote visible")
         }
     }
 
@@ -141,6 +152,10 @@ struct ShownoteContentView: View {
             .replacingOccurrences(of: "\"", with: "&quot;")
         return "<a href=\"\(href)\">\(candidate.displayText)</a>"
     }
+}
+
+private enum ShownoteViewPerformance {
+    static let log = OSLog(subsystem: "de.holgerkrupp.PodcastClient", category: "Shownotes")
 }
 
 private struct ShownotePreviewCard: View {

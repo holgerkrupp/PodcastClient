@@ -5,6 +5,9 @@ struct PodcastPodrollView: View {
     let podcastTitle: String
     let items: [PodcastPodrollItem]
 
+    @Environment(\.modelContext) private var modelContext
+    @Query private var allPodcasts: [Podcast]
+    @State private var subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: [])
     @StateObject private var feedLoader: PodcastPodrollFeedLoader
 
     init(podcastTitle: String, items: [PodcastPodrollItem]) {
@@ -17,7 +20,12 @@ struct PodcastPodrollView: View {
         List {
             Section {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                    PodcastPodrollRow(item: item, feed: feedLoader.feed(for: item, at: index))
+                    let feed = feedLoader.feed(for: item, at: index)
+                    PodcastPodrollRow(
+                        item: item,
+                        feed: feed,
+                        existingPodcast: subscriptionLookup.existingPodcast(for: feed, context: modelContext)
+                    )
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .listRowInsets(.init(top: 0,
@@ -34,6 +42,12 @@ struct PodcastPodrollView: View {
         .task(id: items.map(\.id).joined(separator: "|")) {
             await feedLoader.loadFeedsIfNeeded()
         }
+        .task {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
+        .onChange(of: allPodcasts.map(PodcastDiscoverySubscriptionLookup.signature(for:))) {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
     }
 }
 
@@ -42,6 +56,7 @@ private struct PodcastPodrollRow: View {
 
     let item: PodcastPodrollItem
     let feed: PodcastFeed
+    let existingPodcast: Podcast?
 
     var body: some View {
         if item.hasResolvableFeed {
@@ -70,6 +85,7 @@ private struct PodcastPodrollRow: View {
         VStack(alignment: .leading, spacing: 6) {
             SubscribeToPodcastView(
                 newPodcastFeed: feed,
+                existingPodcast: existingPodcast,
                 showsBrowseNavigationLink: false
             )
 

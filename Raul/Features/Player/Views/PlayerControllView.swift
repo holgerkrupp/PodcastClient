@@ -11,10 +11,8 @@ import AVKit
 import TipKit
 
 struct PlayerControllView: View {
-    @Environment(\.modelContext) private var context
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openPodcastSettings) private var openSettings
-    @Environment(\.openURL) private var openURL
 
     @Bindable private var player = Player.shared
     @State private var showTranscripts: Bool = false
@@ -32,12 +30,12 @@ struct PlayerControllView: View {
     var showsInlineTranscript = true
     var showsTranscriptOverHero = false
     var showsPlaybackUtilities = true
+    var usesCachedContentAvailability = false
+    var contentAvailability: PlayerContentAvailability?
     var generationAction: EpisodeAIGenerationAction?
     var generationState: EpisodeAIGenerationState?
     var generateAction: ((EpisodeAIGenerationAction) -> Void)?
     var cancelGeneration: (() -> Void)?
-    
-    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" } ) var globalSettings: [PodcastSettings]
     
     var body: some View {
         if let episode = player.currentEpisode {
@@ -102,77 +100,7 @@ struct PlayerControllView: View {
                     .esaForeground(.primary)
                 
                 
-                if player.isLivePlayback {
-                    VStack(spacing: 8) {
-                        Label(player.livePlaybackState.label, systemImage: "dot.radiowaves.left.and.right")
-                            .font(.subheadline.weight(.semibold))
-                        Button {
-                            Task { await player.endLivePlayback() }
-                        } label: {
-                            Label("Return to Previous Episode", systemImage: "arrow.uturn.backward")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityHint("Stops live playback and restores the previous episode and its position")
-
-                        if globalSettings.first?.showLivePodcasts != false,
-                           let liveItem = player.currentLiveItem,
-                           (liveItem.chat.isEmpty == false || liveItem.contentLinks.isEmpty == false) {
-                            Menu {
-                                ForEach(liveItem.chat) { chat in
-                                    Button {
-                                        openURL(chat.url)
-                                    } label: {
-                                        Label(chat.label, systemImage: "bubble.left.and.bubble.right")
-                                    }
-                                }
-                                ForEach(liveItem.contentLinks) { contentLink in
-                                    Button {
-                                        openURL(contentLink.url)
-                                    } label: {
-                                        Label(contentLink.label, systemImage: "link")
-                                    }
-                                }
-                            } label: {
-                                Label("Companion Links", systemImage: "safari")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.bordered)
-                            .accessibilityHint("Opens publisher-provided chat and live companion pages")
-                        }
-                    }
-                } else {
-                    VStack {
-                        PlayerProgressSliderView(
-                            value: $player.progress,
-                            markers: $player.chapters,
-                            allowTouch: globalSettings.first?.enableInAppSlider ?? true,
-                            chapterTimelineDuration: player.currentEpisode?.duration, adSegments: player.showDetectedAdvertisements ? player.adSegments : [],
-                            onEditingChanged: { isEditing, progress in
-                                if isEditing {
-                                    player.beginSkipProtectionSeek()
-                                } else {
-                                    player.endSkipProtectionSeek(at: progress)
-                                }
-                            },
-                            sliderRange: 0...1
-                        )
-                            .frame(height: 30)
-
-                        HStack {
-                            Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
-                                .monospacedDigit()
-                                .font(.caption)
-                                .esaForeground(.secondary)
-
-                            Spacer()
-                            Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
-                                .monospacedDigit()
-                                .font(.caption)
-                                .esaForeground(.secondary)
-                        }
-                    }
-                }
+                PlayerPlaybackTimelineView()
 
                 if let undo = player.skipProtectionUndo {
                     Button {
@@ -198,6 +126,11 @@ struct PlayerControllView: View {
                 }
             }
             .padding()
+            .onAppear {
+                if showPrimaryTransportControls {
+                    PlayerOpeningPerformance.controlsResponsive()
+                }
+            }
             .overlay(alignment: .top) {
                 if showsTranscriptOverHero,
                    showsInlineTranscript,
@@ -238,8 +171,8 @@ struct PlayerControllView: View {
 
     private var chapterControlsRow: some View {
         ZStack {
-            if player.currentEpisode?.hasChapterSelectionUI == true {
-                PlayerChapterView()
+            if hasChapterSelectionUI {
+                PlayerChapterView(hasChapterSelectionUI: hasChapterSelectionUI)
                     .padding(.horizontal, 16)
             } else if let generateAction, let cancelGeneration {
                 EpisodeAIGenerationControl(
@@ -264,8 +197,7 @@ struct PlayerControllView: View {
             }
 
             HStack(spacing: 0) {
-                if showsInlineTranscript,
-                   player.currentEpisode?.transcriptLines?.isEmpty == false {
+                if showsInlineTranscript, hasTranscript {
                     transcriptVisibilityButton
                 } else {
                     Color.clear
@@ -279,6 +211,30 @@ struct PlayerControllView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .zIndex(3)
+    }
+
+    private var hasTranscript: Bool {
+        guard let episode = player.currentEpisode else { return false }
+        if usesCachedContentAvailability {
+            return contentAvailability?.episodeURL == episode.url
+                && contentAvailability?.hasTranscript == true
+        }
+        if contentAvailability?.episodeURL == episode.url {
+            return contentAvailability?.hasTranscript == true
+        }
+        return episode.transcriptLines?.isEmpty == false
+    }
+
+    private var hasChapterSelectionUI: Bool {
+        guard let episode = player.currentEpisode else { return false }
+        if usesCachedContentAvailability {
+            return contentAvailability?.episodeURL == episode.url
+                && contentAvailability?.hasChapterSelectionUI == true
+        }
+        if contentAvailability?.episodeURL == episode.url {
+            return contentAvailability?.hasChapterSelectionUI == true
+        }
+        return episode.hasChapterSelectionUI
     }
 
     private var playbackSettingsButton: some View {
@@ -327,7 +283,7 @@ struct PlayerControllView: View {
 
     private func inlineTranscriptCard(transcriptLines: [TranscriptLineAndTime]) -> some View {
         TranscriptView(
-            transcriptLines: transcriptLines.sorted(by: { $0.startTime < $1.startTime }),
+            transcriptLines: transcriptLines,
             currentTime: $player.playPosition,
             onOpenFullTranscript: {
                 openFullTranscriptFollowingPlayback = true
@@ -361,6 +317,93 @@ struct PlayerControllView: View {
 #endif
     }
 
+}
+
+private struct PlayerPlaybackTimelineView: View {
+    @Environment(\.openURL) private var openURL
+    @Bindable private var player = Player.shared
+    @Query(filter: #Predicate<PodcastSettings> { $0.title == "de.holgerkrupp.podbay.queue" })
+    private var globalSettings: [PodcastSettings]
+
+    var body: some View {
+        Group {
+        if player.isLivePlayback {
+            VStack(spacing: 8) {
+                Label(player.livePlaybackState.label, systemImage: "dot.radiowaves.left.and.right")
+                    .font(.subheadline.weight(.semibold))
+                Button {
+                    Task { await player.endLivePlayback() }
+                } label: {
+                    Label("Return to Previous Episode", systemImage: "arrow.uturn.backward")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityHint("Stops live playback and restores the previous episode and its position")
+
+                if globalSettings.first?.showLivePodcasts != false,
+                   let liveItem = player.currentLiveItem,
+                   (liveItem.chat.isEmpty == false || liveItem.contentLinks.isEmpty == false) {
+                    Menu {
+                        ForEach(liveItem.chat) { chat in
+                            Button {
+                                openURL(chat.url)
+                            } label: {
+                                Label(chat.label, systemImage: "bubble.left.and.bubble.right")
+                            }
+                        }
+                        ForEach(liveItem.contentLinks) { contentLink in
+                            Button {
+                                openURL(contentLink.url)
+                            } label: {
+                                Label(contentLink.label, systemImage: "link")
+                            }
+                        }
+                    } label: {
+                        Label("Companion Links", systemImage: "safari")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint("Opens publisher-provided chat and live companion pages")
+                }
+            }
+        } else {
+            VStack {
+                PlayerProgressSliderView(
+                    value: $player.progress,
+                    markers: $player.chapters,
+                    allowTouch: globalSettings.first?.enableInAppSlider ?? true,
+                    chapterTimelineDuration: player.currentEpisode?.duration,
+                    adSegments: player.showDetectedAdvertisements ? player.adSegments : [],
+                    onEditingChanged: { isEditing, progress in
+                        if isEditing {
+                            player.beginSkipProtectionSeek()
+                        } else {
+                            player.endSkipProtectionSeek(at: progress)
+                        }
+                    },
+                    sliderRange: 0...1
+                )
+                .frame(height: 30)
+
+                HStack {
+                    Text(Duration.seconds(player.playPosition).formatted(.units(width: .narrow)))
+                        .monospacedDigit()
+                        .font(.caption)
+                        .esaForeground(.secondary)
+
+                    Spacer()
+                    Text(Duration.seconds(player.remaining ?? player.currentEpisode?.duration ?? 0.0).formatted(.units(width: .narrow)))
+                        .monospacedDigit()
+                        .font(.caption)
+                        .esaForeground(.secondary)
+                }
+            }
+        }
+        }
+        .onAppear {
+            PlayerOpeningPerformance.event("Player timeline settings appeared")
+        }
+    }
 }
 
 struct PlayerPlaybackUtilitiesRow: View {

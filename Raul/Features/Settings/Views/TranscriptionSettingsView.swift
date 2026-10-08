@@ -106,6 +106,32 @@ struct TranscriptionSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("Transcript Synchronization") {
+                if let globalSettings {
+                    Toggle(
+                        "Automatically synchronize publisher transcripts",
+                        isOn: Binding(
+                            get: { globalSettings.enablePublisherTranscriptSynchronization },
+                            set: { enabled in
+                                globalSettings.enablePublisherTranscriptSynchronization = enabled
+                                context.saveIfNeeded()
+                                TranscriptSynchronizationStore.shared.setEnabled(enabled)
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+                }
+                Text("When an alignment is available, corrected timing is used during playback and when seeking from transcript rows. Synchronization is not run after download.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Compare small portions of podcast audio with publisher transcripts to correct caption timing when ads or other audio have been inserted. Processing happens on device and may use additional battery. Your transcript text stays unchanged.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Only publisher-provided transcripts are eligible. On-device AI transcripts and transcripts with unknown origin are left unchanged. Turning this off immediately restores original transcript timing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("Advertisement Detection") {
                 if let globalSettings {
                     Toggle(

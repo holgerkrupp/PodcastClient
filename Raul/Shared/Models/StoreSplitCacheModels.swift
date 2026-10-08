@@ -443,9 +443,9 @@ final class CachedTranscriptLine: Identifiable {
     var startTime: Double = 0
     var endTime: Double?
     var ordinal: Int = 0
-    /// `publisher`, `ai`, or `localAI`. Older rows default to publisher so an
-    /// incoming AI revision can never erase unclassified publisher material.
-    var sourceRawValue: String = CachedTranscriptSource.publisher.rawValue
+    /// `publisher`, `ai`, `localAI`, or `unknown`. Unknown rows are excluded from
+    /// publisher-only features until their origin can be established.
+    var sourceRawValue: String = CachedTranscriptSource.unknown.rawValue
     var revisionID: String?
     var updatedAt: Date = Date.distantPast
 
@@ -459,7 +459,7 @@ final class CachedTranscriptLine: Identifiable {
         startTime: Double = 0,
         endTime: Double? = nil,
         ordinal: Int = 0,
-        sourceRawValue: String = CachedTranscriptSource.publisher.rawValue,
+        sourceRawValue: String = CachedTranscriptSource.unknown.rawValue,
         revisionID: String? = nil,
         updatedAt: Date = .now
     ) {
@@ -482,6 +482,7 @@ enum CachedTranscriptSource: String, Codable, Sendable {
     case publisher
     case ai
     case localAI
+    case unknown
 }
 
 /// Device-local transcription job history. This is diagnostics/history rather

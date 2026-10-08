@@ -31,6 +31,8 @@ class PodcastSettings {
     var autoDownloadSelectionRawValue: String? = AutoDownloadSelection.newestUnplayed.rawValue
     var autoDownloadNetworkModeRawValue: String? = AutoDownloadNetworkMode.wifiAndCellular.rawValue
     var autoDownloadIncludesArchivedEpisodes: Bool = true
+    /// JSON keeps the optional policy backward-compatible with existing stores.
+    var autoDownloadFilterJSON: String?
     var playnextPosition:Playlist.Position = Playlist.Position.none
     var defaultPlaylistID: UUID?
     var playbackSpeed:Float? = 1.0
@@ -64,6 +66,8 @@ class PodcastSettings {
     var getContinuousPlay:Bool = true
     var enableTranscriptions: Bool = true
     var enableAutomaticOnDeviceTranscriptions: Bool = true
+    /// Publisher transcript timing alignment is an independent, explicit opt-in.
+    var enablePublisherTranscriptSynchronization: Bool = false
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
     /// Dynamic advertisement detection is deliberately opt-in and independent
     /// from transcript generation and automatic skipping.

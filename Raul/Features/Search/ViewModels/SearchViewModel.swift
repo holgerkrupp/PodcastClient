@@ -4,12 +4,12 @@ import Combine
 @MainActor
 class PodcastSearchViewModel: ObservableObject {
     @Published var searchText = ""
-    @Published var results: [PodcastFeed] = []
+    @Published var searchResults: [PodcastFeed] = []
     @Published var isLoading = false
     @Published var hotPodcasts: [PodcastFeed] = []
+    @Published var hotErrorMessage: String?
     @Published var regions: [PodcastRegion] = []
     @Published var singlePodcast: PodcastFeed?
-    @Published var searchResults: [PodcastFeed] = []
     @Published private(set) var isDirectURLInput = false
     @Published private(set) var urlErrorMessage: String?
 
@@ -17,7 +17,6 @@ class PodcastSearchViewModel: ObservableObject {
         didSet {
             guard selectedRegion != oldValue else { return }
             Task {
-                await iTunesActor.setCountry(selectedRegion ?? "us")
                 await loadHotPodcasts()
             }
         }
@@ -31,6 +30,8 @@ class PodcastSearchViewModel: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var searchTask: Task<Void, Never>?
+    private var searchGeneration = 0
+    private var hotRequestGeneration = 0
     private let iTunesActor = ITunesSearchActor()
     private let treatsDirectURLsAsPrivate: Bool
     private let recentSearchStore: PodcastRecentSearchStore
@@ -54,11 +55,11 @@ class PodcastSearchViewModel: ObservableObject {
     }
 
     func performSearch() {
+        searchGeneration &+= 1
+        let generation = searchGeneration
         searchTask?.cancel()
         searchTask = nil
         singlePodcast = nil
-        searchResults.removeAll()
-        results.removeAll()
         shouldPromptForBasicAuth = false
         shouldPromptForBearerToken = false
         pendingURLForAuth = nil
@@ -67,6 +68,7 @@ class PodcastSearchViewModel: ObservableObject {
 
         let trimmedSearchText = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedSearchText.isEmpty == false else {
+            searchResults.removeAll()
             isDirectURLInput = false
             isLoading = false
             return
@@ -76,6 +78,7 @@ class PodcastSearchViewModel: ObservableObject {
 
         if let url = PodcastSearchInputRecognizer.url(from: searchText) {
             isDirectURLInput = true
+            searchResults.removeAll()
             let searchedText = searchText
             searchTask = Task { [weak self] in
                 guard let self else { return }
@@ -91,7 +94,7 @@ class PodcastSearchViewModel: ObservableObject {
                     }
 
                     try Task.checkCancellation()
-                    guard self.searchText == searchedText else { return }
+                    guard generation == self.searchGeneration, self.searchText == searchedText else { return }
 
                     switch resolution {
                     case .podcast(let podcastFeed):
@@ -108,26 +111,26 @@ class PodcastSearchViewModel: ObservableObject {
                 } catch let error as URLError where error.code == .cancelled {
                     return
                 } catch PodcastFeedResolverError.authenticationRequired(let protectedURL) {
-                    guard self.searchText == searchedText else { return }
+                    guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                     self.pendingURLForAuth = protectedURL
                     self.shouldPromptForBasicAuth = true
                     self.isLoading = false
                     return
                 } catch PodcastFeedResolverError.bearerAuthenticationRequired(let protectedURL) {
-                    guard self.searchText == searchedText else { return }
+                    guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                     self.pendingURLForAuth = protectedURL
                     self.shouldPromptForBearerToken = true
                     self.isLoading = false
                     return
                 } catch {
-                    guard self.searchText == searchedText else { return }
+                    guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                     // Keep the URL in the field for correction or retry. The
                     // error is deliberately URL-free because query parameters
                     // on personal feeds can contain credentials.
                     self.urlErrorMessage = Self.userFacingURLFailure(for: error)
                 }
 
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                 self.isLoading = false
             }
         } else {
@@ -135,13 +138,15 @@ class PodcastSearchViewModel: ObservableObject {
             let searchedText = trimmedSearchText
             searchTask = Task { [weak self] in
                 guard let self else { return }
+                let signpostID = PodcastDiscoverySignposts.begin("Catalog Search")
                 let iTunesPodcasts = await iTunesActor.search(for: searchedText) ?? []
-                guard Task.isCancelled == false else { return }
-                guard self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == searchedText else {
+                PodcastDiscoverySignposts.end("Catalog Search", id: signpostID, count: iTunesPodcasts.count)
+                guard Task.isCancelled == false, generation == self.searchGeneration else { return }
+                guard generation == self.searchGeneration,
+                      self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == searchedText else {
                     return
                 }
                 self.searchResults = iTunesPodcasts.uniqued(by: [ { AnyHashable($0.url) } ])
-                self.results = self.searchResults
                 self.isLoading = false
                 self.recentSearchStore.record(searchedText)
             }
@@ -149,6 +154,7 @@ class PodcastSearchViewModel: ObservableObject {
     }
 
     func cancelPendingSearch() {
+        searchGeneration &+= 1
         searchTask?.cancel()
         searchTask = nil
     }
@@ -163,6 +169,8 @@ class PodcastSearchViewModel: ObservableObject {
     /// Accepts credentials, rebuilds URL with user:pass@host, retries, and continues to resolve feed.
     func submitBasicAuth(username: String, password: String) {
         guard let baseURL = pendingURLForAuth else { return }
+        searchGeneration &+= 1
+        let generation = searchGeneration
         let searchedText = searchText
         isLoading = true
         authErrorMessage = nil
@@ -178,7 +186,7 @@ class PodcastSearchViewModel: ObservableObject {
                     credential: .httpBasic(username: username, password: password)
                 )
 
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
 
                 switch resolution {
                 case .podcast(let podcastFeed):
@@ -195,12 +203,12 @@ class PodcastSearchViewModel: ObservableObject {
                     self.shouldPromptForBearerToken = true
                 }
             } catch PodcastFeedResolverError.authenticationRequired {
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                 self.authErrorMessage = "Authentication failed. Please check your credentials."
                 self.isLoading = false
                 self.shouldPromptForBasicAuth = true
             } catch {
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                 self.authErrorMessage = "Failed to reach URL."
                 self.isLoading = false
             }
@@ -209,6 +217,8 @@ class PodcastSearchViewModel: ObservableObject {
 
     func submitBearerToken(_ token: String) {
         guard let baseURL = pendingURLForAuth else { return }
+        searchGeneration &+= 1
+        let generation = searchGeneration
         let searchedText = searchText
         isLoading = true
         authErrorMessage = nil
@@ -221,7 +231,7 @@ class PodcastSearchViewModel: ObservableObject {
                     url: baseURL,
                     credential: .bearerToken(token)
                 )
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                 switch resolution {
                 case .podcast(let podcastFeed):
                     self.singlePodcast = podcastFeed
@@ -237,7 +247,7 @@ class PodcastSearchViewModel: ObservableObject {
                     self.isLoading = false
                 }
             } catch {
-                guard self.searchText == searchedText else { return }
+                guard generation == self.searchGeneration, self.searchText == searchedText else { return }
                 self.authErrorMessage = "Authentication failed. Please check the token."
                 self.shouldPromptForBearerToken = true
                 self.isLoading = false
@@ -267,8 +277,20 @@ class PodcastSearchViewModel: ObservableObject {
     
     // Fetch the top ("hot") podcasts for the selected region.
     func loadHotPodcasts() async {
+        let region = selectedRegion ?? PodcastRegion.defaultRegionCode
+        hotRequestGeneration &+= 1
+        let generation = hotRequestGeneration
         isLoading = true
-        hotPodcasts = await iTunesActor.getTopPodcasts(limit: 30)
+        hotErrorMessage = nil
+        let signpostID = PodcastDiscoverySignposts.begin("Hot Podcast Chart")
+        let fetched = await iTunesActor.getTopPodcasts(limit: 30, country: region)
+        PodcastDiscoverySignposts.end("Hot Podcast Chart", id: signpostID, count: fetched.count)
+        guard generation == hotRequestGeneration,
+              selectedRegion?.lowercased() == region.lowercased() else { return }
+        hotPodcasts = fetched
         isLoading = false
+        if fetched.isEmpty {
+            hotErrorMessage = "Couldn’t load the chart or it has no results. Check your connection and try again."
+        }
     }
 }

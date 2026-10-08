@@ -436,6 +436,10 @@ struct PodcastSettingsView: View {
                 )
             }
         }
+
+        AutoDownloadEpisodeFilterEditor(settings: settings) {
+            saveAndNotify(autoDownloadPolicyChanged: true)
+        }
     }
 
     private func globalSettingsRoot(
@@ -1221,6 +1225,10 @@ struct PodcastSettingsView: View {
                         }
                     )
                 )
+
+                AutoDownloadEpisodeFilterEditor(settings: settings) {
+                    saveAndNotify(autoDownloadPolicyChanged: true)
+                }
             }
 
             Text("Keeps only the selected oldest or newest unplayed episodes for this podcast downloaded on device. Optionally includes back catalog episodes from initial imports.")

@@ -7,31 +7,19 @@
 
 import SwiftUI
 import SwiftData
+import ESADesignKit
 
 struct SubscribeToPodcastView: View {
     @Environment(\.modelContext) private var modelContext
 
-    @Query private var allPodcasts: [Podcast]
     @Bindable var newPodcastFeed: PodcastFeed
-    @State private var previewPodcast: Podcast
+    var existingPodcast: Podcast?
     private let showsBrowseNavigationLink: Bool
 
-    init(newPodcastFeed: PodcastFeed, showsBrowseNavigationLink: Bool = true) {
+    init(newPodcastFeed: PodcastFeed, existingPodcast: Podcast? = nil, showsBrowseNavigationLink: Bool = true) {
         self.newPodcastFeed = newPodcastFeed
+        self.existingPodcast = existingPodcast
         self.showsBrowseNavigationLink = showsBrowseNavigationLink
-        let previewPodcast = Podcast(from: newPodcastFeed)
-        previewPodcast.metaData?.isSubscribed = false
-        previewPodcast.metaData?.subscriptionDate = nil
-        _previewPodcast = State(initialValue: previewPodcast)
-        _allPodcasts = Query()
-    }
-
-    private var existingPodcast: Podcast? {
-        allPodcasts.first { newPodcastFeed.matchesExistingPodcast($0) }
-    }
-
-    private var displayedPodcast: Podcast {
-        existingPodcast ?? previewPodcast
     }
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
@@ -39,7 +27,7 @@ struct SubscribeToPodcastView: View {
     }
 
     private var podcastTrailers: [PodcastTrailer] {
-        displayedPodcast.optionalTags?.podcastTrailers(baseURL: displayedPodcast.feed) ?? []
+        newPodcastFeed.optionalTags?.podcastTrailers(baseURL: newPodcastFeed.url) ?? []
     }
 
     private var deadFeedStatus: URLstatus? {
@@ -55,7 +43,11 @@ struct SubscribeToPodcastView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
-                PodcastRowView(podcast: displayedPodcast)
+                if let existingPodcast {
+                    PodcastRowView(podcast: existingPodcast)
+                } else {
+                    PodcastDiscoveryPreviewRowView(feed: newPodcastFeed, isSubscribed: newPodcastFeed.existing)
+                }
 
                 if showsBrowseNavigationLink, newPodcastFeed.url != nil, deadFeedStatus == nil {
                     NavigationLink(destination: PodcastBrowseView(feed: newPodcastFeed, modelContainer: modelContext.container)) {
@@ -116,37 +108,98 @@ struct SubscribeToPodcastView: View {
 
             PodcastTrailerButton(
                 trailers: podcastTrailers,
-                podcastTitle: displayedPodcast.title,
-                artworkURL: displayedPodcast.imageURL
+                podcastTitle: newPodcastFeed.title ?? "New Podcast",
+                artworkURL: newPodcastFeed.artworkURL
             )
         }
         .buttonStyle(.plain)
-        .onChange(of: newPodcastFeed.previewRefreshID) {
-            updatePreviewPodcast()
+    }
+}
+
+private struct PodcastDiscoveryPreviewRowView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.esaVisualStyle) private var visualStyle
+    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
+    @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
+    @State private var compactDescription: String?
+
+    let feed: PodcastFeed
+    let isSubscribed: Bool
+
+    private var title: String {
+        feed.title ?? feed.url.map { $0.isLikelyPrivatePodcastURL ? $0.redactedPodcastURLString : $0.absoluteString } ?? "New Podcast"
+    }
+
+    var body: some View {
+        let content = HStack(spacing: 14) {
+            CoverImageView(imageURL: feed.artworkURL, maxPixelSize: 384)
+                .frame(width: artworkSize, height: artworkSize)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(title)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .esaForeground(.primary)
+
+                if let author = feed.artist, author.isEmpty == false {
+                    Text(author)
+                        .font(.subheadline)
+                        .esaForeground(.secondary)
+                        .lineLimit(1)
+                }
+
+                if let compactDescription, compactDescription.isEmpty == false {
+                    Text(compactDescription)
+                        .font(.caption)
+                        .esaForeground(.secondary)
+                        .lineLimit(3)
+                }
+
+                Label(isSubscribed ? "Subscribed" : "Not Subscribed", systemImage: isSubscribed ? "checkmark.circle" : "pause.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(isSubscribed ? .green : .orange)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+        .background {
+            if visualStyle == .artwork && colorSchemeContrast == .standard {
+                Rectangle().fill(.thinMaterial)
+            }
+        }
+
+        Group {
+            if visualStyle != .artwork {
+                content.ESA_RowView(image: feed.artworkURL, minHeight: rowHeight)
+            } else if colorSchemeContrast == .increased {
+                content.background(Color(white: colorScheme == .dark ? 0 : 1))
+            } else {
+                ZStack {
+                    BlurredCoverImageView(
+                        imageURL: feed.artworkURL,
+                        maxPixelSize: 512,
+                        loadDelay: .milliseconds(200)
+                    )
+                    .scaledToFill()
+                    .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
+                    .clipped()
+                    .accessibilityHidden(true)
+                    content
+                }
+            }
+        }
+        .task(id: feed.description) {
+            guard let description = feed.description, description.isEmpty == false else {
+                compactDescription = nil
+                return
+            }
+            compactDescription = description.plainTextFromHTML() ?? description
         }
     }
-
-    private func updatePreviewPodcast() {
-        previewPodcast.feed = newPodcastFeed.url
-        previewPodcast.title = newPodcastFeed.title
-            ?? newPodcastFeed.url.map {
-                $0.isLikelyPrivatePodcastURL
-                    ? $0.redactedPodcastURLString
-                    : ($0.absoluteString.removingPercentEncoding ?? $0.absoluteString)
-            }
-            ?? "New Podcast"
-        previewPodcast.desc = newPodcastFeed.description
-        previewPodcast.author = newPodcastFeed.artist
-        previewPodcast.imageURL = newPodcastFeed.artworkURL
-        previewPodcast.link = newPodcastFeed.link
-        previewPodcast.copyright = newPodcastFeed.copyright
-        previewPodcast.funding = newPodcastFeed.funding
-        previewPodcast.social = newPodcastFeed.social
-        previewPodcast.people = newPodcastFeed.people
-        previewPodcast.alternativeFeeds = newPodcastFeed.alternativeFeeds
-        previewPodcast.optionalTags = newPodcastFeed.optionalTags
-    }
-
 }
 
 struct PodcastTrailerButton: View {

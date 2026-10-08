@@ -259,7 +259,7 @@ private struct LibraryPlaylistsView: View {
     @State private var showCreatePlaylistSheet: Bool = false
 
     private var visiblePlaylists: [Playlist] {
-        Playlist.manualVisibleSorted(playlists)
+        Playlist.visibleSorted(playlists)
     }
 
     var body: some View {
@@ -309,6 +309,7 @@ private struct LibraryPlaylistsView: View {
     }
 
     private func itemCount(for playlist: Playlist) -> Int {
+        guard playlist.isSmartPlaylist == false else { return 0 }
         return playlist.ordered.reduce(into: 0) { partialResult, entry in
             if entry.episode != nil {
                 partialResult += 1
@@ -318,7 +319,7 @@ private struct LibraryPlaylistsView: View {
 
     private func ensurePlaylistPreferencesValid() {
         let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
-        let currentPlaylists = Playlist.manualVisibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
+        let currentPlaylists = Playlist.visibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
         let allIDs = Set(currentPlaylists.map(\.id))
 
         if let selectedID = UUID(uuidString: selectedPlaylistID),
@@ -331,7 +332,13 @@ private struct LibraryPlaylistsView: View {
     }
 
     private func createPlaylist(from draft: PlaylistCreationDraft) {
-        PlaylistLibrary.create(name: draft.name, symbolName: draft.symbolName, in: modelContext)
+        PlaylistLibrary.create(
+            name: draft.name,
+            symbolName: draft.symbolName,
+            kind: draft.kind,
+            smartFilter: draft.smartFilter,
+            in: modelContext
+        )
     }
 
     private func playlistRowContent(for playlist: Playlist) -> some View {
@@ -344,7 +351,7 @@ private struct LibraryPlaylistsView: View {
 
             Spacer()
 
-            Text(itemCount(for: playlist), format: .number)
+            Text(playlist.isSmartPlaylist ? "Smart" : String(itemCount(for: playlist)))
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
 

@@ -20,8 +20,21 @@ struct PodcastCategoryView: View {
     var body: some View {
         Group {
             if viewModel.isRoot && viewModel.genres.isEmpty {
-                ProgressView("Loading categories...")
+                if viewModel.isLoading {
+                    ProgressView("Loading categories...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    VStack(spacing: 12) {
+                        ContentUnavailableView(
+                            "Categories Unavailable",
+                            systemImage: "square.grid.2x2",
+                            description: Text(viewModel.errorMessage ?? "Couldn’t load podcast categories.")
+                        )
+                        Button("Try Again") { viewModel.loadIfNeeded(forceReload: true) }
+                            .buttonStyle(.borderedProminent)
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             } else {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 16) {
@@ -96,6 +109,8 @@ private struct CategoryCard: View {
 private struct PodcastCategoryViewLeaf: View {
     @StateObject private var viewModel: CategoryPodcastViewModel
     @Environment(\.modelContext) private var context
+    @Query private var allPodcasts: [Podcast]
+    @State private var subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: [])
 
     init(genre: AppleGenre) {
         _viewModel = StateObject(wrappedValue: CategoryPodcastViewModel(genres: [], selectedGenre: genre))
@@ -106,13 +121,19 @@ private struct PodcastCategoryViewLeaf: View {
             if viewModel.isLoading && viewModel.podcasts.isEmpty {
                 ProgressView("Loading podcasts...")
             } else if viewModel.podcasts.isEmpty {
-                Text("No podcasts found")
-                    .foregroundColor(.secondary)
-                    .padding()
+                VStack(spacing: 12) {
+                    ContentUnavailableView(
+                        "No Podcasts Found",
+                        systemImage: "dot.radiowaves.left.and.right",
+                        description: Text(viewModel.errorMessage ?? "The chart is empty or unavailable right now.")
+                    )
+                    Button("Try Again") { viewModel.loadPodcastsForSelectedGenre(forceReload: true) }
+                        .buttonStyle(.borderedProminent)
+                }
             } else {
                 List {
                     ForEach(viewModel.podcasts, id: \.self) { podcast in
-                        SubscribeToPodcastView(newPodcastFeed: podcast)
+                        SubscribeToPodcastView(newPodcastFeed: podcast, existingPodcast: existingPodcast(for: podcast))
                             .modelContext(context)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
@@ -126,6 +147,16 @@ private struct PodcastCategoryViewLeaf: View {
         .onAppear {
             viewModel.loadPodcastsForSelectedGenre()
         }
+        .task {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
+        .onChange(of: allPodcasts.map(PodcastDiscoverySubscriptionLookup.signature(for:))) {
+            subscriptionLookup = PodcastDiscoverySubscriptionLookup(podcasts: allPodcasts)
+        }
+    }
+
+    private func existingPodcast(for feed: PodcastFeed) -> Podcast? {
+        subscriptionLookup.existingPodcast(for: feed, context: context)
     }
 }
 
@@ -134,11 +165,13 @@ final class CategoryPodcastViewModel: ObservableObject {
     @Published var genres: [AppleGenre]
     @Published var podcasts: [PodcastFeed] = []
     @Published var isLoading = false
+    @Published var errorMessage: String?
 
     let isRoot: Bool
     let selectedGenre: AppleGenre?
     private let title: String?
     private var didLoadPodcasts = false
+    private var requestGeneration = 0
     private let iTunesActor = ITunesSearchActor()
 
     var hasSubgenres: Bool { !genres.isEmpty }
@@ -162,22 +195,41 @@ final class CategoryPodcastViewModel: ObservableObject {
         self.isRoot = genres.isEmpty && selectedGenre == nil
     }
 
-    func loadIfNeeded() {
-        guard isRoot, genres.isEmpty else { return }
+    func loadIfNeeded(forceReload: Bool = false) {
+        guard isRoot, isLoading == false, forceReload || genres.isEmpty else { return }
+        requestGeneration &+= 1
+        let generation = requestGeneration
+        isLoading = true
+        errorMessage = nil
         Task {
             let fetched = await iTunesActor.getGenres()
+            guard generation == requestGeneration else { return }
             self.genres = fetched
+            self.isLoading = false
+            if fetched.isEmpty {
+                self.errorMessage = "Couldn’t load podcast categories. Check your connection and try again."
+            }
         }
     }
 
-    func loadPodcastsForSelectedGenre() {
-        guard let genre = selectedGenre, didLoadPodcasts == false else { return }
+    func loadPodcastsForSelectedGenre(forceReload: Bool = false) {
+        guard let genre = selectedGenre,
+              isLoading == false,
+              forceReload || didLoadPodcasts == false else { return }
+        requestGeneration &+= 1
+        let generation = requestGeneration
         didLoadPodcasts = true
         isLoading = true
+        errorMessage = nil
         Task {
             let fetched = await iTunesActor.getTopPodcasts(genreID: genre.id, limit: 50)
+            guard generation == requestGeneration else { return }
             self.podcasts = fetched
             self.isLoading = false
+            if fetched.isEmpty {
+                self.didLoadPodcasts = false
+                self.errorMessage = "Couldn’t load this chart or it has no results. Check your connection and try again."
+            }
         }
     }
 }

@@ -87,12 +87,30 @@ actor PlaylistAutoDownloadService {
         let targetEpisodes = playlist.resolvedAutoDownloadEpisodeLimit
             .map { Array(orderedEpisodes.prefix($0)) } ?? orderedEpisodes
 
+        let globalTitle = "de.holgerkrupp.podbay.queue"
+        var globalDescriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate<PodcastSettings> { $0.title == globalTitle }
+        )
+        globalDescriptor.fetchLimit = 1
+        let globalSettings = try? modelContext.fetch(globalDescriptor).first
+
         return targetEpisodes.compactMap { episode -> URL? in
             guard let episodeURL = episode.url else { return nil }
             // A sideloaded file has no remote to fetch, and anything already on
             // disk is nothing to re-fetch.
             guard episode.source != .sideLoaded else { return nil }
             guard episode.metaData?.calculatedIsAvailableLocally != true else { return nil }
+            let customSettings = episode.podcast?.settings
+            let resolvedSettings = customSettings?.isEnabled == true ? customSettings : globalSettings
+            if let resolvedSettings,
+               resolvedSettings.autoDownloadFilter.allows(
+                   title: episode.title,
+                   duration: episode.duration,
+                   publishDate: episode.publishDate,
+                   type: episode.type
+               ) == false {
+                return nil
+            }
             return episodeURL
         }
     }

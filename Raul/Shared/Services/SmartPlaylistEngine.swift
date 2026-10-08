@@ -44,7 +44,7 @@ enum SmartPlaylistEngine {
         }
 
         guard activeRules.isEmpty == false else {
-            return true
+            return filter.requireDownloaded || filter.includeArchived
         }
 
         let evaluations = activeRules.map { rule in

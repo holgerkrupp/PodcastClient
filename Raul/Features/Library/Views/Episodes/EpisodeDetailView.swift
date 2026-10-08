@@ -464,7 +464,8 @@ struct EpisodeDetailView: View {
                     speaker: line.speaker,
                     text: line.text,
                     startTime: line.startTime,
-                    endTime: line.endTime
+                    endTime: line.endTime,
+                    source: .publisher
                 )
             }
             .sorted {

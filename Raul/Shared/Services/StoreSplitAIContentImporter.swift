@@ -198,6 +198,7 @@ actor StoreSplitAIContentImporter {
 
         let publisherLines = existingLines.filter {
             $0.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+                || $0.sourceRawValue == CachedTranscriptSource.unknown.rawValue
         }
         if publisherLines.isEmpty == false,
            receipt.transcriptRevisionID == nil,

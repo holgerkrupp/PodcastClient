@@ -435,6 +435,7 @@ actor StoreSplitUserStateImporter {
                 setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
                 setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)
                 setIfChanged(settings, \.voiceEnhancementEnabled, record.voiceEnhancementEnabled)
+                setIfChanged(settings, \.autoDownloadFilterJSON, record.autoDownloadFilterJSON)
                 if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
                    let keywords = try? decoder.decode([skipKey].self, from: data) {
                     if let existingData = try? JSONEncoder().encode(settings.autoSkipKeywords),

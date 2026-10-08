@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import os
 
 struct ShownoteDocument: Sendable {
@@ -18,11 +19,28 @@ struct ShownoteDocument: Sendable {
 actor ShownoteParser {
     static let shared = ShownoteParser()
 
+    private var cachedDocuments: [String: ShownoteDocument] = [:]
+    private var cacheOrder: [String] = []
+    private let cacheLimit = 2
+
     func parse(_ html: String) -> ShownoteDocument {
+        let key = SHA256.hash(data: Data(html.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        if let cached = cachedDocuments[key] {
+            return cached
+        }
         let signpostID = OSSignpostID(log: ShownotePerformance.log)
         os_signpost(.begin, log: ShownotePerformance.log, name: "Shownote parse", signpostID: signpostID)
         defer { os_signpost(.end, log: ShownotePerformance.log, name: "Shownote parse", signpostID: signpostID) }
-        return ShownoteDocument(html: html)
+        let document = ShownoteDocument(html: html)
+        cachedDocuments[key] = document
+        cacheOrder.append(key)
+        if cacheOrder.count > cacheLimit {
+            let evicted = cacheOrder.removeFirst()
+            cachedDocuments.removeValue(forKey: evicted)
+        }
+        return document
     }
 }
 

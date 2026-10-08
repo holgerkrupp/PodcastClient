@@ -19,6 +19,7 @@ struct PlaylistSettingsView: View {
     @Query private var allPlaylists: [Playlist]
 
     @State private var draftName: String = ""
+    @State private var smartFilterDraft = SmartPlaylistFilter()
     @State private var routedPodcasts: [PlaylistRoutedPodcast] = []
     @State private var hasLoadedRoutedPodcasts = false
     @FocusState private var isNameFocused: Bool
@@ -90,6 +91,12 @@ struct PlaylistSettingsView: View {
                 )
             }
 
+            if playlist.isSmartPlaylist {
+                SmartPlaylistFilterEditor(filter: $smartFilterDraft)
+                Text("Smart playlists contain matching library episodes automatically. Membership is derived and does not change your manual playlists or queue.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
             Section("Automatic Downloads") {
                 Toggle(
                     "Download episodes automatically",
@@ -163,6 +170,7 @@ struct PlaylistSettingsView: View {
             }
 
             routedPodcastsSection
+            }
 
             Section {
                 LabeledContent("Episodes in playlist") {
@@ -175,6 +183,7 @@ struct PlaylistSettingsView: View {
         .platformInlineNavigationTitle()
         .task {
             draftName = playlist.displayTitle
+            smartFilterDraft = playlist.smartFilter ?? SmartPlaylistFilter()
             await loadRoutedPodcasts()
         }
         .onChange(of: isNameFocused) { _, isFocused in
@@ -182,7 +191,10 @@ struct PlaylistSettingsView: View {
                 commitName()
             }
         }
-        .onDisappear { commitName() }
+        .onDisappear {
+            commitName()
+            commitSmartFilter()
+        }
         .onReceive(
             NotificationCenter.default.publisher(for: .podcastSettingsDidChange)
         ) { _ in
@@ -294,6 +306,13 @@ struct PlaylistSettingsView: View {
         )
         playlist.title = uniqueName
         draftName = uniqueName
+        save()
+    }
+
+    private func commitSmartFilter() {
+        guard playlist.isSmartPlaylist,
+              playlist.smartFilter != smartFilterDraft else { return }
+        playlist.smartFilter = smartFilterDraft
         save()
     }
 

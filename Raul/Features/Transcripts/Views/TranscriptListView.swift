@@ -20,6 +20,7 @@ private struct TranscriptDisplayRow: Identifiable {
 struct TranscriptListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
     let transcriptLines: [TranscriptLineAndTime]
     let episode: Episode?
     let searchNavigation: TranscriptSearchNavigation?
@@ -78,8 +79,12 @@ struct TranscriptListView: View {
     }
 
     private var activeTranscriptLineID: UUID? {
-        guard isShowingCurrentEpisode, player.playPosition.isFinite else { return nil }
-        return transcriptLineID(at: player.playPosition)
+        guard isShowingCurrentEpisode,
+              let transcriptTime = synchronizationStore.transcriptTime(
+                forAudioTime: player.playPosition,
+                episodeURL: viewedEpisodeURL
+              ), transcriptTime.isFinite else { return nil }
+        return transcriptLineID(at: transcriptTime)
     }
 
     private var activeDisplayRowID: UUID? {
@@ -285,8 +290,12 @@ struct TranscriptListView: View {
 
     @MainActor
     private func playTranscript(at time: TimeInterval) async {
+        let audioTime = synchronizationStore.audioTime(
+            forTranscriptTime: time,
+            episodeURL: viewedEpisodeURL
+        ) ?? time
         guard let viewedEpisodeURL else {
-            await player.jumpTo(time: time)
+            await player.jumpTo(time: audioTime)
             if player.isPlaying == false {
                 player.play()
             }
@@ -294,12 +303,12 @@ struct TranscriptListView: View {
         }
 
         if player.currentEpisodeURL == viewedEpisodeURL {
-            await player.jumpTo(time: time)
+            await player.jumpTo(time: audioTime)
             if player.isPlaying == false {
                 player.play()
             }
         } else {
-            await player.playEpisode(viewedEpisodeURL, playDirectly: true, startingAt: time)
+            await player.playEpisode(viewedEpisodeURL, playDirectly: true, startingAt: audioTime)
         }
     }
 
