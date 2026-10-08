@@ -46,7 +46,9 @@ final class PhoneWatchSyncController: NSObject {
         session.activate()
     }
 
-    func refreshSnapshotAndTransfers(forcePush: Bool = true) async {
+    // Force only explicit recovery/initial handshake requests. Ordinary
+    // queue changes are signature-checked to avoid redundant WCSession work.
+    func refreshSnapshotAndTransfers(forcePush: Bool = false) async {
         pendingRefreshTask?.cancel()
         pendingRefreshTask = nil
         await performRefreshSnapshotAndTransfers(forcePush: forcePush)
@@ -490,10 +492,10 @@ final class PhoneWatchSyncController: NSObject {
            let report = WatchSyncTransport.decode(WatchStorageReport.self, from: data) {
             let shouldRefresh = storageReportDidChange(report)
             lastStorageReport = report
-            #if DEBUG
-            print("Watch sync received storage report: used=\(report.usedBytes), max=\(report.maxStorageBytes), downloads=\(report.downloadedEpisodeIDs.count)")
-            #endif
             if shouldRefresh {
+                #if DEBUG
+                print("Watch sync storage changed: used=\(report.usedBytes), max=\(report.maxStorageBytes), downloads=\(report.downloadedEpisodeIDs.count)")
+                #endif
                 await refreshSnapshotAndTransfers()
             }
         }
@@ -522,7 +524,7 @@ final class PhoneWatchSyncController: NSObject {
 
         switch command.kind {
         case .requestSnapshot:
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
 
         case .refreshInbox:
             let subscriptionManager = SubscriptionManager(modelContainer: container)
@@ -770,7 +772,7 @@ extension PhoneWatchSyncController: WCSessionDelegate {
     ) {
         Task { @MainActor in
             guard error == nil, activationState == .activated else { return }
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
         }
     }
 
@@ -784,7 +786,7 @@ extension PhoneWatchSyncController: WCSessionDelegate {
 
     nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
         Task { @MainActor in
-            await refreshSnapshotAndTransfers()
+            await refreshSnapshotAndTransfers(forcePush: true)
         }
     }
 
