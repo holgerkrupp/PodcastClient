@@ -178,6 +178,13 @@ actor PodcastModelActor {
 
     private func recordFeedRefreshSuccess(metadataID: PersistentIdentifier) {
         guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
+        guard metadata.consecutiveFeedFailureCount != 0
+            || metadata.firstConsecutiveFeedFailureDate != nil
+            || metadata.lastFeedFailureDate != nil
+            || metadata.lastFeedFailureStatusCode != nil
+            || metadata.lastFeedFailureMessage != nil
+            || metadata.credentialState != .available
+            || metadata.authenticationRetryAfter != nil else { return }
         metadata.consecutiveFeedFailureCount = 0
         metadata.firstConsecutiveFeedFailureDate = nil
         metadata.lastFeedFailureDate = nil
@@ -548,13 +555,6 @@ actor PodcastModelActor {
         await fetchPodcast(byFeed: podcastFeed)?.title
     }
     
-    func setFeedUpdated(_ metaDataID: PersistentIdentifier, to updated: Bool? = nil) async {
-        guard let metaData: PodcastMetaData = modelContext.existingModel(for: metaDataID) else { return }
-        metaData.feedUpdateCheckDate = Date()
-        metaData.feedUpdated = updated
-        modelContext.saveIfNeeded()
-    }
-    
     func linkEpisodeToPodcast(
         _ episodeURL: URL,
         _ podcastFeed: URL,
@@ -735,10 +735,17 @@ actor PodcastModelActor {
         // subscription. `updatePodcast` resolves, parses and verifies it
         // before committing a replacement endpoint.
         
-        await setFeedUpdated(freshMeta.persistentModelID, to: nil)
-
         // Treat the preflight request as advisory only. Some feeds either reject HEAD
         // requests or return stale/missing Last-Modified values.
+        var feedWasUpdated: Bool?
+        defer {
+            // Keep the status in memory until the caller has handled the
+            // result. Persisting "checking", then "unchanged", then clearing
+            // old errors made one empty feed check create several CloudKit
+            // history transactions for the legacy graph.
+            freshMeta.feedUpdateCheckDate = now
+            freshMeta.feedUpdated = feedWasUpdated
+        }
         guard let statusCode = status?.statusCode else {
             return nil
         }
@@ -751,7 +758,6 @@ actor PodcastModelActor {
             freshMeta.lastFeedFailureMessage = status?.displayMessage
             freshMeta.consecutiveFeedFailureCount = 0
             freshMeta.firstConsecutiveFeedFailureDate = nil
-            modelContext.saveIfNeeded()
             return nil
         }
 
@@ -764,7 +770,7 @@ actor PodcastModelActor {
         }
 
         if serverLastModified > (lastRefreshSnapshot ?? .distantPast) {
-            await setFeedUpdated(freshMeta.persistentModelID, to: true)
+            feedWasUpdated = true
             return true
         }
 
@@ -773,7 +779,7 @@ actor PodcastModelActor {
             return nil
         }
 
-        await setFeedUpdated(freshMeta.persistentModelID, to: false)
+        feedWasUpdated = false
         return false
     }
     
@@ -1123,6 +1129,9 @@ actor PodcastModelActor {
                 logRefreshResult("not-modified")
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
+            // A full parse crosses another async boundary. Commit the single
+            // preflight status update before that work can be cancelled.
+            modelContext.saveIfNeeded()
         }
         try checkRefreshDeadline(deadline)
 
@@ -1600,7 +1609,10 @@ actor PodcastModelActor {
         // writes when the cache is the durable source for the runtime graph. With
         // the on-disk library store authoritative, the mirror would duplicate
         // every episode on every refresh for nothing.
-        let projection = StoreDevelopmentConfiguration.runtimeStoreIsInMemoryProjection
+        let projectsFromCache = await MainActor.run {
+            ModelContainerManager.shared.runtimeProjectsFromCache
+        }
+        let projection = projectsFromCache
             ? StoreSplitFeedCacheWriter.projectFeed(
                 feedURL: feedURL,
                 legacyContainer: modelContainer,

@@ -33,9 +33,14 @@ class PodcastSearchViewModel: ObservableObject {
     private var searchTask: Task<Void, Never>?
     private let iTunesActor = ITunesSearchActor()
     private let treatsDirectURLsAsPrivate: Bool
+    private let recentSearchStore: PodcastRecentSearchStore
 
-    init(treatsDirectURLsAsPrivate: Bool = false) {
+    init(
+        treatsDirectURLsAsPrivate: Bool = false,
+        recentSearchStore: PodcastRecentSearchStore = .shared
+    ) {
         self.treatsDirectURLsAsPrivate = treatsDirectURLsAsPrivate
+        self.recentSearchStore = recentSearchStore
         $searchText
             .debounce(for: .milliseconds(500), scheduler: DispatchQueue.main)
             .removeDuplicates()
@@ -131,12 +136,14 @@ class PodcastSearchViewModel: ObservableObject {
             searchTask = Task { [weak self] in
                 guard let self else { return }
                 let iTunesPodcasts = await iTunesActor.search(for: searchedText) ?? []
+                guard Task.isCancelled == false else { return }
                 guard self.searchText.trimmingCharacters(in: .whitespacesAndNewlines) == searchedText else {
                     return
                 }
                 self.searchResults = iTunesPodcasts.uniqued(by: [ { AnyHashable($0.url) } ])
                 self.results = self.searchResults
                 self.isLoading = false
+                self.recentSearchStore.record(searchedText)
             }
         }
     }

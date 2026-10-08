@@ -48,6 +48,13 @@ enum StoreSplitFeedCacheWriter {
         var completed = true
     }
 
+    struct FeedPriorityBootstrapResult: Sendable {
+        var processed = 0
+        var failed = 0
+        var lastCompletedFeedKey: String?
+        var completed = true
+    }
+
     /// Upserts a single feed's cache rows from the legacy store. Call after a feed
     /// refresh/create has been written to the legacy container.
     @discardableResult
@@ -80,13 +87,28 @@ enum StoreSplitFeedCacheWriter {
         }
         let legacyContext = ModelContext(legacyContainer)
         
-        let optionalFeedURL: URL? = feedURL
-        var descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate { $0.feed == optionalFeedURL }
-        )
-        descriptor.fetchLimit = 1
-        result.fetchCount += 1
-        guard let podcast = try? legacyContext.fetch(descriptor).first,
+        // Resolve identity aliases with indexed equality lookups. This keeps
+        // the old HTTP/HTTPS and credential-free matching behavior without
+        // scanning every Podcast to build a process-wide alias dictionary.
+        let candidateFeeds = ([feedURL] + feedURL.podcastFeedComparisonKeys
+            .sorted()
+            .compactMap(URL.init(string:)))
+            .reduce(into: [URL]()) { feeds, candidate in
+                if feeds.contains(candidate) == false {
+                    feeds.append(candidate)
+                }
+            }
+        let podcast = candidateFeeds.lazy.compactMap { candidate -> Podcast? in
+            guard shouldContinue(deadline: deadline) else { return nil }
+            let optionalFeedURL: URL? = candidate
+            var descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate { $0.feed == optionalFeedURL }
+            )
+            descriptor.fetchLimit = 1
+            result.fetchCount += 1
+            return try? legacyContext.fetch(descriptor).first
+        }.first
+        guard let podcast,
               shouldContinue(deadline: deadline) else {
             result.completed = false
             return result
@@ -280,36 +302,62 @@ enum StoreSplitFeedCacheWriter {
         _ requestedFeeds: [URL],
         legacyContainer: ModelContainer,
         cacheContainer: ModelContainer,
-        limit: Int = 50
+        limit: Int = 50,
+        deadline: Date? = nil
     ) -> Int {
-        guard requestedFeeds.isEmpty == false, limit > 0 else { return 0 }
-        let legacyContext = ModelContext(legacyContainer)
-        let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
-        var podcastsByComparisonKey: [String: URL] = [:]
-        for podcast in podcasts {
-            guard let feed = podcast.feed else { continue }
-            for key in feed.podcastFeedComparisonKeys {
-                podcastsByComparisonKey[key] = feed
-            }
-        }
+        bootstrapPriorityFeedsWithStatus(
+            requestedFeeds,
+            legacyContainer: legacyContainer,
+            cacheContainer: cacheContainer,
+            limit: limit,
+            deadline: deadline
+        ).processed
+    }
 
+    static func bootstrapPriorityFeedsWithStatus(
+        _ requestedFeeds: [URL],
+        legacyContainer: ModelContainer,
+        cacheContainer: ModelContainer,
+        limit: Int = 50,
+        deadline: Date? = nil
+    ) -> FeedPriorityBootstrapResult {
+        var result = FeedPriorityBootstrapResult()
+        guard requestedFeeds.isEmpty == false, limit > 0 else { return result }
         var processed = 0
         var seen = Set<String>()
         for requestedFeed in requestedFeeds where processed < limit {
+            guard shouldContinue(deadline: deadline) else {
+                result.completed = false
+                return result
+            }
             let requestedKey = PodcastFeedIdentity.normalizedFeedURLString(requestedFeed)
             guard seen.insert(requestedKey).inserted else { continue }
-            let sourceFeed = requestedFeed.podcastFeedComparisonKeys
-                .sorted()
-                .compactMap { podcastsByComparisonKey[$0] }
-                .first ?? requestedFeed
-            guard projectFeed(
-                feedURL: sourceFeed,
+            let succeeded = projectFeed(
+                feedURL: requestedFeed,
                 legacyContainer: legacyContainer,
-                cacheContainer: cacheContainer
-            ).completed else { continue }
-            processed += 1
+                cacheContainer: cacheContainer,
+                deadline: deadline
+            ).completed
+            if succeeded {
+                processed += 1
+                result.processed += 1
+                result.lastCompletedFeedKey = requestedKey
+                continue
+            }
+            guard shouldContinue(deadline: deadline) else {
+                result.completed = false
+                return result
+            }
+            recordCheckpoint(
+                feedKey: requestedKey,
+                succeeded: false,
+                error: "priority projection failed",
+                in: cacheContainer
+            )
+            result.failed += 1
+            result.lastCompletedFeedKey = requestedKey
         }
-        return processed
+        return result
     }
 
     /// Records an accepted feed move without rewriting synchronized state keys.

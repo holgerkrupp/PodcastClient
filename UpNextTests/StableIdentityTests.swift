@@ -755,7 +755,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertTrue(status.isRunning)
         XCTAssertFalse(status.isComplete)
         XCTAssertEqual(status.completedPhaseCount, 1)
-        XCTAssertEqual(status.totalPhaseCount, 10)
+        XCTAssertEqual(status.totalPhaseCount, StoreSplitMigrationService.slicePhaseOrder.count)
         XCTAssertEqual(status.scannedItemCount, 262)
         XCTAssertEqual(status.failedItemCount, 1)
         XCTAssertEqual(status.phases.first { $0.id == "episode_states" }?.isComplete, false)
@@ -770,18 +770,7 @@ final class StableIdentityTests: XCTestCase {
             isStoredInMemoryOnly: true
         )
         let context = container.mainContext
-        let phases = [
-            "subscriptions",
-            "episode_states",
-            "playlists",
-            "playlist_entries",
-            "queue_entries",
-            "bookmarks",
-            "listening_history",
-            "listening_summaries",
-            "ai_transcripts",
-            "ai_chapters"
-        ]
+        let phases = StoreSplitMigrationService.slicePhaseOrder
 
         for phase in phases {
             context.insert(

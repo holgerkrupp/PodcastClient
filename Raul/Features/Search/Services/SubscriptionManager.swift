@@ -347,7 +347,14 @@ actor SubscriptionManager:NSObject{
         from draft: PodcastEpisodeDraft,
         in podcast: Podcast
     ) -> Episode? {
-        if let existingEpisode = fetchEpisode(by: draft.episodeURL) {
+        let existingByGUID: Episode? = draft.guid.flatMap { guid in
+            guard guid.isEmpty == false else { return nil }
+            return podcast.episodes?.first {
+                $0.guid?.caseInsensitiveCompare(guid) == .orderedSame
+            }
+        }
+
+        if let existingEpisode = fetchEpisode(by: draft.episodeURL) ?? existingByGUID {
             if existingEpisode.podcast?.feed != podcast.feed {
                 existingEpisode.podcast = podcast
             }
@@ -935,6 +942,16 @@ actor SubscriptionManager:NSObject{
         retryDelay: TimeInterval = BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay,
         now: Date = Date()
     ) async -> Int {
+        guard await MainActor.run(body: {
+            Player.hasActivePlaybackInProcess == false
+                && ModelContainerManager.shared.isCloudKitExportInProgress == false
+        }) else {
+            CrashBreadcrumbs.shared.record(
+                "predicted_release_refresh_skipped",
+                details: "reason=playback_or_cloudkit_export"
+            )
+            return 0
+        }
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_skipped",
@@ -1014,6 +1031,16 @@ actor SubscriptionManager:NSObject{
                 CrashBreadcrumbs.shared.record(
                     "predicted_release_refresh_stopped",
                     details: "reason=cancelled,attempted=\(attemptedCount)"
+                )
+                break
+            }
+            if await MainActor.run(body: {
+                Player.hasActivePlaybackInProcess
+                    || ModelContainerManager.shared.isCloudKitExportInProgress
+            }) {
+                CrashBreadcrumbs.shared.record(
+                    "predicted_release_refresh_stopped",
+                    details: "reason=playback_or_cloudkit_export,attempted=\(attemptedCount)"
                 )
                 break
             }
@@ -1219,6 +1246,12 @@ actor SubscriptionManager:NSObject{
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
             return
         }
+        guard await MainActor.run(body: {
+            ModelContainerManager.shared.isCloudKitExportInProgress == false
+        }) else {
+            CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=cloudkit_export")
+            return
+        }
         guard await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
             return
@@ -1236,6 +1269,7 @@ actor SubscriptionManager:NSObject{
         var processed = 0
         var timedOut = 0
         var stoppedForPlayback = false
+        var stoppedForExporter = false
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
 #endif
@@ -1262,6 +1296,16 @@ actor SubscriptionManager:NSObject{
                 CrashBreadcrumbs.shared.record(
                     "bgupdate_feeds_stopped",
                     details: "reason=playback_started"
+                )
+                break
+            }
+            if await MainActor.run(body: {
+                ModelContainerManager.shared.isCloudKitExportInProgress
+            }) {
+                stoppedForExporter = true
+                CrashBreadcrumbs.shared.record(
+                    "bgupdate_feeds_stopped",
+                    details: "reason=cloudkit_export"
                 )
                 break
             }
@@ -1358,7 +1402,8 @@ actor SubscriptionManager:NSObject{
         // A sweep interrupted before touching a feed must remain eligible on
         // the next foreground entry. An empty candidate set is a completed
         // check and can keep the ordinary refresh cadence.
-        if stoppedForPlayback == false, Task.isCancelled == false,
+        if stoppedForPlayback == false, stoppedForExporter == false,
+           Task.isCancelled == false,
            (processed > 0 || candidates.isEmpty) {
             setLastRefreshDate()
         }

@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 import SwiftUI
 import AVFoundation
 import MediaPlayer
@@ -220,6 +221,11 @@ private enum PlaybackProgressDefaultsStore {
 @Observable
 @MainActor
 class Player {
+    private struct ResolvedArtwork {
+        let image: UIImage
+        let identity: PlayerArtworkIdentity
+    }
+
     private enum PlaybackSource {
         case local
         case remote
@@ -399,6 +405,7 @@ class Player {
     private var skipProtectionExpirationTask: Task<Void, Never>?
     private var artworkLoadTask: Task<Void, Never>?
     private var artworkLoadGeneration: UInt64 = 0
+    private var currentArtworkIdentity: PlayerArtworkIdentity?
 #if !os(watchOS)
     private var currentAudioPlaybackProcessor: AudioPlaybackProcessor?
 #endif
@@ -1761,7 +1768,10 @@ class Player {
         cacheCurrentPlaybackState()
     }
 
-    func captureCurrentPlaybackStateFromEngine(force: Bool = true) async {
+    func captureCurrentPlaybackStateFromEngine(
+        force: Bool = true,
+        persistToStore: Bool = true
+    ) async {
         guard currentEpisodeURL != nil else { return }
         guard currentPlaybackSource != .liveRemote else { return }
 
@@ -1771,7 +1781,14 @@ class Player {
             updateChapterProgress()
         }
         updateNowPlayingInfo()
-        await saveCurrentPlaybackState(force: force)
+        if persistToStore {
+            await saveCurrentPlaybackState(force: force)
+        } else {
+            // Suspension can follow immediately. Keep the exact position in
+            // the recovery snapshot without creating CloudKit history that
+            // Core Data might still be exporting when iOS takes the SQLite lock.
+            cacheCurrentPlaybackState()
+        }
     }
 
     func reloadPlaybackStateFromPersistenceIfNeeded() async {
@@ -3546,7 +3563,7 @@ class Player {
         artworkLoadTask = nil
 
         guard let episode = currentEpisode else {
-            applyCurrentArtwork(nil)
+            applyCurrentArtwork(nil, identity: nil)
             return
         }
 
@@ -3570,13 +3587,15 @@ class Player {
                for: primaryURL,
                profileID: profile?.id
            ) {
-            applyCurrentArtwork(cachedImage)
+            applyCurrentArtwork(
+                cachedImage,
+                identity: Self.artworkIdentity(for: primaryURL, profileID: profile?.id)
+            )
             return
         }
 
-        applyCurrentArtwork(nil)
         artworkLoadTask = Task(priority: .userInitiated) { [weak self] in
-            let image = await Self.loadCurrentArtwork(
+            let resolvedArtwork = await Self.loadCurrentArtwork(
                 chapterData: chapterData,
                 imageURLs: imageURLs,
                 profile: profile
@@ -3586,12 +3605,25 @@ class Player {
                   artworkLoadGeneration == generation else {
                 return
             }
-            applyCurrentArtwork(image)
+            if let resolvedArtwork {
+                applyCurrentArtwork(resolvedArtwork.image, identity: resolvedArtwork.identity)
+            } else {
+                applyCurrentArtwork(nil, identity: nil)
+            }
             artworkLoadTask = nil
         }
     }
 
-    private func applyCurrentArtwork(_ image: UIImage?) {
+    private func applyCurrentArtwork(_ image: UIImage?, identity: PlayerArtworkIdentity?) {
+        if PlayerArtworkUpdatePolicy.shouldApply(
+            resolvedIdentity: identity,
+            currentIdentity: currentArtworkIdentity,
+            hasImage: image != nil
+        ) == false {
+            return
+        }
+
+        currentArtworkIdentity = identity
         currentArtworkImage = image
         if let image {
             nowPlayingInfoActor.setArtwork(image)
@@ -3600,16 +3632,21 @@ class Player {
         }
     }
 
+    nonisolated private static func artworkIdentity(for url: URL, profileID: String?) -> PlayerArtworkIdentity {
+        .url(url.absoluteString, profileID: profileID)
+    }
+
     nonisolated private static func loadCurrentArtwork(
         chapterData: Data?,
         imageURLs: [URL],
         profile: PodcastAccessProfile?
-    ) async -> UIImage? {
+    ) async -> ResolvedArtwork? {
         if let chapterData,
            let chapterImage = await Task.detached(priority: .userInitiated, operation: {
                ImageLoaderAndCache.makeUIImage(from: chapterData)
            }).value {
-            return chapterImage
+            let digest = SHA256.hash(data: chapterData).map { String(format: "%02x", $0) }.joined()
+            return ResolvedArtwork(image: chapterImage, identity: .chapterData(digest))
         }
 
         var loadedURLs = Set<URL>()
@@ -3619,7 +3656,10 @@ class Player {
                 from: imageURL,
                 profile: profile
             ) {
-                return image
+                return ResolvedArtwork(
+                    image: image,
+                    identity: artworkIdentity(for: imageURL, profileID: profile?.id)
+                )
             }
         }
         return nil

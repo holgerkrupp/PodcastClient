@@ -1607,7 +1607,12 @@ struct PodcastSettingsView: View {
             } label: {
                 SettingsNavigationRow(
                     title: "iCloud Sync",
-                    summary: "Database status and progress",
+                    summary: StoreSplitLaunchHealth.shouldOfferLegacyRecovery
+                        && StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                        && StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+                        && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
+                        ? "Legacy sync recovery available"
+                        : "Database status and progress",
                     detail: "Review CloudKit setup, download, upload, and approximate record progress.",
                     systemImage: "icloud"
                 )

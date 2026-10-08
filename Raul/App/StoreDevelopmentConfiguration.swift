@@ -1,4 +1,93 @@
 import Foundation
+import SQLite3
+
+/// Core Data reports CloudKit events using the persistent store UUID, not its
+/// filename. Read only the small metadata row; never open a mirrored container
+/// just to identify a store or decide whether it is safe to launch one.
+enum CloudKitStoreIdentity {
+    static func identifier(at url: URL?) -> String? {
+        guard let url, FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        var database: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK,
+              let database else {
+            if let database { sqlite3_close(database) }
+            return nil
+        }
+        defer { sqlite3_close(database) }
+        sqlite3_busy_timeout(database, 100)
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            database, "SELECT Z_UUID FROM Z_METADATA LIMIT 1", -1, &statement, nil
+        ) == SQLITE_OK else { return nil }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let rawUUID = sqlite3_column_text(statement, 0) else { return nil }
+        return String(cString: rawUUID)
+    }
+
+    static func isLegacy(_ identifier: String, legacyUUID: String?) -> Bool {
+        let normalized = identifier.lowercased()
+        let matchesUUID = legacyUUID.map {
+            identifier.caseInsensitiveCompare($0) == .orderedSame
+        } ?? false
+        return normalized.contains("shareddatabase")
+            || normalized.contains("legacy")
+            || matchesUUID
+    }
+}
+
+/// Survives a watchdog kill, unlike the in-memory CloudKit event monitor.
+/// A lingering export alone is not evidence of failure; launch health must
+/// independently show repeated early process deaths before recovery is applied.
+enum LegacyCloudExportRecovery {
+    static let activeExportsKey = "storeSplit.activeCloudExports.v1"
+
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+
+    static func started(id: UUID, storeIdentifier: String) {
+        var active = defaults.dictionary(forKey: activeExportsKey) as? [String: String] ?? [:]
+        active[id.uuidString] = storeIdentifier
+        defaults.set(active, forKey: activeExportsKey)
+    }
+
+    static func ended(id: UUID) {
+        var active = defaults.dictionary(forKey: activeExportsKey) as? [String: String] ?? [:]
+        active.removeValue(forKey: id.uuidString)
+        defaults.set(active, forKey: activeExportsKey)
+    }
+
+    static func finishedExport(
+        storeIdentifier: String,
+        currentProcessExports: [UUID: String]
+    ) {
+        var stored = defaults.dictionary(forKey: activeExportsKey) as? [String: String] ?? [:]
+        stored = stored.filter {
+            $0.value.caseInsensitiveCompare(storeIdentifier) != .orderedSame
+        }
+        for (id, identifier) in currentProcessExports where
+            identifier.caseInsensitiveCompare(storeIdentifier) == .orderedSame {
+            stored[id.uuidString] = identifier
+        }
+        defaults.set(stored, forKey: activeExportsKey)
+    }
+
+    static func clearAfterHealthyIdle() {
+        defaults.removeObject(forKey: activeExportsKey)
+    }
+
+    static var hasUnfinishedLegacyExport: Bool {
+        let active = defaults.dictionary(forKey: activeExportsKey) as? [String: String] ?? [:]
+        guard active.isEmpty == false else { return false }
+        let legacyUUID = CloudKitStoreIdentity.identifier(at: ModelContainerManager.sharedStoreURL)
+        return active.values.contains {
+            CloudKitStoreIdentity.isLegacy($0, legacyUUID: legacyUUID)
+        }
+    }
+}
 
 struct StoreSplitLaunchHealthState: Codable, Sendable, Equatable {
     var consecutiveUnhealthyLaunches = 0
@@ -8,6 +97,7 @@ struct StoreSplitLaunchHealthState: Codable, Sendable, Equatable {
 
 enum StoreSplitLaunchHealth {
     static let stateKey = "storeSplit.launchHealth.v1"
+    static let recoverySuggestedKey = "storeSplit.legacyRecoverySuggested.v1"
     static let quarantineThreshold = 3
 
     private static var defaults: UserDefaults {
@@ -32,14 +122,23 @@ enum StoreSplitLaunchHealth {
         }
         state.lastLaunchStartedAt = now
         write(state)
+        if state.consecutiveUnhealthyLaunches >= 2 {
+            // Keep the recovery action visible even if a later foreground
+            // session lasts long enough to clear the consecutive counter.
+            defaults.set(true, forKey: recoverySuggestedKey)
+        }
 
+        let unfinishedLegacyExport = LegacyCloudExportRecovery.hasUnfinishedLegacyExport
         let shouldQuarantine = previousLaunchWasUnhealthy
             && state.consecutiveUnhealthyLaunches >= quarantineThreshold
-            && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligible
+            && (StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligible
+                || unfinishedLegacyExport)
             && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
         if shouldQuarantine {
             StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
-                reason: "repeated_unhealthy_launches"
+                reason: unfinishedLegacyExport
+                    ? "repeated_unhealthy_launches_with_legacy_export"
+                    : "repeated_unhealthy_launches"
             )
         }
         return shouldQuarantine
@@ -53,6 +152,11 @@ enum StoreSplitLaunchHealth {
     }
 
     static var current: StoreSplitLaunchHealthState { read() }
+
+    static var shouldOfferLegacyRecovery: Bool {
+        defaults.bool(forKey: recoverySuggestedKey)
+            || current.consecutiveUnhealthyLaunches >= 2
+    }
 
     private static func read() -> StoreSplitLaunchHealthState {
         guard let data = defaults.data(forKey: stateKey),
@@ -331,7 +435,7 @@ struct StoreDevelopmentConfiguration: Equatable {
         defaults.removeObject(forKey: legacyCloudReattachApprovedKey)
         CrashBreadcrumbs.shared.record(
             "legacy_cloud_mirror_quarantined",
-            details: "reason=(reason)"
+            details: "reason=\(reason)"
         )
     }
 

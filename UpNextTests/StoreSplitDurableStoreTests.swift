@@ -6,6 +6,84 @@ import XCTest
 /// the app's library graph stays on disk, and only user-owned state travels
 /// through `UserState.sqlite`.
 final class StoreSplitDurableStoreTests: XCTestCase {
+    func testBootstrapModeUsesPersistedLegacyAndCutoverFacts() {
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: false,
+                legacyCloudCutoverCompleted: false,
+                releasePhaseIsPostCutover: false
+            ),
+            .freshSplitInstall
+        )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: true,
+                legacyCloudCutoverCompleted: false,
+                releasePhaseIsPostCutover: false
+            ),
+            .legacyUpgrade
+        )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: true,
+                legacyCloudCutoverCompleted: true,
+                releasePhaseIsPostCutover: false
+            ),
+            .postCutoverSplitInstall
+        )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: false,
+                legacyCloudCutoverCompleted: false,
+                releasePhaseIsPostCutover: true
+            ),
+            .postCutoverSplitInstall
+        )
+        XCTAssertTrue(StoreBootstrapMode.freshSplitInstall.usesInMemoryRuntimeProjection)
+        XCTAssertFalse(StoreBootstrapMode.legacyUpgrade.usesInMemoryRuntimeProjection)
+        XCTAssertTrue(StoreBootstrapMode.postCutoverSplitInstall.usesInMemoryRuntimeProjection)
+        XCTAssertFalse(
+            StoreBootstrapMode.requiresLegacyBackfill(
+                legacyStoreExists: false,
+                legacyCloudCutoverCompleted: false,
+                completedVersion: 0,
+                currentVersion: 1
+            ),
+            "fresh installations must not schedule legacy backfill"
+        )
+        XCTAssertFalse(
+            StoreBootstrapMode.requiresLegacyBackfill(
+                legacyStoreExists: true,
+                legacyCloudCutoverCompleted: true,
+                completedVersion: 0,
+                currentVersion: 1
+            ),
+            "a leftover legacy file after cutover is not a runtime migration source"
+        )
+        XCTAssertTrue(
+            StoreBootstrapMode.requiresLegacyBackfill(
+                legacyStoreExists: true,
+                legacyCloudCutoverCompleted: false,
+                completedVersion: 0,
+                currentVersion: 1
+            )
+        )
+    }
+
+    func testHeavyStoreMaintenanceRequiresBackgroundGrantOrTestContext() {
+        XCTAssertFalse(
+            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(in: .foreground)
+        )
+        XCTAssertTrue(
+            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(
+                in: .systemBackgroundProcessing
+            )
+        )
+        XCTAssertTrue(
+            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(in: .test)
+        )
+    }
+
     func testMigrationSliceBudgetBoundsMutationsAndWallTime() {
         let budget = StoreWorkBudget.migrationSlice
         XCTAssertLessThanOrEqual(budget.maximumMutations, 40)

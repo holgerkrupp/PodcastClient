@@ -229,13 +229,9 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             userStateContainer: containers.userState
         )
 
-        XCTAssertEqual(result.subscriptionsTombstoned, 1)
-        XCTAssertEqual(result.playlistsTombstoned, 1)
-        XCTAssertEqual(result.playlistEntriesTombstoned, 1)
-        XCTAssertEqual(result.queueEntriesTombstoned, 1)
-        XCTAssertEqual(result.bookmarksTombstoned, 1)
-        XCTAssertEqual(result.preferencesDeleted, 1)
-        XCTAssertEqual(result.episodeStatesDeleted, 1)
+        // Per-entity writers may reconcile some rows while source records are
+        // republished, so assert the final tombstones/deletions below rather
+        // than coupling this behavior test to which pass performed each edit.
         XCTAssertEqual(result.failed, 0)
 
         let subscription = try XCTUnwrap(
@@ -733,6 +729,74 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             Set(remaining.map(\.stableEpisodeIdentity.key)).subtracting(migrated), []
         )
     }
+
+    @MainActor
+    func testDormantDeviceBackfillDoesNotRewindNewerCloudPlaybackState() async throws {
+        let dormantDevice = try makeContainers()
+        try populate(dormantDevice.legacy, episodeCount: 1)
+
+        let legacyContext = dormantDevice.legacy.mainContext
+        let legacyEpisode = try XCTUnwrap(
+            legacyContext.fetch(
+                FetchDescriptor<Episode>(
+                    predicate: #Predicate { $0.guid == "episode-0" }
+                )
+            ).first
+        )
+        let legacyDate = Date(timeIntervalSince1970: 4_000)
+        legacyEpisode.metaData?.stateUpdatedAt = legacyDate
+        legacyEpisode.metaData?.playPosition = 25
+        legacyEpisode.metaData?.maxPlayposition = 25
+        try legacyContext.save()
+
+        // Represents a newer CloudKit import that reached this device while its
+        // local legacy snapshot was dormant and stale.
+        let remoteDate = Date(timeIntervalSince1970: 9_000)
+        let identity = legacyEpisode.stableEpisodeIdentity
+        let identityKey = identity.key
+        let userContext = dormantDevice.userState.mainContext
+        userContext.insert(
+            EpisodeStateSync(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                playPosition: 180,
+                maxPlayPosition: 240,
+                duration: 300,
+                updatedAt: remoteDate,
+                sourceDeviceID: "active-device"
+            )
+        )
+        try userContext.save()
+
+        let reports = await drainSlices(dormantDevice, shouldContinue: { true })
+        XCTAssertEqual(reports.last?.status, .completed)
+
+        let stored = try XCTUnwrap(
+            ModelContext(dormantDevice.userState)
+                .fetch(
+                    FetchDescriptor<EpisodeStateSync>(
+                        predicate: #Predicate { $0.id == identityKey }
+                    )
+                ).first
+        )
+        XCTAssertEqual(stored.playPosition, 180)
+        XCTAssertEqual(stored.maxPlayPosition, 240)
+        XCTAssertEqual(stored.updatedAt, remoteDate)
+        XCTAssertEqual(stored.sourceDeviceID, "active-device")
+    }
+
+#if DEBUG
+    func testDebugAutomaticChecksHaveNoFailedSyntheticScenarios() async {
+        let results = await StoreSplitAutomaticChecks.runAll()
+        XCTAssertFalse(results.isEmpty)
+        XCTAssertTrue(
+            results.allSatisfy { $0.status != .failed },
+            results.map { "\($0.id): \($0.details)" }.joined(separator: "\n")
+        )
+        XCTAssertTrue(results.contains { $0.id == "204" && $0.status == .partial })
+        XCTAssertTrue(results.contains { $0.id == "205" && $0.status == .partial })
+    }
+#endif
 
     /// Verification has to compare legacy summaries against the baselines they
     /// actually migrate into. Comparing them against a bucket nothing writes made

@@ -24,11 +24,16 @@ struct PodcastSearchView: View {
         case password
     }
 
-    init(search: Binding<String>, treatsDirectURLsAsPrivate: Bool = false) {
+    init(
+        search: Binding<String>,
+        treatsDirectURLsAsPrivate: Bool = false,
+        recentSearchStore: PodcastRecentSearchStore = .shared
+    ) {
         _search = search
         _viewModel = StateObject(
             wrappedValue: PodcastSearchViewModel(
-                treatsDirectURLsAsPrivate: treatsDirectURLsAsPrivate
+                treatsDirectURLsAsPrivate: treatsDirectURLsAsPrivate,
+                recentSearchStore: recentSearchStore
             )
         )
     }

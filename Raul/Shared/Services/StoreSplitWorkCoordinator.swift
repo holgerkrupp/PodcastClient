@@ -1,5 +1,25 @@
 import Foundation
 
+enum StoreMaintenanceExecutionContext: Equatable, Sendable {
+    case foreground
+    case systemBackgroundProcessing
+    case test
+}
+
+enum StoreSplitMaintenancePolicy {
+    static func allowsHeavyMaintenance(
+        in context: StoreMaintenanceExecutionContext
+    ) -> Bool {
+        context != .foreground
+    }
+
+    static func shouldYieldForCloudKitExport(
+        exportInProgress: Bool
+    ) -> Bool {
+        exportInProgress
+    }
+}
+
 actor StoreSplitWorkCoordinator {
     static let shared = StoreSplitWorkCoordinator()
 
@@ -57,26 +77,11 @@ actor StoreSplitWorkCoordinator {
             return
         }
         if StoreDevelopmentConfiguration.userStateImportEnabled {
-            // Not forced: respect the recency debounce so a quick relaunch doesn't
-            // re-run a full heavy reconcile (which holds the shared-container DB
-            // lock). The projection from the previous run is already persisted.
-            enqueueReconcile(
-                authoritativePlaylists: false,
-                force: false,
-                refreshMissingFeeds: true,
-                reason: "launch"
-            )
+            ModelContainerManager.requestBackgroundUserStateImport()
         }
-        if StoreDevelopmentConfiguration.legacyMigrationEnabled,
-           (ModelContainerManager.hasPendingMigrationWork
-                || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork) {
-            pendingMigration = true
-        }
-        if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled {
-            pendingFeedCachePrewarm = true
-        }
+        // Bulk migration, reconciliation and feed-cache bootstrap are armed by
+        // BGProcessingTask. Launch never starts a maintenance runner.
         await publishPendingState()
-        startRunnerIfNeeded()
     }
 
     func scheduleFeedCachePrewarming() async {
@@ -102,29 +107,20 @@ actor StoreSplitWorkCoordinator {
 
     func scheduleCloudImportReconcile() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
-        if ModelContainerManager.hasPendingMigrationWork
-            || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork {
-            pendingMigration = true
-            await publishPendingState()
-            startRunnerIfNeeded()
-            return
-        }
-        enqueueReconcile(
-            authoritativePlaylists: false,
-            force: false,
-            refreshMissingFeeds: true,
-            reason: "cloud_import"
-        )
+        ModelContainerManager.requestBackgroundUserStateImport()
         await publishPendingState()
-        startRunnerIfNeeded()
     }
 
     func scheduleForegroundMigration() async {
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
-        guard StoreDevelopmentConfiguration.legacyMigrationEnabled else { return }
-        pendingMigration = true
-        await publishPendingState()
-        startRunnerIfNeeded()
+        // Kept for older callers during rollout. Foreground callers only arm
+        // the system request; the coordinator is not a migration executor.
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreDevelopmentConfiguration.legacyMigrationEnabled else { return }
+#if canImport(UIKit)
+        await MainActor.run {
+            AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+        }
+#endif
     }
 
     func notePlaybackActivityChanged(isPlaying: Bool) async {
@@ -144,37 +140,14 @@ actor StoreSplitWorkCoordinator {
     }
 
     func runManualReconcile(authoritativePlaylists: Bool) async {
+        _ = authoritativePlaylists
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
-        if ModelContainerManager.hasPendingMigrationWork
-            || ModelContainerManager.hasPendingLegacyAuthoritativeReconciliationWork {
-            pendingMigration = true
-            await publishPendingState()
-            startRunnerIfNeeded()
-            await waitForIdle()
-            return
-        }
-        enqueueReconcile(
-            authoritativePlaylists: authoritativePlaylists,
-            force: true,
-            refreshMissingFeeds: true,
-            reason: "manual"
-        )
+        ModelContainerManager.requestBackgroundUserStateImport()
         await publishPendingState()
-        startRunnerIfNeeded()
-        if await MainActor.run(body: { Player.shared.isPlaying }) {
-            return
-        }
-        await waitForIdle()
     }
 
     func runManualMigration() async {
-        pendingMigration = true
-        await publishPendingState()
-        startRunnerIfNeeded()
-        if await MainActor.run(body: { Player.shared.isPlaying }) {
-            return
-        }
-        await waitForIdle()
+        await scheduleForegroundMigration()
     }
 
     private func clearAllPendingWork(reason: String) async {

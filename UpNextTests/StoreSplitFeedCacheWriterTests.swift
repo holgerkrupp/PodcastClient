@@ -186,6 +186,60 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testPriorityRecoveryIncludesQueuePlaylistsBookmarksAndRecentPlayback() throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let context = userState.mainContext
+        let now = Date()
+        let queueFeed = "https://example.com/queue-priority"
+        let playlistFeed = "https://example.com/playlist-priority"
+        let bookmarkFeed = "https://example.com/bookmark-priority"
+        let recentFeed = "https://example.com/recent-priority"
+        context.insert(QueueEntrySync(
+            feedURL: queueFeed,
+            episodeID: "queue-episode",
+            sortIndex: 0,
+            updatedAt: now
+        ))
+        context.insert(PlaylistEntrySync(
+            playlistID: "custom",
+            feedURL: playlistFeed,
+            episodeID: "playlist-episode",
+            sortIndex: 0,
+            updatedAt: now
+        ))
+        context.insert(BookmarkSync(
+            feedURL: bookmarkFeed,
+            episodeID: "bookmark-episode",
+            time: 12,
+            createdAt: now,
+            updatedAt: now
+        ))
+        context.insert(EpisodeStateSync(
+            feedURL: recentFeed,
+            episodeID: "recent-episode",
+            playPosition: 20,
+            lastPlayedAt: now,
+            updatedAt: now
+        ))
+        try context.save()
+
+        let result = ModelContainerManager.shared.priorityRecoveryFeedURLs(
+            userState,
+            after: nil,
+            limit: 10
+        )
+        XCTAssertTrue(result.reachedEnd)
+        XCTAssertEqual(Set(result.feeds.map(PodcastFeedIdentity.normalizedFeedURLString)), Set([
+            PodcastFeedIdentity.normalizedFeedURLString(URL(string: queueFeed)!),
+            PodcastFeedIdentity.normalizedFeedURLString(URL(string: playlistFeed)!),
+            PodcastFeedIdentity.normalizedFeedURLString(URL(string: bookmarkFeed)!),
+            PodcastFeedIdentity.normalizedFeedURLString(URL(string: recentFeed)!)
+        ]))
+    }
+
+    @MainActor
     func testProjectionIsIdempotentAndFetchCountDoesNotScaleWithEpisodes() throws {
         let (legacy, cache) = try makeContainers()
         let feed = "https://example.com/scale"
@@ -202,7 +256,9 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         )
         XCTAssertTrue(first.completed)
         XCTAssertEqual(first.episodesProcessed, 500)
-        XCTAssertLessThanOrEqual(first.fetchCount, 8)
+        // Alias-aware indexed lookup adds one bounded fallback query while
+        // preserving feed-scoped work regardless of episode population.
+        XCTAssertLessThanOrEqual(first.fetchCount, 9)
         XCTAssertEqual(first.saveCount, 1)
 
         let second = StoreSplitFeedCacheWriter.projectFeed(
@@ -269,7 +325,7 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
 
         XCTAssertTrue(result.completed)
         XCTAssertEqual(result.episodesProcessed, 2_000)
-        XCTAssertLessThanOrEqual(result.fetchCount, 8)
+        XCTAssertLessThanOrEqual(result.fetchCount, 9)
         XCTAssertEqual(result.saveCount, 1)
     }
 

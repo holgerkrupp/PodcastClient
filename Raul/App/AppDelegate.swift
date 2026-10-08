@@ -95,21 +95,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// Schedules the overnight store-split migration pass. Requires external
     /// power so it runs while charging and idle, and network so CloudKit can
     /// export the migrated user-state. Only scheduled while migration could still
-    /// have migration slices left to do. Authoritative reconciliation is a
-    /// foreground-only repair and must not keep scheduling background CPU work.
+    /// have migration, cache-bootstrap, or reconciliation work left to do.
     static func scheduleStoreSplitMigrationProcessingIfNeeded() {
         // Gate on real remaining work, not on the rollout marker. A device can
         // sit at `newStoreReads` from an earlier migration version and still owe
         // the current version every phase — that combination silently stopped the
         // overnight pass from ever being scheduled.
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              ModelContainerManager.hasPendingMigrationWork else {
+              ModelContainerManager.hasPendingStoreSplitBackgroundWork,
+              !(StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                && LegacyCloudExportRecovery.hasUnfinishedLegacyExport) else {
             BGTaskScheduler.shared.cancel(
                 taskRequestWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
             )
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_background_task_not_scheduled",
-                details: "state=\(StoreSplitRollout.state.rawValue),pending=\(ModelContainerManager.hasPendingMigrationWork)"
+                details: "state=\(StoreSplitRollout.state.rawValue),pending=\(ModelContainerManager.hasPendingStoreSplitBackgroundWork),unfinished_legacy_export=\(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)"
             )
 #if DEBUG
             StoreSplitMigrationDebugLog.record(
@@ -145,7 +146,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 identifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
             )
             request.requiresExternalPower = true
-            request.requiresNetworkConnectivity = true
+            request.requiresNetworkConnectivity =
+                ModelContainerManager.hasPendingMigrationWork
             let earliestBeginDate = Date(
                 timeIntervalSinceNow: BackgroundTaskConfiguration.storeSplitMigrationInterval
             )
@@ -184,20 +186,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let processingTask = Task(priority: .utility) {
             await ModelContainerManager.shared.runStoreSplitMigrationBackgroundPass()
 
+            let exportSettled = await StoreCloudKitActivityMonitor.shared
+                .waitForExportQuiescence()
+
             // Re-arm only if work remains (state still pre-completion).
             Self.scheduleStoreSplitMigrationProcessingIfNeeded()
 
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_background_task_completed",
-                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled)"
+                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled),export_settled=\(exportSettled)"
             )
 #if DEBUG
             StoreSplitMigrationDebugLog.record(
                 "background pass ended",
-                details: "cancelled=\(Task.isCancelled), pending=\(ModelContainerManager.hasPendingMigrationWork)"
+                details: "cancelled=\(Task.isCancelled), pending=\(ModelContainerManager.hasPendingStoreSplitBackgroundWork)"
             )
 #endif
-            task.setTaskCompleted(success: Task.isCancelled == false)
+            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
         }
 
         task.expirationHandler = {
@@ -219,7 +224,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         playbackStateFlushTask = Task { [weak self] in
-            await Player.shared.captureCurrentPlaybackStateFromEngine(force: true)
+            await Player.shared.captureCurrentPlaybackStateFromEngine(
+                force: true,
+                persistToStore: false
+            )
             self?.finishPlaybackStateFlush()
         }
     }
@@ -382,7 +390,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 "feed_processing_background_task_completed",
                 details: "imported_transcripts=\(importedTranscriptCount)"
             )
-            task.setTaskCompleted(success: true)
+            let exportSettled = await StoreCloudKitActivityMonitor.shared
+                .waitForExportQuiescence()
+            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
         }
 
         task.expirationHandler = {
@@ -436,7 +446,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // No-ops when the request submitted at the start of the pass is still
             // pending, so this only covers the case where it was not.
             await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
-            task.setTaskCompleted(success: true)
+            let exportSettled = await StoreCloudKitActivityMonitor.shared
+                .waitForExportQuiescence()
+            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
         }
 
         task.expirationHandler = {

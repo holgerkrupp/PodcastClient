@@ -3,6 +3,7 @@
   "groups" : [
     {
       "blur-material" : null,
+      "hidden" : false,
       "layers" : [
         {
           "blend-mode-specializations" : [

@@ -174,7 +174,8 @@ struct PodcastRowView: View {
     }
 
     private var feedIssueDescription: String? {
-        if let assessment = podcast.metaData?.feedAbandonmentAssessment {
+        if let assessment = podcast.metaData?.feedAbandonmentAssessment,
+           assessment.kind == .unavailableFeed {
             return "\(assessment.title). \(assessment.detail)"
         }
         guard let metadata = podcast.metaData,

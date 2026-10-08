@@ -354,6 +354,11 @@ struct RaulApp: App {
                     guard phase == .active else { return }
 #endif
                     StoreSplitLaunchHealth.markHealthy()
+                    if storeCloudKitMonitor.activeExportEvents.allSatisfy({
+                        $0.storeKind == .userState
+                    }) {
+                        LegacyCloudExportRecovery.clearAfterHealthyIdle()
+                    }
                     CrashBreadcrumbs.shared.record("store_split_launch_marked_healthy")
                 }
                 refreshOnActive()
@@ -401,6 +406,16 @@ struct RaulApp: App {
         .onChange(of: storeCloudKitMonitor.latestCompletedImport) { _, event in
             guard let event, event.succeeded else { return }
             scheduleStoreAwareCloudImportReconciliation(for: event.storeKind)
+        }
+        .onChange(of: storeCloudKitMonitor.isAnyStoreExporting) { _, exporting in
+            guard exporting else { return }
+            // An automatic transcript can add hundreds of related rows to the
+            // legacy mirror. Stop it when Core Data starts draining history;
+            // manual transcription remains under the user's control.
+            Task {
+                await TranscriptionManager.shared
+                    .cancelAutomaticTranscriptionsForCloudKitExport()
+            }
         }
         .onChange(of: syncMonitor.exportState) { _, state in
             switch state {
@@ -453,6 +468,8 @@ struct RaulApp: App {
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
             await schedulePredictedReleaseRefresh()
+            _ = await StoreCloudKitActivityMonitor.shared
+                .waitForExportQuiescence(maximumDuration: 8)
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_completed")
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier)) { task in
@@ -477,6 +494,8 @@ struct RaulApp: App {
                 )
 
             await schedulePredictedReleaseRefresh()
+            _ = await StoreCloudKitActivityMonitor.shared
+                .waitForExportQuiescence(maximumDuration: 8)
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_background_task_completed",
                 details: "attempted_count=\(attemptedCount)"
@@ -701,9 +720,9 @@ struct RaulApp: App {
             if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }
-            // Picks the backfill back up on every foreground, so a session that
-            // never relaunches still converges. The coordinator coalesces this
-            // with any queued work and the slice engine resumes from its cursor.
+            // Foreground activation only arms the system request. The durable
+            // worker runs when iOS grants a charging background-processing
+            // window; an active session never owns the migration loop.
             await ModelContainerManager.shared.scheduleStoreSplitMigrationIfNeeded()
             await MainActor.run {
                 deferredStoreSplitTask = nil

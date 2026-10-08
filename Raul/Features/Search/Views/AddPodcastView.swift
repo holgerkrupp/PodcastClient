@@ -12,6 +12,7 @@ struct AddPodcastView: View {
     @Environment(\.modelContext) private var context
 
     @Binding var search: String
+    @StateObject private var recentSearchStore = PodcastRecentSearchStore.shared
     enum Selection {
         case search, hot, importexport
     }
@@ -84,9 +85,38 @@ struct AddPodcastView: View {
                         )
                     }
                 }
+
+                if recentSearchStore.searches.isEmpty == false {
+                    Section {
+                        ForEach(recentSearchStore.searches, id: \.self) { query in
+                            Button {
+                                search = query
+                            } label: {
+                                Label(query, systemImage: "clock.arrow.circlepath")
+                                    .lineLimit(2)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Recent search: \(query)")
+                            .swipeActions {
+                                Button("Delete", systemImage: "trash", role: .destructive) {
+                                    recentSearchStore.remove(query)
+                                }
+                            }
+                        }
+                    } header: {
+                        HStack {
+                            Text("Recent Searches")
+                            Spacer()
+                            Button("Clear") {
+                                recentSearchStore.clear()
+                            }
+                            .font(.caption)
+                        }
+                    }
+                }
             }
 
-            PodcastSearchView(search: $search)
+            PodcastSearchView(search: $search, recentSearchStore: recentSearchStore)
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .listRowInsets(.init(top: 0,

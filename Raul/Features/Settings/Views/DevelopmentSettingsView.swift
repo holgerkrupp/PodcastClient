@@ -542,6 +542,16 @@ struct DevelopmentSettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        StoreSplitAutomaticChecksView()
+                    } label: {
+                        Label("Automatic Migration Checks", systemImage: "checkmark.seal")
+                    }
+                } footer: {
+                    Text("Runs deterministic store-split scenarios in temporary in-memory stores. Results marked Partial identify conditions that need a real background-processing or multi-device CloudKit test.")
+                }
+
+                Section {
                     LabeledContent(
                         "Rollout state",
                         value: modelContainerManager.storeSplitRolloutStateDescription
@@ -1343,6 +1353,99 @@ private extension StoreSplitDevelopmentRepublishScope {
 private extension StoreSplitDevelopmentRepublishResult {
     var sourceSummary: String {
         "subscriptions \(subscriptions), states \(episodeStates), playlists \(playlists), bookmarks \(bookmarks), history \(listeningSessions)"
+    }
+}
+
+private struct StoreSplitAutomaticChecksView: View {
+    @State private var results: [StoreSplitAutomaticCheck] = []
+    @State private var isRunning = false
+    @State private var lastRunAt: Date?
+
+    var body: some View {
+        List {
+            Section {
+                Text("These checks use synthetic data and in-memory SwiftData stores. They do not read or change the active library and do not contact CloudKit.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    Task { await runChecks() }
+                } label: {
+                    if isRunning {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Running migration checks…")
+                        }
+                    } else {
+                        Label("Run Checks Again", systemImage: "arrow.clockwise")
+                    }
+                }
+                .disabled(isRunning)
+
+                if let lastRunAt {
+                    LabeledContent(
+                        "Last run",
+                        value: lastRunAt.formatted(date: .abbreviated, time: .standard)
+                    )
+                }
+            } footer: {
+                Text("Partial means the local scenario passed but cannot prove a release condition such as BGProcessing expiration, CloudKit delivery order, or exporter throughput.")
+            }
+
+            Section("Results") {
+                if results.isEmpty {
+                    ContentUnavailableView(
+                        "Checks have not run",
+                        systemImage: "checkmark.seal",
+                        description: Text("The checks start automatically when this screen opens.")
+                    )
+                } else {
+                    ForEach(results) { result in
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(result.title)
+                                    .font(.headline)
+                                Spacer(minLength: 8)
+                                Text(result.status.rawValue.capitalized)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(statusColor(result.status))
+                            }
+                            Text("Issue #\(result.id)")
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.secondary)
+                            Text(result.details)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+            }
+        }
+        .navigationTitle("Migration Checks")
+        .platformInlineNavigationTitle()
+        .task {
+            if results.isEmpty { await runChecks() }
+        }
+    }
+
+    private func runChecks() async {
+        guard isRunning == false else { return }
+        isRunning = true
+        results = await Task.detached(priority: .utility) {
+            await StoreSplitAutomaticChecks.runAll()
+        }.value
+        lastRunAt = .now
+        isRunning = false
+    }
+
+    private func statusColor(_ status: StoreSplitAutomaticCheck.Status) -> Color {
+        switch status {
+        case .passed: .green
+        case .partial: .orange
+        case .failed: .red
+        }
     }
 }
 #endif

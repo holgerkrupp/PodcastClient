@@ -202,6 +202,17 @@ struct CloudSyncStatusDetailView: View {
 
     @StateObject private var syncMonitor = SyncMonitor.default
     @StateObject private var storeMonitor = StoreCloudKitActivityMonitor.shared
+    @State private var showLegacyRecoveryConfirmation = false
+    @State private var legacyRecoveryScheduled = false
+
+    private var canOfferLegacyRecovery: Bool {
+        StoreSplitReleasePhase.current == .dualSyncBackfill
+            && StoreSplitLaunchHealth.shouldOfferLegacyRecovery
+            && StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+            && StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+            && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
+            && legacyRecoveryScheduled == false
+    }
 
     private var reportedErrors: [(title: String, error: Error)] {
         var errors: [(String, Error)] = []
@@ -369,6 +380,33 @@ struct CloudSyncStatusDetailView: View {
                 }
             }
 
+            if StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined
+                && legacyRecoveryScheduled == false {
+                Section("Legacy Sync Recovery") {
+                    Label("Legacy library sync stopped on this device", systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90")
+                        .foregroundStyle(.orange)
+                    Text("The local library remains available. User State continues syncing to iCloud. Finish the move to User State on this device before adding another Up Next device.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if canOfferLegacyRecovery || legacyRecoveryScheduled {
+                Section("Legacy Sync Recovery") {
+                    if legacyRecoveryScheduled {
+                        Text("Legacy library sync will stop after you close and reopen Up Next. Your local library stays on this phone; User State continues syncing to iCloud.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Repeated launches have ended before the legacy library could finish syncing. If this is your only active Up Next device, you can stop mirroring that library on the next launch. Keep using this phone until the move to User State is complete before adding another device.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Button("Stop Legacy Library Sync on This Device", role: .destructive) {
+                            showLegacyRecoveryConfirmation = true
+                        }
+                    }
+                }
+            }
+
             Section("Aggregate Monitor") {
                 Text("These package-level phases describe the latest CloudKit event from any store. Store convergence is reported above.")
                     .font(.caption)
@@ -462,6 +500,20 @@ struct CloudSyncStatusDetailView: View {
         }
         .navigationTitle("iCloud Sync")
         .platformInlineNavigationTitle()
+        .confirmationDialog(
+            "Stop legacy library sync on this device?",
+            isPresented: $showLegacyRecoveryConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Stop on Next Launch", role: .destructive) {
+                StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
+                    reason: "single_device_export_recovery"
+                )
+                legacyRecoveryScheduled = true
+            }
+        } message: {
+            Text("Use this only when no other device is using the legacy library sync. This one-way change keeps the local library and User State sync, but the old library will no longer exchange updates with other devices.")
+        }
     }
 
     private var networkDescription: String {

@@ -13,10 +13,11 @@ missing for that launch.
 
 The revised architecture keeps the user's existing store exactly where it is:
 
-1. `libraryContainer`: the existing `SharedDatabase.sqlite`, read-write,
-   **local-only** (`cloudKitDatabase: .none`). It stays the durable object graph
-   the UI binds to. Nothing is copied out of it at upgrade time, so the first
-   frame after an update is the user's real library.
+1. `libraryContainer`: on a legacy upgrade, the existing `SharedDatabase.sqlite`
+   remains the read-write runtime graph during backfill. On a fresh or
+   post-cutover split install, the model-shaped runtime graph is in memory and
+   is rebuilt from `PodcastCache.sqlite` plus `UserState.sqlite`; it does not
+   create `SharedDatabase.sqlite`.
 2. `syncContainer`: `UserState.sqlite`, CloudKit-backed, containing only
    relationship-free, compact user-owned state.
 3. `cacheContainer`: `PodcastCache.sqlite`, local-only, containing migration
@@ -79,9 +80,9 @@ on the supported-version grace period and production convergence telemetry.
 
 Changed by the architecture revision:
 
-- the runtime container is the durable on-disk library store in every shipping
-  mode (`DevelopmentStoreMode.usesInMemoryLibraryProjection` is true only for
-  `newStoresOnly`), so no launch rebuilds `Podcast`/`Episode`/`Playlist` rows;
+- legacy upgrades keep their durable on-disk library graph, while fresh and
+  post-cutover installs select an explicit split-store bootstrap mode and never
+  create the legacy file as their runtime authority;
 - opening the split stores no longer blocks launch: the UI renders from the
   durable store first and synchronized state is applied afterwards;
 - a one-time additive recovery copies cache-only feeds and episodes back into
@@ -95,17 +96,18 @@ Changed by the architecture revision:
   to local-only reads — reaches `UserState.sqlite`. Every phase merges by
   `updatedAt`, so the re-run only fills gaps;
 - migration runs automatically with no user interaction: queued at launch and on
-  every foreground, paced (not stopped) during playback, continued while
-  backgrounded for as long as audio keeps the process alive, and completed
-  overnight by an external-power `BGProcessingTask`. A run that yields to
-  CloudKit export backpressure re-queues itself instead of waiting for the next
-  launch;
+  foreground only as a future `BGProcessingTask` request; bulk backfill,
+  authoritative reconciliation, verification, and feed-cache bootstrap do not
+  run on foreground activation. Backfill uses bounded, checkpointed slices in
+  the external-power `BGProcessingTask` and yields to playback or CloudKit
+  export pressure;
 - the read cutover requires slice-migration completion; lossless verification
   now gates cleanup only. Raw cached play sessions are explicitly prunable and
   are no longer treated as a losslessness invariant;
-- with the durable store authoritative, the per-refresh feed mirror into
-  `PodcastCache` and the feed-cache bootstrap only run in the experimental
-  projection mode. Namespaced extension capture still runs in every mode.
+- with a durable legacy upgrade store authoritative, the per-refresh feed mirror
+  remains off. Split-store projection installs write refreshed feed data into
+  the local cache. Bulk cache bootstrap is armed for background processing.
+  Namespaced extension capture still runs in every mode.
 
 Previously implemented and still current:
 
@@ -554,7 +556,8 @@ not copied back into the legacy graph.
 3. Fall back to matching legacy state if new state is absent.
 4. Write feed refresh results only to the local cache.
 5. Write user state only to `UserState.sqlite` after the cutover gate.
-6. Re-run reconciliation after CloudKit import events and foreground activation.
+6. Persist reconciliation requests after CloudKit imports and process them in a
+   system-granted background window; foreground activation only arms that work.
 
 ### Stage 3: new state authority and legacy retirement
 

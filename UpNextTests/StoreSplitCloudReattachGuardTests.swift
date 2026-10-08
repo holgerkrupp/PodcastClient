@@ -1,5 +1,6 @@
 import SwiftData
 import XCTest
+import SQLite3
 @testable import UpNext
 
 /// The legacy store's CloudKit mirror is switched by a compile-time constant, so
@@ -104,6 +105,101 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
+    func testRecoveryOfferSurvivesAHealthyForegroundSession() {
+        let base = Date(timeIntervalSince1970: 1_000)
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(1)))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(2)))
+        XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
+
+        StoreSplitLaunchHealth.markHealthy(now: base.addingTimeInterval(100))
+        XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+    }
+
+    func testRepeatedUnhealthyLaunchesWithUnfinishedLegacyExportQuarantineBeforeOpen() {
+        let exportID = UUID()
+        LegacyCloudExportRecovery.started(
+            id: exportID, storeIdentifier: "SharedDatabase.sqlite"
+        )
+        let base = Date(timeIntervalSince1970: 2_000)
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(1)))
+        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(2)))
+        XCTAssertTrue(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(3)))
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+        XCTAssertTrue(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)
+        LegacyCloudExportRecovery.ended(id: exportID)
+    }
+
+    func testCompletedExportDoesNotTriggerAutomaticQuarantine() {
+        let exportID = UUID()
+        LegacyCloudExportRecovery.started(
+            id: exportID, storeIdentifier: "SharedDatabase.sqlite"
+        )
+        LegacyCloudExportRecovery.ended(id: exportID)
+        let base = Date(timeIntervalSince1970: 3_000)
+        for offset in 0..<4 {
+            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
+                now: base.addingTimeInterval(Double(offset))
+            ))
+        }
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+    }
+
+    func testNewProcessCanClearAnOldExporterCrashMarker() {
+        LegacyCloudExportRecovery.started(
+            id: UUID(), storeIdentifier: "SharedDatabase.sqlite"
+        )
+        XCTAssertTrue(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
+        LegacyCloudExportRecovery.finishedExport(
+            storeIdentifier: "SharedDatabase.sqlite",
+            currentProcessExports: [:]
+        )
+        XCTAssertFalse(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
+    }
+
+    func testAnotherStoreFinishingDoesNotClearLegacyCrashMarker() {
+        LegacyCloudExportRecovery.started(
+            id: UUID(), storeIdentifier: "SharedDatabase.sqlite"
+        )
+        LegacyCloudExportRecovery.finishedExport(
+            storeIdentifier: "UserState.sqlite",
+            currentProcessExports: [:]
+        )
+        XCTAssertTrue(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
+    }
+
+    func testStoreUUIDIsUsedForCloudKitEventAttribution() {
+        XCTAssertTrue(CloudKitStoreIdentity.isLegacy(
+            "1234-ABCD", legacyUUID: "1234-abcd"
+        ))
+        XCTAssertFalse(CloudKitStoreIdentity.isLegacy(
+            "user-state-uuid", legacyUUID: "1234-abcd"
+        ))
+    }
+
+    func testStoreUUIDCanBeReadWithoutOpeningAMirroredContainer() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)
+        guard let database else { return XCTFail("Could not create test store") }
+        defer { sqlite3_close(database) }
+        XCTAssertEqual(sqlite3_exec(
+            database, "CREATE TABLE Z_METADATA (Z_UUID VARCHAR(255), Z_PLIST BLOB)", nil, nil, nil
+        ), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(
+            database, "INSERT INTO Z_METADATA (Z_UUID) VALUES ('legacy-test-uuid')",
+            nil, nil, nil
+        ), SQLITE_OK)
+        XCTAssertEqual(
+            CloudKitStoreIdentity.identifier(at: url), "legacy-test-uuid"
+        )
+    }
+
     /// The release phase is the only thing allowed to decide what the legacy store
     /// is attached to.
     ///
@@ -147,6 +243,8 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         defaults.removeObject(forKey: quarantineKey)
         defaults.removeObject(forKey: quarantineEligibleKey)
         defaults.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
+        defaults.removeObject(forKey: StoreSplitLaunchHealth.recoverySuggestedKey)
+        defaults.removeObject(forKey: LegacyCloudExportRecovery.activeExportsKey)
         // Keep the fallback clean too when the app-group suite is unavailable
         // in a unit-test process.
         UserDefaults.standard.removeObject(forKey: lastStateKey)
@@ -155,5 +253,7 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         UserDefaults.standard.removeObject(forKey: quarantineKey)
         UserDefaults.standard.removeObject(forKey: quarantineEligibleKey)
         UserDefaults.standard.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
+        UserDefaults.standard.removeObject(forKey: StoreSplitLaunchHealth.recoverySuggestedKey)
+        UserDefaults.standard.removeObject(forKey: LegacyCloudExportRecovery.activeExportsKey)
     }
 }

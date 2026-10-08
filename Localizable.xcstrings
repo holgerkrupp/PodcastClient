@@ -4544,6 +4544,12 @@
         }
       }
     },
+    "Legacy library sync will stop after you close and reopen Up Next. Your local library stays on this phone; User State continues syncing to iCloud." : {
+
+    },
+    "Legacy Sync Recovery" : {
+
+    },
     "Length" : {
 
     },
@@ -5592,6 +5598,7 @@
 
     },
     "Next predicted release: Unavailable" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -8761,6 +8768,9 @@
         }
       }
     },
+    "Repeated launches have ended before the legacy library could finish syncing. If this is your only active Up Next device, you can stop mirroring that library on the next launch. Keep using this phone until the move to User State is complete before adding another device." : {
+
+    },
     "Replacement feed" : {
 
     },
@@ -10209,10 +10219,19 @@
         }
       }
     },
+    "Stop Legacy Library Sync on This Device" : {
+
+    },
+    "Stop legacy library sync on this device?" : {
+
+    },
     "Stop Live Playback" : {
 
     },
     "Stop live playback and return to the previous episode." : {
+
+    },
+    "Stop on Next Launch" : {
 
     },
     "Stop playback after a number of minutes or after the current episode." : {
@@ -11707,6 +11726,9 @@
 
     },
     "Use the iOS/macOS 27 Audio App Schema for playlist additions." : {
+
+    },
+    "Use this only when no other device is using the legacy library sync. This one-way change keeps the local library and User State sync, but the old library will no longer exchange updates with other devices." : {
 
     },
     "Use transcript text as a Shortcuts file or request the existing transcription pipeline." : {

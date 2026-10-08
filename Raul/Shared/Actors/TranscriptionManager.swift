@@ -360,6 +360,10 @@ actor TranscriptionManager {
         await cancelAutomaticTranscriptions(status: "Deferred during playback")
     }
 
+    func cancelAutomaticTranscriptionsForCloudKitExport() async {
+        await cancelAutomaticTranscriptions(status: "Deferred while cloud sync catches up")
+    }
+
     private func cancelAutomaticTranscriptions(status: String) async {
         let automaticEpisodeURLs = taskOrigins.compactMap { (episodeURL, origin) in
             origin == .automatic ? episodeURL : nil
@@ -398,7 +402,10 @@ actor TranscriptionManager {
         respectSweepCooldown: Bool = true,
         deadline: Date? = nil
     ) async -> URL? {
-        guard await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
+        guard await MainActor.run(body: {
+            Player.hasActivePlaybackInProcess == false
+                && ModelContainerManager.shared.isCloudKitExportInProgress == false
+        }) else {
             return nil
         }
         guard let container = await preparedModelContainer() else {
@@ -443,7 +450,10 @@ actor TranscriptionManager {
         for candidate in candidates {
             if Task.isCancelled { return nil }
             if let deadline, Date() >= deadline { return nil }
-            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) { return nil }
+            if await MainActor.run(body: {
+                Player.hasActivePlaybackInProcess
+                    || ModelContainerManager.shared.isCloudKitExportInProgress
+            }) { return nil }
             let episodeURL = candidate.episodeURL
 
             try? await episodeActor.transcribe(
@@ -500,7 +510,10 @@ actor TranscriptionManager {
             // An analyzer is optional work. Playback can start after a
             // background sweep begins, so check between episodes as well as
             // at the BGProcessing entry point.
-            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) { break }
+            if await MainActor.run(body: {
+                Player.hasActivePlaybackInProcess
+                    || ModelContainerManager.shared.isCloudKitExportInProgress
+            }) { break }
             // Back-to-back analyzer runs heat the device up. Stop handing out
             // more work once the system says it is under pressure; the next
             // background pass picks up where this one stopped.

@@ -51,8 +51,8 @@ final class PodcastBrowseViewModel: ObservableObject {
         currentPageIsPartial || currentPageNextURL != nil
     }
 
-    func queue(_ episode: PodcastEpisodeDraft, to position: Playlist.Position) async {
-        guard isLoading == false else { return }
+    func queue(_ episode: PodcastEpisodeDraft, to position: Playlist.Position) async -> Bool {
+        guard isLoading == false else { return false }
         errorMessage = nil
         do {
             try await SubscriptionManager(modelContainer: modelContainer).queueBrowseEpisode(
@@ -61,16 +61,18 @@ final class PodcastBrowseViewModel: ObservableObject {
                 to: position
             )
             errorMessage = nil
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
-    func subscribe() async {
-        guard isSubscribing == false else { return }
+    func subscribe() async -> Bool {
+        guard isSubscribing == false else { return false }
         guard podcastFeed.url != nil else {
             errorMessage = "This podcast does not expose a feed URL."
-            return
+            return false
         }
         isSubscribing = true
         defer {
@@ -86,8 +88,10 @@ final class PodcastBrowseViewModel: ObservableObject {
             podcastFeed.existing = true
             isSubscribed = true
             errorMessage = nil
+            return true
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 
@@ -211,7 +215,7 @@ struct PodcastBrowseView: View {
                     isSubscribing: viewModel.isSubscribing,
                     showsLiveMetadata: defaultSettings.first?.showLivePodcasts != false,
                     subscribeAction: {
-                        await viewModel.subscribe()
+                        _ = await viewModel.subscribe()
                     },
                     alternativeFeedAction: { alternativeFeed in
                         await viewModel.loadAlternativeFeed(alternativeFeed)
@@ -236,8 +240,12 @@ struct PodcastBrowseView: View {
                         PodcastBrowseEpisodeRowView(
                             episode: episode,
                             podcastFeed: viewModel.podcastFeed,
+                            isSubscribed: viewModel.isSubscribed,
                             queueAction: { position in
                                 await viewModel.queue(episode, to: position)
+                            },
+                            subscribeAction: {
+                                await viewModel.subscribe()
                             }
                         )
                         .onAppear {
@@ -447,7 +455,9 @@ private struct PodcastBrowseHeaderView: View {
 private struct PodcastBrowseEpisodeRowView: View {
     let episode: PodcastEpisodeDraft
     let podcastFeed: PodcastFeed
-    let queueAction: (Playlist.Position) async -> Void
+    let isSubscribed: Bool
+    let queueAction: (Playlist.Position) async -> Bool
+    let subscribeAction: () async -> Bool
 
     @State private var isQueueing = false
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
@@ -478,7 +488,7 @@ private struct PodcastBrowseEpisodeRowView: View {
         guard isQueueing == false else { return }
         isQueueing = true
         Task {
-            await queueAction(position)
+            _ = await queueAction(position)
             await MainActor.run {
                 isQueueing = false
             }
@@ -487,7 +497,16 @@ private struct PodcastBrowseEpisodeRowView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .top, spacing: 14) {
+                NavigationLink {
+                    PodcastBrowseEpisodeDetailView(
+                        episode: episode,
+                        podcastFeed: podcastFeed,
+                        isSubscribed: isSubscribed,
+                        queueAction: queueAction,
+                        subscribeAction: subscribeAction
+                    )
+                } label: {
+                    HStack(alignment: .top, spacing: 14) {
                     ZStack {
                         CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
                             .frame(width: artworkSize, height: artworkSize)
@@ -550,7 +569,10 @@ private struct PodcastBrowseEpisodeRowView: View {
                         .buttonStyle(.plain)
                     }
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityHint("Opens episode details")
 
                 GlassEffectContainer(spacing: 20.0) {
                     HStack(spacing: 0.0) {
@@ -602,5 +624,256 @@ private struct PodcastBrowseEpisodeRowView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .accessibilityHidden(true)
         }
+    }
+}
+
+private struct PodcastBrowseEpisodeDetailView: View {
+    let episode: PodcastEpisodeDraft
+    let podcastFeed: PodcastFeed
+    let queueAction: (Playlist.Position) async -> Bool
+    let subscribeAction: () async -> Bool
+
+    @Environment(\.deviceUIStyle) private var style
+    @State private var isQueueing = false
+    @State private var isSubscribing = false
+    @State private var isSubscribed: Bool
+    @State private var actionError: String?
+
+    init(
+        episode: PodcastEpisodeDraft,
+        podcastFeed: PodcastFeed,
+        isSubscribed: Bool,
+        queueAction: @escaping (Playlist.Position) async -> Bool,
+        subscribeAction: @escaping () async -> Bool
+    ) {
+        self.episode = episode
+        self.podcastFeed = podcastFeed
+        self.queueAction = queueAction
+        self.subscribeAction = subscribeAction
+        self._isSubscribed = State(initialValue: isSubscribed)
+    }
+
+    private var funding: [FundingInfo] {
+        (episode.rawEpisodeData["funding"] as? [[String: String]] ?? []).compactMap { item in
+            guard let urlText = item["url"],
+                  let label = item["label"],
+                  let url = URL(string: urlText, relativeTo: podcastFeed.url)?.absoluteURL
+            else { return nil }
+            return FundingInfo(url: url, label: label)
+        }
+    }
+
+    private var optionalTags: PodcastNamespaceOptionalTags? {
+        episode.rawEpisodeData["optionalTags"] as? PodcastNamespaceOptionalTags
+    }
+
+    private var externalFiles: [ExternalFile] {
+        (episode.rawEpisodeData["externalFiles"] as? [ExternalFile])
+            ?? (episode.rawEpisodeData["transcripts"] as? [ExternalFile])
+            ?? []
+    }
+
+    private var chapters: [[String: Any]] {
+        episode.rawEpisodeData["psc:chapters"] as? [[String: Any]] ?? []
+    }
+
+    private var enclosure: [String: Any]? {
+        EpisodeMedia.playableEnclosure(from: episode.rawEpisodeData["enclosure"] as? [[String: Any]])
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(alignment: .top, spacing: 16) {
+                    CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL)
+                        .frame(width: 104, height: 104)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .accessibilityHidden(true)
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(podcastFeed.title ?? "Untitled Podcast")
+                            .font(.subheadline)
+                            .esaForeground(.secondary)
+                        Text(episode.title)
+                            .font(.title2.weight(.bold))
+                        if let date = episode.publishDate {
+                            Label(date.formatted(date: .long, time: .omitted), systemImage: "calendar")
+                                .font(.caption)
+                                .esaForeground(.secondary)
+                        }
+                        if let duration = episode.duration {
+                            Label(Duration.seconds(duration).formatted(.units(width: .abbreviated)), systemImage: "clock")
+                                .font(.caption)
+                                .esaForeground(.secondary)
+                        }
+                    }
+                }
+
+                HStack(spacing: 14) {
+                    Button {
+                        queue(.front)
+                    } label: {
+                        Label("Add to Up Next", systemImage: "arrow.up.to.line")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isQueueing)
+
+                    Button {
+                        queue(.end)
+                    } label: {
+                        Label("Add to End", systemImage: "arrow.down.to.line")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isQueueing)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Button {
+                    subscribe()
+                } label: {
+                    Label(
+                        isSubscribed ? "Subscribed" : "Subscribe to Podcast",
+                        systemImage: isSubscribed ? "checkmark.circle.fill" : "plus.circle"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .disabled(isSubscribed || isSubscribing)
+
+                if let actionError {
+                    Text(actionError)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+
+                if funding.isEmpty == false {
+                    HStack {
+                        ForEach(funding) { item in
+                            Link(destination: item.url) {
+                                Label(item.label, systemImage: style.currencySFSymbolName)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+
+                PodcastValueSplitView(
+                    optionalTags: optionalTags,
+                    funding: funding.isEmpty ? podcastFeed.funding : funding
+                )
+                PodcastNamespaceMetadataView(
+                    optionalTags: optionalTags,
+                    title: "Episode Metadata",
+                    hidesRenderableValueBlocks: true
+                )
+
+                if let showNotes = episode.content ?? episode.desc, showNotes.isEmpty == false {
+                    ShownoteContentView(html: showNotes)
+                }
+
+                if chapters.isEmpty == false {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Chapters")
+                            .font(.headline)
+                        ForEach(Array(chapters.enumerated()), id: \.offset) { item in
+                            let chapter = item.element
+                            HStack(alignment: .firstTextBaseline) {
+                                Text(chapterStartText(chapter["start"]))
+                                    .font(.caption.monospacedDigit())
+                                    .esaForeground(.secondary)
+                                Text(chapter["title"] as? String ?? "Chapter")
+                            }
+                        }
+                    }
+                }
+
+                if externalFiles.isEmpty == false {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Episode Files")
+                            .font(.headline)
+                        ForEach(Array(externalFiles.enumerated()), id: \.offset) { item in
+                            let file = item.element
+                            if let url = URL(string: file.url) {
+                                Link(destination: url) {
+                                    Label(file.category == .transcript ? "Transcript" : "Episode File", systemImage: "doc.text")
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if let enclosure {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Media")
+                            .font(.headline)
+                        if let type = enclosure["type"] as? String {
+                            LabeledContent("Format", value: type)
+                        }
+                        if let length = Int64(enclosure["length"] as? String ?? ""), length > 0 {
+                            LabeledContent("File size", value: ByteCountFormatter.string(fromByteCount: length, countStyle: .file))
+                        }
+                        Link(destination: episode.episodeURL) {
+                            Label("Open Episode Media", systemImage: "arrow.up.right.square")
+                        }
+                    }
+                }
+
+                HStack {
+                    if let link = episode.link {
+                        Link(destination: link) {
+                            Label("Episode Website", systemImage: "safari")
+                        }
+                    }
+                    if let link = podcastFeed.link {
+                        Link(destination: link) {
+                            Label("Podcast Website", systemImage: "globe")
+                        }
+                    }
+                }
+
+                ForEach(episode.deeplinks, id: \.self) { link in
+                    Link(destination: link) {
+                        Label(link.host ?? "Open Episode Link", systemImage: "arrow.up.right.square")
+                    }
+                }
+            }
+            .padding()
+        }
+        .coverHero(image: .url(episode.imageURL ?? podcastFeed.artworkURL), title: episode.title)
+        .ESAFullBackground(image: episode.imageURL ?? podcastFeed.artworkURL)
+        .navigationTitle(episode.title)
+        .platformInlineNavigationTitle()
+    }
+
+    private func queue(_ position: Playlist.Position) {
+        guard isQueueing == false else { return }
+        isQueueing = true
+        Task {
+            let succeeded = await queueAction(position)
+            if succeeded == false {
+                actionError = "Could not add this episode to Up Next."
+            }
+            isQueueing = false
+        }
+    }
+
+    private func subscribe() {
+        guard isSubscribing == false else { return }
+        isSubscribing = true
+        Task {
+            let succeeded = await subscribeAction()
+            isSubscribing = false
+            isSubscribed = succeeded
+            if succeeded == false {
+                actionError = "Could not subscribe to this podcast."
+            }
+        }
+    }
+
+    private func chapterStartText(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        if let value = value as? Double {
+            return Duration.seconds(value).formatted(.time(pattern: .minuteSecond))
+        }
+        return ""
     }
 }
