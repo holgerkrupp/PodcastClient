@@ -370,11 +370,10 @@ actor SubscriptionManager:NSObject{
         return episode
     }
 
-    func queueBrowseEpisode(
+    private func materializeBrowseEpisode(
         _ draft: PodcastEpisodeDraft,
-        from podcastFeed: PodcastFeed,
-        to position: Playlist.Position = .end
-    ) async throws {
+        from podcastFeed: PodcastFeed
+    ) throws -> Episode {
         guard let feedURL = podcastFeed.url else {
             throw SubscribeError.loadfeed
         }
@@ -399,7 +398,26 @@ actor SubscriptionManager:NSObject{
         guard let episode = upsertEpisode(from: draft, in: podcast) else {
             throw SubscribeError.parsing
         }
+        return episode
+    }
 
+    /// Creates only the unsubscribed feed and episode rows required by the
+    /// player. This intentionally does not add the episode to any playlist.
+    func prepareBrowseEpisodeForPlayback(
+        _ draft: PodcastEpisodeDraft,
+        from podcastFeed: PodcastFeed
+    ) throws -> URL {
+        let episode = try materializeBrowseEpisode(draft, from: podcastFeed)
+        modelContext.saveIfNeeded()
+        return episode.url ?? draft.episodeURL
+    }
+
+    func queueBrowseEpisode(
+        _ draft: PodcastEpisodeDraft,
+        from podcastFeed: PodcastFeed,
+        to position: Playlist.Position = .end
+    ) async throws {
+        let episode = try materializeBrowseEpisode(draft, from: podcastFeed)
         modelContext.saveIfNeeded()
 
         let playlistActor = try PlaylistModelActor(modelContainer: modelContainer)

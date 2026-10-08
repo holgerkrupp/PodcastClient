@@ -10,6 +10,7 @@ final class PodcastBrowseViewModel: ObservableObject {
     @Published var isLoadingMore = false
     @Published var isSubscribing = false
     @Published var isSubscribed = false
+    @Published var playingEpisodeID: String?
     @Published var errorMessage: String?
 
     private let modelContainer: ModelContainer
@@ -61,6 +62,27 @@ final class PodcastBrowseViewModel: ObservableObject {
                 to: position
             )
             errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func play(_ episode: PodcastEpisodeDraft) async -> Bool {
+        guard playingEpisodeID == nil else { return false }
+        playingEpisodeID = episode.id
+        defer { playingEpisodeID = nil }
+        errorMessage = nil
+
+        do {
+            let episodeURL = try await SubscriptionManager(modelContainer: modelContainer)
+                .prepareBrowseEpisodeForPlayback(episode, from: podcastFeed)
+            await Player.shared.playEpisode(episodeURL, playDirectly: true)
+            guard Player.shared.currentEpisodeURL == episodeURL else {
+                errorMessage = "Could not start this episode."
+                return false
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription
@@ -241,8 +263,12 @@ struct PodcastBrowseView: View {
                             episode: episode,
                             podcastFeed: viewModel.podcastFeed,
                             isSubscribed: viewModel.isSubscribed,
+                            isPlaying: viewModel.playingEpisodeID == episode.id,
                             queueAction: { position in
                                 await viewModel.queue(episode, to: position)
+                            },
+                            playAction: {
+                                await viewModel.play(episode)
                             },
                             subscribeAction: {
                                 await viewModel.subscribe()
@@ -445,7 +471,7 @@ private struct PodcastBrowseHeaderView: View {
             .buttonStyle(.glass(.clear))
             .disabled(feed.url == nil || isSubscribed || isSubscribing)
 
-            Text("This feed stays transient until you queue an episode. That way we only write podcasts and episodes you actually listen to.")
+            Text("This feed stays transient until you play or queue an episode. Subscribing stays optional.")
                 .font(.caption)
                 .esaForeground(.secondary)
         }
@@ -456,10 +482,13 @@ private struct PodcastBrowseEpisodeRowView: View {
     let episode: PodcastEpisodeDraft
     let podcastFeed: PodcastFeed
     let isSubscribed: Bool
+    let isPlaying: Bool
     let queueAction: (Playlist.Position) async -> Bool
+    let playAction: () async -> Bool
     let subscribeAction: () async -> Bool
 
     @State private var isQueueing = false
+    @State private var isStartingPlayback = false
     @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
@@ -485,13 +514,22 @@ private struct PodcastBrowseEpisodeRowView: View {
     }
 
     private func startQueue(_ position: Playlist.Position) {
-        guard isQueueing == false else { return }
+        guard isQueueing == false, isStartingPlayback == false else { return }
         isQueueing = true
         Task {
             _ = await queueAction(position)
             await MainActor.run {
                 isQueueing = false
             }
+        }
+    }
+
+    private func startPlayback() {
+        guard isQueueing == false, isStartingPlayback == false else { return }
+        isStartingPlayback = true
+        Task {
+            _ = await playAction()
+            isStartingPlayback = false
         }
     }
 
@@ -589,7 +627,7 @@ private struct PodcastBrowseEpisodeRowView: View {
                         }
                         .buttonStyle(.glass(.clear))
                         .clipShape(Circle())
-                        .disabled(isQueueing)
+                        .disabled(isQueueing || isStartingPlayback)
 
                         Button {
                             startQueue(.end)
@@ -604,7 +642,28 @@ private struct PodcastBrowseEpisodeRowView: View {
                         }
                         .buttonStyle(.glass(.clear))
                         .clipShape(Circle())
-                        .disabled(isQueueing)
+                        .disabled(isQueueing || isStartingPlayback)
+
+                        Button {
+                            startPlayback()
+                        } label: {
+                            if isPlaying || isStartingPlayback {
+                                ProgressView()
+                                    .frame(width: 50, height: 50)
+                            } else {
+                                Label("Play Episode", systemImage: "play.fill")
+                                    .labelStyle(.iconOnly)
+                                    .symbolRenderingMode(.hierarchical)
+                                    .scaledToFit()
+                                    .padding(5)
+                                    .minimumScaleFactor(0.5)
+                                    .frame(width: 50)
+                            }
+                        }
+                        .buttonStyle(.glass(.clear))
+                        .clipShape(Circle())
+                        .disabled(isQueueing || isStartingPlayback)
+                        .accessibilityLabel("Play Episode")
 
                         Spacer()
 

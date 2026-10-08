@@ -10807,6 +10807,16 @@
         }
       }
     },
+    "This feed stays transient until you play or queue an episode. Subscribing stays optional." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Feed bleibt vorübergehend, bis du eine Episode abspielst oder in die Warteschlange stellst. Ein Abonnement ist optional."
+          }
+        }
+      }
+    },
     "This is the built-in queue, so its name is fixed. You can still give it any icon." : {
       "localizations" : {
         "de" : {
