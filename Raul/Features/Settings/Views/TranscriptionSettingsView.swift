@@ -116,12 +116,49 @@ struct TranscriptionSettingsView: View {
                                 globalSettings.enablePublisherTranscriptSynchronization = enabled
                                 context.saveIfNeeded()
                                 TranscriptSynchronizationStore.shared.setEnabled(enabled)
+                                if enabled == false {
+                                    TranscriptSynchronizationStore.shared.clearActiveTimelines()
+                                }
+                                Task {
+                                    await TranscriptSynchronizationService.shared.setEnabled(enabled)
+                                    await AppDelegate.schedulePublisherTranscriptSynchronizationIfNeeded()
+                                }
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+
+                    Toggle(
+                        "Add likely ad breaks to the chapter list",
+                        isOn: Binding(
+                            get: { globalSettings.createTranscriptGapChapters },
+                            set: { enabled in
+                                globalSettings.createTranscriptGapChapters = enabled
+                                context.saveIfNeeded()
+                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                            }
+                        )
+                    )
+
+                    Toggle(
+                        "Automatically skip transcript-gap chapters",
+                        isOn: Binding(
+                            get: { globalSettings.automaticallySkipTranscriptGapChapters },
+                            set: { enabled in
+                                globalSettings.automaticallySkipTranscriptGapChapters = enabled
+                                context.saveIfNeeded()
                                 NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
                             }
                         )
                     )
                 }
-                Text("When an alignment is available, corrected timing is used during playback and when seeking from transcript rows. Synchronization is not run after download.")
+                Text("Gap chapters are added only after multiple confident matches identify inserted audio. They may be ads or other audio absent from the publisher transcript.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("Automatic skipping applies to every transcript-gap chapter. Review their boundaries in the chapter list; you can also skip individual chapters there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text("After a download, the app queues short audio samples for analysis when iOS allows background work, usually while the device is charging and idle. iOS may delay or stop the work; playback analysis fills in later if needed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Compare small portions of podcast audio with publisher transcripts to correct caption timing when ads or other audio have been inserted. Processing happens on device and may use additional battery. Your transcript text stays unchanged.")

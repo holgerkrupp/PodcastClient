@@ -21,6 +21,7 @@ enum MarkerType: String, Codable, Comparable, Sendable{
     case ai
     case bookmark
     case soundbite
+    case transcriptGap
     
     var desc:String{
         
@@ -41,6 +42,8 @@ enum MarkerType: String, Codable, Comparable, Sendable{
             "Bookmarks can be created when listening to an episode."
         case .soundbite:
             "Soundbites have been extracted from the feed following the Podcast Namespace soundbite specification."
+        case .transcriptGap:
+            "Likely inserted audio intervals identified by comparing a publisher transcript with the downloaded audio. They may contain dynamic ads or other untranscribed audio."
 
         }
         

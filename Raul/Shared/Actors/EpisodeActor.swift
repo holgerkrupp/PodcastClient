@@ -6,6 +6,7 @@
 //
 import SwiftData
 import Foundation
+import CryptoKit
 import mp3ChapterReader
 
 import AVFoundation
@@ -2674,6 +2675,80 @@ actor EpisodeActor {
         )
     }
 
+    func transcriptSynchronizationInput(for episodeURL: URL) async -> TranscriptSynchronizationInput? {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
+              let localMediaURL = episode.localFile,
+              FileManager.default.fileExists(atPath: localMediaURL.path) else { return nil }
+
+        let episodePersistentID = episode.persistentModelID
+        let descriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { line in
+                line.episode?.persistentModelID == episodePersistentID
+            },
+            sortBy: [SortDescriptor(\.startTime)]
+        )
+        guard let lines = try? modelContext.fetch(descriptor),
+              lines.count >= 3,
+              lines.allSatisfy({ $0.transcriptSource == .publisher }) else { return nil }
+
+        let candidates = lines.map {
+            TranscriptAlignmentCandidate(
+                id: $0.id.uuidString,
+                transcriptTime: $0.startTime,
+                text: $0.text,
+                source: $0.transcriptSource
+            )
+        }
+        guard let revisionData = try? JSONEncoder().encode(candidates) else { return nil }
+        let revision = SHA256.hash(data: revisionData)
+            .map { String(format: "%02x", $0) }
+            .joined()
+
+        return TranscriptSynchronizationInput(
+            episodeID: episode.stableEpisodeIdentity.key,
+            episodeURL: episodeURL,
+            localMediaURL: localMediaURL,
+            language: episode.podcast?.language,
+            transcriptRevision: revision,
+            candidates: candidates
+        )
+    }
+
+    func transcriptSynchronizationRevision(for episodeURL: URL) async -> String? {
+        await transcriptSynchronizationInput(for: episodeURL)?.transcriptRevision
+    }
+
+    @discardableResult
+    func updateTranscriptGapChapters(
+        for episodeURL: URL,
+        gaps: [TranscriptAudioGap],
+        audioVariantID: String
+    ) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        let chapters = gaps.compactMap { gap -> Marker? in
+            let duration = gap.audioEnd - gap.audioStart
+            guard gap.audioStart.isFinite, gap.audioStart >= 0,
+                  duration.isFinite, duration >= 20 else { return nil }
+            let chapter = Marker(
+                start: gap.audioStart,
+                title: "Likely ad break",
+                type: .transcriptGap,
+                duration: duration
+            )
+            chapter.endTime = gap.audioEnd
+            chapter.analysisVariantID = audioVariantID
+            return chapter
+        }
+        EpisodeChapterMerger.replaceChapters(
+            on: episode,
+            replacingTypes: [.transcriptGap],
+            with: chapters
+        )
+        episode.refresh.toggle()
+        modelContext.saveIfNeeded()
+        return true
+    }
+
     // 2) Attach a TranscriptionItem to the Episode safely
     @MainActor
     func attachTranscriptionItem(_ item: TranscriptionItem, to episodeURL: URL) async {
@@ -2758,6 +2833,12 @@ actor EpisodeActor {
             try Task.checkCancellation()
             try modelContext.save()
         }
+
+#if canImport(UIKit)
+        if source == .publisher, let episodeURL = episode.url, episode.localFile != nil {
+            await AppDelegate.enqueuePublisherTranscriptSynchronization(for: episodeURL)
+        }
+#endif
     }
 
     func transcriptLineCount() async -> Int {

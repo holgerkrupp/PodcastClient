@@ -22,25 +22,7 @@ struct PodcastListView: View {
         }
     }
 
-    @Environment(\.modelContext) private var modelContext
-
-    // Keep subscription filtering in SwiftData. Evaluating Podcast.isSubscribed
-    // in the SwiftUI body faults the metadata relationship while background
-    // refresh/import work may be deleting or replacing that row.
-    @Query(
-        filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false },
-        sort: \Podcast.title
-    ) private var subscribedPodcasts: [Podcast]
-    @Query(
-        filter: #Predicate<Podcast> { $0.metaData?.isSubscribed == false },
-        sort: \Podcast.title
-    ) private var unsubscribedPodcasts: [Podcast]
-    @Query(sort: \Podcast.title) private var allPodcasts: [Podcast]
-
-    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
-
     @StateObject private var viewModel: PodcastListViewModel
-    @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
     @State private var pendingDeletionIDs = Set<PersistentIdentifier>()
@@ -50,22 +32,7 @@ struct PodcastListView: View {
         _viewModel = StateObject(wrappedValue: PodcastListViewModel(modelContainer: modelContainer))
     }
 
-    private var podcastsInScope: [Podcast] {
-        let source: [Podcast]
-        switch selectedScope {
-        case .subscribed:
-            source = subscribedPodcasts
-        case .unsubscribed:
-            source = unsubscribedPodcasts
-        case .all:
-            source = allPodcasts
-        }
-        return source.filter { pendingDeletionIDs.contains($0.persistentModelID) == false }
-    }
-
     var body: some View {
-        let visiblePodcasts = podcastsInScope
-
         List {
             NavigationLink(destination: LibrarySearchView()) {
                 Label("Search Library", systemImage: "magnifyingglass")
@@ -107,78 +74,59 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
-            if visiblePodcasts.isEmpty {
-                if selectedScope == .subscribed {
-                    PodcastsEmptyView()
+            PodcastScopeQueryView(scope: selectedScope) { podcasts in
+                let visiblePodcasts = podcasts.filter {
+                    pendingDeletionIDs.contains($0.persistentModelID) == false
+                }
+                if visiblePodcasts.isEmpty {
+                    if selectedScope == .subscribed {
+                        PodcastsEmptyView()
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 16, leading: 0, bottom: 16, trailing: 0))
+                    } else {
+                        ContentUnavailableView(
+                            selectedScope == .unsubscribed ? "No Unsubscribed Podcasts" : "No Podcasts",
+                            systemImage: selectedScope == .unsubscribed ? "pause.circle" : "dot.radiowaves.left.and.right",
+                            description: Text(selectedScope == .unsubscribed ? "Podcasts kept in the database but excluded from refresh will appear here." : "No podcasts are stored in the library yet.")
+                        )
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 16,
-                                             leading: 0,
-                                             bottom: 16,
-                                             trailing: 0))
+                        .listRowInsets(.init(top: 16, leading: 0, bottom: 16, trailing: 0))
+                    }
                 } else {
-                    ContentUnavailableView(
-                        selectedScope == .unsubscribed ? "No Unsubscribed Podcasts" : "No Podcasts",
-                        systemImage: selectedScope == .unsubscribed ? "pause.circle" : "dot.radiowaves.left.and.right",
-                        description: Text(selectedScope == .unsubscribed ? "Podcasts kept in the database but excluded from refresh will appear here." : "No podcasts are stored in the library yet.")
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 16,
-                                         leading: 0,
-                                         bottom: 16,
-                                         trailing: 0))
-                }
-            } else {
-                ForEach(visiblePodcasts) { podcast in
-                    ZStack {
-                        PodcastRowView(podcast: podcast)
+                    ForEach(visiblePodcasts) { podcast in
                         NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                            EmptyView()
-                        }.opacity(0)
+                            PodcastRowView(podcast: podcast)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open podcast \(podcast.title)")
+                        .accessibilityHint("Opens this podcast details screen")
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Open podcast \(podcast.title)")
-                    .accessibilityHint("Opens this podcast details screen")
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                }
-                .onDelete { indexSet in
-                    let podcastIDs = indexSet.compactMap { index in
-                        visiblePodcasts.indices.contains(index)
-                            ? visiblePodcasts[index].persistentModelID
-                            : nil
-                    }
-                    Task {
-                        for podcastID in podcastIDs {
-                            pendingDeletionIDs.insert(podcastID)
-                            if await viewModel.deletePodcast(podcastID) == false {
-                                pendingDeletionIDs.remove(podcastID)
+                    .onDelete { indexSet in
+                        let podcastIDs = indexSet.compactMap { index in
+                            visiblePodcasts.indices.contains(index)
+                                ? visiblePodcasts[index].persistentModelID
+                                : nil
+                        }
+                        Task {
+                            for podcastID in podcastIDs {
+                                pendingDeletionIDs.insert(podcastID)
+                                if await viewModel.deletePodcast(podcastID) == false {
+                                    pendingDeletionIDs.remove(podcastID)
+                                }
                             }
                         }
                     }
                 }
             }
+            .id(selectedScope)
         }
         .navigationTitle("Library")
-        .animation(.easeInOut, value: visiblePodcasts.map(\.persistentModelID))
         .listStyle(.plain)
-        .task {
-            _ = Playlist.ensureDefaultQueue(in: modelContext)
-            ensurePlaylistPreferencesValid()
-        }
-        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
-            refreshProgress = progress
-        }
-        // A screen that was off-screen while the run started may have missed the
-        // announcement, so re-read the snapshot every time it comes back.
-        .onAppear {
-            refreshProgress = PodcastRefreshCoordinator.shared.progress
-        }
         .toolbar {
             ToolbarItemGroup(placement: .secondaryAction) {
                 Menu {
@@ -197,30 +145,7 @@ struct PodcastListView: View {
                 .accessibilityHint("Filter library by subscribed, not subscribed, or all podcasts")
                 .accessibilityInputLabels([Text("Podcast scope"), Text("Library scope")])
 
-                Button {
-                    Task {
-                        await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
-                            modelContainer: modelContainer
-                        )
-                    }
-                } label: {
-                    if refreshProgress.isRefreshing {
-                        if refreshProgress.total != 0 {
-                            CircularProgressView(
-                                value: Double(refreshProgress.completed),
-                                total: Double(refreshProgress.total)
-                            )
-                        } else {
-                            ProgressView()
-                        }
-                    } else {
-                        Label("Refresh podcasts", systemImage: "arrow.clockwise")
-                    }
-                }
-                .disabled(refreshProgress.isRefreshing)
-                .accessibilityLabel(refreshProgress.isRefreshing ? "Refreshing podcasts" : "Refresh podcasts")
-                .accessibilityHint("Updates all podcast feeds in your library")
-                .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
+                LibraryRefreshToolbarControl(modelContainer: modelContainer)
             }
 
             ToolbarItem(placement: .primaryAction) {
@@ -234,18 +159,62 @@ struct PodcastListView: View {
         }
     }
 
-    private func ensurePlaylistPreferencesValid() {
-        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
-        let currentPlaylists = Playlist.manualVisibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
-        let allIDs = Set(currentPlaylists.map(\.id))
+}
 
-        if let selectedID = UUID(uuidString: selectedPlaylistID),
-           allIDs.contains(selectedID) == false {
-            selectedPlaylistID = defaultPlaylist.id.uuidString
-        } else if selectedPlaylistID.isEmpty {
-            selectedPlaylistID = defaultPlaylist.id.uuidString
+private struct PodcastScopeQueryView<Content: View>: View {
+    @Query private var podcasts: [Podcast]
+    let content: ([Podcast]) -> Content
+
+    init(
+        scope: PodcastListView.LibraryScope,
+        @ViewBuilder content: @escaping ([Podcast]) -> Content
+    ) {
+        switch scope {
+        case .subscribed:
+            _podcasts = Query(
+                filter: #Predicate<Podcast> { $0.metaData?.isSubscribed != false },
+                sort: \Podcast.title
+            )
+        case .unsubscribed:
+            _podcasts = Query(
+                filter: #Predicate<Podcast> { $0.metaData?.isSubscribed == false },
+                sort: \Podcast.title
+            )
+        case .all:
+            _podcasts = Query(sort: \Podcast.title)
         }
+        self.content = content
+    }
 
+    var body: some View { content(podcasts) }
+}
+
+private struct LibraryRefreshToolbarControl: View {
+    let modelContainer: ModelContainer
+    @State private var progress = PodcastRefreshCoordinator.shared.progress
+
+    var body: some View {
+        Button {
+            Task {
+                await PodcastRefreshCoordinator.shared.refreshAllPodcasts(modelContainer: modelContainer)
+            }
+        } label: {
+            if progress.isRefreshing {
+                if progress.total > 0 {
+                    CircularProgressView(value: Double(progress.completed), total: Double(progress.total))
+                } else {
+                    ProgressView()
+                }
+            } else {
+                Label("Refresh podcasts", systemImage: "arrow.clockwise")
+            }
+        }
+        .disabled(progress.isRefreshing)
+        .accessibilityLabel(progress.isRefreshing ? "Refreshing podcasts" : "Refresh podcasts")
+        .accessibilityHint("Updates all podcast feeds in your library")
+        .accessibilityInputLabels([Text("Refresh podcasts"), Text("Refresh library")])
+        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress = $0 }
+        .onAppear { progress = PodcastRefreshCoordinator.shared.progress }
     }
 }
 
@@ -294,10 +263,8 @@ private struct LibraryPlaylistsView: View {
                 createPlaylist(from: draft)
             }
         }
-        .task {
-            _ = Playlist.ensureDefaultQueue(in: modelContext)
-            ensurePlaylistPreferencesValid()
-        }
+        .task { ensurePlaylistPreferencesValid() }
+        .onChange(of: playlists.map(\.id)) { _, _ in ensurePlaylistPreferencesValid() }
     }
 
     private func deletePlaylists(at offsets: IndexSet) {
@@ -318,15 +285,14 @@ private struct LibraryPlaylistsView: View {
     }
 
     private func ensurePlaylistPreferencesValid() {
-        let defaultPlaylist = Playlist.ensureDefaultQueue(in: modelContext)
-        let currentPlaylists = Playlist.visibleSorted((try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? [])
-        let allIDs = Set(currentPlaylists.map(\.id))
+        let defaultPlaylist = Playlist.existingDefaultQueue(in: modelContext)
+        let allIDs = Set(playlists.map(\.id))
 
         if let selectedID = UUID(uuidString: selectedPlaylistID),
            allIDs.contains(selectedID) == false {
-            selectedPlaylistID = defaultPlaylist.id.uuidString
+            selectedPlaylistID = defaultPlaylist?.id.uuidString ?? ""
         } else if selectedPlaylistID.isEmpty {
-            selectedPlaylistID = defaultPlaylist.id.uuidString
+            selectedPlaylistID = defaultPlaylist?.id.uuidString ?? ""
         }
 
     }

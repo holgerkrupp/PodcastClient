@@ -11,6 +11,7 @@ enum BackgroundTaskConfiguration {
     static let feedProcessingIdentifier = "processFeedUpdates"
     static let storageCleanupIdentifier = "storageCleanup"
     static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
+    static let publisherTranscriptSynchronizationIdentifier = "publisherTranscriptSynchronization"
     static let storeSplitMigrationIdentifier = "processStoreSplitMigration"
     static let feedRefreshInterval: TimeInterval = 60 * 60
     static let predictedReleaseRefreshOffset: TimeInterval = 5 * 60
@@ -29,6 +30,8 @@ enum BackgroundTaskConfiguration {
     /// schedule — iOS still picks the moment — so a short one just makes the task
     /// eligible sooner and gets more episodes transcribed per day.
     static let automaticTranscriptionInterval: TimeInterval = 60 * 5
+    static let publisherTranscriptSynchronizationInterval: TimeInterval = 60 * 5
+    static let publisherTranscriptSynchronizationEpisodeLimit = 2
     /// Wall-clock budget for one background transcription pass. Checked before
     /// starting another episode, never mid-analysis.
     static let automaticTranscriptionBackgroundBudget: TimeInterval = 60 * 20
@@ -1056,6 +1059,7 @@ private struct RootWindowView: View {
                         // for the first background transition. It leaves an
                         // already pending request alone.
                         await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
+                        await AppDelegate.schedulePublisherTranscriptSynchronizationIfNeeded()
 #endif
                     }
                 }

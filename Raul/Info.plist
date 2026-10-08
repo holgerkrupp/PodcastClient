@@ -10,6 +10,7 @@
 		<string>processFeedUpdates</string>
 		<string>storageCleanup</string>
 		<string>automaticTranscriptionProcessing</string>
+		<string>publisherTranscriptSynchronization</string>
 		<string>processStoreSplitMigration</string>
 	</array>
 	<key>CFBundleDocumentTypes</key>

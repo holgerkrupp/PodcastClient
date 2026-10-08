@@ -8,6 +8,29 @@ import SwiftUI
 import SwiftData
 import ESADesignKit
 
+@MainActor
+private enum CompactPodcastDescriptionCache {
+    private static let values: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 512
+        cache.totalCostLimit = 1_000_000
+        return cache
+    }()
+
+    static func text(for source: String, podcastID: PersistentIdentifier) -> String {
+        var hasher = Hasher()
+        source.hash(into: &hasher)
+        let key = "\(podcastID)-\(hasher.finalize())" as NSString
+        if let cached = values.object(forKey: key) {
+            return cached as String
+        }
+
+        let normalized = source.plainTextFromHTML() ?? source
+        values.setObject(normalized as NSString, forKey: key, cost: normalized.utf8.count)
+        return normalized
+    }
+}
+
 struct PodcastRowView: View {
     let podcast: Podcast
     var previewArtwork: Image? = nil
@@ -46,8 +69,11 @@ struct PodcastRowView: View {
                     } else {
                         BlurredCoverImageView(
                             podcast: podcast,
-                            maxPixelSize: 512,
-                            loadDelay: .milliseconds(200)
+                            // The decorative image is blurred and clipped to a
+                            // row-height strip, so a smaller decode is enough.
+                            // Keep the foreground cover's 384px decode crisp.
+                            maxPixelSize: 256,
+                            loadDelay: .milliseconds(350)
                         )
                     }
                 }
@@ -88,7 +114,10 @@ struct PodcastRowView: View {
                     }
 
                     if let desc = podcast.desc, desc.isEmpty == false {
-                        Text(desc.plainTextFromHTML() ?? desc)
+                        Text(CompactPodcastDescriptionCache.text(
+                            for: desc,
+                            podcastID: podcast.persistentModelID
+                        ))
                             .font(.caption)
                             .esaForeground(.secondary)
                             .lineLimit(3)

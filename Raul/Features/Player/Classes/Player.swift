@@ -406,6 +406,8 @@ class Player {
     private var artworkLoadTask: Task<Void, Never>?
     private var artworkLoadGeneration: UInt64 = 0
     private var currentArtworkIdentity: PlayerArtworkIdentity?
+    private var lastTranscriptSynchronizationEpisodeURL: URL?
+    private var lastTranscriptSynchronizationPosition: TimeInterval?
 #if !os(watchOS)
     private var currentAudioPlaybackProcessor: AudioPlaybackProcessor?
 #endif
@@ -450,6 +452,11 @@ class Player {
         didSet {
             scheduleCurrentArtworkUpdate()
             NotificationCenter.default.post(name: .playerChapterDataDidChange, object: nil)
+            if oldValue?.url != currentEpisode?.url {
+                lastTranscriptSynchronizationEpisodeURL = nil
+                lastTranscriptSynchronizationPosition = nil
+                Task { await TranscriptSynchronizationService.shared.cancelAll() }
+            }
         }
     }
     var currentEpisodeURL: URL?
@@ -533,6 +540,7 @@ class Player {
     var adDetectionEnabled = false
     var showDetectedAdvertisements = false
     var automaticAdvertisementSkippingEnabled = false
+    private(set) var automaticallySkipTranscriptGapChaptersEnabled = false
     private(set) var currentArtworkImage: UIImage?
     
     var allowScrubbing:Bool?
@@ -572,7 +580,13 @@ class Player {
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
             await loadSkipProtectionSettings()
+            automaticallySkipTranscriptGapChaptersEnabled = await settingsActor?
+                .getAutomaticallySkipTranscriptGapChaptersEnabled() ?? false
+            rebuildChapterSkipPlan()
             TranscriptSynchronizationStore.shared.setEnabled(
+                await settingsActor?.getPublisherTranscriptSynchronizationEnabled() ?? false
+            )
+            await TranscriptSynchronizationService.shared.setEnabled(
                 await settingsActor?.getPublisherTranscriptSynchronizationEnabled() ?? false
             )
         }
@@ -966,9 +980,24 @@ class Player {
                 await self?.loadPlaybackAudioProcessingSettings()
                 await self?.loadPlaybackTrimSettings(applyToCurrentPlayback: true)
                 await self?.reloadAdvertisementDetection()
+                self?.automaticallySkipTranscriptGapChaptersEnabled = await self?.settingsActor?
+                    .getAutomaticallySkipTranscriptGapChaptersEnabled() ?? false
+                self?.rebuildChapterSkipPlan()
+                self?.configureChapterBoundaryObserver()
+                if self?.automaticallySkipTranscriptGapChaptersEnabled == true,
+                   self?.isPlaying == true {
+                    Task { await self?.skipOverChapters() }
+                }
                 TranscriptSynchronizationStore.shared.setEnabled(
                     await self?.settingsActor?.getPublisherTranscriptSynchronizationEnabled() ?? false
                 )
+                let synchronizationEnabled = await self?.settingsActor?
+                    .getPublisherTranscriptSynchronizationEnabled() ?? false
+                await TranscriptSynchronizationService.shared.setEnabled(synchronizationEnabled)
+                if synchronizationEnabled {
+                    self?.lastTranscriptSynchronizationPosition = nil
+                    self?.requestTranscriptSynchronizationIfNeeded(at: self?.playPosition ?? 0)
+                }
                 if let currentItem = self?.videoPlayer.currentItem {
                     await self?.configurePlaybackAudioProcessing(for: currentItem)
                 }
@@ -1359,6 +1388,14 @@ class Player {
         RemoteCommandCenter.shared.updateSkipIntervals()
     }
 
+    func refreshChaptersAfterTranscriptGapUpdate(for episodeURL: URL) {
+        guard currentEpisodeURL == episodeURL else { return }
+        updateChapters()
+        if automaticallySkipTranscriptGapChaptersEnabled, isPlaying {
+            Task { await skipOverChapters() }
+        }
+    }
+
     private func configureChapterBoundaryObserver() {
         let chapterStartTimes = (chapterSkipPlan.boundaryTimes + adSkipPlan.boundaryTimes)
             .sorted()
@@ -1385,9 +1422,10 @@ class Player {
             return ChapterSkipPlan.Entry(
                 id: chapter.uuid,
                 start: start,
-                shouldPlay: chapter.shouldPlay
+                shouldPlay: chapter.shouldPlay,
+                isTranscriptGap: chapter.type == .transcriptGap
             )
-        })
+        }, automaticallySkipTranscriptGaps: automaticallySkipTranscriptGapChaptersEnabled)
     }
 
     private func configureAdvertisementDetection(for episode: Episode, episodeURL: URL) async {
@@ -2182,6 +2220,7 @@ class Player {
             liveStreamStatusObservation = nil
         }
         currentEpisodeURL = episodeURL
+        TranscriptSynchronizationStore.shared.removeTimeline(for: episodeURL)
         finishingEpisodeURL = nil
         currentPlaybackPlaylistID = playbackPlaylistID
         mediaSelection = selectedMedia
@@ -2209,6 +2248,9 @@ class Player {
         let playbackGeneration = advancePlaybackLoadGeneration()
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
+        if playback.source != .local || playback.usesAlternateMedia {
+            Task { await TranscriptSynchronizationService.shared.cancelAll() }
+        }
         let item = playback.item
 
         let duration = item.duration.seconds
@@ -2415,8 +2457,12 @@ class Player {
 
         let playbackGeneration = advancePlaybackLoadGeneration()
         mediaSelection = nextSelection
+        lastTranscriptSynchronizationPosition = nil
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
+        if playback.source != .local || playback.usesAlternateMedia {
+            Task { await TranscriptSynchronizationService.shared.cancelAll() }
+        }
         await resetPlaybackAudioProcessing(for: playback.item)
         engine.replaceCurrentItem(with: playback.item)
         configureChapterBoundaryObserver()
@@ -2716,6 +2762,7 @@ class Player {
     func enterBackgroundPlaybackMode() {
         guard playbackPowerMode != .background else { return }
         playbackPowerMode = .background
+        Task { await TranscriptSynchronizationService.shared.cancelAll() }
         restartPlaybackUpdatesIfNeeded()
         restartSleepTimerIfNeeded()
         updateNowPlayingInfo()
@@ -2736,6 +2783,8 @@ class Player {
 
         guard currentEpisodeURL != nil else { return }
         playPosition = sanitizedPosition(engine.currentTime())
+        lastTranscriptSynchronizationPosition = nil
+        requestTranscriptSynchronizationIfNeeded(at: playPosition)
         if currentEpisode?.chapters?.isEmpty == false {
             _ = updateCurrentChapter()
             updateChapterProgress()
@@ -3027,6 +3076,49 @@ class Player {
         playbackTask?.cancel()
         playbackTask = nil
     }
+
+    private func requestTranscriptSynchronizationIfNeeded(at audioTime: TimeInterval) {
+        let episodeURL = currentEpisodeURL
+        guard TranscriptSynchronizationStore.shared.isEnabled,
+              isPlaying,
+              playbackPowerMode == .foreground,
+              currentPlaybackSource == .local,
+              currentPlaybackUsesAlternateMedia == false,
+              mediaSelection == .primary,
+              currentPlaybackIsVideo == false,
+              let episodeURL else {
+            if currentPlaybackSource != .local || currentPlaybackUsesAlternateMedia || currentPlaybackIsVideo {
+                Task { await TranscriptSynchronizationService.shared.cancelAll() }
+            }
+            return
+        }
+
+        let episodeChanged = lastTranscriptSynchronizationEpisodeURL != episodeURL
+        let previousPosition = lastTranscriptSynchronizationPosition
+        let seekedBack = previousPosition.map { audioTime < $0 - 30 } ?? false
+        let intervalElapsed = previousPosition.map { audioTime - $0 >= 240 } ?? (audioTime >= 20)
+        guard episodeChanged || seekedBack || intervalElapsed else { return }
+
+        lastTranscriptSynchronizationEpisodeURL = episodeURL
+        lastTranscriptSynchronizationPosition = audioTime
+        Task { [weak self] in
+            guard let self,
+                  let input = await self.episodeActor?.transcriptSynchronizationInput(for: episodeURL),
+                  self.currentEpisodeURL == episodeURL,
+                  self.isPlaying,
+                  self.playbackPowerMode == .foreground,
+                  self.currentPlaybackSource == .local,
+                  TranscriptSynchronizationStore.shared.isEnabled,
+                  let cacheContainer = ModelContainerManager.shared.preparedCacheContainer else { return }
+            await TranscriptSynchronizationService.shared.schedule(
+                input: input,
+                audioTime: audioTime,
+                cacheContainer: cacheContainer,
+                episodeActor: self.episodeActor,
+                settingsActor: self.settingsActor
+            )
+        }
+    }
     
     
 
@@ -3041,6 +3133,7 @@ class Player {
                 case .position(let time):
                     let sanitizedTime = self.sanitizedPosition(time)
                     self.playPosition = sanitizedTime
+                    self.requestTranscriptSynchronizationIfNeeded(at: sanitizedTime)
                     self.updateEpisodeProgress(to: sanitizedTime)
                     if self.finishAtOutroIfNeeded(
                         position: sanitizedTime,

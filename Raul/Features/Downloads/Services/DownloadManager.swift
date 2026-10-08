@@ -326,6 +326,9 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 if let episodeActor = await DownloadManager.shared.makeEpisodeActor() {
                     await episodeActor.markEpisodeAvailable(fileURL: url)
                 }
+#if canImport(UIKit)
+                await AppDelegate.enqueuePublisherTranscriptSynchronization(for: url)
+#endif
             }
             
             

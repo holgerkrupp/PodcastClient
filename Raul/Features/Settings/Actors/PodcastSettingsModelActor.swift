@@ -562,6 +562,14 @@ actor PodcastSettingsModelActor {
         await standardSettings().enablePublisherTranscriptSynchronization
     }
 
+    func getCreateTranscriptGapChaptersEnabled() async -> Bool {
+        await standardSettings().createTranscriptGapChapters
+    }
+
+    func getAutomaticallySkipTranscriptGapChaptersEnabled() async -> Bool {
+        await standardSettings().automaticallySkipTranscriptGapChapters
+    }
+
     func getAutomaticOnDeviceTranscriptionsRequiresCharging() async -> Bool {
         await standardSettings().limitAutomaticOnDeviceTranscriptionsToCharging
     }

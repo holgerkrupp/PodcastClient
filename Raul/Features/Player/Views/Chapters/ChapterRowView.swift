@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import ESADesignKit
 
 struct ChapterRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -14,6 +15,7 @@ struct ChapterRowView: View {
     var isCurrentChapter: Bool? = nil
     var markerLabel: String = "chapter"
     var showsPlayToggle: Bool = true
+    var isAutomaticallySkipped: Bool = false
     var player = Player.shared
 
     private var resolvedIsCurrentChapter: Bool {
@@ -39,7 +41,11 @@ struct ChapterRowView: View {
                     Text(title)
                         .font(.title3)
 
-                    if differentiateWithoutColor {
+                    if isAutomaticallySkipped {
+                        Label("Will be skipped automatically", systemImage: "forward.fill")
+                            .font(.caption2.weight(.semibold))
+                            .esaForeground(.secondary)
+                    } else if differentiateWithoutColor {
                         if resolvedIsCurrentChapter {
                             Label("Current chapter", systemImage: "speaker.wave.2.fill")
                                 .font(.caption2.weight(.semibold))
@@ -103,14 +109,14 @@ struct ChapterRowView: View {
             .accessibilityHint("Double tap to jump playback to this \(markerLabel)")
             .accessibilityInputLabels([Text("Play \(markerLabel) \(title)"), Text("Jump to \(markerLabel) \(title)")])
             .accessibilityLabel("\(markerLabel.capitalized) \(title)")
-            .accessibilityValue(showsPlayToggle ? (chapter.shouldPlay ? "Enabled" : "Skipped") : "")
+            .accessibilityValue(isAutomaticallySkipped ? "Will be skipped automatically" : (showsPlayToggle ? (chapter.shouldPlay ? "Enabled" : "Skipped") : ""))
             .accessibilityAction {
                 Task {
                     await player.skipTo(chapter: chapter)
                 }
             }
             .foregroundStyle(
-                chapter.shouldPlay == false
+                chapter.shouldPlay == false || isAutomaticallySkipped
                     ? themePalette.secondaryForeground
                     : resolvedIsCurrentChapter ? (themePalette.accent ?? Color.accentColor) : themePalette.primaryForeground
             )

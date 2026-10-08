@@ -10,13 +10,7 @@ struct CompactAppShell: View {
     @Binding var search: String
 
     var body: some View {
-        Group {
-            if player.currentEpisode != nil {
-                compactTabView.platformPlayerAccessory()
-            } else {
-                compactTabView
-            }
-        }
+        compactTabView.platformPlayerAccessory(isVisible: player.currentEpisode != nil)
     }
 
     private var compactTabView: some View {

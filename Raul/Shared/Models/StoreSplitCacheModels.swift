@@ -485,6 +485,54 @@ enum CachedTranscriptSource: String, Codable, Sendable {
     case unknown
 }
 
+/// Device-local timing corrections. These rows never enter the CloudKit stores.
+@Model
+final class CachedTranscriptAlignment: Identifiable {
+    var id: String = ""
+    var episodeID: String = ""
+    var episodeURL: String = ""
+    var mediaFingerprint: String = ""
+    var transcriptRevision: String = ""
+    var anchorsJSON: String = "[]"
+    var gapsJSON: String = "[]"
+    var updatedAt: Date = Date.distantPast
+
+    init(
+        id: String,
+        episodeID: String,
+        episodeURL: String,
+        mediaFingerprint: String,
+        transcriptRevision: String,
+        anchorsJSON: String,
+        gapsJSON: String,
+        updatedAt: Date = .now
+    ) {
+        self.id = id
+        self.episodeID = episodeID
+        self.episodeURL = episodeURL
+        self.mediaFingerprint = mediaFingerprint
+        self.transcriptRevision = transcriptRevision
+        self.anchorsJSON = anchorsJSON
+        self.gapsJSON = gapsJSON
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Local queue for opt-in post-download transcript alignment. It contains only
+/// a local episode reference and is drained by the opportunistic processing task.
+@Model
+final class CachedTranscriptSynchronizationJob: Identifiable {
+    var id: String = ""
+    var episodeURL: String = ""
+    var enqueuedAt: Date = Date.distantPast
+
+    init(id: String, episodeURL: String, enqueuedAt: Date = .now) {
+        self.id = id
+        self.episodeURL = episodeURL
+        self.enqueuedAt = enqueuedAt
+    }
+}
+
 /// Device-local transcription job history. This is diagnostics/history rather
 /// than transcript content and never belongs in the synchronized store.
 @Model

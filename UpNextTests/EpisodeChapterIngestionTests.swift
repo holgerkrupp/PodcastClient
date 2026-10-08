@@ -13,11 +13,49 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         let first = Marker(start: 60, title: "  Alte Scanner am Mac  ", type: .mp3)
         let duplicate = Marker(start: 60.004, title: "Alte Scanner am Mac", type: .mp3)
         let second = Marker(start: 120, title: "Next chapter", type: .mp3)
-        episode.chapters = [lowerPrioritySource, first, duplicate, second]
+        let detectedGap = Marker(start: 180, title: "Likely ad break", type: .transcriptGap, duration: 45)
+        episode.chapters = [lowerPrioritySource, first, duplicate, second, detectedGap]
 
         let displayed = episode.chaptersForDisplay()
 
-        XCTAssertEqual(displayed.map(\.title), [first.title, second.title])
+        XCTAssertEqual(displayed.map(\.title), [first.title, second.title, detectedGap.title])
+    }
+
+    func testTranscriptAudioGapsBecomeReplaceableChapterMarkers() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/gap-chapters.mp3")!
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: episodeURL,
+            source: .feedDownload
+        )
+        let actor = EpisodeActor(modelContainer: fixture.container)
+
+        let didCreate = await actor.updateTranscriptGapChapters(
+            for: episodeURL,
+            gaps: [
+                .init(audioStart: 90, audioEnd: 165, transcriptTime: 90),
+                .init(audioStart: 420, audioEnd: 470, transcriptTime: 345)
+            ],
+            audioVariantID: "media-revision"
+        )
+        XCTAssertTrue(didCreate)
+
+        let createdEpisode = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let created = try XCTUnwrap(createdEpisode.chapters?.filter { $0.type == .transcriptGap })
+        XCTAssertEqual(created.map(\.start), [90, 420])
+        XCTAssertEqual(created.map(\.duration), [75, 50])
+        XCTAssertTrue(created.allSatisfy { $0.title == "Likely ad break" })
+        XCTAssertTrue(created.allSatisfy { $0.analysisVariantID == "media-revision" })
+
+        _ = await actor.updateTranscriptGapChapters(
+            for: episodeURL,
+            gaps: [.init(audioStart: 90, audioEnd: 165, transcriptTime: 90)],
+            audioVariantID: "media-revision"
+        )
+        let replacedEpisode = try fetchEpisode(in: fixture.container, url: episodeURL)
+        XCTAssertEqual(replacedEpisode.chapters?.filter { $0.type == .transcriptGap }.count, 1)
     }
 
     func testTranscriptionQueueCanPromoteAnEpisodeToNext() async {

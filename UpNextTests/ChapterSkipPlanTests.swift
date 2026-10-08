@@ -48,4 +48,22 @@ final class ChapterSkipPlanTests: XCTestCase {
         XCTAssertEqual(plan.segment(at: 10)?.resumeAt, 20)
         XCTAssertNil(plan.segment(at: 30)?.resumeAt)
     }
+
+    func testAutomaticTranscriptGapSkippingLeavesOtherChaptersAlone() throws {
+        let gapID = UUID()
+        let regularID = UUID()
+        let plan = ChapterSkipPlan(
+            entries: [
+                .init(id: nil, start: 0, shouldPlay: true),
+                .init(id: gapID, start: 60, shouldPlay: true, isTranscriptGap: true),
+                .init(id: regularID, start: 120, shouldPlay: true)
+            ],
+            automaticallySkipTranscriptGaps: true
+        )
+
+        let segment = try XCTUnwrap(plan.segment(at: 60))
+        XCTAssertEqual(segment.resumeAt, 120)
+        XCTAssertEqual(segment.chapterIDs, [gapID])
+        XCTAssertNil(plan.segment(at: 120))
+    }
 }

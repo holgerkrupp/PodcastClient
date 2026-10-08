@@ -8,23 +8,27 @@
 import SwiftUI
 
 extension View {
-    func platformPlayerAccessory() -> some View {
+    func platformPlayerAccessory(isVisible: Bool = true) -> some View {
 #if os(iOS)
         return self
             .tabBarMinimizeBehavior(.automatic)
             .tabViewBottomAccessory {
-                PlayerTabBarView()
-                    // The iPad regular-width accessory can propose the full
-                    // detail height. Keep the mini player intrinsically compact
-                    // instead of allowing its progress background to fill it.
-                    .frame(height: 48)
-                    .clipped()
+                if isVisible {
+                    PlayerTabBarView()
+                        // The iPad regular-width accessory can propose the full
+                        // detail height. Keep the mini player intrinsically compact
+                        // instead of allowing its progress background to fill it.
+                        .frame(height: 48)
+                        .clipped()
+                }
             }
 #else
         return VStack(spacing: 0) {
             self
-            Divider()
-            PlayerTabBarView()
+            if isVisible {
+                Divider()
+                PlayerTabBarView()
+            }
         }
 #endif
     }

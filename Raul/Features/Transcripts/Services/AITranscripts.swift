@@ -34,6 +34,7 @@ class AITranscripts {
     let maxWordsPerSnippet: Int
     let analyzerPriority: TaskPriority
     let throttle: Throttle
+    let allowModelDownload: Bool
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
 
 
@@ -53,6 +54,7 @@ class AITranscripts {
         maxWordsPerSnippet: Int = 3,
         analyzerPriority: TaskPriority = .userInitiated,
         throttle: Throttle = .none,
+        allowModelDownload: Bool = true,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
     ) async {
         self.url = url
@@ -60,6 +62,7 @@ class AITranscripts {
         self.maxWordsPerSnippet = max(maxWordsPerSnippet, 1)
         self.analyzerPriority = analyzerPriority
         self.throttle = throttle
+        self.allowModelDownload = allowModelDownload
         self.progressHandler = progressHandler
         self.language = language.map { Locale(identifier: $0) } ?? Locale.current
         await resolveLanguageIfNeeded()
@@ -194,10 +197,14 @@ class AITranscripts {
         print("normalized:", locale.identifier(.bcp47))
         
         await reportProgress(0.05, status: "Checking speech model…")
-        do {
-            try await ensureModel(transcriber: transcriber, locale: locale)
-        } catch {
-             print(error)
+        if allowModelDownload {
+            do {
+                try await ensureModel(transcriber: transcriber, locale: locale)
+            } catch {
+                print(error)
+                return nil
+            }
+        } else if await installed(locale: locale) == false {
             return nil
         }
         try Task.checkCancellation()
@@ -407,6 +414,24 @@ class AITranscripts {
         let sampleRate = audioFile.processingFormat.sampleRate
         guard sampleRate > 0 else { return 0 }
         return Double(audioFile.length) / sampleRate
+    }
+
+    /// Returns a locally installed speech locale matching the requested language.
+    /// Synchronization uses this check to avoid downloading a model as a side effect.
+    static func installedLocale(matching languageIdentifier: String?) async -> String? {
+        let requested = Locale(identifier: languageIdentifier ?? Locale.current.identifier)
+        let requestedLanguage = requested.language.languageCode?.identifier.lowercased()
+        let supportedLocales = await SpeechTranscriber.supportedLocales
+        let supported = supportedLocales.first { locale in
+            locale.identifier(.bcp47).lowercased() == requested.identifier(.bcp47).lowercased()
+        } ?? supportedLocales.first { locale in
+            guard let requestedLanguage else { return false }
+            return locale.language.languageCode?.identifier.lowercased() == requestedLanguage
+        }
+        guard let supported else { return nil }
+        let identifier = supported.identifier(.bcp47)
+        let installedIDs = await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) }
+        return installedIDs.contains(identifier) ? identifier : nil
     }
 
     private static func progressUpdate(resultEnd: CMTime, audioDuration: Double) -> (progress: Double, status: String) {

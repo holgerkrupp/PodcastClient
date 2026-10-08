@@ -15,6 +15,7 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
     case podlove
     case ai
     case extracted
+    case transcriptGap
 
     var id: String { rawValue }
 
@@ -32,6 +33,8 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
             "AI"
         case .extracted:
             "Extracted"
+        case .transcriptGap:
+            "Transcript gaps"
         }
     }
 
@@ -49,6 +52,8 @@ enum ChapterDisplaySelection: String, CaseIterable, Identifiable {
             .ai
         case .extracted:
             .extracted
+        case .transcriptGap:
+            .transcriptGap
         }
     }
 }
@@ -207,6 +212,10 @@ struct ChapterListView: View {
                                     isCurrentChapter: row.isCurrent,
                                     markerLabel: selectedTab == .soundbites ? "soundbite" : "chapter",
                                     showsPlayToggle: selectedTab != .soundbites
+                                        && (row.marker.type != .transcriptGap
+                                            || player.automaticallySkipTranscriptGapChaptersEnabled == false),
+                                    isAutomaticallySkipped: row.marker.type == .transcriptGap
+                                        && player.automaticallySkipTranscriptGapChaptersEnabled
                                 )
                                     .padding()
                                 if row.isLast == false {

@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "" : {
+
+    },
     " - " : {
       "localizations" : {
         "de" : {
@@ -95,16 +98,16 @@
     },
     "%@ • %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ • %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ • %2$@"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ • %@"
           }
         }
       }
@@ -235,16 +238,16 @@
     },
     "%@, %lld transcript matches" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$lld Treffer im Transkript"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@, %2$lld transcript matches"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@, %lld Treffer im Transkript"
           }
         }
       }
@@ -271,16 +274,16 @@
     },
     "%@. %@" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@. %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@. %2$@"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@. %@"
           }
         }
       }
@@ -317,32 +320,32 @@
     },
     "%lld episodes · %lld matches" : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld Episoden · %2$lld Treffer"
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld episodes · %2$lld matches"
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld Episoden · %lld Treffer"
           }
         }
       }
     },
     "%lld episodes in %@." : {
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld Episoden in %2$@."
+          }
+        },
         "en" : {
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$lld episodes in %2$@."
-          }
-        },
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld Episoden in %@."
           }
         }
       }
@@ -869,6 +872,16 @@
         }
       }
     },
+    "Add likely ad breaks to the chapter list" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wahrscheinliche Werbeunterbrechungen zur Kapitelliste hinzufügen"
+          }
+        }
+      }
+    },
     "Add Multiple Episodes to Up Next" : {
       "localizations" : {
         "de" : {
@@ -1041,16 +1054,16 @@
     },
     "Added %@ to %@." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Added %1$@ to %2$@."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ zu %@ hinzugefügt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Added %1$@ to %2$@."
           }
         }
       }
@@ -1211,6 +1224,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Afrika"
+          }
+        }
+      }
+    },
+    "After a download, the app queues short audio samples for analysis when iOS allows background work, usually while the device is charging and idle. iOS may delay or stop the work; playback analysis fills in later if needed." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach dem Download stellt die App kurze Audioabschnitte zur Analyse in eine Warteschlange, sobald iOS Hintergrundarbeit zulässt, meist während das Gerät geladen wird und inaktiv ist. iOS kann die Arbeit verzögern oder abbrechen; bei der Wiedergabe wird sie bei Bedarf fortgesetzt."
           }
         }
       }
@@ -1775,6 +1798,16 @@
         }
       }
     },
+    "Automatic skipping applies to every transcript-gap chapter. Review their boundaries in the chapter list; you can also skip individual chapters there." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das automatische Überspringen gilt für alle Transkriptlücken-Kapitel. Überprüfe ihre Grenzen in der Kapitelliste; dort kannst du auch einzelne Kapitel überspringen."
+          }
+        }
+      }
+    },
     "Automatically generate chapters when publisher chapters are unavailable" : {
       "localizations" : {
         "de" : {
@@ -1791,6 +1824,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Werbung mit hoher Erkennungssicherheit automatisch überspringen"
+          }
+        }
+      }
+    },
+    "Automatically skip transcript-gap chapters" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptlücken-Kapitel automatisch überspringen"
           }
         }
       }
@@ -4526,6 +4569,16 @@
         }
       }
     },
+    "Gap chapters are added only after multiple confident matches identify inserted audio. They may be ads or other audio absent from the publisher transcript." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lücken-Kapitel werden erst hinzugefügt, wenn mehrere zuverlässige Übereinstimmungen eingefügtes Audio erkennen. Dabei kann es sich um Werbung oder anderes Audio handeln, das im Verlags-Transkript fehlt."
+          }
+        }
+      }
+    },
     "Generate a Podcast Share Image" : {
       "localizations" : {
         "de" : {
@@ -5706,6 +5759,16 @@
         }
       }
     },
+    "Likely ad break" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wahrscheinliche Werbeunterbrechung"
+          }
+        }
+      }
+    },
     "Limit" : {
       "localizations" : {
         "de" : {
@@ -5858,16 +5921,16 @@
     },
     "Live %@, %@" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Live %1$@, %2$@"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Live %@, %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Live %1$@, %2$@"
           }
         }
       }
@@ -7739,7 +7802,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nur vom Herausgeber bereitgestellte Transkripte kommen infrage. KI-Transkripte vom Gerät und Transkripte unbekannter Herkunft bleiben unverändert. Beim Deaktivieren wird sofort die ursprüngliche Transkript-Timing wiederhergestellt."
+            "value" : "Nur vom Herausgeber bereitgestellte Transkripte kommen infrage. KI-Transkripte vom Gerät und Transkripte unbekannter Herkunft bleiben unverändert. Beim Deaktivieren wird sofort die ursprüngliche zeitliche Abstimmung des Transkripts wiederhergestellt."
           }
         }
       }
@@ -9164,16 +9227,16 @@
     },
     "Playlist entries: %lld → %lld" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Playlist entries: %1$lld → %2$lld"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wiedergabelisteneinträge: %lld → %lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Playlist entries: %1$lld → %2$lld"
           }
         }
       }
@@ -10691,16 +10754,16 @@
     },
     "Removed %@ from %@." : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Removed %1$@ from %2$@."
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ aus %@ entfernt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Removed %1$@ from %2$@."
           }
         }
       }
@@ -12933,7 +12996,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Store-Aufteilung freigeben"
+            "value" : "Freigabe der Datenspeicheraufteilung"
           }
         }
       }
@@ -14127,6 +14190,16 @@
         }
       }
     },
+    "Transcript gaps" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptlücken"
+          }
+        }
+      }
+    },
     "Transcript generation was queued for %@." : {
       "localizations" : {
         "de" : {
@@ -14196,6 +14269,9 @@
           }
         }
       }
+    },
+    "Transcript Synchronization" : {
+
     },
     "Transcript Unavailable" : {
       "localizations" : {
@@ -14799,23 +14875,23 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Maßgeblichkeit des Benutzerstatus"
+            "value" : "User State als führende Datenquelle"
           }
         }
       }
     },
     "User State queue entries: %lld → %lld" : {
       "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "User State queue entries: %1$lld → %2$lld"
-          }
-        },
         "de" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "Einträge der Benutzerstatus-Warteschlange: %lld → %lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "User State queue entries: %1$lld → %2$lld"
           }
         }
       }
@@ -15091,6 +15167,7 @@
       }
     },
     "When an alignment is available, corrected timing is used during playback and when seeking from transcript rows. Synchronization is not run after download." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -15226,6 +15303,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wird übersprungen"
+          }
+        }
+      }
+    },
+    "Will be skipped automatically" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird automatisch übersprungen"
           }
         }
       }

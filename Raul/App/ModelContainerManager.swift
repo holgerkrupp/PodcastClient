@@ -3678,6 +3678,8 @@ class ModelContainerManager: ObservableObject {
             CachedEpisode.self,
             CachedChapter.self,
             CachedTranscriptLine.self,
+            CachedTranscriptAlignment.self,
+            CachedTranscriptSynchronizationJob.self,
             CachedTranscriptionRecord.self,
             CachedDownloadRecord.self,
             CachedPlaySession.self,

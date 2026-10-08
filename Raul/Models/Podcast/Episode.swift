@@ -452,27 +452,30 @@ class EpisodeDownloadStatus{
     func chaptersForDisplay(from markers: [Marker], preferredType: MarkerType? = nil) -> [Marker] {
         guard markers.isEmpty == false else { return [] }
         let chapters = markers
+        let gapMarkers = chapters.filter { $0.type == .transcriptGap }
 
+        let selectedChapters: [Marker]
         if let preferredType {
-            return deduplicatedChaptersForDisplay(markers
+            selectedChapters = markers
                 .filter { $0.type == preferredType }
-            ).sortedByStartTime()
-        }
-
-        // Feed-authored shownote timestamps are deterministic and generally more
-        // complete than the locally generated transcript fallback.
-        let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
-
-        // Pick a single type for the whole list based on availability and preference order.
-        let availableTypes = Set(chapters.map { $0.type })
-        if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
-            return deduplicatedChaptersForDisplay(chapters
-                .filter { $0.type == chosenType }
-            ).sortedByStartTime()
         } else {
-            // Fallback: no known preferred types found, return all chapters as-is.
-            return deduplicatedChaptersForDisplay(chapters).sortedByStartTime()
+            // Feed-authored shownote timestamps are deterministic and generally more
+            // complete than the locally generated transcript fallback.
+            let preferredOrder: [MarkerType] = [.mp3, .mp4, .podlove, .extracted, .ai]
+
+            // Pick a single type for the whole list based on availability and preference order.
+            let availableTypes = Set(chapters.map { $0.type })
+            if let chosenType = preferredOrder.first(where: { availableTypes.contains($0) }) {
+                selectedChapters = chapters.filter { $0.type == chosenType }
+            } else {
+                // Fallback: no known preferred types found, return all chapters as-is.
+                selectedChapters = chapters
+            }
         }
+
+        // Synchronization gap markers supplement the selected chapter source so
+        // they remain visible and actionable without replacing publisher chapters.
+        return deduplicatedChaptersForDisplay(selectedChapters + gapMarkers).sortedByStartTime()
     }
 
     private func deduplicatedChaptersForDisplay(_ chapters: [Marker]) -> [Marker] {

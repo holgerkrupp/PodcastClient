@@ -68,6 +68,10 @@ class PodcastSettings {
     var enableAutomaticOnDeviceTranscriptions: Bool = true
     /// Publisher transcript timing alignment is an independent, explicit opt-in.
     var enablePublisherTranscriptSynchronization: Bool = false
+    /// Whether validated transcript/audio gaps should appear as local chapters.
+    var createTranscriptGapChapters: Bool = false
+    /// Master playback rule for transcript/audio gap chapters.
+    var automaticallySkipTranscriptGapChapters: Bool = false
     var limitAutomaticOnDeviceTranscriptionsToCharging: Bool = false
     /// Dynamic advertisement detection is deliberately opt-in and independent
     /// from transcript generation and automatic skipping.

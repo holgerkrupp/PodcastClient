@@ -79,6 +79,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         BGTaskScheduler.shared.register(
+            forTaskWithIdentifier: BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier,
+            using: DispatchQueue.main
+        ) { task in
+            guard let processingTask = task as? BGProcessingTask else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            self.handlePublisherTranscriptSynchronization(task: processingTask)
+        }
+
+        BGTaskScheduler.shared.register(
             forTaskWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier,
             using: DispatchQueue.main
         ) { task in
@@ -321,6 +332,119 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 details: error.localizedDescription
             )
             AppDiagnostics.log(error.localizedDescription)
+        }
+    }
+
+    /// Adds a completed local download to the device-only alignment queue, then
+    /// asks iOS for an opportunistic processing window while the device is idle.
+    static func enqueuePublisherTranscriptSynchronization(for episodeURL: URL) async {
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint(),
+              let cacheContainer = await MainActor.run(body: {
+                  ModelContainerManager.shared.preparedCacheContainer
+              }) else { return }
+        let settingsActor = PodcastSettingsModelActor(modelContainer: container)
+        guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else { return }
+
+        await TranscriptAlignmentCacheActor(modelContainer: cacheContainer).enqueue(episodeURL: episodeURL)
+        await schedulePublisherTranscriptSynchronizationIfNeeded()
+    }
+
+    /// Background analysis is independent from automatic transcript generation.
+    /// It requires power, uses no network, and is scheduled only while the user
+    /// has opted in and downloaded episodes are queued.
+    static func schedulePublisherTranscriptSynchronizationIfNeeded() async {
+        guard let container = await ModelContainerManager.shared
+            .prepareContainerForExternalEntryPoint(),
+              let cacheContainer = await MainActor.run(body: {
+                  ModelContainerManager.shared.preparedCacheContainer
+        }) else { return }
+        let settingsActor = PodcastSettingsModelActor(modelContainer: container)
+        let queue = TranscriptAlignmentCacheActor(modelContainer: cacheContainer)
+        guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else {
+            await queue.clearPendingJobs()
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
+            )
+            return
+        }
+
+        guard await queue.hasPendingJobs() else {
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
+            )
+            return
+        }
+
+        let identifier = BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
+        let alreadyPending = await BGTaskScheduler.shared.pendingTaskRequests().contains {
+            $0.identifier == identifier
+        }
+        guard alreadyPending == false else { return }
+
+        let request = BGProcessingTaskRequest(identifier: identifier)
+        request.requiresExternalPower = true
+        request.requiresNetworkConnectivity = false
+        request.earliestBeginDate = Date(
+            timeIntervalSinceNow: BackgroundTaskConfiguration.publisherTranscriptSynchronizationInterval
+        )
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record("publisher_transcript_sync_background_task_scheduled")
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "publisher_transcript_sync_background_task_schedule_failed",
+                details: error.localizedDescription
+            )
+            AppDiagnostics.log(error.localizedDescription)
+        }
+    }
+
+    private func handlePublisherTranscriptSynchronization(task: BGProcessingTask) {
+        CrashBreadcrumbs.shared.record("publisher_transcript_sync_background_task_started")
+        let processingTask = Task(priority: .utility) {
+            guard Player.hasActivePlaybackInProcess == false else {
+                await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
+                task.setTaskCompleted(success: true)
+                return
+            }
+
+            guard let episodeContainer = await ModelContainerManager.shared
+                .prepareContainerForExternalEntryPoint(),
+                  let cacheContainer = await MainActor.run(body: {
+                      ModelContainerManager.shared.preparedCacheContainer
+                  }) else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+            let settingsActor = PodcastSettingsModelActor(modelContainer: episodeContainer)
+            guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else {
+                task.setTaskCompleted(success: true)
+                return
+            }
+            await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
+            await TranscriptSynchronizationService.shared.setEnabled(true)
+            let completedCount = await TranscriptSynchronizationService.shared.runQueuedBackgroundJobs(
+                episodeContainer: episodeContainer,
+                cacheContainer: cacheContainer,
+                episodeLimit: BackgroundTaskConfiguration.publisherTranscriptSynchronizationEpisodeLimit
+            )
+            guard Task.isCancelled == false else {
+                task.setTaskCompleted(success: false)
+                return
+            }
+
+            await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
+            CrashBreadcrumbs.shared.record(
+                "publisher_transcript_sync_background_task_completed",
+                details: "completed_count=\(completedCount)"
+            )
+            task.setTaskCompleted(success: true)
+        }
+
+        task.expirationHandler = {
+            processingTask.cancel()
+            Task { await TranscriptSynchronizationService.shared.cancelAll() }
         }
     }
 

@@ -9,6 +9,7 @@ struct ChapterSkipPlan: Equatable {
         let id: UUID?
         let start: TimeInterval
         let shouldPlay: Bool
+        var isTranscriptGap: Bool = false
     }
 
     struct Segment: Equatable {
@@ -23,9 +24,18 @@ struct ChapterSkipPlan: Equatable {
 
     let segments: [Segment]
 
-    init(entries: [Entry]) {
+    init(entries: [Entry], automaticallySkipTranscriptGaps: Bool = false) {
         let chapters = entries
             .filter { $0.start.isFinite && $0.start >= 0 }
+            .map { entry in
+                Entry(
+                    id: entry.id,
+                    start: entry.start,
+                    shouldPlay: entry.shouldPlay
+                        && (entry.isTranscriptGap == false || automaticallySkipTranscriptGaps == false),
+                    isTranscriptGap: entry.isTranscriptGap
+                )
+            }
             .sorted { $0.start < $1.start }
 
         var result: [Segment] = []

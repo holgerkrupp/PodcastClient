@@ -214,11 +214,15 @@ private struct TranscriptSearchPassageRow: View {
 
             if let episodeURL = passage.episodeURL {
                 Button {
+                    let audioTime = TranscriptSynchronizationStore.shared.audioTime(
+                        forTranscriptTime: passage.startTime,
+                        episodeURL: passage.episodeURL
+                    ) ?? passage.startTime
                     Task {
                         await Player.shared.playEpisode(
                             episodeURL,
                             playDirectly: true,
-                            startingAt: passage.startTime
+                            startingAt: audioTime
                         )
                     }
                 } label: {
