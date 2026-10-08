@@ -93,6 +93,7 @@ struct ShownoteContentView: View {
                  ? candidate.originalURL.absoluteString
                  : candidate.displayText)
                 .underline()
+                .esaForeground(.primary)
                 .multilineTextAlignment(.leading)
         }
     }
