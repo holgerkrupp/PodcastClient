@@ -27,12 +27,22 @@ struct ShareLinkStandaloneMedia: Equatable, Sendable {
 enum ShareLinkResolution: Equatable, Sendable {
     case podcastEpisode(podcast: ShareLinkPodcast, episode: ShareLinkEpisode)
     case podcast(ShareLinkPodcast)
-    case standaloneMedia(ShareLinkStandaloneMedia)
-    case unresolved(sharedURL: URL, suggestedSearch: String?)
+    case standaloneMedia(ShareLinkStandaloneMedia, podcast: ShareLinkPodcast?)
+    case unresolved(sharedURL: URL, suggestedSearch: String?, podcast: ShareLinkPodcast?)
+
+    var podcastFeed: ShareLinkPodcast? {
+        switch self {
+        case .podcastEpisode(let podcast, _), .podcast(let podcast): return podcast
+        case .standaloneMedia(_, let podcast), .unresolved(_, _, let podcast): return podcast
+        }
+    }
 }
 
 struct ShareLinkResolver: Sendable {
-    func resolve(_ url: URL) async -> ShareLinkResolution {
+    func resolve(
+        _ url: URL,
+        onPodcastFound: @MainActor @Sendable (ShareLinkPodcast) -> Void = { _ in }
+    ) async -> ShareLinkResolution {
         if isPlayable(url) {
             return .standaloneMedia(
                 ShareLinkStandaloneMedia(
@@ -42,7 +52,8 @@ struct ShareLinkResolver: Sendable {
                     mediaURL: url,
                     artworkURL: nil,
                     duration: nil
-                )
+                ),
+                podcast: nil
             )
         }
 
@@ -51,22 +62,36 @@ struct ShareLinkResolver: Sendable {
         }
 
         guard let html = await fetchText(from: url) else {
-            return .unresolved(sharedURL: url, suggestedSearch: fallbackSearch(for: url))
+            return .unresolved(sharedURL: url, suggestedSearch: fallbackSearch(for: url), podcast: nil)
         }
 
         let pageTitle = metadata("og:title", in: html) ?? titleTag(in: html) ?? fallbackTitle(for: url)
+        let episodeTitle = articleTitle(in: html) ?? pageTitle
         let description = metadata("og:description", in: html) ?? metadata("description", in: html)
         let artworkURL = metadata("og:image", in: html).flatMap { URL(string: $0, relativeTo: url)?.absoluteURL }
         let feedURLs = feedURLs(in: html, baseURL: url)
 
         var discoveredPodcast: ShareLinkPodcast?
-        for feedURL in feedURLs {
-            guard let feed = await fetchFeed(from: feedURL) else { continue }
-            let podcast = ShareLinkPodcast(title: feed.title ?? pageTitle, feedURL: feedURL, artworkURL: feed.artworkURL ?? artworkURL)
-            if let episode = feed.episodes.first(where: { matches($0, pageURL: url, title: pageTitle) }) {
+        for feedLink in feedURLs {
+            if feedLink.isPodcast, discoveredPodcast == nil {
+                let podcast = ShareLinkPodcast(title: pageTitle, feedURL: feedLink.url, artworkURL: artworkURL)
+                discoveredPodcast = podcast
+                await onPodcastFound(podcast)
+            }
+
+            guard let feed = await fetchFeed(from: feedLink.url) else { continue }
+            let podcast = ShareLinkPodcast(title: feed.title ?? pageTitle, feedURL: feedLink.url, artworkURL: feed.artworkURL ?? artworkURL)
+            guard feed.episodes.contains(where: { $0.mediaURL != nil }) else { continue }
+
+            if discoveredPodcast == nil {
+                discoveredPodcast = podcast
+                await onPodcastFound(podcast)
+            }
+
+            if let episode = feed.episodes.first(where: { matches($0, pageURL: url) })
+                ?? feed.episodes.first(where: { matches($0, title: episodeTitle) }) {
                 return .podcastEpisode(podcast: podcast, episode: episode)
             }
-            discoveredPodcast = discoveredPodcast ?? podcast
         }
 
         if let mediaURL = mediaURL(in: html, baseURL: url) {
@@ -78,13 +103,14 @@ struct ShareLinkResolver: Sendable {
                     mediaURL: mediaURL,
                     artworkURL: artworkURL,
                     duration: metadata("music:duration", in: html).flatMap(TimeInterval.init)
-                )
+                ),
+                podcast: discoveredPodcast
             )
         }
 
         if let discoveredPodcast { return .podcast(discoveredPodcast) }
 
-        return .unresolved(sharedURL: url, suggestedSearch: fallbackSearch(for: url, title: pageTitle))
+        return .unresolved(sharedURL: url, suggestedSearch: fallbackSearch(for: url, title: episodeTitle), podcast: nil)
     }
 
     private func resolveARD(_ url: URL) async -> ShareLinkResolution? {
@@ -127,7 +153,8 @@ struct ShareLinkResolver: Sendable {
                 mediaURL: mediaURL,
                 artworkURL: imageURL,
                 duration: (item["duration"] as? NSNumber)?.doubleValue
-            )
+            ),
+            podcast: nil
         )
     }
 
@@ -159,14 +186,19 @@ struct ShareLinkResolver: Sendable {
         return parser.result
     }
 
-    private func feedURLs(in html: String, baseURL: URL) -> [URL] {
+    private func feedURLs(in html: String, baseURL: URL) -> [(url: URL, isPodcast: Bool)] {
         let tags = matches(#"<link\b[^>]*>"#, in: html)
-        return tags.compactMap { tag in
+        let candidates = tags.compactMap { tag -> (url: URL, isPodcast: Bool)? in
             let rel = attribute("rel", in: tag)?.lowercased() ?? ""
             let type = attribute("type", in: tag)?.lowercased() ?? ""
             guard rel.contains("alternate"), type.contains("rss") || type.contains("atom") || type.contains("xml"), let href = attribute("href", in: tag) else { return nil }
-            return URL(string: href, relativeTo: baseURL)?.absoluteURL
+            let title = attribute("title", in: tag)?.lowercased() ?? ""
+            guard title.contains("comment") == false,
+                  href.lowercased().contains("comment") == false,
+                  let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else { return nil }
+            return (url, title.contains("podcast") || title.contains("audio"))
         }
+        return candidates.sorted { $0.isPodcast && !$1.isPodcast }
     }
 
     private func mediaURL(in html: String, baseURL: URL) -> URL? {
@@ -178,8 +210,42 @@ struct ShareLinkResolver: Sendable {
         return values.compactMap { URL(string: $0, relativeTo: baseURL)?.absoluteURL }.first(where: isPlayable)
     }
 
-    private func matches(_ episode: ShareLinkEpisode, pageURL: URL, title: String) -> Bool {
-        episode.pageURL == pageURL || episode.mediaURL == pageURL || normalized(episode.title) == normalized(title) || normalized(episode.title).contains(normalized(title))
+    private func matches(_ episode: ShareLinkEpisode, pageURL: URL) -> Bool {
+        episode.pageURL.map { normalizedPageURL($0) == normalizedPageURL(pageURL) } == true
+            || episode.mediaURL.map { normalizedPageURL($0) == normalizedPageURL(pageURL) } == true
+    }
+
+    private func matches(_ episode: ShareLinkEpisode, title: String) -> Bool {
+        let candidate = normalized(title)
+        return candidate.isEmpty == false && normalized(episode.title) == candidate
+    }
+
+    private func normalizedPageURL(_ url: URL) -> String {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return url.absoluteString
+        }
+        components.scheme = components.scheme?.lowercased()
+        components.host = components.host?.lowercased()
+        components.query = nil
+        components.fragment = nil
+        if components.path.count > 1, components.path.hasSuffix("/") {
+            components.path.removeLast()
+        }
+        return components.string ?? url.absoluteString
+    }
+
+    private func articleTitle(in html: String) -> String? {
+        guard let article = matches(#"<article\b[^>]*>.*?</article>"#, in: html).first,
+              let heading = matches(#"<h[1-3]\b[^>]*class=[\"'][^\"']*\bentry-title\b[^\"']*[\"'][^>]*>.*?</h[1-3]>"#, in: article).first else {
+            return nil
+        }
+        let plainText = heading.replacingOccurrences(
+            of: #"<[^>]+>"#,
+            with: " ",
+            options: .regularExpression
+        )
+        let title = decode(plainText).trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? nil : title
     }
 
     private func isPlayable(_ url: URL) -> Bool {
@@ -209,8 +275,8 @@ struct ShareLinkResolver: Sendable {
     private func fallbackTitle(for url: URL) -> String { (url.deletingPathExtension().lastPathComponent.removingPercentEncoding ?? "").isEmpty ? (url.host() ?? url.absoluteString) : (url.deletingPathExtension().lastPathComponent.removingPercentEncoding ?? url.lastPathComponent) }
     private func fallbackSearch(for url: URL, title: String? = nil) -> String? { title?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? title!.trimmingCharacters(in: .whitespacesAndNewlines) : url.host() }
     private func normalized(_ value: String) -> String { value.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }.reduce(into: "") { $0.unicodeScalars.append($1) } }
-    private func decode(_ value: String) -> String { value.replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&#39;", with: "'") }
-    private func matches(_ pattern: String, in value: String) -> [String] { guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }; let range = NSRange(value.startIndex..<value.endIndex, in: value); return regex.matches(in: value, range: range).compactMap { Range($0.range, in: value).map { String(value[$0]) } } }
+    private func decode(_ value: String) -> String { value.replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"").replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&#8217;", with: "’").replacingOccurrences(of: "&nbsp;", with: " ") }
+    private func matches(_ pattern: String, in value: String) -> [String] { guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return [] }; let range = NSRange(value.startIndex..<value.endIndex, in: value); return regex.matches(in: value, range: range).compactMap { Range($0.range, in: value).map { String(value[$0]) } } }
     private func captures(_ pattern: String, in value: String) -> [String] { guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }; let range = NSRange(value.startIndex..<value.endIndex, in: value); return regex.matches(in: value, range: range).compactMap { Range($0.range(at: 1), in: value).map { String(value[$0]) } } }
     private func firstCapture(_ pattern: String, in value: String) -> String? { guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive, .dotMatchesLineSeparators]) else { return nil }; let range = NSRange(value.startIndex..<value.endIndex, in: value); guard let match = regex.firstMatch(in: value, range: range), let capture = Range(match.range(at: 1), in: value) else { return nil }; return String(value[capture]) }
 }

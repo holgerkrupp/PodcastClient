@@ -87,6 +87,45 @@ struct SubscribeToPodcastView: View {
                     .accessibilityLabel("Feed unavailable: \(deadFeedStatus.displayMessage)")
             }
 
+            if newPodcastFeed.importNeedsRetry {
+                Label("Subscribed — import needs retry", systemImage: "arrow.clockwise.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.orange.opacity(0.12))
+                    )
+                    .accessibilityElement(children: .combine)
+            }
+
+            if newPodcastFeed.isImportingEpisodes {
+                Label("Subscribed — importing episodes", systemImage: "arrow.down.circle")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.green)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.green.opacity(0.12))
+                    )
+                    .accessibilityElement(children: .combine)
+            }
+
+            if let subscriptionErrorMessage = newPodcastFeed.subscriptionErrorMessage {
+                Label(subscriptionErrorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.red)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule(style: .continuous)
+                            .fill(Color.red.opacity(0.12))
+                    )
+                    .accessibilityElement(children: .combine)
+            }
+
             if availableAlternativeFeeds.isEmpty == false {
                 Menu {
                     ForEach(availableAlternativeFeeds) { alternativeFeed in

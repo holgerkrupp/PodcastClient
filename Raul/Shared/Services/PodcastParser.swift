@@ -7,14 +7,14 @@ enum elements:String, CaseIterable{
 
 enum PodcastParserError: LocalizedError {
     case notAPodcastFeed
-    case couldNotLoad(URL, statusCode: Int)
+    case couldNotLoad(URL, statusCode: Int, retryAfter: Date? = nil)
     case xmlParserError(Error, line: Int, column: Int)
 
     var errorDescription: String? {
         switch self {
         case .notAPodcastFeed:
             return "This XML document does not look like a podcast feed."
-        case .couldNotLoad(let url, let statusCode):
+        case .couldNotLoad(let url, let statusCode, _):
             return "Could not load \(url.redactedPodcastURLString). HTTP status \(statusCode)."
         case .xmlParserError(let error, let line, let column):
             return "XML parser failed at line \(line), column \(column): \(error.localizedDescription)"
@@ -37,12 +37,69 @@ struct PodcastFeedDocument: Sendable {
     }
 }
 
+/// The decoded first page travels with a just-validated feed so subscription
+/// can persist it and begin ingestion without another GET or XML parse.
+struct PodcastFeedImportSeed: @unchecked Sendable {
+    let sourceURL: URL
+    let parsedFeed: [String: Any]
+    let episodes: [PodcastEpisodeDraft]
+    let nextPageURL: URL?
+    let isPartial: Bool
+    let didStopAtKnownEpisode: Bool
+
+    /// Complete single-page feeds should be applied once after validation.
+    /// Paged or capped feeds still benefit from an early durable batch before
+    /// the remaining catalogue is fetched.
+    var shouldCommitBeforeContinuation: Bool {
+        (nextPageURL != nil && didStopAtKnownEpisode == false) || isPartial
+    }
+
+    init(page: PodcastFeedPage, sourceURL: URL) {
+        self.sourceURL = sourceURL
+        self.parsedFeed = page.parsedFeed
+        self.episodes = page.episodes
+        self.nextPageURL = page.nextPageURL
+        self.isPartial = page.isPartial
+        self.didStopAtKnownEpisode = page.didStopAtKnownEpisode
+    }
+
+    var page: PodcastFeedPage {
+        PodcastFeedPage(
+            parsedFeed: parsedFeed,
+            feed: PodcastFeed(url: sourceURL),
+            episodes: episodes,
+            extensionElements: [],
+            nextPageURL: nextPageURL,
+            isPartial: isPartial,
+            didStopAtKnownEpisode: didStopAtKnownEpisode
+        )
+    }
+
+    func matches(_ url: URL) -> Bool {
+        sourceURL == url || sourceURL.podcastNonSecretURL == url.podcastNonSecretURL
+    }
+}
+
 struct KnownPodcastEpisodeIdentifiers: Sendable {
     var guids: Set<String> = []
     var urls: Set<String> = []
 
     var isEmpty: Bool {
         guids.isEmpty && urls.isEmpty
+    }
+
+    /// A refresh imports the newest run of episodes before the first one
+    /// already in the library. The validated first-page seed is parsed without
+    /// known identifiers, so apply the same boundary before database writes.
+    func stoppingAtFirstKnownEpisode(in feed: [String: Any]) -> [String: Any] {
+        guard isEmpty == false,
+              let episodes = feed["episodes"] as? [[String: Any]],
+              let firstKnown = episodes.firstIndex(where: { contains(episodeData: $0) }) else {
+            return feed
+        }
+        var trimmedFeed = feed
+        trimmedFeed["episodes"] = Array(episodes[..<firstKnown])
+        return trimmedFeed
     }
 
     func contains(episodeData: [String: Any]) -> Bool {
@@ -474,6 +531,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
                     }
                     episodeDeepLinks.removeAll()
                     if knownEpisodeIdentifiers.isEmpty == false,
+                       PodcastEpisodeDraft(episodeData: episodeDict) != nil,
                        knownEpisodeIdentifiers.contains(episodeData: episodeDict) {
                         didStopAtKnownEpisode = true
                         enclosureArray.removeAll()
@@ -750,14 +808,19 @@ extension PodcastParser {
 
     static func downloadFeed(
         from url: URL,
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        client: PodcastHTTPClient = .shared
     ) async throws -> PodcastFeedDocument {
         let data: Data
         let response: HTTPURLResponse
         do {
-            (data, response) = try await PodcastHTTPClient.shared.data(for: url, profile: profile)
+            (data, response) = try await client.data(for: url, profile: profile)
         } catch let error as PodcastHTTPError {
-            throw PodcastParserError.couldNotLoad(error.url, statusCode: error.statusCode ?? 0)
+            throw PodcastParserError.couldNotLoad(
+                error.url,
+                statusCode: error.statusCode ?? 0,
+                retryAfter: error.retryAfter
+            )
         }
         return PodcastFeedDocument(
             data: data,
@@ -770,9 +833,10 @@ extension PodcastParser {
         from url: URL,
         maximumEpisodes: Int? = nil,
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        client: PodcastHTTPClient = .shared
     ) async throws -> PodcastFeedPage {
-        let document = try await downloadFeed(from: url, profile: profile)
+        let document = try await downloadFeed(from: url, profile: profile, client: client)
         return try await parsePage(
             from: document,
             maximumEpisodes: maximumEpisodes,
@@ -864,7 +928,9 @@ extension PodcastParser {
                 episodes: episodes,
                 extensionElements: parser.podcastExtensionElements,
                 nextPageURL: nextPageURL,
-                isPartial: parser.didHitEpisodeLimit || parser.didStopAtKnownEpisode,
+                // Stopping at a previously known episode is the normal fast path
+                // for a refresh. Only a hard episode cap makes the page incomplete.
+                isPartial: parser.didHitEpisodeLimit,
                 didStopAtKnownEpisode: parser.didStopAtKnownEpisode
             )
         }.value
@@ -876,37 +942,106 @@ extension PodcastParser {
     static func fetchAllPages(
         from url: URL,
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        firstPage: PodcastFeedImportSeed? = nil,
+        startingAt: URL? = nil,
+        maximumPages: Int = 100,
+        maximumEpisodes: Int = 5_000,
+        client: PodcastHTTPClient = .shared
     ) async throws -> [String: Any] {
         print("fetching all pages from: \(url.redactedPodcastURLString)")
-        var nextURL: URL? = url
+        var nextURL: URL? = startingAt ?? url
         var allEpisodes: [Any] = []
         var podcastHeader: [String: Any] = [:]
         var seenFirstHeader = false
+        var visitedPageKeys = Set<String>()
+        let pageLimit = max(1, maximumPages)
+        let episodeLimit = max(1, maximumEpisodes)
+        var stoppedAtLimit = false
+        var stoppedAtKnownEpisode = false
+        var resumeURL: URL?
         while let currentURL = nextURL {
-            let page = try await fetchPage(
-                from: currentURL,
-                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
-                profile: profile
-            )
+            let pageKey = currentURL.podcastFeedComparisonKeys.sorted().first ?? currentURL.absoluteString
+            guard visitedPageKeys.insert(pageKey).inserted else {
+                CrashBreadcrumbs.shared.record("feed_pagination_stopped", details: "reason=cycle pages=\(visitedPageKeys.count)")
+                stoppedAtLimit = true
+                break
+            }
+            guard visitedPageKeys.count <= pageLimit, allEpisodes.count < episodeLimit else {
+                CrashBreadcrumbs.shared.record("feed_pagination_stopped", details: "reason=limit pages=\(visitedPageKeys.count) episodes=\(allEpisodes.count)")
+                stoppedAtLimit = true
+                resumeURL = currentURL
+                break
+            }
+            let page: PodcastFeedPage
+            if visitedPageKeys.count == 1,
+               let firstPage,
+               firstPage.matches(currentURL) {
+                page = firstPage.page
+            } else {
+                do {
+                    page = try await fetchPage(
+                        from: currentURL,
+                        maximumEpisodes: max(1, episodeLimit - allEpisodes.count),
+                        knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                        profile: profile,
+                        client: client
+                    )
+                } catch {
+                    // Keep already parsed pages importable. The caller commits
+                    // this partial batch and resumes from the failed page URL.
+                    guard allEpisodes.isEmpty == false else { throw error }
+                    stoppedAtLimit = true
+                    resumeURL = currentURL
+                    CrashBreadcrumbs.shared.record(
+                        "feed_pagination_stopped",
+                        details: "reason=page_fetch_failed page=\(visitedPageKeys.count)"
+                    )
+                    break
+                }
+            }
             // On the first page, get header
             if !seenFirstHeader {
                 podcastHeader = page.parsedFeed
                 seenFirstHeader = true
             }
             // Always append episodes
-            allEpisodes.append(contentsOf: page.episodes.map(\.rawEpisodeData))
+            let remaining = max(0, episodeLimit - allEpisodes.count)
+            allEpisodes.append(contentsOf: page.episodes.prefix(remaining).map(\.rawEpisodeData))
+            if page.isPartial {
+                stoppedAtLimit = true
+                // RFC 5005 page links are the only safe durable checkpoint. If
+                // the current page exceeded the cap, continue at its next page
+                // when available instead of retrying the same capped document.
+                resumeURL = page.nextPageURL
+            }
             // Advance to next page if present
-            if page.didStopAtKnownEpisode {
+            if page.isPartial {
                 nextURL = nil
-            } else if let next = page.nextPageURL {
+            } else if page.didStopAtKnownEpisode {
+                stoppedAtKnownEpisode = true
+                nextURL = nil
+            } else if allEpisodes.count < episodeLimit, visitedPageKeys.count < pageLimit, let next = page.nextPageURL {
                 nextURL = next
+            } else if let next = page.nextPageURL {
+                stoppedAtLimit = true
+                resumeURL = next
+                nextURL = nil
             } else {
                 nextURL = nil
             }
         }
         // Merge all episodes
         podcastHeader["episodes"] = allEpisodes
+        if stoppedAtKnownEpisode {
+            // The matched episode is deliberately excluded from the import
+            // list, but its presence verifies a redirected podcast feed.
+            podcastHeader["didStopAtKnownEpisode"] = true
+        }
+        if stoppedAtLimit {
+            podcastHeader["isPartial"] = true
+            if let resumeURL { podcastHeader["resumeURL"] = resumeURL.absoluteString }
+        }
         return podcastHeader
     }
 }

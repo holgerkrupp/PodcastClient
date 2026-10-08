@@ -10,7 +10,12 @@ struct ShareExtensionView: View {
                 case .loading:
                     ProgressView("Reading shared link…")
                 case .checking(_):
-                    ProgressView("Checking link…")
+                    VStack(spacing: 18) {
+                        ProgressView("Checking link…")
+                        if viewModel.canSubscribe {
+                            subscribeButton
+                        }
+                    }
                 case .podcastEpisode(let podcast, let episode):
                     resultView(title: "Podcast Found", subtitle: "\(podcast.title)\n\n\(episode.title)", symbol: "checkmark.circle.fill")
                 case .podcast(let podcast):
@@ -21,6 +26,7 @@ struct ShareExtensionView: View {
                     VStack(spacing: 12) {
                         ContentUnavailableView("Couldn’t Find Podcast or Audio", systemImage: "questionmark.circle", description: Text("You can search Up Next using \(query ?? "the shared page") instead."))
                         if viewModel.canSearch { Button("Search in Up Next") { viewModel.search() } .buttonStyle(.borderedProminent) }
+                        if viewModel.canSubscribe { subscribeButton }
                     }
                     .padding()
                 case .saving:
@@ -51,9 +57,7 @@ struct ShareExtensionView: View {
             Text(title).font(.headline)
             Text(subtitle).multilineTextAlignment(.center).foregroundStyle(.secondary)
 
-            if case .podcastEpisode(_, _) = viewModel.state {
-                Button("Subscribe") { viewModel.subscribe() }.buttonStyle(.bordered)
-            }
+            if viewModel.canSubscribe { subscribeButton }
             if viewModel.canAdd {
                 destinationList
                 Button("Add Episode") { viewModel.addEpisode() }.buttonStyle(.borderedProminent)
@@ -74,6 +78,11 @@ struct ShareExtensionView: View {
         } label: {
             Label(destinationTitle, systemImage: "tray.fill")
         }
+    }
+
+    private var subscribeButton: some View {
+        Button("Subscribe") { viewModel.subscribe() }
+            .buttonStyle(.bordered)
     }
 
     private var destinationTitle: String {

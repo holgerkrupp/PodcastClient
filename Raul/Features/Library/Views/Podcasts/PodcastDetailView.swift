@@ -603,13 +603,16 @@ struct PodcastDetailView: View {
                                 total: 1.0
                             )
                         } else {
-                            Label("Refresh podcast", systemImage: "arrow.clockwise")
+                            Label(
+                                needsEpisodeImportRetry ? "Retry Import" : "Refresh podcast",
+                                systemImage: "arrow.clockwise"
+                            )
                         }
                     }
                     .disabled(podcast.isSubscribed == false || isLoading)
-                    .accessibilityLabel(isLoading ? "Refreshing podcast" : "Refresh podcast")
-                    .accessibilityHint("Downloads the latest episodes from this podcast feed")
-                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast")])
+                    .accessibilityLabel(isLoading ? "Refreshing podcast" : (needsEpisodeImportRetry ? "Retry episode import" : "Refresh podcast"))
+                    .accessibilityHint(needsEpisodeImportRetry ? "Retries importing episodes for this podcast" : "Downloads the latest episodes from this podcast feed")
+                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast"), Text("Retry import")])
                 }
             }
         .alert("Live notification", isPresented: isLiveNotificationPresented) {
@@ -699,10 +702,12 @@ struct PodcastDetailView: View {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
                 let startedAt = Date()
-                let summary = try await actor.updatePodcastWithSummary(feed, force: true) { update in
-                    await MainActor.run {
-                        refreshProgress = update.fractionCompleted
-                        refreshProgressMessage = update.message
+                let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feed) {
+                    try await actor.updatePodcastWithSummary(feed, force: true) { update in
+                        await MainActor.run {
+                            refreshProgress = update.fractionCompleted
+                            refreshProgressMessage = update.message
+                        }
                     }
                 }
 #if DEBUG
@@ -758,6 +763,10 @@ struct PodcastDetailView: View {
                 refreshProgressMessage = nil
             }
         }
+    }
+
+    private var needsEpisodeImportRetry: Bool {
+        podcast.metaData?.lastFeedFailureMessage?.localizedCaseInsensitiveContains("import") == true
     }
 
     private func refreshEpisodesIfNeeded() async {

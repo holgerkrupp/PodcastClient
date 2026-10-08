@@ -576,11 +576,6 @@ struct ImportExportView: View {
                 }
             }.value
             await MainActor.run {
-                for podcast in toSubscribe {
-                    podcast.added = true
-                    podcast.existing = true
-                }
-                importProgress = SubscriptionProgressUpdate(1, "Subscription complete")
                 isSubscribing = false
             }
         }

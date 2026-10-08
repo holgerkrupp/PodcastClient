@@ -127,7 +127,13 @@ final class PodcastBrowseViewModel: ObservableObject {
             }.value
             podcastFeed.existing = true
             isSubscribed = true
-            errorMessage = nil
+            errorMessage = if podcastFeed.importNeedsRetry {
+                "Subscribed — episode import needs retry. You can retry it from Podcast Detail."
+            } else if podcastFeed.isImportingEpisodes {
+                "Subscribed — importing episodes."
+            } else {
+                nil
+            }
             return true
         } catch {
             errorMessage = error.localizedDescription

@@ -35,6 +35,41 @@ enum PodcastFeedEndpointRecoveryError: LocalizedError {
     }
 }
 
+enum PodcastFeedEndpointIdentity {
+    static func matchesExistingPodcast(
+        _ parsedFeed: [String: Any],
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
+    ) -> Bool {
+        guard knownEpisodeIdentifiers.isEmpty == false,
+              let episodes = parsedFeed["episodes"] as? [[String: Any]] else {
+            return false
+        }
+
+        var matchingURLs = Set<String>()
+        for episode in episodes {
+            // Website RSS can reuse the same post GUIDs as the podcast feed.
+            // Only episodes that the importer can actually play and retain
+            // provide evidence for an endpoint replacement.
+            guard let draft = PodcastEpisodeDraft(episodeData: episode) else { continue }
+            if let guid = draft.guid,
+               knownEpisodeIdentifiers.guids.contains(guid) {
+                return true
+            }
+            let enclosureURL = draft.episodeURL.absoluteString
+            if knownEpisodeIdentifiers.urls.contains(enclosureURL) {
+                matchingURLs.insert(enclosureURL)
+            }
+            for key in ["url", "link"] {
+                if let value = episode[key] as? String,
+                   knownEpisodeIdentifiers.urls.contains(value) {
+                    matchingURLs.insert(value)
+                }
+            }
+        }
+        return matchingURLs.count >= 2
+    }
+}
+
 /// A deliberately small, value-only result suitable for presenting a feed
 /// repair preview. The parsed XML remains inside `PodcastModelActor`; it is
 /// never used as a reason to mutate a subscription before validation finishes.
@@ -57,6 +92,13 @@ struct PodcastBulkRefreshError: LocalizedError {
 struct PodcastUpdateSummary: Sendable {
     let didUpdateFeed: Bool
     let newEpisodeCount: Int
+    let isPartial: Bool
+
+    init(didUpdateFeed: Bool, newEpisodeCount: Int, isPartial: Bool = false) {
+        self.didUpdateFeed = didUpdateFeed
+        self.newEpisodeCount = newEpisodeCount
+        self.isPartial = isPartial
+    }
 }
 
 @ModelActor
@@ -82,10 +124,47 @@ actor PodcastModelActor {
     }
 
     private static func feedFailureStatusCode(from error: Error) -> Int? {
-        guard case PodcastParserError.couldNotLoad(_, let statusCode) = error else {
-            return nil
+        if case PodcastParserError.couldNotLoad(_, let statusCode, _) = error { return statusCode }
+        if case PodcastFeedResolverError.httpStatus(_, let statusCode, _) = error { return statusCode }
+        if case PodcastFeedResolverError.authenticationRequired = error { return 401 }
+        if case PodcastFeedResolverError.bearerAuthenticationRequired = error { return 401 }
+        return nil
+    }
+
+    private static func retryAfter(from error: Error) -> Date? {
+        if case PodcastParserError.couldNotLoad(_, _, let date) = error { return date }
+        if case PodcastFeedResolverError.httpStatus(_, _, let date) = error { return date }
+        return nil
+    }
+
+    private static func safeFeedFailureDescription(_ error: Error) -> String {
+        if case PodcastParserError.notAPodcastFeed = error {
+            return "The response is not a podcast feed."
         }
-        return statusCode
+        if case PodcastParserError.xmlParserError(_, let line, let column) = error {
+            return "The feed XML could not be parsed at line \(line), column \(column)."
+        }
+        if let statusCode = feedFailureStatusCode(from: error), statusCode != 0 {
+            if statusCode == 401 || statusCode == 403 {
+                return "Authentication is required (HTTP \(statusCode))."
+            }
+            return "The feed server returned HTTP \(statusCode)."
+        }
+        if let resolverError = error as? PodcastFeedResolverError {
+            return resolverError.localizedDescription
+        }
+        if let recoveryError = error as? PodcastFeedEndpointRecoveryError {
+            return recoveryError.localizedDescription
+        }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut: return "The feed request timed out."
+            case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost:
+                return "The feed server could not be reached."
+            default: break
+            }
+        }
+        return "The feed could not be refreshed."
     }
 
     private func accessProfile(
@@ -251,34 +330,10 @@ actor PodcastModelActor {
         _ parsedFeed: [String: Any],
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
     ) -> Bool {
-        guard knownEpisodeIdentifiers.isEmpty == false,
-              let episodes = parsedFeed["episodes"] as? [[String: Any]] else {
-            return false
-        }
-
-        var matchingURLs = Set<String>()
-        for episode in episodes {
-            if let guid = episode["guid"] as? String,
-               knownEpisodeIdentifiers.guids.contains(guid) {
-                // Feed GUIDs are the strongest cross-endpoint identity.
-                return true
-            }
-            if let enclosureURL = EpisodeMedia.playableEnclosure(
-                from: episode["enclosure"] as? [[String: Any]]
-            )?["url"] as? String,
-               knownEpisodeIdentifiers.urls.contains(enclosureURL) {
-                matchingURLs.insert(enclosureURL)
-            }
-            for key in ["url", "link"] {
-                if let value = episode[key] as? String,
-                   knownEpisodeIdentifiers.urls.contains(value) {
-                    matchingURLs.insert(value)
-                }
-            }
-        }
-        // Enclosure URLs can be reused by unrelated feeds. Require more than
-        // one when a GUID is unavailable before an automatic migration.
-        return matchingURLs.count >= 2
+        PodcastFeedEndpointIdentity.matchesExistingPodcast(
+            parsedFeed,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers
+        )
     }
 
     /// Commits a feed endpoint only after its caller has resolved HTML,
@@ -435,6 +490,7 @@ actor PodcastModelActor {
             accessProfile: validation.profile,
             reason: reason
         )
+        await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: oldURL)
         guard let committedPodcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         _ = try await updateDetails(
             committedPodcast,
@@ -467,6 +523,7 @@ actor PodcastModelActor {
     func setSubscriptionStatus(_ podcastID: PersistentIdentifier, isSubscribed: Bool) async {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
         let metaData = ensureMetadata(for: podcast)
+        let feedURL = podcast.feed
 
         metaData.isSubscribed = isSubscribed
         if isSubscribed {
@@ -478,6 +535,9 @@ actor PodcastModelActor {
             modelContainer: modelContainer,
             allowEmpty: isSubscribed == false
         )
+        if isSubscribed == false, let feedURL {
+            await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
+        }
     }
 
     func switchPodcastFeed(
@@ -723,7 +783,7 @@ actor PodcastModelActor {
 
         // --- Re-fetch fresh models after await ---
         guard
-            let freshPodcast: Podcast = modelContext.existingModel(for: podcastID),
+            (modelContext.existingModel(for: podcastID) as Podcast?) != nil,
             let metaID,
             let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaID)
         else {
@@ -917,6 +977,8 @@ actor PodcastModelActor {
         resolveExistingMissingDurations: Bool = true,
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
+        initialPage: PodcastFeedImportSeed? = nil,
+        startingAt: URL? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> Bool {
         let summary = try await updatePodcastWithSummary(
@@ -926,6 +988,8 @@ actor PodcastModelActor {
             resolveExistingMissingDurations: resolveExistingMissingDurations,
             processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
             deadline: deadline,
+            initialPage: initialPage,
+            startingAt: startingAt,
             progress: progress
         )
         return summary.didUpdateFeed
@@ -938,18 +1002,22 @@ actor PodcastModelActor {
         resolveExistingMissingDurations: Bool = true,
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
+        initialPage: PodcastFeedImportSeed? = nil,
+        startingAt: URL? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PodcastUpdateSummary {
         let refreshStartedAt = ContinuousClock.now
         var statusDuration: Duration = .zero
         var downloadAndParseDuration: Duration = .zero
         var databaseDuration: Duration = .zero
+        var refreshStage = "snapshot"
 
         func logRefreshResult(_ result: String) {
             let totalDuration = refreshStartedAt.duration(to: .now)
             Self.logRefresh(
                 "feed=\(podcastFeed.redactedPodcastURLString) "
                     + "result=\(result) "
+                    + "stage=\(refreshStage) "
                     + "status=\(Self.milliseconds(statusDuration))ms "
                     + "download_parse=\(Self.milliseconds(downloadAndParseDuration))ms "
                     + "database=\(Self.milliseconds(databaseDuration))ms "
@@ -1010,22 +1078,9 @@ actor PodcastModelActor {
         // Snapshot some plain values if needed
         let titleSnapshot = podcast.title
         let existingEpisodeIdentifiers = knownEpisodeIdentifiers(for: podcast)
-        let knownEpisodeIdentifiers = force == true
-            ? KnownPodcastEpisodeIdentifiers()
-            : existingEpisodeIdentifiers
-        let recoveryCandidates: [URL] = {
-            var seen = Set<String>()
-            var candidates = podcast.alternativeFeeds.map(\.url)
-            if let link = podcast.link {
-                candidates.insert(link, at: 0)
-            }
-            return candidates.compactMap { candidate in
-                guard candidate != feedURL,
-                      seen.insert(candidate.absoluteString).inserted else { return nil }
-                return candidate
-            }
-        }()
-
+        // `force` bypasses the HEAD freshness check. It must not turn a
+        // background release check into a complete back-catalogue import.
+        let knownEpisodeIdentifiers = existingEpisodeIdentifiers
         // ⚠️ After this point: do not use `podcast` directly across awaits
         // ----------------------------------------------------------------
 
@@ -1045,62 +1100,12 @@ actor PodcastModelActor {
         await reportProgress(SubscriptionProgressUpdate(0.12, "Checking feed status"), using: progress)
         try checkRefreshDeadline(deadline)
 
-        // Resolve HTML/web-page URLs before handing bytes to the XML parser.
-        // This also validates any HTTP redirect destination and keeps private
-        // credentials scoped to the existing endpoint during autodiscovery.
-        let resolvedEndpoint: URL
-        let resolvedAccessProfile: PodcastAccessProfile?
-        do {
-            let resolvedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
-                from: feedURL,
-                profile: accessProfile
-            )
-            resolvedEndpoint = resolvedFeed.url ?? feedURL
-            resolvedAccessProfile = accessProfile
-        } catch {
-            // Do not guess a URL. The podcast's own website and advertised
-            // alternatives are the only bounded fallbacks; each still has to
-            // parse as a feed and pass the identity gate below.
-            var recovered: (URL, PodcastAccessProfile?)?
-            for candidate in recoveryCandidates {
-                do {
-                    let candidateProfile = candidateAccessProfile(
-                        accessProfile,
-                        oldURL: feedURL,
-                        candidateURL: candidate
-                    )
-                    let feed = try await PodcastFeedResolver.resolveExistingEndpoint(
-                        from: candidate,
-                        profile: candidateProfile
-                    )
-                    recovered = (feed.url ?? candidate, candidateProfile)
-                    break
-                } catch {
-                    continue
-                }
-            }
-            guard let recovered else {
-                if error is PodcastFeedResolverError {
-                    CrashBreadcrumbs.shared.record(
-                        "feed_endpoint_recovery_failed",
-                        details: "stage=endpoint_validation"
-                    )
-                }
-                throw error
-            }
-            resolvedEndpoint = recovered.0
-            resolvedAccessProfile = recovered.1
-        }
-        let shouldRedactResolvedEndpoint = resolvedAccessProfile.map { $0.kind != .publicFeed } ?? false
-        let persistedResolvedEndpoint = (shouldRedactResolvedEndpoint || resolvedEndpoint.isLikelyPrivatePodcastURL)
-            ? resolvedEndpoint.podcastNonSecretURL
-            : resolvedEndpoint
-        let endpointChanged = persistedResolvedEndpoint != feedURL
-
-        // --- FIRST await boundary ---
-        if force == false, endpointChanged == false {
+        // Probe the saved endpoint before downloading or parsing its body.
+        // A successful unchanged HEAD should end this refresh without a GET.
+        if force == false, startingAt == nil, initialPage?.matches(feedURL) != true {
+            refreshStage = "status_check"
             let statusStartedAt = ContinuousClock.now
-            let feedWasUpdated = await checkIfFeedHasBeenUpdated(podcastFeed)
+            let feedWasUpdated = await checkIfFeedHasBeenUpdated(feedURL)
             statusDuration = statusStartedAt.duration(to: .now)
             guard feedWasUpdated != false else {
                 print("\(titleSnapshot) not updated")
@@ -1122,20 +1127,105 @@ actor PodcastModelActor {
                     }
                     modelContext.saveIfNeeded()
                 }
-                // A 304 response contains no new shownotes. Re-parsing every
-                // stored episode and following its links on each status check
-                // used to launch a large, unstructured background workload.
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
+                await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
                 logRefreshResult("not-modified")
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
-            // A full parse crosses another async boundary. Commit the single
-            // preflight status update before that work can be cancelled.
             modelContext.saveIfNeeded()
         }
         try checkRefreshDeadline(deadline)
+        refreshStage = "endpoint_resolution"
 
-        // --- SECOND await boundary ---
+        // Resolve only the stored feed URL. URLSession may follow an HTTP
+        // redirect for this request, but website discovery must not choose a
+        // different RSS feed during an ordinary refresh.
+        let resolvedEndpoint: URL
+        let resolvedAccessProfile: PodcastAccessProfile?
+        let resolvedInitialPage: PodcastFeedImportSeed?
+        if startingAt != nil {
+            // A persisted continuation was created from a previously validated
+            // feed. Resume at that page instead of downloading the first page
+            // again just to repeat endpoint validation.
+            resolvedEndpoint = feedURL
+            resolvedAccessProfile = accessProfile
+            resolvedInitialPage = nil
+        } else if let initialPage, initialPage.matches(feedURL) {
+            resolvedEndpoint = feedURL
+            resolvedAccessProfile = accessProfile
+            resolvedInitialPage = initialPage
+        } else {
+            do {
+                let resolvedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
+                    from: feedURL,
+                    profile: accessProfile,
+                    allowHTMLDiscovery: false,
+                    knownEpisodeIdentifiers: knownEpisodeIdentifiers
+                )
+                resolvedEndpoint = resolvedFeed.url ?? feedURL
+                resolvedAccessProfile = accessProfile
+                resolvedInitialPage = resolvedFeed.initialImportSeed
+            } catch {
+                let primaryError = error as NSError
+                Self.logRefresh(
+                    "endpoint_primary_failure feed=\(feedURL.redactedPodcastURLString) "
+                        + "error_domain=\(primaryError.domain) error_code=\(primaryError.code) "
+                        + "reason=\(Self.safeFeedFailureDescription(error))"
+                )
+                if error is PodcastFeedResolverError {
+                    CrashBreadcrumbs.shared.record(
+                        "feed_endpoint_validation_failed",
+                        details: "stage=endpoint_validation"
+                    )
+                }
+                if let metaIDRef,
+                   let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                    freshMeta.isUpdating = false
+                    freshMeta.message = nil
+                    freshMeta.feedUpdateCheckDate = Date()
+                }
+                if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
+                    freshPodcast.message = nil
+                }
+                if error is CancellationError == false, let metaIDRef {
+                    recordFeedRefreshFailure(metadataID: metaIDRef, error: error)
+                    if let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                        freshMeta.lastFeedFailureMessage = "Feed refresh failed. \(Self.safeFeedFailureDescription(error))"
+                    }
+                }
+                modelContext.saveIfNeeded()
+                if error is CancellationError == false {
+                    await PodcastEpisodeImportRetryQueue.shared.enqueue(
+                        feedURL: feedURL,
+                        error: error,
+                        retryAfter: Self.retryAfter(from: error)
+                    )
+                }
+                await reportProgress(
+                    SubscriptionProgressUpdate(
+                        1,
+                        error is CancellationError
+                            ? "Refresh paused"
+                            : "Cannot validate feed — \(Self.safeFeedFailureDescription(error))"
+                    ),
+                    using: progress
+                )
+                let failure = error as NSError
+                logRefreshResult(
+                    error is CancellationError
+                        ? "cancelled"
+                        : "endpoint-resolution-failed error_domain=\(failure.domain) error_code=\(failure.code)"
+                )
+                throw error
+            }
+        }
+        let shouldRedactResolvedEndpoint = resolvedAccessProfile.map { $0.kind != .publicFeed } ?? false
+        let persistedResolvedEndpoint = (shouldRedactResolvedEndpoint || resolvedEndpoint.isLikelyPrivatePodcastURL)
+            ? resolvedEndpoint.podcastNonSecretURL
+            : resolvedEndpoint
+        let endpointChanged = persistedResolvedEndpoint != feedURL
+
+        // --- Next await boundary ---
         guard
               let metaIDRef,
               let freshMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef),
@@ -1153,14 +1243,47 @@ actor PodcastModelActor {
         try checkRefreshDeadline(deadline)
 
         do {
+            var initialPageNewEpisodeCount = 0
+            refreshStage = "initial_page_import"
+            if endpointChanged == false,
+               let resolvedInitialPage, resolvedInitialPage.matches(resolvedEndpoint),
+               // A complete single-page feed is already the whole import. Defer
+               // its one database pass until the parse/identity checks below
+               // have completed; importing it here and then again in
+               // `updateDetails` needlessly touches every episode twice and can
+               // keep CloudKit's import background task alive for too long.
+               resolvedInitialPage.shouldCommitBeforeContinuation,
+               let seedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
+                // Make the already validated first page visible and durable
+                // before downloading the rest of a large back catalogue.
+                initialPageNewEpisodeCount = try await updateDetails(
+                    seedPodcast,
+                    fullPodcast: knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(
+                        in: resolvedInitialPage.parsedFeed
+                    ),
+                    silent: true,
+                    resolveExistingMissingDurations: false,
+                    processNewEpisodesDuringSilentRefresh: false,
+                    deadline: deadline
+                )
+                modelContext.saveIfNeeded()
+                if let checkpoint = resolvedInitialPage.nextPageURL {
+                    await PodcastEpisodeImportRetryQueue.shared.checkpoint(
+                        feedURL: feedURL,
+                        resumeURL: checkpoint
+                    )
+                }
+            }
+
             // Parse XML
+            refreshStage = "feed_parse"
             let downloadAndParseStartedAt = ContinuousClock.now
             let fullPodcast = try await PodcastParser.fetchAllPages(
                 from: resolvedEndpoint,
-                knownEpisodeIdentifiers: endpointChanged
-                    ? KnownPodcastEpisodeIdentifiers()
-                    : knownEpisodeIdentifiers,
-                profile: resolvedAccessProfile
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers,
+                profile: resolvedAccessProfile,
+                firstPage: startingAt == nil ? resolvedInitialPage : nil,
+                startingAt: startingAt
             )
             downloadAndParseDuration = downloadAndParseStartedAt.duration(to: .now)
             try checkRefreshDeadline(deadline)
@@ -1172,25 +1295,32 @@ actor PodcastModelActor {
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
 
-            if endpointChanged {
-                guard recoveredEndpointMatchesExistingPodcast(
-                    fullPodcast,
-                    knownEpisodeIdentifiers: existingEpisodeIdentifiers
-                ) else {
+            refreshStage = "identity_verification"
+            if endpointChanged, existingEpisodeIdentifiers.isEmpty == false {
+                // This is content returned by an HTTP redirect from the saved
+                // URL. Verify it against known playable episodes, while
+                // leaving the saved subscription URL unchanged.
+                let stoppedAtKnownEpisode = resolvedInitialPage?.didStopAtKnownEpisode == true
+                    || (fullPodcast["didStopAtKnownEpisode"] as? Bool == true)
+                let identityVerified: Bool
+                if stoppedAtKnownEpisode {
+                    identityVerified = true
+                } else {
+                    identityVerified = recoveredEndpointMatchesExistingPodcast(
+                        fullPodcast,
+                        knownEpisodeIdentifiers: existingEpisodeIdentifiers
+                    )
+                }
+                guard identityVerified else {
                     CrashBreadcrumbs.shared.record(
                         "feed_endpoint_recovery_failed",
                         details: "stage=identity_verification"
                     )
                     throw PodcastFeedEndpointRecoveryError.identityCouldNotBeVerified
                 }
-                try await commitValidatedFeedEndpoint(
-                    for: finalPodcast,
-                    from: feedURL,
-                    to: resolvedEndpoint,
-                    accessProfile: resolvedAccessProfile,
-                    reason: .endpointRecovery
-                )
             }
+
+            let importPodcast = knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(in: fullPodcast)
 
             // Update podcast details safely
             if silent != true {
@@ -1200,22 +1330,24 @@ actor PodcastModelActor {
             }
             await reportProgress(SubscriptionProgressUpdate(0.56, "Updating podcast details"), using: progress)
 
+            refreshStage = "episode_import"
             let databaseStartedAt = ContinuousClock.now
             let newEpisodeCount = try await updateDetails(
                 finalPodcast,
-                fullPodcast: fullPodcast,
+                fullPodcast: importPodcast,
                 silent: silent,
                 resolveExistingMissingDurations: resolveExistingMissingDurations,
                 processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
                 deadline: deadline,
                 progress: progress
             )
+            let totalNewEpisodeCount = initialPageNewEpisodeCount + newEpisodeCount
 
             var enrichmentSources: [String] = []
-            if let description = fullPodcast["description"] as? String {
+            if let description = importPodcast["description"] as? String {
                 enrichmentSources.append(description)
             }
-            if let episodes = fullPodcast["episodes"] as? [[String: Any]] {
+            if let episodes = importPodcast["episodes"] as? [[String: Any]] {
                 for episode in episodes {
                     if let content = episode["content"] as? String {
                         enrichmentSources.append(content)
@@ -1232,19 +1364,48 @@ actor PodcastModelActor {
                 finalMeta.message = nil
                 finalMeta.isUpdating = false
             }
+            refreshStage = "finalization"
             finalMeta.feedUpdated = true
-            recordFeedRefreshSuccess(metadataID: finalMeta.persistentModelID)
-            await updateLastRefresh(for: finalMeta.persistentModelID)
+            let importIsPartial = fullPodcast["isPartial"] as? Bool == true
+            if importIsPartial {
+                finalMeta.feedUpdated = false
+                finalMeta.lastFeedFailureDate = Date()
+                finalMeta.lastFeedFailureMessage = "Episode import is incomplete and needs to resume."
+                CrashBreadcrumbs.shared.record(
+                    "feed_import_partial",
+                    details: "resume_available=\((fullPodcast["resumeURL"] as? String) != nil)"
+                )
+                let resumeURL = (fullPodcast["resumeURL"] as? String).flatMap(URL.init(string:))
+                if let resumeURL {
+                    await PodcastEpisodeImportRetryQueue.shared.enqueue(
+                        feedURL: feedURL,
+                        resumeURL: resumeURL
+                    )
+                } else {
+                    // Cyclic pages have no safe continuation URL. Keep the
+                    // imported episodes and expose manual retry without
+                    // scheduling the same known cycle repeatedly.
+                    await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
+                }
+            } else {
+                recordFeedRefreshSuccess(metadataID: finalMeta.persistentModelID)
+                await updateLastRefresh(for: finalMeta.persistentModelID)
+                await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
+            }
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
             await reconcileLiveNotifications(for: finalPodcast)
             databaseDuration = databaseStartedAt.duration(to: .now)
-            await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription complete"), using: progress)
-            logRefreshResult("updated")
+            await reportProgress(
+                SubscriptionProgressUpdate(1.0, importIsPartial ? "Subscribed — import needs retry" : "Subscription complete"),
+                using: progress
+            )
+            logRefreshResult(importIsPartial ? "partial" : "updated")
 
             return PodcastUpdateSummary(
                 didUpdateFeed: true,
-                newEpisodeCount: newEpisodeCount
+                newEpisodeCount: totalNewEpisodeCount,
+                isPartial: importIsPartial
             )
         } catch is CancellationError {
             if silent != true {
@@ -1266,7 +1427,7 @@ actor PodcastModelActor {
                 "Podcast refresh failed for \(feedURL.redactedPodcastURLString):",
                 "domain=\(nsError.domain)",
                 "code=\(nsError.code)",
-                "description=\(error.localizedDescription)"
+                "description=\(Self.safeFeedFailureDescription(error))"
             )
             if let failedMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
                 failedMeta.isUpdating = false
@@ -1277,12 +1438,23 @@ actor PodcastModelActor {
                 failedMeta.feedUpdated = nil
             }
             recordFeedRefreshFailure(metadataID: metaIDRef, error: error)
+            if let failedMeta: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                failedMeta.lastFeedFailureMessage = "Episode import failed. \(Self.safeFeedFailureDescription(error))"
+            }
             if silent != true, let failedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
-            await reportProgress(SubscriptionProgressUpdate(1.0, "Subscription failed"), using: progress)
-            logRefreshResult("failed")
+            await PodcastEpisodeImportRetryQueue.shared.enqueue(
+                feedURL: feedURL,
+                error: error,
+                retryAfter: Self.retryAfter(from: error)
+            )
+            await reportProgress(
+                SubscriptionProgressUpdate(1.0, "Refresh failed — \(Self.safeFeedFailureDescription(error))"),
+                using: progress
+            )
+            logRefreshResult("failed error_domain=\(nsError.domain) error_code=\(nsError.code)")
             throw error
         }
     }
@@ -1469,11 +1641,9 @@ actor PodcastModelActor {
                     continue
                 }
 
-                print("new episode: \(episodeData["title"] as? String ?? "")")
-
                 if let episodeURL = existingEpisodeURL(identifier: episodeIdentifier, episodeURL: candidateEpisodeURL),
                    let feed = podcast.feed {
-                    print("already existing")
+                    print("reusing existing episode: \(episodeData["title"] as? String ?? "")")
                     await linkEpisodeToPodcast(
                         episodeURL,
                         feed,
@@ -1509,6 +1679,7 @@ actor PodcastModelActor {
                     continue
                 }
 
+                print("new episode: \(episodeData["title"] as? String ?? "")")
                 guard let episode = Episode(from: episodeData, podcast: podcast) else { continue }
 
                 print("newly created")
@@ -1673,97 +1844,27 @@ actor PodcastModelActor {
         from url: URL,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PersistentIdentifier {
-        
-        print("createPodcast from url: \(url.redactedPodcastURLString)")
         await reportProgress(SubscriptionProgressUpdate(0.02, "Resolving podcast feed"), using: progress)
-        // Check URL STATUS
-        var feedURL = url
-        let status = try await url.status()
-        
-        switch status?.statusCode {
-        case 200:
-            feedURL = url
-        case 404:
-            throw SubscriptionManager.SubscribeError.loadfeed
-        case 410:
-            if let newURL = status?.newURL{
-                feedURL = newURL.preservingFeedAccessComponents(from: url)
-                await recordFeedAlias(
-                    from: url,
-                    to: newURL,
-                    reason: .permanentRedirect
-                )
-            }else{
-               throw SubscriptionManager.SubscribeError.loadfeed
-            }
-        default:
-            feedURL = url
+        let resolvedFeed: PodcastFeed
+        switch try await PodcastFeedResolver.resolve(url: url, allowAuthenticationPrompt: false) {
+        case .podcast(let feed): resolvedFeed = feed
+        case .requiresBasicAuth, .requiresBearerToken:
+            throw PodcastFeedResolverError.authenticationRequired(url)
         }
-        
-        
-        
-        
-        let sourceFeedURL = feedURL
-        let storedFeedURL = feedURL.isLikelyPrivatePodcastURL
-            ? feedURL.podcastNonSecretURL
-            : feedURL
-
-        // Check if podcast with this credential-free feed URL already exists.
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == storedFeedURL }
+        if url.user != nil || url.password != nil {
+            let basic = url.podcastBasicCredential
+            resolvedFeed.accessCredential = .httpBasic(username: basic.username, password: basic.password)
+            resolvedFeed.accessKind = .httpBasic
+        } else if url.isLikelyPrivatePodcastURL {
+            resolvedFeed.accessCredential = .privateURL(url)
+            resolvedFeed.accessKind = .privateURL
+        }
+        return try await SubscriptionManager(modelContainer: modelContainer).addToLibrary(
+            resolvedFeed,
+            subscribe: true,
+            feedWasValidated: true,
+            progress: progress
         )
-
-        if let existingPodcasts = try? modelContext.fetch(descriptor),
-           let existingPodcast = existingPodcasts.first, let feed = existingPodcast.feed {
-            // If podcast exists, update it and return its ID
-            let metaData = ensureMetadata(for: existingPodcast)
-            configureAccessMetadata(for: sourceFeedURL, metadata: metaData)
-            metaData.isSubscribed = true
-            metaData.subscriptionDate = Date()
-            modelContext.saveIfNeeded()
-            await updateSplitSubscription(
-                feedURL: feed,
-                isSubscribed: true,
-                accessProfile: storedPodcastAccessProfile(for: existingPodcast)
-            )
-            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-
-            await reportProgress(SubscriptionProgressUpdate(0.18, "Refreshing existing podcast"), using: progress)
-            _ = try await updatePodcast(feed, force: true, silent: true, progress: progress)
-            existingPodcast.message = nil
-            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-            return existingPodcast.persistentModelID
-        }
-        
-        // Create new podcast if it doesn't exist
-        
-        
-        let podcast = Podcast(feed: sourceFeedURL)
-        configureAccessMetadata(for: sourceFeedURL, metadata: podcast.metaData)
-        modelContext.insert(podcast)
-        modelContext.saveIfNeeded()
-        await updateSplitSubscription(
-            feedURL: feedURL,
-            isSubscribed: true,
-            accessProfile: storedPodcastAccessProfile(for: podcast)
-        )
-        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        await reportProgress(SubscriptionProgressUpdate(0.16, "Creating podcast record"), using: progress)
-        if let feed = podcast.feed {
-        do {
-            
-                _ = try await updatePodcast(feed, force: true, silent: true, progress: progress)
-                podcast.message = nil
-                await reportProgress(SubscriptionProgressUpdate(0.98, "Finalizing subscription"), using: progress)
-                await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-            
-        } catch {
-            // print("Could not update podcast: \(error)")
-        }
-        modelContext.saveIfNeeded()
-       
-        }
-        return podcast.persistentModelID
     }
     
     func archiveEpisodes(of podcastID: PersistentIdentifier) async throws {

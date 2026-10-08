@@ -20,16 +20,47 @@ extension URL {
     }
 }
 
+enum PodcastFeedAvailability: Sendable, Equatable {
+    case reachable
+    case authenticationRequired
+    case temporarilyUnavailable
+    case definitivelyAbsent
+    case headUnsupported
+    case unknown
+}
+
 struct URLstatus: Sendable {
     var statusCode: Int?
     var newURL: URL?
     var lastModified:Date?
     var lastRequest:Date
     var doctype:String?
+    var requestMethod: String = "HEAD"
+    var retryAfter: Date?
+
+    var availability: PodcastFeedAvailability {
+        guard let statusCode else { return .unknown }
+        switch statusCode {
+        case 200..<400:
+            return .reachable
+        case 401, 403:
+            return .authenticationRequired
+        case 404, 410, 451:
+            return .definitivelyAbsent
+        case 405 where requestMethod.uppercased() == "HEAD",
+             501 where requestMethod.uppercased() == "HEAD":
+            return .headUnsupported
+        case 429, 500...599:
+            return .temporarilyUnavailable
+        default:
+            return .unknown
+        }
+    }
 
     var isDeadFeedResponse: Bool {
-        guard let statusCode else { return false }
-        return statusCode == 404 || statusCode == 410 || statusCode == 451 || statusCode >= 500
+        // HEAD is advisory. Even a 404 from HEAD cannot prove that a GET
+        // endpoint is absent; only feed validation may make that decision.
+        requestMethod.uppercased() != "HEAD" && availability == .definitivelyAbsent
     }
 
     var displayMessage: String {
@@ -37,16 +68,20 @@ struct URLstatus: Sendable {
             return "Could not check feed"
         }
 
-        switch statusCode {
-        case 404:
+        switch availability {
+        case .authenticationRequired:
+            return "Feed requires authentication (\(statusCode))"
+        case .definitivelyAbsent where statusCode == 404:
             return "Feed not found (404)"
-        case 410:
+        case .definitivelyAbsent where statusCode == 410:
             return "Feed gone (410)"
-        case 451:
+        case .definitivelyAbsent where statusCode == 451:
             return "Feed unavailable (451)"
-        case 500...599:
-            return "Server error (\(statusCode))"
-        default:
+        case .temporarilyUnavailable:
+            return statusCode == 429 ? "Feed is rate limited (429)" : "Server error (\(statusCode))"
+        case .headUnsupported:
+            return "Feed server does not support HEAD"
+        case .reachable, .definitivelyAbsent, .unknown:
             return "HTTP \(statusCode)"
         }
     }
@@ -54,13 +89,10 @@ struct URLstatus: Sendable {
 
 extension URLRequest {
     private static var podcastFeedUserAgent: String {
-        #if os(iOS)
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
-        #elseif os(macOS)
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
-        #else
-        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
-        #endif
+        // Some feed hosts serve an HTML reader page to browser user agents.
+        // Identify this request as a podcast client so the raw RSS/Atom
+        // representation is returned, including after redirects.
+        "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
     }
 
     /// Creates a feed request and carries credentials embedded in the URL as
@@ -307,15 +339,20 @@ extension URL{
         do{
                         let (_, response) = try await PodcastHTTPClient.shared.data(for: request, profile: profile)
                         
-                        status.statusCode = (response as? HTTPURLResponse)?.statusCode
-                        status.doctype = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type")
+                        status.statusCode = response.statusCode
+                        status.doctype = response.value(forHTTPHeaderField: "Content-Type")
                         
-                        status.lastModified =  Date.dateFromRFC1123(dateString: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Last-Modified") ?? "")
-                        status.newURL = URL(string: (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Location") ?? "")
+                        status.lastModified =  Date.dateFromRFC1123(dateString: response.value(forHTTPHeaderField: "Last-Modified") ?? "")
+                        status.newURL = URL(string: response.value(forHTTPHeaderField: "Location") ?? "")
                         
-                    }catch{
-                        // print(error)
-                        return nil
+                    } catch let error as PodcastHTTPError {
+                        status.statusCode = error.statusCode
+                        status.doctype = nil
+                        return status
+                    } catch {
+                        // A failed HEAD is unknown, not evidence that a feed
+                        // which may serve GET is dead.
+                        return status
                     }
        
         return status
@@ -347,15 +384,11 @@ extension URL{
             let (data, response) = try await PodcastHTTPClient.shared.data(for: request)
             // print("got response for \(self.absoluteString) ")
            
-            switch (response as? HTTPURLResponse)?.statusCode {
+            switch response.statusCode {
             case 200:
                 return data
-            case .none:
+            default:
                 return nil
-                
-            case .some(_):
-                return nil
-                
             }
         }catch{
             // print(error)

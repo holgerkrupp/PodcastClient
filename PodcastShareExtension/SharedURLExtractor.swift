@@ -10,19 +10,25 @@ enum SharedURLExtractor {
 
     @MainActor
     static func firstURL(in inputItems: [Any]) async -> URL? {
+        ShareExtensionDiagnostics.log("urlExtraction.started")
         for case let item as NSExtensionItem in inputItems {
-            if let url = url(in: item.attributedTitle?.string)
-                ?? url(in: item.attributedContentText?.string) {
-                return url
-            }
-
+            // Safari and other webpage providers supply the canonical shared
+            // URL as an attachment. Prefer it over descriptive text, which can
+            // contain links to older episodes or unrelated pages.
             for provider in item.attachments ?? [] {
                 if let url = await firstURL(from: provider) {
                     return url
                 }
             }
+
+            if let url = directURL(in: item.attributedTitle?.string)
+                ?? directURL(in: item.attributedContentText?.string) {
+                ShareExtensionDiagnostics.log("urlExtraction.attributedURLFound")
+                return url
+            }
         }
 
+        ShareExtensionDiagnostics.log("urlExtraction.empty")
         return nil
     }
 
@@ -57,6 +63,13 @@ enum SharedURLExtractor {
         }
 
         return url
+    }
+
+    private static func directURL(in string: String?) -> URL? {
+        guard let string else { return nil }
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let directURL = URL(string: trimmed), isSupported(directURL) else { return nil }
+        return directURL
     }
 
     static func url(in value: Any) -> URL? {
@@ -110,6 +123,7 @@ enum SharedURLExtractor {
         }
 
         for typeIdentifier in preferredIdentifiers + remainingIdentifiers {
+            guard Task.isCancelled == false else { return nil }
             guard let item = try? await provider.loadItem(
                 forTypeIdentifier: typeIdentifier
             ) else {
@@ -117,6 +131,7 @@ enum SharedURLExtractor {
             }
 
             if let url = url(in: item) {
+                ShareExtensionDiagnostics.log("urlExtraction.providerItemFound")
                 return url
             }
         }

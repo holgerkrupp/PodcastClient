@@ -96,15 +96,26 @@ struct PodcastListView: View {
                     }
                 } else {
                     ForEach(visiblePodcasts) { podcast in
-                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                        
+                        
+                        ZStack {
                             PodcastRowView(podcast: podcast)
+                            NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                                EmptyView()
+                            }
+                            .opacity(0)
                         }
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .listRowSeparator(.hidden)
+                        
+                       
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open podcast \(podcast.title)")
                         .accessibilityHint("Opens this podcast details screen")
-                        .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                     }
                     .onDelete { indexSet in
                         let podcastIDs = indexSet.compactMap { index in

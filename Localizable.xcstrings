@@ -10978,6 +10978,9 @@
         }
       }
     },
+    "Retries importing episodes for this podcast" : {
+
+    },
     "Retrieve or Generate a Transcript" : {
       "localizations" : {
         "de" : {
@@ -10987,6 +10990,15 @@
           }
         }
       }
+    },
+    "Retry episode import" : {
+
+    },
+    "Retry import" : {
+
+    },
+    "Retry Import" : {
+
     },
     "Retry loading episodes" : {
       "localizations" : {
@@ -13090,6 +13102,12 @@
           }
         }
       }
+    },
+    "Subscribed — import needs retry" : {
+
+    },
+    "Subscribed — importing episodes" : {
+
     },
     "Subscribed to %@." : {
       "localizations" : {

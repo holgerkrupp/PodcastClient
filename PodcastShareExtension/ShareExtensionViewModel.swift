@@ -17,11 +17,13 @@ final class ShareExtensionViewModel: ObservableObject {
 
     @Published private(set) var state: State = .loading
     @Published private(set) var playlists: [SharedEpisodePlaylistSnapshot] = []
+    @Published private(set) var podcastFeed: ShareLinkPodcast?
     @Published var selectedPlaylistID: UUID?
 
     private var extensionContext: NSExtensionContext?
     private var sharedURL: URL?
     private var didComplete = false
+    private var isActive = true
 
     var canAdd: Bool {
         switch state {
@@ -37,6 +39,8 @@ final class ShareExtensionViewModel: ObservableObject {
         }
     }
 
+    var canSubscribe: Bool { isActive && didComplete == false && podcastFeed != nil && sharedURL != nil }
+
     var isChecking: Bool {
         if case .checking = state { return true }
         return false
@@ -45,25 +49,47 @@ final class ShareExtensionViewModel: ObservableObject {
     var sharedHost: String? { sharedURL?.host() }
 
     func prepare(extensionContext: NSExtensionContext?) async {
-        guard state == .loading else { return }
+        guard isActive, didComplete == false, state == .loading, Task.isCancelled == false else { return }
+        ShareExtensionDiagnostics.log("prepare.started")
         guard let extensionContext else {
+            ShareExtensionDiagnostics.log("prepare.missingContext")
             state = .failed(ShareExtensionError.missingExtensionContext.localizedDescription)
             return
         }
-        guard let url = await SharedURLExtractor.firstURL(in: extensionContext.inputItems) else {
+        self.extensionContext = extensionContext
+        let url = await SharedURLExtractor.firstURL(in: extensionContext.inputItems)
+        guard isActive, didComplete == false, Task.isCancelled == false else {
+            ShareExtensionDiagnostics.log("prepare.abandonedAfterExtraction")
+            return
+        }
+        guard let url else {
+            ShareExtensionDiagnostics.log("prepare.noURL")
             state = .failed(ShareExtensionError.noURL.localizedDescription)
             return
         }
 
-        self.extensionContext = extensionContext
         sharedURL = url
         playlists = PendingSharedEpisodeShareStore.playlists()
         state = .checking(url)
-        state = await ShareLinkResolver().resolve(url).state
+        ShareExtensionDiagnostics.log("url.extracted")
+        let resolution = await ShareLinkResolver().resolve(url) { [weak self] podcast in
+            guard let self, self.isActive, self.didComplete == false else { return }
+            self.podcastFeed = podcast
+            ShareExtensionDiagnostics.log("podcast.feedFound")
+        }
+        guard isActive, didComplete == false, Task.isCancelled == false else {
+            ShareExtensionDiagnostics.log("prepare.abandonedAfterResolution")
+            return
+        }
+        guard case .checking = state else { return }
+        podcastFeed = resolution.podcastFeed ?? podcastFeed
+        state = resolution.state
+        ShareExtensionDiagnostics.log("url.ready")
     }
 
     func addEpisode() {
-        guard canAdd, let sharedURL else { return }
+        guard isActive, didComplete == false, canAdd, let sharedURL else { return }
+        ShareExtensionDiagnostics.log("action.add")
         state = .saving
         do {
             try PendingSharedEpisodeShareStore.save(.importEpisode(url: sharedURL, playlistID: selectedPlaylistID))
@@ -74,7 +100,8 @@ final class ShareExtensionViewModel: ObservableObject {
     }
 
     func subscribe() {
-        guard case .podcastEpisode(let podcast, _) = state, let sharedURL else { return }
+        guard isActive, didComplete == false, let podcast = podcastFeed, let sharedURL else { return }
+        ShareExtensionDiagnostics.log("action.subscribe")
         state = .saving
         do {
             try PendingSharedEpisodeShareStore.save(.subscribe(feedURL: podcast.feedURL, sharedURL: sharedURL))
@@ -85,7 +112,8 @@ final class ShareExtensionViewModel: ObservableObject {
     }
 
     func search() {
-        guard let sharedURL, let query = searchQuery else { return }
+        guard isActive, didComplete == false, let sharedURL, let query = searchQuery else { return }
+        ShareExtensionDiagnostics.log("action.search")
         state = .saving
         do {
             try PendingSharedEpisodeShareStore.save(.search(query: query, sharedURL: sharedURL))
@@ -95,8 +123,21 @@ final class ShareExtensionViewModel: ObservableObject {
         }
     }
 
-    func done() { completeOnce() }
-    func cancel() { completeOnce() }
+    func done() {
+        ShareExtensionDiagnostics.log("action.done")
+        completeOnce()
+    }
+
+    func cancel() {
+        ShareExtensionDiagnostics.log("action.cancel")
+        completeOnce()
+    }
+
+    func stopHandling() {
+        guard isActive else { return }
+        isActive = false
+        ShareExtensionDiagnostics.log("handling.stopped")
+    }
 
     private var searchQuery: String? {
         switch state {
@@ -114,8 +155,13 @@ final class ShareExtensionViewModel: ObservableObject {
     }
 
     private func completeOnce() {
-        guard didComplete == false else { return }
+        guard didComplete == false else {
+            ShareExtensionDiagnostics.log("completion.duplicateIgnored")
+            return
+        }
         didComplete = true
+        isActive = false
+        ShareExtensionDiagnostics.log("completion.requested")
         extensionContext?.completeRequest(returningItems: nil)
     }
 }
@@ -125,8 +171,8 @@ private extension ShareLinkResolution {
         switch self {
         case .podcastEpisode(let podcast, let episode): return .podcastEpisode(podcast, episode)
         case .podcast(let podcast): return .podcast(podcast)
-        case .standaloneMedia(let media): return .standalone(media)
-        case .unresolved(let url, let query): return .unresolved(url, query)
+        case .standaloneMedia(let media, _): return .standalone(media)
+        case .unresolved(let url, let query, _): return .unresolved(url, query)
         }
     }
 }

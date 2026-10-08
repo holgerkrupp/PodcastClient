@@ -91,6 +91,7 @@ struct ContentView: View {
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
             await loadLaunchCounts()
+            schedulePendingEpisodeImportRetries()
             await importPendingSharedEpisodeIfNeeded()
             didCompleteInitialContentLoad = true
             try? await Task.sleep(for: .seconds(4))
@@ -108,6 +109,7 @@ struct ContentView: View {
             SystemPressureGate.shared.setSceneActive(phase == .active)
             if phase == .active, didCompleteInitialContentLoad {
                 Task { await importPendingSharedEpisodeIfNeeded() }
+                schedulePendingEpisodeImportRetries()
             }
             if SETTINGgoingBackToPlayerafterBackground{
                 switch phase {
@@ -241,6 +243,13 @@ struct ContentView: View {
     
     func setGoingToBackgroundDate() {
         goingToBackgroundDate = Date()
+    }
+
+    private func schedulePendingEpisodeImportRetries() {
+        let container = modelContext.container
+        Task.detached(priority: .utility) {
+            await PodcastEpisodeImportRetryQueue.shared.processDue(modelContainer: container)
+        }
     }
 
     @MainActor

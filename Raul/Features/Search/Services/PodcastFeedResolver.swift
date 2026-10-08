@@ -9,6 +9,7 @@ enum PodcastFeedResolution {
 enum PodcastFeedResolverError: LocalizedError {
     case unsupportedURL
     case couldNotLoad(URL)
+    case httpStatus(URL, Int, Date?)
     case notAPodcastFeed
     case unreadableFile
     case multipleFeedsInOPML
@@ -21,6 +22,8 @@ enum PodcastFeedResolverError: LocalizedError {
             return "This link is not a supported podcast feed URL."
         case .couldNotLoad(let url):
             return "Could not load \(url.redactedPodcastURLString)."
+        case .httpStatus(_, let code, _):
+            return "The feed server returned HTTP \(code)."
         case .notAPodcastFeed:
             return "This link did not contain a podcast feed."
         case .unreadableFile:
@@ -61,13 +64,14 @@ enum PodcastFeedResolver {
 
     /// Validates an already stored subscription endpoint before a refresh
     /// parses it. Unlike the onboarding API this retains the caller's access
-    /// profile, so private feeds keep their credentials while same-origin HTML
-    /// autodiscovery is attempted. The returned URL is always one that was
-    /// fetched and parsed as RSS/Atom; callers must still verify podcast
-    /// identity before persisting a changed endpoint.
+    /// profile. Refresh callers disable HTML discovery so a stored feed URL
+    /// cannot silently turn into the website's different RSS feed. HTTP
+    /// redirects are still followed by the transport for the current request.
     static func resolveExistingEndpoint(
         from url: URL,
         profile: PodcastAccessProfile? = nil,
+        allowHTMLDiscovery: Bool = true,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers(),
         client: PodcastHTTPClient = .shared
     ) async throws -> PodcastFeed {
         let input = try unwrapIncomingURL(url)
@@ -79,7 +83,9 @@ enum PodcastFeedResolver {
             candidate,
             visited: [],
             client: client,
-            profile: profile
+            profile: profile,
+            allowHTMLDiscovery: allowHTMLDiscovery,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers
         )
     }
 
@@ -211,7 +217,9 @@ private extension PodcastFeedResolver {
         _ url: URL,
         visited: Set<String>,
         client: PodcastHTTPClient = .shared,
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        allowHTMLDiscovery: Bool = true,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
     ) async throws -> PodcastFeed {
         let visitKey = url.absoluteString.lowercased()
         guard visited.contains(visitKey) == false else {
@@ -229,13 +237,16 @@ private extension PodcastFeedResolver {
             if error.advertisedAuthenticationSchemes.contains("bearer") {
                 throw PodcastFeedResolverError.bearerAuthenticationRequired(url)
             }
+            if let statusCode = error.statusCode {
+                throw PodcastFeedResolverError.httpStatus(error.url, statusCode, error.retryAfter)
+            }
             throw PodcastFeedResolverError.couldNotLoad(error.url)
         }
 
         let httpResponse = response
 
         guard (200..<400).contains(httpResponse.statusCode) else {
-            throw PodcastFeedResolverError.couldNotLoad(url)
+            throw PodcastFeedResolverError.httpStatus(url, httpResponse.statusCode, nil)
         }
 
         let finalURL = response.url ?? url
@@ -248,11 +259,13 @@ private extension PodcastFeedResolver {
             return try await buildPodcastFeed(
                 from: data,
                 sourceURL: finalURL,
-                requestedURL: url
+                requestedURL: url,
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers
             )
         }
 
-        if let html = String(data: data, encoding: .utf8),
+        if allowHTMLDiscovery,
+           let html = String(data: data, encoding: .utf8),
            let discoveredFeedURL = extractFeedURL(fromHTML: html, baseURL: finalURL) {
             var updatedVisited = visited
             updatedVisited.insert(visitKey)
@@ -261,7 +274,9 @@ private extension PodcastFeedResolver {
                 feedURL,
                 visited: updatedVisited,
                 client: client,
-                profile: profile
+                profile: profile,
+                allowHTMLDiscovery: allowHTMLDiscovery,
+                knownEpisodeIdentifiers: knownEpisodeIdentifiers
             )
         }
 
@@ -312,14 +327,20 @@ private extension PodcastFeedResolver {
     static func buildPodcastFeed(
         from data: Data,
         sourceURL: URL,
-        requestedURL: URL? = nil
+        requestedURL: URL? = nil,
+        knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
     ) async throws -> PodcastFeed {
         let document = PodcastFeedDocument(
             data: data,
             sourceURL: sourceURL,
             requestedURL: requestedURL
         )
-        let page = try await PodcastParser.parsePage(from: document)
+        let page = try await PodcastParser.parsePage(
+            from: document,
+            maximumEpisodes: 5_000,
+            knownEpisodeIdentifiers: knownEpisodeIdentifiers
+        )
+        page.feed.initialImportSeed = PodcastFeedImportSeed(page: page, sourceURL: page.feed.url ?? sourceURL)
         return page.feed
     }
 

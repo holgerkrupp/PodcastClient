@@ -687,16 +687,21 @@ enum PodcastPremiumBootstrapPlanner {
 
 enum PodcastHTTPError: LocalizedError, Equatable {
     case invalidResponse(URL)
-    case httpStatus(code: Int, url: URL, wwwAuthenticate: String?)
+    case httpStatus(code: Int, url: URL, wwwAuthenticate: String?, retryAfter: Date? = nil)
 
     var statusCode: Int? {
-        guard case .httpStatus(let code, _, _) = self else { return nil }
+        guard case .httpStatus(let code, _, _, _) = self else { return nil }
         return code
     }
 
     var wwwAuthenticate: String? {
-        guard case .httpStatus(_, _, let value) = self else { return nil }
+        guard case .httpStatus(_, _, let value, _) = self else { return nil }
         return value
+    }
+
+    var retryAfter: Date? {
+        guard case .httpStatus(_, _, _, let date) = self else { return nil }
+        return date
     }
 
     var advertisesHTTPBasicAuthentication: Bool {
@@ -724,7 +729,7 @@ enum PodcastHTTPError: LocalizedError, Equatable {
 
     var url: URL {
         switch self {
-        case .invalidResponse(let url), .httpStatus(_, let url, _):
+        case .invalidResponse(let url), .httpStatus(_, let url, _, _):
             return url
         }
     }
@@ -733,7 +738,7 @@ enum PodcastHTTPError: LocalizedError, Equatable {
         switch self {
         case .invalidResponse:
             return "The podcast server returned an invalid response."
-        case .httpStatus(let code, _, _):
+        case .httpStatus(let code, _, _, _):
             return "Podcast server returned HTTP \(code)."
         }
     }
@@ -1179,10 +1184,20 @@ final class PodcastHTTPClient: @unchecked Sendable {
             throw PodcastHTTPError.httpStatus(
                 code: httpResponse.statusCode,
                 url: httpResponse.url ?? requestedURL,
-                wwwAuthenticate: httpResponse.value(forHTTPHeaderField: "WWW-Authenticate")
+                wwwAuthenticate: httpResponse.value(forHTTPHeaderField: "WWW-Authenticate"),
+                retryAfter: Self.retryDate(from: httpResponse.value(forHTTPHeaderField: "Retry-After"))
             )
         }
         return (data, httpResponse)
+    }
+
+    private static func retryDate(from header: String?) -> Date? {
+        guard let header = header?.trimmingCharacters(in: .whitespacesAndNewlines),
+              header.isEmpty == false else { return nil }
+        if let seconds = TimeInterval(header), seconds >= 0 {
+            return Date().addingTimeInterval(seconds)
+        }
+        return Date.dateFromRFC1123(dateString: header)
     }
 }
 

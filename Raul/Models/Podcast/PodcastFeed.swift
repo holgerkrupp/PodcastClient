@@ -20,11 +20,17 @@ class PodcastFeed: Hashable, @unchecked Sendable {
     
     var added: Bool = false
     var subscribing: Bool = false
+    var isImportingEpisodes: Bool = false
+    var importNeedsRetry: Bool = false
+    var subscriptionErrorMessage: String?
     var status: URLstatus?
     /// Transient credential supplied during private-feed onboarding. It is
     /// never encoded into the feed model or synchronization payloads.
     var accessCredential: PodcastCredential?
     var accessKind: PodcastAccessKind?
+    /// In-memory only. It contains the already parsed first page from feed
+    /// validation and is discarded with this onboarding model.
+    var initialImportSeed: PodcastFeedImportSeed?
     
     var artist: String?
     var artworkURL: URL?

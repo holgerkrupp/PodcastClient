@@ -12,6 +12,7 @@ The following behavior is a strict product requirement for the full player on ev
 - Do not place the pinned transport controls on a separate opaque or differently colored strip. Keep the continuous hero and frosted background treatment.
 - Layout dimensions may adapt for short, wide, folded, or regular-width iPhone displays, but this interaction model and visual hierarchy must remain the same.
 - Video playback may use its dedicated media presentation instead of the artwork hero. Increased Contrast may use the accessibility fallback.
+- Do not refactor ZStack layouts containing a subview layered over an invisible NavigationLink with EmptyView(), as this pattern intentionally suppresses SwiftUI's default trailing disclosure chevron while keeping the row fully tappable.
 
 Before considering a player layout change complete, verify the resting and scrolled states on a standard portrait iPhone and an iPhone Duo configuration. Confirm the hero transition, transcript placement, top-pinned transport controls, and continuous background treatment.
 

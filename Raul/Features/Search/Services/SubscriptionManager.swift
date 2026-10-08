@@ -152,29 +152,10 @@ actor SubscriptionManager:NSObject{
     }
 
     
-    func subscribe(all urls:[URL?], progress: SubscriptionProgressHandler? = nil) async{
-        
-        
-        let validURLs = urls.compactMap { $0 }
-        let total = max(validURLs.count, 1)
-
-        for (index, url) in validURLs.enumerated() {
-            do {
-                let _ = try await PodcastModelActor(modelContainer: modelContainer).createPodcast(from: url) { update in
-                    guard let progress else { return }
-                    let overall = (Double(index) + update.fractionCompleted) / Double(total)
-                    await progress(SubscriptionProgressUpdate(overall, update.message))
-                }
-            } catch {
-                print(error)
-            }
-        }
-        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-    }
-
     func addToLibrary(
         _ podcastFeed: PodcastFeed,
         subscribe: Bool,
+        feedWasValidated: Bool = false,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PersistentIdentifier {
         guard let url = podcastFeed.url else {
@@ -195,11 +176,20 @@ actor SubscriptionManager:NSObject{
             return PodcastAccessProfile.make(for: url, kind: kind)
         }()
 
-        if subscribe {
+        if subscribe, feedWasValidated == false {
             if let progress {
                 await progress(SubscriptionProgressUpdate(0.02, "Checking podcast feed"))
             }
-            _ = try await PodcastParser.fetchPage(from: url, profile: accessProfile)
+            // A real feed GET and parse is authoritative. HEAD support is
+            // optional and does not affect whether the feed can be subscribed.
+            let validatedFeed = try await PodcastFeedResolver.resolveExistingEndpoint(
+                from: url,
+                profile: accessProfile
+            )
+            podcastFeed.initialImportSeed = validatedFeed.initialImportSeed
+            if let resolvedURL = validatedFeed.url {
+                podcastFeed.url = resolvedURL
+            }
         }
 
         // Keep ordinary public query parameters in the stored feed identity.
@@ -214,11 +204,6 @@ actor SubscriptionManager:NSObject{
                 return !feed.podcastFeedComparisonKeys
                     .intersection(safeURL.podcastFeedComparisonKeys).isEmpty
             }
-        let previousIsSubscribed = existingPodcast?.metaData?.isSubscribed
-        let previousSubscriptionDate = existingPodcast?.metaData?.subscriptionDate
-        var podcastForRollback: Podcast?
-        var insertedNewPodcast = false
-
         do {
             let podcast: Podcast
             if let existingPodcast {
@@ -237,7 +222,7 @@ actor SubscriptionManager:NSObject{
                 }
 
                 let metadata = ensureMetadata(for: existingPodcast)
-                if subscribe {
+                if subscribe, metadata.isSubscribed == false {
                     metadata.isSubscribed = true
                     metadata.subscriptionDate = Date()
                 }
@@ -249,9 +234,7 @@ actor SubscriptionManager:NSObject{
                 metadata.subscriptionDate = subscribe ? Date() : nil
                 modelContext.insert(newPodcast)
                 podcast = newPodcast
-                insertedNewPodcast = true
             }
-            podcastForRollback = podcast
 
             modelContext.saveIfNeeded()
             await SubscriptionManifestSync.publishCurrentSubscriptions(
@@ -269,21 +252,28 @@ actor SubscriptionManager:NSObject{
             }
 
             if let feed = podcast.feed {
-                let worker = PodcastModelActor(modelContainer: modelContainer)
-                _ = try await worker.updatePodcast(feed, force: true, silent: true) { update in
-                    guard let progress else { return }
-
-                    let message: String
-                    switch update.message {
-                    case "Subscription complete" where subscribe == false:
-                        message = "Podcast ready"
-                    case "Subscription failed" where subscribe == false:
-                        message = "Podcast import failed"
-                    default:
-                        message = update.message
+                if subscribe {
+                    await MainActor.run {
+                        podcastFeed.isImportingEpisodes = true
+                        podcastFeed.importNeedsRetry = false
                     }
-
-                    await progress(SubscriptionProgressUpdate(update.fractionCompleted, message))
+                    scheduleEpisodeImport(
+                        feedURL: feed,
+                        firstPage: podcastFeed.initialImportSeed,
+                        podcastFeed: podcastFeed
+                    )
+                    if let progress {
+                        await progress(SubscriptionProgressUpdate(1, "Subscribed — importing episodes"))
+                    }
+                } else {
+                    let worker = PodcastModelActor(modelContainer: modelContainer)
+                    _ = try await worker.updatePodcastWithSummary(
+                        feed,
+                        force: true,
+                        silent: true,
+                        initialPage: podcastFeed.initialImportSeed,
+                        progress: progress
+                    )
                 }
                 await SubscriptionManifestSync.publishCurrentSubscriptions(
                     modelContainer: modelContainer,
@@ -300,21 +290,14 @@ actor SubscriptionManager:NSObject{
                     modelContainer: modelContainer,
                     allowEmpty: true
                 )
+                if let feedURL = podcast.feed {
+                    await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
+                }
             }
 
             return podcast.persistentModelID
         } catch {
-            if let podcast = podcastForRollback {
-                if insertedNewPodcast {
-                    modelContext.delete(podcast)
-                } else if subscribe {
-                    let metadata = ensureMetadata(for: podcast)
-                    metadata.isSubscribed = previousIsSubscribed ?? false
-                    metadata.subscriptionDate = previousSubscriptionDate
-                }
-                modelContext.saveIfNeeded()
-            }
-            await SubscriptionManifestSync.publishCurrentSubscriptions(
+        await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: true
             )
@@ -446,77 +429,106 @@ actor SubscriptionManager:NSObject{
     
     
     func subscribe(all newPodcasts: [PodcastFeed], progress: SubscriptionProgressHandler? = nil) async {
-        
-        // 1. SERIAL PHASE: Mass-insert all new podcasts quickly.
-        //    Perform this on a single ModelContext serially to avoid "Database busy" errors
-        //    for the crucial insertion step.
-        
-        var newPodcastFeeds: Set<URL> = []
-        let importTotal = max(newPodcasts.count, 1)
+        let total = max(newPodcasts.count, 1)
+        var subscribed = 0
+        var alreadyPresent = 0
+        var rejected = 0
+        var pendingImports = 0
 
-        if let progress {
-            await progress(SubscriptionProgressUpdate(0.02, "Preparing subscriptions"))
-        }
-        
-        for (index, podcastFeed) in newPodcasts.enumerated() {
-            guard let url = podcastFeed.url else { continue }
-
-            // Check if podcast with this feed URL already exists (if PodcastFeed.existing is not reliable)
-            let descriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { $0.feed == url }
-            )
-            
-            // This fetch/insert/save is now done serially, preventing contention.
-            if let existingPodcasts = try? modelContext.fetch(descriptor),
-               let existingPodcast = existingPodcasts.first, let existinURL = existingPodcast.feed {
-                // Already exists, maybe update some basic properties from feedData if needed
-                existingPodcast.title = podcastFeed.title ?? existingPodcast.title
-                let metadata = ensureMetadata(for: existingPodcast)
-                metadata.isSubscribed = true
-                metadata.subscriptionDate = Date()
-                // existingPodcast.message = nil
-                
-                newPodcastFeeds.insert(existinURL)
-                
-            } else {
-                let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
-                if let feed = podcast.feed{
-                    modelContext.insert(podcast)
-                    newPodcastFeeds.insert(feed)
-                }
-               
+        for (index, feed) in newPodcasts.enumerated() {
+            guard feed.url != nil else {
+                rejected += 1
+                continue
             }
-
+            let wasSubscribed = feedWasSubscribedBefore(feed)
+            do {
+                _ = try await addToLibrary(feed, subscribe: true)
+                await MainActor.run {
+                    feed.added = true
+                    feed.existing = true
+                    feed.subscriptionErrorMessage = nil
+                }
+                if wasSubscribed {
+                    alreadyPresent += 1
+                } else {
+                    subscribed += 1
+                }
+                if feed.importNeedsRetry || feed.isImportingEpisodes { pendingImports += 1 }
+            } catch {
+                let message: String
+                if case PodcastFeedResolverError.authenticationRequired = error {
+                    message = "This feed requires authentication."
+                } else if case PodcastFeedResolverError.bearerAuthenticationRequired = error {
+                    message = "This feed requires a bearer token."
+                } else if case PodcastParserError.couldNotLoad(_, let statusCode, _) = error,
+                          statusCode == 401 || statusCode == 403 {
+                    message = "This feed requires authentication."
+                } else {
+                    message = "Could not validate this feed."
+                }
+                await MainActor.run {
+                    feed.added = false
+                    feed.subscriptionErrorMessage = message
+                }
+                rejected += 1
+            }
             if let progress {
                 let completed = index + 1
-                let fraction = 0.02 + (Double(completed) / Double(importTotal)) * 0.18
-                await progress(
-                    SubscriptionProgressUpdate(
-                        fraction,
-                        "Adding \(completed) of \(newPodcasts.count) subscriptions"
-                    )
-                )
+                await progress(SubscriptionProgressUpdate(
+                    Double(completed) / Double(total),
+                    "Subscribing \(completed) of \(newPodcasts.count)"
+                ))
             }
         }
-        
-        // Commit all changes from the serial inserts at once.
-        // This is one large, safe save operation.
-        if let progress {
-            await progress(SubscriptionProgressUpdate(0.22, "Saving subscriptions"))
-        }
-        modelContext.saveIfNeeded()
         await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        
         if let progress {
-            await progress(
-                SubscriptionProgressUpdate(
-                    1.0,
-                    "Subscriptions added. Episodes will import in the background."
-                )
-            )
+            await progress(SubscriptionProgressUpdate(
+                1,
+                "\(subscribed) subscribed, \(alreadyPresent) already present, \(rejected) could not validate, \(pendingImports) imports pending"
+            ))
         }
+    }
 
-        scheduleBackgroundFeedImport(for: Array(newPodcastFeeds))
+    private func feedWasSubscribedBefore(_ feed: PodcastFeed) -> Bool {
+        guard let url = feed.url else { return false }
+        return ((try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? []).contains { podcast in
+            guard podcast.metaData?.isSubscribed == true,
+                  let existingFeed = podcast.feed else { return false }
+            return existingFeed.podcastFeedComparisonKeys
+                .intersection(url.podcastFeedComparisonKeys).isEmpty == false
+        }
+    }
+
+    private nonisolated func scheduleEpisodeImport(
+        feedURL: URL,
+        firstPage: PodcastFeedImportSeed?,
+        podcastFeed: PodcastFeed
+    ) {
+        let container = modelContainer
+        Task.detached(priority: .utility) {
+            do {
+                let summary = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
+                    try await PodcastModelActor(modelContainer: container)
+                        .updatePodcastWithSummary(
+                            feedURL,
+                            force: true,
+                            silent: true,
+                            initialPage: firstPage
+                        )
+                }
+                await MainActor.run {
+                    podcastFeed.isImportingEpisodes = false
+                    podcastFeed.importNeedsRetry = summary.isPartial
+                }
+            } catch {
+                // The model actor records a durable retry before throwing.
+                await MainActor.run {
+                    podcastFeed.isImportingEpisodes = false
+                    podcastFeed.importNeedsRetry = true
+                }
+            }
+            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: container)
+        }
     }
 
     private nonisolated func scheduleBackgroundFeedImport(for feeds: [URL]) {
@@ -545,6 +557,7 @@ actor SubscriptionManager:NSObject{
                 modelContext.delete(podcast)
             }
             try modelContext.save()
+            await PodcastEpisodeImportRetryQueue.shared.removeAll()
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: true

@@ -893,7 +893,7 @@ final class PodcastPrivateFeedTests: XCTestCase {
             request.value(forHTTPHeaderField: "Authorization"),
             "Basic YWxpY2U6czNjcmV0"
         )
-        XCTAssertTrue(request.value(forHTTPHeaderField: "User-Agent")?.contains("Safari") == true)
+        XCTAssertTrue(request.value(forHTTPHeaderField: "User-Agent")?.hasPrefix("UpNext/") == true)
         XCTAssertTrue(request.value(forHTTPHeaderField: "Accept")?.contains("application/rss+xml") == true)
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Cache-Control"), "no-cache")
@@ -939,10 +939,11 @@ final class PodcastPrivateFeedTests: XCTestCase {
             )
             XCTFail("A 403 without an authentication challenge must not open the credential form")
         } catch let error as PodcastFeedResolverError {
-            guard case .couldNotLoad(let failedURL) = error else {
+            guard case .httpStatus(let failedURL, let statusCode, _) = error else {
                 return XCTFail("Unexpected resolver error: \(error)")
             }
             XCTAssertEqual(failedURL, endpoint)
+            XCTAssertEqual(statusCode, 403)
         }
     }
 
