@@ -33,6 +33,7 @@ _Updated October 2026. Focused on distinctive listening, transcript, and chapter
 
 | Feature | **Up Next** | Apple Podcasts | Overcast | Pocket Casts | Castro | opencast | AntennaPod |
 |:--|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
+| **Price (Germany, Oct 2026)** | **Free · no paid tier** | Free · paid shows optional | Free · Premium €34.99/year | Free · Plus €44.99/year / Patron €99.99/year | Free · Plus €24.99/year | Free · optional transcription credits €0.99–€5.99 | Free · donations optional |
 | **On-device transcription for missing episodes** | **✅** | — | ✅ | — | — | ✅ | — |
 | **Automatically transcribe after download** | **✅** | — | — | — | — | — | — |
 | **Full-library transcript search (across episodes)** | **✅** | — | — | — | — | ✅ | — |
@@ -56,6 +57,8 @@ _Updated October 2026. Focused on distinctive listening, transcript, and chapter
 | Open-source app | ✅ | — | — | ✅ | — | ✅ | ✅ |
 
 **Legend:** ✅ Supported · ◐ Partial, different approach, or paid feature · 🧪 Implemented experimentally / optional (not a promise of perfect detection) · — No equivalent confirmed in the linked public documentation. Entries describe capabilities, not reliability or quality. Features vary by app version, subscription, device and region.
+
+**Pricing notes (German App Store, checked 8 October 2026):** Listed subscriptions are optional yearly plans for new customers; monthly billing, regional pricing, taxes and legacy rates may differ. Overcast lists lower-priced legacy Premium tiers. Pocket Casts also offers Plus at €3.99/month and Patron at €9.99/month; Castro Plus is also €3.99/month. opencast's €0.99 (20 hours) and €5.99 (100 hours) are optional one-time *remote transcription* credits, not a subscription; on-device transcription remains free. Apple Podcasts itself is free, but publishers may charge for shows. Up Next and AntennaPod have no paid feature tiers. Check [Up Next](https://apps.apple.com/de/app/up-next-podcast-client/id6477821584), [Apple Podcasts](https://apps.apple.com/de/app/apple-podcasts/id525463029), [Overcast](https://apps.apple.com/de/app/overcast-podcast-app/id888422857), [Pocket Casts](https://apps.apple.com/de/app/pocket-casts-podcast-player/id414834813), [Castro](https://apps.apple.com/de/app/castro-podcast-app-player/id1080840241), [opencast](https://apps.apple.com/de/app/opencast-podcast-player/id6766770733), and [AntennaPod](https://antennapod.org/) for current prices.
 
 **Important distinctions and limitations**
 
