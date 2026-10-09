@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import RichText
 import ESADesignKit
 
 struct PodcastDetailView: View {
@@ -33,20 +34,25 @@ struct PodcastDetailView: View {
 
     
     @Bindable var podcast: Podcast
+    private enum SubscriptionOperationState: Equatable {
+        case idle
+        case committing(Bool)
+    }
+
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
-    @State private var showFeedRepair = false
     @State private var refreshProgress: Double = 0
     @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
+    @State private var subscriptionErrorMessage: String?
+    @State private var subscriptionOperation: SubscriptionOperationState = .idle
+    @State private var confirmedSubscriptionState: Bool?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
     @Environment(\.openPodcastSettings) private var openSettings
     @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
 
     @State private var showPodroll: Bool = false
-    @State private var showTranscriptSearch = false
-    @State private var hasSearchableTranscripts = false
     @State private var showDebugMetadata: Bool = false
     @State private var predictedReleaseFrequencyLabel: String?
 #if DEBUG
@@ -83,7 +89,7 @@ struct PodcastDetailView: View {
     }
 
     private var liveItems: [PodcastLiveItem] {
-        podcast.liveItems
+        podcast.optionalTags?.liveItem?.compactMap(PodcastLiveItem.init(node:)) ?? []
     }
 
     private var visibleFilteredEpisodes: [Episode] {
@@ -91,10 +97,14 @@ struct PodcastDetailView: View {
     }
 
     private var needsInitialFeedImport: Bool {
-        podcast.isSubscribed
+        displayedIsSubscribed
             && podcast.feed != nil
             && podcast.metaData?.lastRefresh == nil
             && (podcast.episodes?.isEmpty ?? true)
+    }
+
+    private var displayedIsSubscribed: Bool {
+        confirmedSubscriptionState ?? podcast.isSubscribed
     }
 
 #if DEBUG
@@ -113,7 +123,9 @@ struct PodcastDetailView: View {
 
     private var nextLiveItem: PodcastLiveItem? {
         liveItems
-            .filter(\.isUpcoming)
+            .filter { liveItem in
+                liveItem.status != .ended && (liveItem.start ?? .distantPast) > Date()
+            }
             .sorted { ($0.start ?? .distantFuture) < ($1.start ?? .distantFuture) }
             .first
     }
@@ -153,7 +165,7 @@ struct PodcastDetailView: View {
                 Spacer()
                 Text(refreshProgress, format: .percent.precision(.fractionLength(0)))
                     .font(.caption.monospacedDigit().weight(.semibold))
-                    .esaForeground(.secondary)
+                    .foregroundStyle(.secondary)
             }
 
             ProgressView(value: progress, total: 1)
@@ -203,7 +215,7 @@ struct PodcastDetailView: View {
                                 systemImage: "calendar"
                             )
                             .font(.caption2)
-                            .esaForeground(.secondary)
+                            .foregroundStyle(.secondary)
                         }
 #if DEBUG
                         Text(
@@ -212,7 +224,7 @@ struct PodcastDetailView: View {
                             } ?? "Next predicted release: Unavailable"
                         )
                         .font(.caption2.monospacedDigit())
-                        .esaForeground(.secondary)
+                        .foregroundStyle(.secondary)
 #endif
 
                         abandonedFeedCard
@@ -254,10 +266,9 @@ struct PodcastDetailView: View {
                             } label: {
                                 Image(systemName: "ladybug")
                                     .imageScale(.small)
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(.secondary)
                             }
                             .buttonStyle(.plain)
-                            .tint(.blue)
                             .accessibilityLabel("Podcast debug metadata")
 #endif
                         }
@@ -268,7 +279,7 @@ struct PodcastDetailView: View {
                                 .padding(.top, 4)
                         }
 
-                        if showLivePodcasts && (currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled)) {
+                        if currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled) {
                             PodcastLiveItemControlsView(
                                 currentLiveItem: currentLiveItem,
                                 nextLiveItem: nextLiveItem,
@@ -288,17 +299,6 @@ struct PodcastDetailView: View {
                             podcastTitle: podcast.title,
                             artworkURL: podcast.imageURL
                         )
-
-                        if hasSearchableTranscripts {
-                            Button {
-                                showTranscriptSearch = true
-                            } label: {
-                                Label("Search transcripts", systemImage: "text.magnifyingglass")
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityLabel("Search transcripts in this podcast")
-                            .accessibilityHint("Searches every locally available transcript in this podcast")
-                        }
 
                         if podrollItems.isEmpty == false {
                             Button {
@@ -341,17 +341,34 @@ struct PodcastDetailView: View {
                             Text(copyright)
                                 .font(.caption)
                         }
-                        PodcastDetailMetadataSections(
-                            podcast: podcast,
-                            showsLiveMetadata: showLivePodcasts
-                        )
+                        PodcastDetailMetadataSections(podcast: podcast)
 
-                        Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
+                        Button {
                             Task {
                                 await toggleSubscriptionStatus()
                             }
+                        } label: {
+                            switch subscriptionOperation {
+                            case .committing(let targetState):
+                                ProgressView()
+                                    .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
+                            case .idle:
+                                Label(
+                                    displayedIsSubscribed ? "Unsubscribe" : "Subscribe",
+                                    systemImage: displayedIsSubscribed ? "bell.slash" : "bell"
+                                )
+                            }
                         }
                         .buttonStyle(.glass(.clear))
+                        .disabled(subscriptionOperation != .idle)
+                        .accessibilityIdentifier("podcast-detail-subscription-button")
+
+                        if let subscriptionErrorMessage {
+                            Text(subscriptionErrorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .accessibilityAddTraits(.isStaticText)
+                        }
 
                         if availableAlternativeFeeds.isEmpty == false {
                             Menu {
@@ -375,27 +392,18 @@ struct PodcastDetailView: View {
                             .disabled(isLoading || isSwitchingAlternativeFeed)
                         }
 
-                        Button {
-                            showFeedRepair = true
-                        } label: {
-                            Label("Repair Feed URL", systemImage: "wrench.and.screwdriver")
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .disabled(isLoading)
-
                         if let errorMessage {
                             Text(errorMessage)
                                 .font(.caption)
-                                .esaForeground(.secondary)
+                                .foregroundStyle(.secondary)
                         }
 
-                        if podcast.isSubscribed == false {
+                        if displayedIsSubscribed == false {
                             Text("This podcast stays in the database, but it is skipped by bulk refresh.")
                                 .font(.caption)
-                                .esaForeground(.secondary)
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .fullPageScreenshotSupport()
                 }
                 .listRowSeparator(.hidden)
                 .background(.clear)
@@ -413,7 +421,7 @@ struct PodcastDetailView: View {
                                 ProgressView()
                                     .frame(width: 100, height: 50)
                                 Text(message)
-                                    .esaForeground(.primary)
+                                    .foregroundStyle(Color.primary)
                                     .font(.title.bold())
                                     
                             }
@@ -482,10 +490,10 @@ struct PodcastDetailView: View {
                 await refreshEpisodesIfNeeded()
                 await updatePredictedReleaseInfo()
             }
-            .task(id: podcast.stablePodcastIdentityKey) {
-                let service = TranscriptSearchActor(modelContainer: modelContext.container)
-                hasSearchableTranscripts = (try? await service
-                    .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
+            .onAppear {
+                if subscriptionOperation == .idle {
+                    confirmedSubscriptionState = podcast.isSubscribed
+                }
             }
             .onChange(of: searchText) { _, _ in
                 filteredEpisodeDisplayLimit = Self.episodePageSize
@@ -520,6 +528,10 @@ struct PodcastDetailView: View {
                     await updatePredictedReleaseInfo()
                 }
             }
+            .onChange(of: podcast.isSubscribed) { _, newValue in
+                guard subscriptionOperation == .idle else { return }
+                confirmedSubscriptionState = newValue
+            }
             .onDisappear {
                 episodeFilterTask?.cancel()
             }
@@ -529,24 +541,6 @@ struct PodcastDetailView: View {
                     podcastTitle: podcast.title,
                     items: podrollItems
                 )
-            }
-            .sheet(isPresented: $showTranscriptSearch) {
-                NavigationStack {
-                    TranscriptSearchView(
-                        scope: .podcast(podcast.stablePodcastIdentityKey),
-                        title: "Search \(podcast.title)",
-                        emptyDescription: "Search every locally available transcript in this podcast."
-                    )
-                }
-            }
-            .sheet(isPresented: $showFeedRepair) {
-                FeedURLRepairSheet(
-                    podcastID: podcast.persistentModelID,
-                    currentURL: podcast.feed,
-                    modelContainer: modelContext.container
-                ) {
-                    applyEpisodeFilters()
-                }
             }
 #if DEBUG
             .navigationDestination(isPresented: $showDebugMetadata) {
@@ -559,37 +553,37 @@ struct PodcastDetailView: View {
                 }
             }
             .toolbar {
-                ToolbarItemGroup(placement: .secondaryAction) {
-                    Picker("Sort by", selection: Binding(
-                        get: { sortOptionRawValue },
-                        set: { sortOptionRawValue = $0 }
-                    )) {
-                        ForEach(EpisodeSortOption.allCases) { option in
-                            Text(option.label).tag(option.rawValue)
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Picker("Sort by", selection: Binding(
+                            get: { sortOptionRawValue },
+                            set: { sortOptionRawValue = $0 }
+                        )) {
+                            ForEach(EpisodeSortOption.allCases) { option in
+                                Text(option.label).tag(option.rawValue)
+                            }
                         }
+                        Divider()
+                        Toggle(isOn: $hidePlayedAndArchived) {
+                            Label("Hide played Episodes", systemImage: "eye.slash")
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
                     }
-                    .accessibilityHint("Sort the episodes in this podcast")
-
-                    Toggle(isOn: $hidePlayedAndArchived) {
-                        Label("Hide played Episodes", systemImage: "eye.slash")
-                    }
-
+                    .accessibilityLabel("Episode sort and visibility")
+                    .accessibilityHint("Choose episode sort order and hide played episodes")
+                    .accessibilityInputLabels([Text("Sort episodes"), Text("Episode sort")])
+                }
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
                         openSettings(.podcast(podcast))
                     }) {
-                        Label("Podcast Settings", systemImage: "gear")
+                        Image(systemName: "gear")
                     }
-                    .accessibilityHint("Open this podcast's settings")
-
-                    Button(action: {
-                        Task {
-                            try? await PodcastModelActor(modelContainer: modelContext.container)
-                                .archiveEpisodes(of: podcast.persistentModelID)
-                        }
-                    }) {
-                        Label("Archive all episodes", systemImage: "archivebox")
-                    }
-                    .accessibilityHint("Archive every episode in this podcast")
+                    .accessibilityLabel("Podcast settings")
+                    .accessibilityHint("Open settings for this podcast")
+                    .accessibilityInputLabels([Text("Podcast settings"), Text("Open settings")])
+                    
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button(action: {
@@ -603,17 +597,29 @@ struct PodcastDetailView: View {
                                 total: 1.0
                             )
                         } else {
-                            Label(
-                                needsEpisodeImportRetry ? "Retry Import" : "Refresh podcast",
-                                systemImage: "arrow.clockwise"
-                            )
+                            Image(systemName: "arrow.clockwise")
                         }
                     }
-                    .disabled(podcast.isSubscribed == false || isLoading)
-                    .accessibilityLabel(isLoading ? "Refreshing podcast" : (needsEpisodeImportRetry ? "Retry episode import" : "Refresh podcast"))
-                    .accessibilityHint(needsEpisodeImportRetry ? "Retries importing episodes for this podcast" : "Downloads the latest episodes from this podcast feed")
-                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast"), Text("Retry import")])
+                    .disabled(displayedIsSubscribed == false || isLoading)
+                    .accessibilityLabel(isLoading ? "Refreshing podcast" : "Refresh podcast")
+                    .accessibilityHint("Downloads the latest episodes from this podcast feed")
+                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast")])
+                    
                 }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(action: {
+                        Task {
+                            try? await  PodcastModelActor(modelContainer: modelContext.container).archiveEpisodes(of: podcast.persistentModelID)
+                        }
+                    }) {
+                        Image(systemName: "archivebox")
+                    }
+                    .accessibilityLabel("Archive all episodes")
+                    .accessibilityHint("Marks all episodes in this podcast as archived")
+                    .accessibilityInputLabels([Text("Archive all episodes"), Text("Archive podcast episodes")])
+                }
+                
+                
             }
         .alert("Live notification", isPresented: isLiveNotificationPresented) {
             Button("OK", role: .cancel) { }
@@ -689,7 +695,7 @@ struct PodcastDetailView: View {
     }
 
     private func refreshEpisodes() async {
-        guard podcast.isSubscribed else {
+        guard displayedIsSubscribed else {
             return
         }
 
@@ -702,7 +708,7 @@ struct PodcastDetailView: View {
                 let actor = PodcastModelActor(modelContainer: modelContext.container)
                 
                 let startedAt = Date()
-                let summary = try await actor.updatePodcastWithSummary(feed, policy: .manualSingle) { update in
+                let summary = try await actor.updatePodcastWithSummary(feed, force: true) { update in
                     await MainActor.run {
                         refreshProgress = update.fractionCompleted
                         refreshProgressMessage = update.message
@@ -763,10 +769,6 @@ struct PodcastDetailView: View {
         }
     }
 
-    private var needsEpisodeImportRetry: Bool {
-        podcast.metaData?.lastFeedFailureMessage?.localizedCaseInsensitiveContains("import") == true
-    }
-
     private func refreshEpisodesIfNeeded() async {
         guard hasAttemptedInitialFeedImport == false else { return }
         guard needsInitialFeedImport else { return }
@@ -776,8 +778,29 @@ struct PodcastDetailView: View {
     }
 
     private func toggleSubscriptionStatus() async {
+        guard subscriptionOperation == .idle else { return }
+        let requestedState = !displayedIsSubscribed
+        await MainActor.run {
+            subscriptionErrorMessage = nil
+            subscriptionOperation = .committing(requestedState)
+        }
+
         let actor = PodcastModelActor(modelContainer: modelContext.container)
-        await actor.setSubscriptionStatus(podcast.persistentModelID, isSubscribed: !podcast.isSubscribed)
+        do {
+            let result = try await actor.setSubscriptionStatus(
+                podcast.persistentModelID,
+                isSubscribed: requestedState
+            )
+            await MainActor.run {
+                confirmedSubscriptionState = result.isSubscribed
+                subscriptionOperation = .idle
+            }
+        } catch {
+            await MainActor.run {
+                subscriptionErrorMessage = "Could not update subscription: \(error.localizedDescription)"
+                subscriptionOperation = .idle
+            }
+        }
     }
 
     private func switchToAlternativeFeed(_ alternativeFeed: PodcastAlternativeFeed) async {
@@ -818,7 +841,6 @@ struct PodcastDetailView: View {
     }
 
     private func scheduleLiveNotification(for liveItem: PodcastLiveItem) async {
-        guard showLivePodcasts else { return }
         guard let start = liveItem.start else { return }
 
         do {
@@ -839,8 +861,7 @@ struct PodcastDetailView: View {
                 date: start,
                 userInfo: [
                     "podcastFeed": podcast.feed?.absoluteString ?? "",
-                    "liveItem": liveItem.id,
-                    "liveStart": start.timeIntervalSince1970
+                    "liveItem": liveItem.id
                 ]
             )
             await MainActor.run {
@@ -851,10 +872,6 @@ struct PodcastDetailView: View {
                 liveNotificationMessage = error.localizedDescription
             }
         }
-    }
-
-    private var showLivePodcasts: Bool {
-        defaultSettings.first?.showLivePodcasts != false
     }
 
 }
@@ -876,7 +893,7 @@ private struct PodcastAbandonedFeedCard: View {
 
                 Text(assessment.detail)
                     .font(.caption)
-                    .esaForeground(.secondary)
+                    .foregroundStyle(.secondary)
 
                 LabeledContent("Last visible") {
                     Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
@@ -921,7 +938,7 @@ private struct PodcastAbandonedFeedCard: View {
                 if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
                     Text(error)
                         .font(.caption2)
-                        .esaForeground(.secondary)
+                        .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
             }
@@ -940,165 +957,11 @@ private struct PodcastAbandonedFeedCard: View {
     }
 }
 
-private struct FeedURLRepairSheet: View {
-    let podcastID: PersistentIdentifier
-    let currentURL: URL?
-    let modelContainer: ModelContainer
-    let didSave: () -> Void
-
-    @Environment(\.dismiss) private var dismiss
-    @State private var candidate = ""
-    @State private var preview: PodcastFeedReplacementPreview?
-    @State private var isValidating = false
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-    @State private var showIdentityWarning = false
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Current feed") {
-                    Text(currentURL?.redactedPodcastURLString ?? "No feed URL")
-                        .font(.footnote)
-                        .textSelection(.enabled)
-                }
-
-                Section("Replacement feed") {
-#if os(iOS)
-                    TextField("https://example.com/feed.xml", text: $candidate, axis: .vertical)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .keyboardType(.URL)
-                        .onChange(of: candidate) { _, _ in
-                            preview = nil
-                            errorMessage = nil
-                        }
-#else
-                    TextField("https://example.com/feed.xml", text: $candidate, axis: .vertical)
-                        .autocorrectionDisabled()
-                        .onChange(of: candidate) { _, _ in
-                            preview = nil
-                            errorMessage = nil
-                        }
-#endif
-
-                    Button {
-                        Task { await validate() }
-                    } label: {
-                        if isValidating {
-                            ProgressView()
-                        } else {
-                            Label("Validate Feed", systemImage: "checkmark.shield")
-                        }
-                    }
-                    .disabled(candidateURL == nil || isValidating || isSaving)
-                }
-
-                if let preview {
-                    Section("Validated feed") {
-                        LabeledContent("Title", value: preview.title)
-                        LabeledContent("Episodes", value: "\(preview.episodeCount)")
-                        LabeledContent("Resolved URL") {
-                            Text(preview.resolvedURL.redactedPodcastURLString)
-                                .font(.footnote)
-                                .textSelection(.enabled)
-                        }
-                        if preview.matchesExistingEpisodes == false {
-                            Label(
-                                "No existing episode identifiers matched. Saving will require confirmation.",
-                                systemImage: "exclamationmark.triangle"
-                            )
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                        }
-                    }
-                }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage)
-                            .font(.footnote)
-                            .foregroundStyle(.red)
-                    }
-                }
-            }
-            .navigationTitle("Repair Feed URL")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        guard let preview else { return }
-                        if preview.matchesExistingEpisodes {
-                            Task { await save(allowUnverifiedIdentity: false) }
-                        } else {
-                            showIdentityWarning = true
-                        }
-                    }
-                    .disabled(preview == nil || isSaving || isValidating)
-                }
-            }
-            .confirmationDialog(
-                "This feed could not be matched to existing episodes.",
-                isPresented: $showIdentityWarning,
-                titleVisibility: .visible
-            ) {
-                Button("Save Replacement Feed", role: .destructive) {
-                    Task { await save(allowUnverifiedIdentity: true) }
-                }
-            } message: {
-                Text("Your existing episodes and playback data will be retained. Only save if this is the same podcast.")
-            }
-        }
-    }
-
-    private var candidateURL: URL? {
-        URL(string: candidate.trimmingCharacters(in: .whitespacesAndNewlines))
-    }
-
-    @MainActor
-    private func validate() async {
-        guard let candidateURL else { return }
-        isValidating = true
-        preview = nil
-        errorMessage = nil
-        do {
-            preview = try await PodcastModelActor(modelContainer: modelContainer)
-                .previewFeedReplacement(podcastID, candidateURL: candidateURL)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isValidating = false
-    }
-
-    @MainActor
-    private func save(allowUnverifiedIdentity: Bool) async {
-        guard let candidateURL else { return }
-        isSaving = true
-        errorMessage = nil
-        do {
-            try await PodcastModelActor(modelContainer: modelContainer).replacePodcastFeed(
-                podcastID,
-                candidateURL: candidateURL,
-                allowUnverifiedIdentity: allowUnverifiedIdentity,
-                reason: .explicitSwitch
-            )
-            didSave()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-        isSaving = false
-    }
-}
-
 // Heavy metadata block (socials, people, namespace tags, HTML description).
 // Extracted so it forms an observation boundary and shrinks the very large
 // PodcastDetailView body type, making re-renders far cheaper.
 private struct PodcastDetailMetadataSections: View {
     let podcast: Podcast
-    let showsLiveMetadata: Bool
 
     var body: some View {
         SocialView(socials: podcast.social)
@@ -1108,13 +971,20 @@ private struct PodcastDetailMetadataSections: View {
         PodcastNamespaceMetadataView(
             optionalTags: podcast.optionalTags,
             title: "Podcast Metadata",
-            hidesRenderableValueBlocks: true,
-            showsLiveMetadata: showsLiveMetadata
+            hidesRenderableValueBlocks: true
         )
             .padding()
         if let desc = podcast.desc {
-            ShownoteContentView(html: desc)
+#if os(iOS)
+            RichText(html: desc)
+                .linkColor(light: Color.secondary, dark: Color.secondary)
+                .backgroundColor(.transparent)
                 .padding()
+#else
+            RichText(html: desc)
+                .backgroundColor(.transparent)
+                .padding()
+#endif
         }
     }
 }
@@ -1165,14 +1035,6 @@ private struct PodcastLiveItemControlsView: View {
             }
         }
 
-        ForEach(liveItem.chat) { chat in
-            Button {
-                openURL(chat.url)
-            } label: {
-                Label(chat.label, systemImage: "bubble.left.and.bubble.right")
-            }
-        }
-
         ForEach(liveItem.contentLinks) { contentLink in
             Button {
                 openURL(contentLink.url)
@@ -1181,11 +1043,12 @@ private struct PodcastLiveItemControlsView: View {
             }
         }
 
-        if liveItem.preferredStream != nil {
+        if let streamURL = liveItem.streamURL {
             Button {
                 Task {
-                    await Player.shared.playLiveItem(
-                        liveItem,
+                    await Player.shared.playLiveStream(
+                        url: streamURL,
+                        title: liveItem.title,
                         podcastTitle: podcastTitle,
                         artworkURL: artworkURL,
                         link: liveItem.link
@@ -1195,6 +1058,121 @@ private struct PodcastLiveItemControlsView: View {
                 Label("Play Live Stream", systemImage: "play.circle")
             }
         }
+    }
+}
+
+private struct PodcastLiveItem: Identifiable {
+    enum Status: String {
+        case pending
+        case live
+        case ended
+    }
+
+    let id: String
+    let title: String
+    let status: Status
+    let start: Date?
+    let end: Date?
+    let link: URL?
+    let contentLinks: [PodcastLiveContentLink]
+    let streamURL: URL?
+
+    init?(node: NamespaceNode) {
+        let guid = node.firstChild(localName: "guid")?.trimmedValue
+        let link = node.firstChild(localName: "link")?.trimmedValue.flatMap(URL.init(string:))
+        let streamURL = node.liveStreamURL
+        let title = node.firstChild(localName: "title")?.trimmedValue ?? "Live Event"
+        let start = node.attributes["start"].flatMap(Self.parseDate(_:))
+        let end = node.attributes["end"].flatMap(Self.parseDate(_:))
+        let status = Status(rawValue: node.attributes["status"] ?? "") ?? .pending
+
+        self.id = guid ?? streamURL?.absoluteString ?? link?.absoluteString ?? "\(title)-\(node.attributes["start"] ?? "")"
+        self.title = title
+        self.status = status
+        self.start = start
+        self.end = end
+        self.link = link
+        self.contentLinks = node.children(localName: "contentLink").compactMap(PodcastLiveContentLink.init(node:))
+        self.streamURL = streamURL
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractionalFormatter = ISO8601DateFormatter()
+        fractionalFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractionalFormatter.date(from: value) {
+            return date
+        }
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+
+        let compactTimeZoneFormatter = DateFormatter()
+        compactTimeZoneFormatter.locale = Locale(identifier: "en_US_POSIX")
+        compactTimeZoneFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSZ"
+        if let date = compactTimeZoneFormatter.date(from: value) {
+            return date
+        }
+
+        compactTimeZoneFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return compactTimeZoneFormatter.date(from: value)
+    }
+}
+
+private struct PodcastLiveContentLink: Identifiable {
+    let id: URL
+    let label: String
+    let url: URL
+
+    init?(node: NamespaceNode) {
+        guard let href = node.attributes["href"], let url = URL(string: href) else {
+            return nil
+        }
+
+        self.id = url
+        self.label = node.trimmedValue ?? url.host() ?? "Open Link"
+        self.url = url
+    }
+}
+
+private extension NamespaceNode {
+    var localName: String {
+        if let separator = name.lastIndex(of: ":") {
+            return String(name[name.index(after: separator)...])
+        }
+        return name
+    }
+
+    var trimmedValue: String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    func firstChild(localName: String) -> NamespaceNode? {
+        children.first { $0.localName == localName }
+    }
+
+    func children(localName: String) -> [NamespaceNode] {
+        children.filter { $0.localName == localName }
+    }
+
+    var liveStreamURL: URL? {
+        for alternateEnclosure in children(localName: "alternateEnclosure") {
+            let sources = alternateEnclosure.children(localName: "source")
+            if let defaultSource = sources.first(where: { $0.attributes["uri"] != nil })?.attributes["uri"],
+               let url = URL(string: defaultSource) {
+                return url
+            }
+        }
+
+        if let enclosureURL = firstChild(localName: "enclosure")?.attributes["url"],
+           let url = URL(string: enclosureURL) {
+            return url
+        }
+
+        return nil
     }
 }
 
