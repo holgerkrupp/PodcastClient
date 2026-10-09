@@ -349,6 +349,9 @@ final class StableIdentityTests: XCTestCase {
                 kindRawValue: Playlist.Kind.manual.rawValue,
                 smartFilterRawValue: nil,
                 isHidden: false,
+                autoDownloadEnabled: false,
+                autoDownloadEpisodeLimit: nil,
+                removesEpisodesPlayedElsewhere: true,
                 entries: [
                     StoreSplitPlaylistEntrySnapshot(
                         identity: localIdentity,
@@ -723,7 +726,7 @@ final class StableIdentityTests: XCTestCase {
         let context = container.mainContext
         context.insert(
             StoreSplitMigrationCheckpoint(
-                id: "v\(StoreSplitMigrationService.migrationVersion).subscriptions",
+                id: StoreSplitMigrationService.checkpointID(for: "subscriptions"),
                 migrationVersion: StoreSplitMigrationService.migrationVersion,
                 phase: "subscriptions",
                 completedAt: Date(timeIntervalSince1970: 1_000),
@@ -732,7 +735,7 @@ final class StableIdentityTests: XCTestCase {
         )
         context.insert(
             StoreSplitMigrationCheckpoint(
-                id: "v\(StoreSplitMigrationService.migrationVersion).episode_states",
+                id: StoreSplitMigrationService.checkpointID(for: "episode_states"),
                 migrationVersion: StoreSplitMigrationService.migrationVersion,
                 phase: "episode_states",
                 cursor: "250",
@@ -752,7 +755,7 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertTrue(status.isRunning)
         XCTAssertFalse(status.isComplete)
         XCTAssertEqual(status.completedPhaseCount, 1)
-        XCTAssertEqual(status.totalPhaseCount, 10)
+        XCTAssertEqual(status.totalPhaseCount, StoreSplitMigrationService.slicePhaseOrder.count)
         XCTAssertEqual(status.scannedItemCount, 262)
         XCTAssertEqual(status.failedItemCount, 1)
         XCTAssertEqual(status.phases.first { $0.id == "episode_states" }?.isComplete, false)
@@ -767,23 +770,12 @@ final class StableIdentityTests: XCTestCase {
             isStoredInMemoryOnly: true
         )
         let context = container.mainContext
-        let phases = [
-            "subscriptions",
-            "episode_states",
-            "playlists",
-            "playlist_entries",
-            "queue_entries",
-            "bookmarks",
-            "listening_history",
-            "listening_summaries",
-            "ai_transcripts",
-            "ai_chapters"
-        ]
+        let phases = StoreSplitMigrationService.slicePhaseOrder
 
         for phase in phases {
             context.insert(
                 StoreSplitMigrationCheckpoint(
-                    id: "v\(StoreSplitMigrationService.migrationVersion).\(phase)",
+                    id: StoreSplitMigrationService.checkpointID(for: phase),
                     migrationVersion: StoreSplitMigrationService.migrationVersion,
                     phase: phase,
                     completedAt: Date(timeIntervalSince1970: 1_000),
@@ -954,7 +946,6 @@ final class StableIdentityTests: XCTestCase {
             )
         )
         try userStateContainer.mainContext.save()
-
         _ = await StoreSplitMigrationService.migrate(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
@@ -1039,9 +1030,6 @@ final class StableIdentityTests: XCTestCase {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true
         )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
-            isStoredInMemoryOnly: true
-        )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
             isStoredInMemoryOnly: true
         )
@@ -1124,35 +1112,38 @@ final class StableIdentityTests: XCTestCase {
 
         XCTAssertEqual(result.transcriptsApplied, 1)
         XCTAssertEqual(result.chaptersApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
+        let cacheContext = ModelContext(cacheContainer)
+        let cachedLines = try cacheContext.fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(
-            refreshedEpisode.transcriptLines?
-                .sorted { $0.startTime < $1.startTime }
-                .map(\.text),
+            cachedLines.sorted { $0.ordinal < $1.ordinal }.map(\.text),
             ["Welcome", "Main topic"]
         )
-        XCTAssertTrue(refreshedEpisode.transcriptLines?.allSatisfy {
-            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
-        } == true)
-        XCTAssertTrue(refreshedEpisode.chapters?.contains(where: {
-            $0.type == .podlove && $0.title == "Publisher intro"
-        }) == true)
-        XCTAssertTrue(refreshedEpisode.chapters?.contains(where: {
+        let cachedChapters = try cacheContext.fetch(
+            FetchDescriptor<CachedChapter>()
+        ).filter { $0.episodeID == identity.key }
+        XCTAssertTrue(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.podlove.rawValue && $0.title == "Publisher intro"
+        })
+        XCTAssertTrue(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.ai.rawValue && $0.title == "New AI chapter"
+        })
+        XCTAssertFalse(cachedChapters.contains {
+            $0.typeRawValue == MarkerType.ai.rawValue && $0.title == "Old AI"
+        })
+        let legacyEpisode = try XCTUnwrap(
+            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
+        )
+        XCTAssertTrue(legacyEpisode.transcriptLines?.isEmpty != false)
+        XCTAssertFalse(legacyEpisode.chapters?.contains {
             $0.type == .ai && $0.title == "New AI chapter"
-        }) == true)
-        XCTAssertFalse(refreshedEpisode.chapters?.contains(where: {
-            $0.type == .ai && $0.title == "Old AI"
-        }) == true)
+        } == true)
     }
 
     @MainActor
     func testAIContentImporterAppliesLargeTranscriptWithRelationshipInverse() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
@@ -1211,22 +1202,16 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
-        let importedLines = try XCTUnwrap(refreshedEpisode.transcriptLines)
+        let importedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(importedLines.count, lineCount)
-        XCTAssertTrue(importedLines.allSatisfy {
-            $0.episode?.persistentModelID == refreshedEpisode.persistentModelID
-        })
+        XCTAssertTrue(importedLines.contains { $0.text == "Transcript line 0" })
     }
 
     @MainActor
     func testAIContentImporterPreservesPublisherTranscript() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
@@ -1284,18 +1269,15 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 0)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
-        XCTAssertEqual(refreshedEpisode.transcriptLines?.first?.text, "Publisher supplied")
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
+        XCTAssertEqual(cachedLines.first?.text, "Publisher supplied")
     }
 
     @MainActor
     func testAIContentImporterFindsEpisodeByEnclosureURLWithoutGUID() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
@@ -1351,11 +1333,11 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let refreshedEpisode = try XCTUnwrap(
-            legacyContainer.mainContext.fetch(FetchDescriptor<Episode>()).first
-        )
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
+        ).filter { $0.episodeID == identity.key }
         XCTAssertEqual(
-            refreshedEpisode.transcriptLines?.first?.text,
+            cachedLines.first?.text,
             "Found without scanning the library"
         )
     }
@@ -1363,9 +1345,6 @@ final class StableIdentityTests: XCTestCase {
     @MainActor
     func testAITranscriptTombstoneRemovesGeneratedTranscriptButPreservesPublisherTranscript() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
-            isStoredInMemoryOnly: true
-        )
-        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
             isStoredInMemoryOnly: true
         )
         let cacheContainer = try ModelContainerManager.makeCacheContainer(
@@ -1434,16 +1413,21 @@ final class StableIdentityTests: XCTestCase {
         )
 
         XCTAssertEqual(result.transcriptsApplied, 1)
-        let episodes = try legacyContainer.mainContext.fetch(FetchDescriptor<Episode>())
-        let refreshedGenerated = try XCTUnwrap(
-            episodes.first { $0.guid == "generated-transcript" }
+        let cachedLines = try ModelContext(cacheContainer).fetch(
+            FetchDescriptor<CachedTranscriptLine>()
         )
-        let refreshedPublisher = try XCTUnwrap(
-            episodes.first { $0.guid == "publisher-transcript-tombstone" }
-        )
-        XCTAssertTrue(refreshedGenerated.transcriptLines?.isEmpty != false)
+        let generatedIdentity = generatedEpisode.stableEpisodeIdentity
+        let publisherIdentity = publisherEpisode.stableEpisodeIdentity
+        XCTAssertTrue(cachedLines.contains {
+            $0.episodeID == generatedIdentity.key
+                && ($0.sourceRawValue == CachedTranscriptSource.ai.rawValue
+                    || $0.sourceRawValue == CachedTranscriptSource.localAI.rawValue)
+        } == false)
         XCTAssertEqual(
-            refreshedPublisher.transcriptLines?.first?.text,
+            cachedLines.first {
+                $0.episodeID == publisherIdentity.key
+                    && $0.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+            }?.text,
             "Publisher supplied"
         )
     }
@@ -1528,6 +1512,70 @@ final class StableIdentityTests: XCTestCase {
         // device's Inbox; inbox membership itself stays local.
         XCTAssertEqual(refreshedEpisode.metaData?.isInbox, false)
         XCTAssertEqual(refreshedEpisode.metaData?.status, .archived)
+    }
+
+    @MainActor
+    func testPremiumSubscriptionWaitsForCredentialThenRebootstraps() async throws {
+        let legacyContainer = try ModelContainerManager.makeLegacyContainer(
+            isStoredInMemoryOnly: true
+        )
+        let userStateContainer = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let store = InMemoryPodcastCredentialStore()
+        let feedURL = URL(string: "https://example.com/private.xml")!
+        let privateURL = URL(string: "https://example.com/private.xml?token=fake-token")!
+        let profile = PodcastAccessProfile.make(for: feedURL, kind: .privateURL)
+
+        userStateContainer.mainContext.insert(
+            SubscriptionSync(
+                feedURL: feedURL.absoluteString,
+                accessProfileID: profile.id,
+                accessKindRawValue: PodcastAccessKind.privateURL.rawValue,
+                isSubscribed: true
+            )
+        )
+        try userStateContainer.mainContext.save()
+
+        let withoutCredential = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+
+        XCTAssertTrue(withoutCredential.feedsToBootstrap.isEmpty)
+        XCTAssertEqual(withoutCredential.feedsAwaitingCredentials, [feedURL])
+        XCTAssertEqual(withoutCredential.credentialRequiredProfileIDs, [profile.id])
+        let missingPodcast = try XCTUnwrap(
+            try ModelContext(legacyContainer).fetch(FetchDescriptor<Podcast>()).first
+        )
+        XCTAssertEqual(missingPodcast.feed, feedURL)
+        XCTAssertEqual(missingPodcast.metaData?.credentialState, .missing)
+
+        try store.save(.privateURL(privateURL), for: profile)
+
+        let withCredential = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+
+        XCTAssertEqual(withCredential.feedsToBootstrap, [privateURL])
+        XCTAssertTrue(withCredential.feedsAwaitingCredentials.isEmpty)
+        let refreshedPodcast = try XCTUnwrap(
+            try ModelContext(legacyContainer).fetch(FetchDescriptor<Podcast>()).first
+        )
+        XCTAssertEqual(refreshedPodcast.metaData?.credentialState, .available)
+
+        let alreadyBootstrapped = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: store,
+            changedStreams: [.subscriptions]
+        )
+        XCTAssertTrue(alreadyBootstrapped.feedsToBootstrap.isEmpty)
     }
 
     @MainActor
