@@ -33,12 +33,20 @@ struct PodcastDetailView: View {
 
     
     @Bindable var podcast: Podcast
+    private enum SubscriptionOperationState: Equatable {
+        case idle
+        case committing(Bool)
+    }
+
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
     @State private var showFeedRepair = false
     @State private var refreshProgress: Double = 0
     @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
+    @State private var subscriptionErrorMessage: String?
+    @State private var subscriptionOperation: SubscriptionOperationState = .idle
+    @State private var confirmedSubscriptionState: Bool?
     @Environment(\.modelContext) private var modelContext
     @Environment(\.deviceUIStyle) var style
     @Environment(\.openPodcastSettings) private var openSettings
@@ -91,10 +99,14 @@ struct PodcastDetailView: View {
     }
 
     private var needsInitialFeedImport: Bool {
-        podcast.isSubscribed
+        displayedIsSubscribed
             && podcast.feed != nil
             && podcast.metaData?.lastRefresh == nil
             && (podcast.episodes?.isEmpty ?? true)
+    }
+
+    private var displayedIsSubscribed: Bool {
+        confirmedSubscriptionState ?? podcast.isSubscribed
     }
 
 #if DEBUG
@@ -346,12 +358,31 @@ struct PodcastDetailView: View {
                             showsLiveMetadata: showLivePodcasts
                         )
 
-                        Button(podcast.isSubscribed ? "Unsubscribe" : "Subscribe") {
+                        Button {
                             Task {
                                 await toggleSubscriptionStatus()
                             }
+                        } label: {
+                            switch subscriptionOperation {
+                            case .committing(let targetState):
+                                ProgressView()
+                                    .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
+                            case .idle:
+                                Label(
+                                    displayedIsSubscribed ? "Unsubscribe" : "Subscribe",
+                                    systemImage: displayedIsSubscribed ? "bell.slash" : "bell"
+                                )
+                            }
                         }
                         .buttonStyle(.glass(.clear))
+                        .disabled(subscriptionOperation != .idle)
+                        .accessibilityIdentifier("podcast-detail-subscription-button")
+
+                        if let subscriptionErrorMessage {
+                            Text(subscriptionErrorMessage)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
 
                         if availableAlternativeFeeds.isEmpty == false {
                             Menu {
@@ -389,7 +420,7 @@ struct PodcastDetailView: View {
                                 .esaForeground(.secondary)
                         }
 
-                        if podcast.isSubscribed == false {
+                        if displayedIsSubscribed == false {
                             Text("This podcast stays in the database, but it is skipped by bulk refresh.")
                                 .font(.caption)
                                 .esaForeground(.secondary)
@@ -482,6 +513,11 @@ struct PodcastDetailView: View {
                 await refreshEpisodesIfNeeded()
                 await updatePredictedReleaseInfo()
             }
+            .onAppear {
+                if subscriptionOperation == .idle {
+                    confirmedSubscriptionState = podcast.isSubscribed
+                }
+            }
             .task(id: podcast.stablePodcastIdentityKey) {
                 let service = TranscriptSearchActor(modelContainer: modelContext.container)
                 hasSearchableTranscripts = (try? await service
@@ -519,6 +555,10 @@ struct PodcastDetailView: View {
                 Task {
                     await updatePredictedReleaseInfo()
                 }
+            }
+            .onChange(of: podcast.isSubscribed) { _, newValue in
+                guard subscriptionOperation == .idle else { return }
+                confirmedSubscriptionState = newValue
             }
             .onDisappear {
                 episodeFilterTask?.cancel()
@@ -609,7 +649,7 @@ struct PodcastDetailView: View {
                             )
                         }
                     }
-                    .disabled(podcast.isSubscribed == false || isLoading)
+                    .disabled(displayedIsSubscribed == false || isLoading)
                     .accessibilityLabel(isLoading ? "Refreshing podcast" : (needsEpisodeImportRetry ? "Retry episode import" : "Refresh podcast"))
                     .accessibilityHint(needsEpisodeImportRetry ? "Retries importing episodes for this podcast" : "Downloads the latest episodes from this podcast feed")
                     .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast"), Text("Retry import")])
@@ -689,7 +729,7 @@ struct PodcastDetailView: View {
     }
 
     private func refreshEpisodes() async {
-        guard podcast.isSubscribed else {
+        guard displayedIsSubscribed else {
             return
         }
 
@@ -776,8 +816,28 @@ struct PodcastDetailView: View {
     }
 
     private func toggleSubscriptionStatus() async {
+        guard subscriptionOperation == .idle else { return }
+        let requestedState = !displayedIsSubscribed
+        await MainActor.run {
+            subscriptionErrorMessage = nil
+            subscriptionOperation = .committing(requestedState)
+        }
         let actor = PodcastModelActor(modelContainer: modelContext.container)
-        await actor.setSubscriptionStatus(podcast.persistentModelID, isSubscribed: !podcast.isSubscribed)
+        do {
+            let result = try await actor.setSubscriptionStatus(
+                podcast.persistentModelID,
+                isSubscribed: requestedState
+            )
+            await MainActor.run {
+                confirmedSubscriptionState = result.isSubscribed
+                subscriptionOperation = .idle
+            }
+        } catch {
+            await MainActor.run {
+                subscriptionErrorMessage = "Could not update subscription: \(error.localizedDescription)"
+                subscriptionOperation = .idle
+            }
+        }
     }
 
     private func switchToAlternativeFeed(_ alternativeFeed: PodcastAlternativeFeed) async {

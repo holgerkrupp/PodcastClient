@@ -242,6 +242,8 @@ actor StoreSplitUserStateImporter {
                 if let titleOverride = nonEmpty(subscription.titleOverride) {
                     setIfChanged(podcast, \.title, titleOverride)
                 }
+            } else {
+                metadata.subscriptionDate = nil
             }
             result.subscriptionsApplied += 1
         }

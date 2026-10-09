@@ -19,12 +19,33 @@ func storedPodcastAccessProfile(for podcast: Podcast) -> PodcastAccessProfile? {
 
 @ModelActor
 actor StoreSplitSubscriptionSyncWriter {
+    enum WriteError: LocalizedError {
+        case fetchFailed(Error)
+        case saveFailed(Error)
+
+        var errorDescription: String? {
+            switch self {
+            case .fetchFailed:
+                return "The subscription could not be read from local sync storage."
+            case .saveFailed:
+                return "The subscription could not be saved locally."
+            }
+        }
+    }
+
+    struct Result: Sendable {
+        let feedKey: String
+        let isSubscribed: Bool
+        let didChange: Bool
+        let committedAt: Date
+    }
+
     func setSubscribed(
         feedURL: URL,
         isSubscribed: Bool,
         accessProfile: PodcastAccessProfile? = nil,
         at date: Date = .now
-    ) {
+    ) throws -> Result {
         let normalizedFeedURL = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
         let profile = accessProfile ?? Self.legacyAccessProfile(for: feedURL)
         if accessProfile == nil, let profile {
@@ -35,8 +56,23 @@ actor StoreSplitSubscriptionSyncWriter {
         )
         let deviceID = ListeningDeviceIdentity.current().id
 
-        if let subscription = try? modelContext.fetch(descriptor).first {
-            guard date >= subscription.updatedAt else { return }
+        let existingSubscription: SubscriptionSync?
+        do {
+            existingSubscription = try modelContext.fetch(descriptor).first
+        } catch {
+            throw WriteError.fetchFailed(error)
+        }
+
+        if let subscription = existingSubscription {
+            guard date >= subscription.updatedAt else {
+                return Result(
+                    feedKey: normalizedFeedURL,
+                    isSubscribed: subscription.isSubscribed,
+                    didChange: false,
+                    committedAt: subscription.updatedAt
+                )
+            }
+            let didChange = subscription.isSubscribed != isSubscribed
             subscription.feedURL = normalizedFeedURL
             subscription.accessProfileID = profile?.id
             subscription.accessKindRawValue = profile?.kind.rawValue
@@ -44,10 +80,23 @@ actor StoreSplitSubscriptionSyncWriter {
             subscription.isSubscribed = isSubscribed
             subscription.unsubscribedAt = isSubscribed ? nil : date
             if isSubscribed {
-                subscription.subscribedAt = date
+                if didChange {
+                    subscription.subscribedAt = date
+                }
             }
             subscription.updatedAt = date
             subscription.sourceDeviceID = deviceID
+            do {
+                try modelContext.save()
+            } catch {
+                throw WriteError.saveFailed(error)
+            }
+            return Result(
+                feedKey: normalizedFeedURL,
+                isSubscribed: isSubscribed,
+                didChange: didChange,
+                committedAt: date
+            )
         } else {
             modelContext.insert(
                 SubscriptionSync(
@@ -62,9 +111,18 @@ actor StoreSplitSubscriptionSyncWriter {
                     sourceDeviceID: deviceID
                 )
             )
+            do {
+                try modelContext.save()
+            } catch {
+                throw WriteError.saveFailed(error)
+            }
+            return Result(
+                feedKey: normalizedFeedURL,
+                isSubscribed: isSubscribed,
+                didChange: true,
+                committedAt: date
+            )
         }
-
-        modelContext.saveIfNeeded()
     }
 
     private static func legacyAccessProfile(for feedURL: URL) -> PodcastAccessProfile? {

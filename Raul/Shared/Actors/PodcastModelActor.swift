@@ -139,6 +139,23 @@ struct PodcastUpdateSummary: Sendable {
     }
 }
 
+enum PodcastSubscriptionMutationError: LocalizedError {
+    case missingPodcast
+    case authoritativeStoreUnavailable
+    case legacyProjectionFailed(Error)
+
+    var errorDescription: String? {
+        switch self {
+        case .missingPodcast:
+            return "This podcast no longer has a usable feed and cannot change subscription state."
+        case .authoritativeStoreUnavailable:
+            return "Subscription storage is temporarily unavailable. Please try again."
+        case .legacyProjectionFailed:
+            return "The subscription was not fully applied to the library. Please try again."
+        }
+    }
+}
+
 /// Values captured before any refresh network await. The model objects used
 /// to build this snapshot remain in the lexical snapshot scope; the prepare
 /// and commit stages use fresh identities instead of carrying live models.
@@ -617,24 +634,43 @@ actor PodcastModelActor {
         return metaData
     }
 
-    func setSubscriptionStatus(_ podcastID: PersistentIdentifier, isSubscribed: Bool) async {
-        guard let podcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
+    func setSubscriptionStatus(
+        _ podcastID: PersistentIdentifier,
+        isSubscribed: Bool
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              let feedURL = podcast.feed else {
+            throw PodcastSubscriptionMutationError.missingPodcast
+        }
         let metaData = ensureMetadata(for: podcast)
-        let feedURL = podcast.feed
+        let writerResult = try await updateSplitSubscription(
+            feedURL: feedURL,
+            isSubscribed: isSubscribed,
+            accessProfile: storedPodcastAccessProfile(for: podcast)
+        )
 
         metaData.isSubscribed = isSubscribed
-        if isSubscribed {
+        if isSubscribed, writerResult.didChange {
             metaData.subscriptionDate = Date()
+        } else if isSubscribed == false {
+            metaData.subscriptionDate = nil
         }
 
-        modelContext.saveIfNeeded()
-        await SubscriptionManifestSync.publishCurrentSubscriptions(
-            modelContainer: modelContainer,
-            allowEmpty: isSubscribed == false
-        )
-        if isSubscribed == false, let feedURL {
+        if isSubscribed == false {
             await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
         }
+        do {
+            try modelContext.save()
+        } catch {
+            throw PodcastSubscriptionMutationError.legacyProjectionFailed(error)
+        }
+        if writerResult.didChange {
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: isSubscribed == false
+            )
+        }
+        return writerResult
     }
 
     func switchPodcastFeed(
@@ -2280,7 +2316,7 @@ actor PodcastModelActor {
         await Player.shared.prepareForLibraryDeletion(episodeURLs: episodeURLs)
 
         guard try deletePodcastRow(podcastID) != nil else { return }
-        await updateSplitSubscription(
+        _ = try? await updateSplitSubscription(
             feedURL: feedURL,
             isSubscribed: false,
             accessProfile: profile
@@ -2312,7 +2348,7 @@ actor PodcastModelActor {
         feedURL: URL,
         isSubscribed: Bool,
         accessProfile: PodcastAccessProfile? = nil
-    ) async {
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedUserStateContainer
@@ -2321,13 +2357,13 @@ actor PodcastModelActor {
                 "store_split_subscription_write_deferred",
                 details: PodcastFeedIdentity.normalizedFeedURLString(feedURL)
             )
-            return
+            throw PodcastSubscriptionMutationError.authoritativeStoreUnavailable
         }
 
         let writer = StoreSplitSubscriptionSyncWriter(
             modelContainer: userStateContainer
         )
-        await writer.setSubscribed(
+        return try await writer.setSubscribed(
             feedURL: feedURL,
             isSubscribed: isSubscribed,
             accessProfile: accessProfile

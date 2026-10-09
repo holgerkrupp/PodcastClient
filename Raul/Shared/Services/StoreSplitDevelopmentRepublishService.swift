@@ -555,7 +555,7 @@ actor StoreSplitDevelopmentRepublishService {
         let context = ModelContext(legacyContainer)
         for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
             guard let feed = podcast.feed else { continue }
-            await subscriptionWriter.setSubscribed(
+            _ = try? await subscriptionWriter.setSubscribed(
                 feedURL: feed,
                 isSubscribed: podcast.metaData?.isSubscribed != false,
                 accessProfile: storedPodcastAccessProfile(for: podcast),

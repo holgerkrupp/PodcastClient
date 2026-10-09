@@ -29,6 +29,7 @@ final class PodcastBrowseViewModel: ObservableObject {
     func loadInitialPageIfNeeded() async {
         guard initialPageLoaded == false else { return }
         initialPageLoaded = true
+        refreshSubscriptionStatus()
         await loadPage(from: podcastFeed.url, isInitialLoad: true)
     }
 
@@ -42,7 +43,23 @@ final class PodcastBrowseViewModel: ObservableObject {
         episodePager.reset()
         errorMessage = nil
         pageLoadFailed = false
+        refreshSubscriptionStatus()
         await loadInitialPageIfNeeded()
+    }
+
+    /// The discovery hint is advisory; persisted feed identity is authoritative.
+    private func refreshSubscriptionStatus() {
+        let requestedKeys = podcastFeed.url?.podcastFeedComparisonKeys ?? []
+        guard requestedKeys.isEmpty == false else {
+            isSubscribed = false
+            return
+        }
+        let context = ModelContext(modelContainer)
+        let podcasts = (try? context.fetch(FetchDescriptor<Podcast>())) ?? []
+        isSubscribed = podcasts.contains { podcast in
+            guard podcast.isSubscribed, let feed = podcast.feed else { return false }
+            return feed.podcastFeedComparisonKeys.isDisjoint(with: requestedKeys) == false
+        }
     }
 
     func retryPageLoad() async {

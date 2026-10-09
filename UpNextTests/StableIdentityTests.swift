@@ -144,7 +144,7 @@ final class StableIdentityTests: XCTestCase {
         let deletionDate = Date(timeIntervalSince1970: 4_000)
         let writer = StoreSplitSubscriptionSyncWriter(modelContainer: container)
 
-        await writer.setSubscribed(
+        try await writer.setSubscribed(
             feedURL: feedURL,
             isSubscribed: false,
             at: deletionDate
