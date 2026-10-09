@@ -1999,6 +1999,9 @@
         }
       }
     },
+    "Blank" : {
+
+    },
     "Bookmark" : {
       "localizations" : {
         "de" : {
@@ -2740,6 +2743,9 @@
           }
         }
       }
+    },
+    "Couldn’t Subscribe" : {
+
     },
     "Counts" : {
       "localizations" : {
@@ -4052,6 +4058,9 @@
         }
       }
     },
+    "Examples" : {
+
+    },
     "Exclude keywords (comma-separated)" : {
       "localizations" : {
         "de" : {
@@ -4341,6 +4350,9 @@
           }
         }
       }
+    },
+    "Finding episodes…" : {
+
     },
     "Finish episodes this many seconds early to bypass recurring outros." : {
       "localizations" : {
@@ -7068,7 +7080,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12754,6 +12765,9 @@
         }
       }
     },
+    "Start with" : {
+
+    },
     "Starts playback at %@" : {
       "localizations" : {
         "de" : {
@@ -13119,6 +13133,9 @@
           }
         }
       }
+    },
+    "Subscribing" : {
+
     },
     "Succeeded" : {
       "localizations" : {
@@ -14518,6 +14535,9 @@
         }
       }
     },
+    "Unsubscribing" : {
+
+    },
     "Up Next" : {
       "localizations" : {
         "de" : {
@@ -14994,6 +15014,12 @@
           }
         }
       }
+    },
+    "Value" : {
+
+    },
+    "Value for %@" : {
+
     },
     "Video Size" : {
       "localizations" : {

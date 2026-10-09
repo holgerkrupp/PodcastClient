@@ -21,7 +21,6 @@ struct PlaylistsSettingsSections: View {
     let onCreatePlaylist: () -> Void
 
     /// Presented by the stable parent Settings Form, not by a Section inside it.
-    let onCreatePlaylist: () -> Void
 
     private var visiblePlaylists: [Playlist] {
         Playlist.visibleSorted(playlists)

@@ -64,6 +64,7 @@ struct PlayerView: View {
                     }
                 }
             }
+            .esaResolveTheme(image: currentArtworkSource)
             .onAppear {
                 PlayerOpeningPerformance.firstMeaningfulFrame(artworkReady: player.currentArtworkImage != nil)
             }

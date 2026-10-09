@@ -1,6 +1,75 @@
 import Foundation
 import SwiftData
 
+/// Shared entry point for subscription writes from both model actors and
+/// feed-discovery routes. The split store is prepared before an outcome is
+/// reported so callers never mistake a manifest-only write for a commit.
+enum PodcastSubscriptionPersistence {
+    static func isSubscribed(
+        feedURL: URL,
+        legacyContainer: ModelContainer
+    ) async -> Bool {
+        await ModelContainerManager.shared.prepareSplitStores()
+        if let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) {
+            let context = ModelContext(userStateContainer)
+            var newestRecord: SubscriptionSync?
+            for key in feedURL.podcastFeedComparisonKeys {
+                let descriptor = FetchDescriptor<SubscriptionSync>(
+                    predicate: #Predicate<SubscriptionSync> { $0.id == key }
+                )
+                if let record = try? context.fetch(descriptor).first,
+                   newestRecord.map({ $0.updatedAt < record.updatedAt }) ?? true {
+                    newestRecord = record
+                }
+            }
+            if let newestRecord {
+                return newestRecord.isSubscribed && newestRecord.unsubscribedAt == nil
+            }
+        }
+
+        let legacyContext = ModelContext(legacyContainer)
+        let requestedKeys = feedURL.podcastFeedComparisonKeys
+        for key in requestedKeys {
+            guard let candidate = URL(string: key) else { continue }
+            let descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.feed == candidate }
+            )
+            if let podcast = try? legacyContext.fetch(descriptor).first,
+               podcast.isSubscribed {
+                return true
+            }
+        }
+        return false
+    }
+
+    static func setSubscribed(
+        feedURL: URL,
+        isSubscribed: Bool,
+        accessProfile: PodcastAccessProfile? = nil
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            CrashBreadcrumbs.shared.record(
+                "store_split_subscription_write_deferred",
+                details: PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+            )
+            throw PodcastSubscriptionMutationError.authoritativeStoreUnavailable
+        }
+
+        return try await StoreSplitSubscriptionSyncWriter(
+            modelContainer: userStateContainer
+        ).setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: isSubscribed,
+            accessProfile: accessProfile
+        )
+    }
+}
+
 func storedPodcastAccessProfile(for podcast: Podcast) -> PodcastAccessProfile? {
     guard let metadata = podcast.metaData,
           let profileID = metadata.accessProfileID,
@@ -65,6 +134,17 @@ actor StoreSplitSubscriptionSyncWriter {
 
         if let subscription = existingSubscription {
             guard date >= subscription.updatedAt else {
+                return Result(
+                    feedKey: normalizedFeedURL,
+                    isSubscribed: subscription.isSubscribed,
+                    didChange: false,
+                    committedAt: subscription.updatedAt
+                )
+            }
+            let stateIsConsistent = isSubscribed
+                ? subscription.unsubscribedAt == nil
+                : subscription.unsubscribedAt != nil
+            if subscription.isSubscribed == isSubscribed, stateIsConsistent {
                 return Result(
                     feedKey: normalizedFeedURL,
                     isSubscribed: subscription.isSubscribed,

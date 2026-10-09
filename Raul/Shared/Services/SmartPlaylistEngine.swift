@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 enum SmartPlaylistEngine {
     static func episodes(from allEpisodes: [Episode], for playlist: Playlist) -> [Episode] {
@@ -48,7 +49,10 @@ enum SmartPlaylistEngine {
         let activeRules = filter.rules.filter { isConfigured($0) }
 
         guard activeRules.isEmpty == false else {
-            return false
+            // The download-only toggle is itself a complete smart-playlist
+            // criterion. Its earlier gate above has already excluded every
+            // episode that is not available locally.
+            return filter.requireDownloaded
         }
 
         let evaluations = activeRules.map { rule in
@@ -264,5 +268,98 @@ enum SmartPlaylistEngine {
         }
 
         return values
+    }
+}
+
+/// Evaluates smart-playlist membership in an isolated SwiftData context so a
+/// large library never blocks the playlist switch animation or scrolling.
+@ModelActor
+actor SmartPlaylistEvaluationActor {
+    func matchingEpisodeIDs(for playlistID: UUID) throws -> [PersistentIdentifier] {
+        let playlistIDValue = playlistID
+        var playlistDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == playlistIDValue }
+        )
+        playlistDescriptor.fetchLimit = 1
+        guard let playlist = try modelContext.fetch(playlistDescriptor).first,
+              playlist.isSmartPlaylist else {
+            return []
+        }
+
+        let episodes = try modelContext.fetch(FetchDescriptor<Episode>())
+        return SmartPlaylistEngine.episodes(from: episodes, for: playlist)
+            .map(\.persistentModelID)
+    }
+
+    func prefetchEpisodeIDs(for requests: [SmartPlaylistPrefetchRequest]) throws -> [UUID: [PersistentIdentifier]] {
+        let playlists = try modelContext.fetch(FetchDescriptor<Playlist>())
+        let playlistsByID = Dictionary(uniqueKeysWithValues: playlists.map { ($0.id, $0) })
+        let episodes = try modelContext.fetch(FetchDescriptor<Episode>())
+        var result: [UUID: [PersistentIdentifier]] = [:]
+
+        for request in requests {
+            guard let playlist = playlistsByID[request.playlistID],
+                  playlist.isSmartPlaylist,
+                  playlist.smartFilter == request.filter else { continue }
+            let matching = SmartPlaylistEngine.episodes(from: episodes, for: playlist)
+            result[request.playlistID] = matching.map(\.persistentModelID)
+        }
+        return result
+    }
+}
+
+struct SmartPlaylistPrefetchRequest: Sendable {
+    let playlistID: UUID
+    let filter: SmartPlaylistFilter?
+}
+
+/// A process-local cache of derived membership. It stores identifiers only;
+/// playlist membership remains virtual and is never written as PlaylistEntry.
+@MainActor
+enum SmartPlaylistMembershipCache {
+    private struct Entry {
+        let filter: SmartPlaylistFilter?
+        let episodeIDs: [PersistentIdentifier]
+        let createdAt: Date
+    }
+
+    private static var entries: [UUID: Entry] = [:]
+    private static var invalidationGeneration = 0
+    private static let lifetime: TimeInterval = 30
+
+    static func episodeIDs(for playlistID: UUID, filter: SmartPlaylistFilter?) -> [PersistentIdentifier]? {
+        guard let entry = entries[playlistID],
+              entry.filter == filter,
+              Date.now.timeIntervalSince(entry.createdAt) < lifetime else { return nil }
+        return entry.episodeIDs
+    }
+
+    static func store(_ episodeIDs: [PersistentIdentifier], for playlistID: UUID, filter: SmartPlaylistFilter?) {
+        entries[playlistID] = Entry(filter: filter, episodeIDs: episodeIDs, createdAt: .now)
+    }
+
+    static func invalidate(_ playlistID: UUID? = nil) {
+        invalidationGeneration &+= 1
+        if let playlistID {
+            entries[playlistID] = nil
+        } else {
+            entries.removeAll(keepingCapacity: true)
+        }
+    }
+
+    static func prefetch(_ requests: [SmartPlaylistPrefetchRequest], using container: ModelContainer) async {
+        let missingRequests = requests.filter {
+            episodeIDs(for: $0.playlistID, filter: $0.filter) == nil
+        }
+        guard missingRequests.isEmpty == false else { return }
+        let generation = invalidationGeneration
+
+        let evaluator = SmartPlaylistEvaluationActor(modelContainer: container)
+        guard let prefetched = try? await evaluator.prefetchEpisodeIDs(for: missingRequests) else { return }
+        guard generation == invalidationGeneration else { return }
+        for request in missingRequests {
+            guard let episodeIDs = prefetched[request.playlistID] else { continue }
+            store(episodeIDs, for: request.playlistID, filter: request.filter)
+        }
     }
 }

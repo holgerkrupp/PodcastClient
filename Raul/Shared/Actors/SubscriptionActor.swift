@@ -136,70 +136,7 @@ actor SubscriptionActor:NSObject{
     }
     
     func subscribe(all newPodcasts: [PodcastFeed]) async {
-        
-        // 1. SERIAL PHASE: Mass-insert all new podcasts quickly.
-        //    Perform this on a single ModelContext serially to avoid "Database busy" errors
-        //    for the crucial insertion step.
-        
-        var newPodcastFeeds: Set<URL?> = []
-        
-        
-        for podcastFeed in newPodcasts {
-            guard let url = podcastFeed.url else { continue }
-
-            
-            
-            // Check if podcast with this feed URL already exists (if PodcastFeed.existing is not reliable)
-            let descriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { $0.feed == url }
-            )
-            
-            // This fetch/insert/save is now done serially, preventing contention.
-            if let existingPodcasts = try? modelContext.fetch(descriptor),
-               let existingPodcast = existingPodcasts.first {
-                // Already exists, maybe update some basic properties from feedData if needed
-                existingPodcast.title = podcastFeed.title ?? existingPodcast.title
-                let metadata = existingPodcast.metaData ?? PodcastMetaData()
-                if existingPodcast.metaData == nil {
-                    modelContext.insert(metadata)
-                    existingPodcast.metaData = metadata
-                }
-                metadata.isSubscribed = true
-                metadata.subscriptionDate = Date()
-                // existingPodcast.message = nil
-                
-                
-                newPodcastFeeds.insert(existingPodcast.feed)
-                
-            } else {
-                let podcast = Podcast(from: podcastFeed) // Use the fast, new initializer
-               
-                modelContext.insert(podcast)
-                
-                
-                newPodcastFeeds.insert(podcast.feed)
-            }
-        }
-        
-        print("prepared (newPodcastFeeds.count) podcast feed(s) for refresh")
-        
-        // Commit all changes from the serial inserts at once.
-        // This is one large, safe save operation.
-        modelContext.saveIfNeeded()
-        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        
-        do{
-            let worker = PodcastModelActor(modelContainer: self.modelContainer)
-            for feed in newPodcastFeeds{
-                if let feed{
-                    print("updating podcast: \(feed.redactedPodcastURLString)")
-                    _ = try await worker.updatePodcast(feed, policy: .validatedImport, silent: true)
-                }
-            }
-            await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContainer)
-        }catch{
-            print("could not refresh podcasts")
-        }
+        await SubscriptionManager(modelContainer: modelContainer).subscribe(all: newPodcasts)
     }
     
     /// Removes duplicate Podcast records that share the same feed URL, keeping the most recently refreshed one.

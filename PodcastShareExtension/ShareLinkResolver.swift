@@ -1,9 +1,12 @@
 import Foundation
 
-struct ShareLinkPodcast: Equatable, Sendable {
+struct ShareLinkPodcast: Equatable, Sendable, Identifiable {
     let title: String
     let feedURL: URL
     let artworkURL: URL?
+    let author: String?
+
+    var id: URL { feedURL }
 }
 
 struct ShareLinkEpisode: Equatable, Sendable {
@@ -11,6 +14,7 @@ struct ShareLinkEpisode: Equatable, Sendable {
     let description: String?
     let mediaURL: URL?
     let pageURL: URL?
+    let guid: String?
     let artworkURL: URL?
     let duration: TimeInterval?
 }
@@ -68,19 +72,35 @@ struct ShareLinkResolver: Sendable {
         let pageTitle = metadata("og:title", in: html) ?? titleTag(in: html) ?? fallbackTitle(for: url)
         let episodeTitle = articleTitle(in: html) ?? pageTitle
         let description = metadata("og:description", in: html) ?? metadata("description", in: html)
+        let author = metadata("author", in: html)
         let artworkURL = metadata("og:image", in: html).flatMap { URL(string: $0, relativeTo: url)?.absoluteURL }
         let feedURLs = feedURLs(in: html, baseURL: url)
 
         var discoveredPodcast: ShareLinkPodcast?
         for feedLink in feedURLs {
             if feedLink.isPodcast, discoveredPodcast == nil {
-                let podcast = ShareLinkPodcast(title: pageTitle, feedURL: feedLink.url, artworkURL: artworkURL)
+                let podcast = ShareLinkPodcast(
+                    title: fallbackPodcastTitle(for: feedLink, episodeTitles: [pageTitle, episodeTitle]),
+                    feedURL: feedLink.url,
+                    artworkURL: artworkURL,
+                    author: author
+                )
                 discoveredPodcast = podcast
                 await onPodcastFound(podcast)
             }
 
             guard let feed = await fetchFeed(from: feedLink.url) else { continue }
-            let podcast = ShareLinkPodcast(title: feed.title ?? pageTitle, feedURL: feedLink.url, artworkURL: feed.artworkURL ?? artworkURL)
+            let podcast = ShareLinkPodcast(
+                title: feed.title ?? fallbackPodcastTitle(for: feedLink, episodeTitles: [pageTitle, episodeTitle]),
+                feedURL: feedLink.url,
+                artworkURL: feed.artworkURL ?? artworkURL,
+                author: feed.author ?? author
+            )
+
+            if discoveredPodcast?.feedURL == feedLink.url {
+                discoveredPodcast = podcast
+                await onPodcastFound(podcast)
+            }
             guard feed.episodes.contains(where: { $0.mediaURL != nil }) else { continue }
 
             if discoveredPodcast == nil {
@@ -179,16 +199,16 @@ struct ShareLinkResolver: Sendable {
 
     private func fetchFeed(from url: URL) async -> LightweightFeedParser.Feed? {
         guard let text = await fetchText(from: url), let data = text.data(using: .utf8) else { return nil }
-        let parser = LightweightFeedParser()
+        let parser = LightweightFeedParser(baseURL: url)
         let xml = XMLParser(data: data)
         xml.delegate = parser
         guard xml.parse() else { return nil }
         return parser.result
     }
 
-    private func feedURLs(in html: String, baseURL: URL) -> [(url: URL, isPodcast: Bool)] {
+    private func feedURLs(in html: String, baseURL: URL) -> [(url: URL, title: String?, isPodcast: Bool)] {
         let tags = matches(#"<link\b[^>]*>"#, in: html)
-        let candidates = tags.compactMap { tag -> (url: URL, isPodcast: Bool)? in
+        let candidates = tags.compactMap { tag -> (url: URL, title: String?, isPodcast: Bool)? in
             let rel = attribute("rel", in: tag)?.lowercased() ?? ""
             let type = attribute("type", in: tag)?.lowercased() ?? ""
             guard rel.contains("alternate"), type.contains("rss") || type.contains("atom") || type.contains("xml"), let href = attribute("href", in: tag) else { return nil }
@@ -196,9 +216,27 @@ struct ShareLinkResolver: Sendable {
             guard title.contains("comment") == false,
                   href.lowercased().contains("comment") == false,
                   let url = URL(string: href, relativeTo: baseURL)?.absoluteURL else { return nil }
-            return (url, title.contains("podcast") || title.contains("audio"))
+            return (url, attribute("title", in: tag), title.contains("podcast") || title.contains("audio"))
         }
         return candidates.sorted { $0.isPodcast && !$1.isPodcast }
+    }
+
+    private func fallbackPodcastTitle(
+        for feedLink: (url: URL, title: String?, isPodcast: Bool),
+        episodeTitles: [String]
+    ) -> String {
+        if let title = feedLink.title?.trimmingCharacters(in: .whitespacesAndNewlines), title.isEmpty == false {
+            let titleKey = normalized(title)
+            let isEpisodeTitle = episodeTitles
+                .map(normalized)
+                .filter { $0.count > 8 }
+                .contains { titleKey.contains($0) }
+            if ["podcast", "podcast feed", "audio", "rss", "rss feed", "feed"].contains(title.lowercased()) == false,
+               isEpisodeTitle == false {
+                return title
+            }
+        }
+        return feedLink.url.host() ?? "Podcast"
     }
 
     private func mediaURL(in html: String, baseURL: URL) -> URL? {
@@ -213,6 +251,7 @@ struct ShareLinkResolver: Sendable {
     private func matches(_ episode: ShareLinkEpisode, pageURL: URL) -> Bool {
         episode.pageURL.map { normalizedPageURL($0) == normalizedPageURL(pageURL) } == true
             || episode.mediaURL.map { normalizedPageURL($0) == normalizedPageURL(pageURL) } == true
+            || episode.guid.flatMap(URL.init(string:)).map { normalizedPageURL($0) == normalizedPageURL(pageURL) } == true
     }
 
     private func matches(_ episode: ShareLinkEpisode, title: String) -> Bool {
@@ -282,37 +321,156 @@ struct ShareLinkResolver: Sendable {
 }
 
 private final class LightweightFeedParser: NSObject, XMLParserDelegate {
-    struct Feed { var title: String?; var artworkURL: URL?; var episodes: [ShareLinkEpisode] = [] }
+    struct Feed { var title: String?; var author: String?; var artworkURL: URL?; var episodes: [ShareLinkEpisode] = [] }
+
+    private struct Element {
+        let name: String
+        let attributes: [String: String]
+        var text = ""
+    }
+
     var result: Feed?
-    private var current = ""
-    private var text = ""
+    private let baseURL: URL
+    private var elements: [Element] = []
+    private var isInsideEpisode = false
     private var feedTitle: String?
+    private var feedAuthor: String?
     private var artwork: URL?
     private var currentEpisode: [String: String] = [:]
     private var episodes: [ShareLinkEpisode] = []
 
-    func parser(_ parser: XMLParser, didStartElement name: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
-        current = name.lowercased(); text = ""
-        if current == "item" || current == "entry" { currentEpisode = [:] }
-        if current == "enclosure" { currentEpisode["media"] = attributeDict["url"] ?? attributeDict["href"] }
-        if current == "image",
-           let imageString = attributeDict["href"] ?? attributeDict["url"] {
-            artwork = URL(string: imageString)
+    init(baseURL: URL) {
+        self.baseURL = baseURL
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didStartElement name: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?,
+        attributes attributeDict: [String: String] = [:]
+    ) {
+        let elementName = localName(qName ?? name)
+        let attributes = attributeDict.reduce(into: [String: String]()) { result, item in
+            result[localName(item.key)] = item.value
+        }
+
+        if elementName == "item" || elementName == "entry" {
+            isInsideEpisode = true
+            currentEpisode = [:]
+        }
+
+        if isInsideEpisode {
+            if elementName == "enclosure" || (elementName == "link" && attributes["rel"] == "enclosure") {
+                currentEpisode["media"] = attributes["url"] ?? attributes["href"]
+            }
+            if elementName == "link",
+               attributes["rel"] == nil || attributes["rel"] == "alternate",
+               let href = attributes["href"] {
+                currentEpisode["link"] = href
+            }
+            if elementName == "image", let href = attributes["href"] ?? attributes["url"] {
+                currentEpisode["image"] = href
+            }
+        } else if elementName == "image",
+                  let image = attributes["href"] ?? attributes["url"] {
+            artwork = resolvedURL(image)
+        }
+
+        elements.append(Element(name: elementName, attributes: attributes))
+    }
+
+    func parser(_ parser: XMLParser, foundCharacters string: String) {
+        for index in elements.indices {
+            elements[index].text += string
         }
     }
-    func parser(_ parser: XMLParser, foundCharacters string: String) { text += string }
-    func parser(_ parser: XMLParser, didEndElement name: String, namespaceURI: String?, qualifiedName qName: String?) {
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch name.lowercased() {
-        case "title": if currentEpisode.isEmpty { feedTitle = value } else { currentEpisode["title"] = value }
-        case "description", "summary": if currentEpisode.isEmpty == false { currentEpisode["description"] = value }
-        case "link": if currentEpisode.isEmpty == false { currentEpisode["link"] = value }
-        case "guid", "id": if currentEpisode.isEmpty == false { currentEpisode["guid"] = value }
-        case "url": if artwork == nil { artwork = URL(string: value) }
+
+    func parser(_ parser: XMLParser, foundCDATA CDATABlock: Data) {
+        guard let value = String(data: CDATABlock, encoding: .utf8) else { return }
+        for index in elements.indices {
+            elements[index].text += value
+        }
+    }
+
+    func parser(
+        _ parser: XMLParser,
+        didEndElement name: String,
+        namespaceURI: String?,
+        qualifiedName qName: String?
+    ) {
+        guard let element = elements.popLast() else { return }
+        let value = element.text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        switch element.name {
+        case "title":
+            if isInsideEpisode {
+                currentEpisode["title"] = value
+            } else {
+                feedTitle = value
+            }
+        case "author":
+            if isInsideEpisode == false, value.isEmpty == false { feedAuthor = value }
+        case "name":
+            if isInsideEpisode == false,
+               elements.last?.name == "author",
+               value.isEmpty == false {
+                feedAuthor = value
+            }
+        case "description", "summary", "encoded":
+            if isInsideEpisode, value.isEmpty == false { currentEpisode["description"] = value }
+        case "link":
+            if isInsideEpisode, currentEpisode["link"] == nil {
+                currentEpisode["link"] = element.attributes["href"] ?? value
+            }
+        case "guid", "id":
+            if isInsideEpisode, value.isEmpty == false { currentEpisode["guid"] = value }
+        case "duration":
+            if isInsideEpisode, value.isEmpty == false { currentEpisode["duration"] = value }
+        case "url":
+            if isInsideEpisode == false, artwork == nil, value.isEmpty == false {
+                artwork = resolvedURL(value)
+            }
         case "item", "entry":
-            if let title = currentEpisode["title"] { episodes.append(ShareLinkEpisode(title: title, description: currentEpisode["description"], mediaURL: currentEpisode["media"].flatMap(URL.init(string:)), pageURL: currentEpisode["link"].flatMap(URL.init(string:)), artworkURL: nil, duration: nil)) }
-        default: break
+            appendEpisode()
+            isInsideEpisode = false
+            currentEpisode = [:]
+        default:
+            break
         }
     }
-    func parserDidEndDocument(_ parser: XMLParser) { result = Feed(title: feedTitle, artworkURL: artwork, episodes: episodes) }
+
+    func parserDidEndDocument(_ parser: XMLParser) {
+        result = Feed(title: feedTitle, author: feedAuthor, artworkURL: artwork, episodes: episodes)
+    }
+
+    private func appendEpisode() {
+        guard let title = currentEpisode["title"], title.isEmpty == false else { return }
+        episodes.append(
+            ShareLinkEpisode(
+                title: title,
+                description: currentEpisode["description"],
+                mediaURL: currentEpisode["media"].flatMap(resolvedURL),
+                pageURL: currentEpisode["link"].flatMap(resolvedURL),
+                guid: currentEpisode["guid"],
+                artworkURL: currentEpisode["image"].flatMap(resolvedURL),
+                duration: currentEpisode["duration"].flatMap(parseDuration)
+            )
+        )
+    }
+
+    private func resolvedURL(_ value: String) -> URL? {
+        URL(string: value, relativeTo: baseURL)?.absoluteURL
+    }
+
+    private func parseDuration(_ value: String) -> TimeInterval? {
+        if let seconds = TimeInterval(value) { return seconds }
+        let components = value.split(separator: ":").compactMap { TimeInterval($0) }
+        guard components.isEmpty == false else { return nil }
+        return components.reversed().enumerated().reduce(0) { $0 + $1.element * pow(60, Double($1.offset)) }
+    }
+
+    private func localName(_ value: String) -> String {
+        value.split(separator: ":").last.map(String.init)?.lowercased() ?? value.lowercased()
+    }
 }

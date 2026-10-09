@@ -169,6 +169,17 @@ class Playlist {
         PlaylistSymbolOption(symbolName: "sparkles", title: "Highlights"),
         PlaylistSymbolOption(symbolName: "star", title: "Favorites"),
         PlaylistSymbolOption(symbolName: "heart", title: "Loved"),
+        PlaylistSymbolOption(symbolName: "arrow.down.circle.fill", title: "Downloaded"),
+        PlaylistSymbolOption(symbolName: "tray.and.arrow.down.fill", title: "Offline"),
+        PlaylistSymbolOption(symbolName: "checkmark.circle.fill", title: "Finished"),
+        PlaylistSymbolOption(symbolName: "play.circle.fill", title: "Continue"),
+        PlaylistSymbolOption(symbolName: "waveform", title: "Audio"),
+        PlaylistSymbolOption(symbolName: "timer", title: "Short"),
+        PlaylistSymbolOption(symbolName: "calendar.badge.clock", title: "Recent"),
+        PlaylistSymbolOption(symbolName: "clock.arrow.circlepath", title: "In Progress"),
+        PlaylistSymbolOption(symbolName: "text.book.closed.fill", title: "Learning"),
+        PlaylistSymbolOption(symbolName: "globe", title: "Language"),
+        PlaylistSymbolOption(symbolName: "square.stack.3d.up.fill", title: "Categories"),
         PlaylistSymbolOption(symbolName: "bolt", title: "Quick"),
         PlaylistSymbolOption(symbolName: "flame", title: "Hot"),
         PlaylistSymbolOption(symbolName: "moon", title: "Night"),
@@ -276,7 +287,7 @@ class Playlist {
 
     var displaySymbolName: String {
         if isSmartPlaylist {
-            return Self.smartPlaylistSymbolName
+            return Self.normalizedSymbolName(symbolName, fallback: Self.smartPlaylistSymbolName)
         }
 
         let fallback = title == Self.defaultQueueTitle ? Self.defaultQueueSymbolName : Self.defaultManualSymbolName

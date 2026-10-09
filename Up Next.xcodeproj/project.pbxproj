@@ -24,6 +24,7 @@
 		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
+		4A6B7C8D9E0F102030405060 /* SFSymbolSelector in Frameworks */ = {isa = PBXBuildFile; productRef = 4A6B7C8D9E0F102030405062 /* SFSymbolSelector */; };
 		7BD56FCE270E923E6668CC89 /* PodcastAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6074A10FAF20A62C04391E91 /* PodcastAccess.swift */; };
 		7CD337B61A4F2955F16FA2FC /* URLextension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A556E5871DD8D34CE85CAEC3 /* URLextension.swift */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -303,6 +304,7 @@
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				485AEE7B30737DD300E5A889 /* ESADesignKit in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
+				4A6B7C8D9E0F102030405060 /* SFSymbolSelector in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,6 +456,7 @@
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
 				485AEE7A30737DD300E5A889 /* ESADesignKit */,
+				4A6B7C8D9E0F102030405062 /* SFSymbolSelector */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
@@ -641,6 +644,7 @@
 				48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */,
 				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
 				485AEE7930737DD300E5A889 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
+				4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1011,7 +1015,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -1050,7 +1054,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1074,7 +1078,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"Raul/Preview Content\"";
 				DEVELOPMENT_TEAM = 46D3VYP253;
@@ -1113,7 +1117,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
@@ -1133,7 +1137,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1144,7 +1148,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1162,7 +1166,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PlayNextWidget/PlayNextWidget.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1173,7 +1177,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PlayNextWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1191,11 +1195,11 @@
 				CODE_SIGN_ENTITLEMENTS = UpNextTV/UpNextTV.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextTV/Info.plist;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tvOS";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
@@ -1213,7 +1217,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -1222,7 +1226,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1242,7 +1246,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatch/UpNextWatch.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextWatch/Info.plist;
@@ -1251,7 +1255,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1271,11 +1275,11 @@
 				CODE_SIGN_ENTITLEMENTS = UpNextTV/UpNextTV.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = UpNextTV/Info.plist;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).tvOS";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = appletvos;
@@ -1341,7 +1345,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1351,7 +1355,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1371,7 +1375,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = UpNextWatchComplications/UpNextWatchComplications.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1381,7 +1385,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).watchkitapp.UpNextWatchComplications";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
@@ -1401,7 +1405,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1414,7 +1418,7 @@
 				);
 				LM_SKIP_METADATA_EXTRACTION = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1433,7 +1437,7 @@
 				APP_BUNDLE_IDENTIFIER = de.holgerkrupp.PodcastClient;
 				CODE_SIGN_ENTITLEMENTS = PodcastShareExtension/PodcastShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 523;
+				CURRENT_PROJECT_VERSION = 530;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = 46D3VYP253;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -1446,7 +1450,7 @@
 				);
 				LM_SKIP_METADATA_EXTRACTION = YES;
 				MACOSX_DEPLOYMENT_TARGET = 15.2;
-				MARKETING_VERSION = 2026.28;
+				MARKETING_VERSION = 2026.29;
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER).PodcastShareExtension";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -1575,6 +1579,14 @@
 				kind = branch;
 			};
 		};
+		4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/holgerkrupp/SFSymbolSelector.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1606,6 +1618,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */;
 			productName = mp3ChapterReader;
+		};
+		4A6B7C8D9E0F102030405062 /* SFSymbolSelector */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */;
+			productName = SFSymbolSelector;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

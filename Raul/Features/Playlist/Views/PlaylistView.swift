@@ -147,6 +147,20 @@ struct PlaylistView: View {
             ensureDefaultPlaylist()
             syncSelectionWithStorage()
             openRequestedEpisodeIfNeeded()
+
+            // Let the initial playlist render first, then warm a small number
+            // of likely smart-list destinations in a background model actor.
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            guard Task.isCancelled == false else { return }
+            let requests = visiblePlaylists
+                .filter(\.isSmartPlaylist)
+                .prefix(3)
+                .map { SmartPlaylistPrefetchRequest(playlistID: $0.id, filter: $0.smartFilter) }
+            guard requests.isEmpty == false else { return }
+            let prefetchTask = Task(priority: .utility) {
+                await SmartPlaylistMembershipCache.prefetch(requests, using: modelContext.container)
+            }
+            await prefetchTask.value
         }
         .onChange(of: visiblePlaylists.map(\.id)) { _, _ in
             ensureSelectionIsValid()

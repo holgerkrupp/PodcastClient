@@ -14,6 +14,7 @@ import AppKit
 /// were already enriched during a feed refresh. The view never starts network
 /// enrichment itself.
 struct ShownoteContentView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaThemePalette) private var themePalette
     private let html: String
@@ -140,11 +141,17 @@ struct ShownoteContentView: View {
     }
 
     private var htmlForeground: Color {
-        visualStyle == .artwork ? .primary : themePalette.primaryForeground
+        if visualStyle == .artwork {
+            // WebKit converts SwiftUI colors to CSS before its own trait
+            // environment is available. Resolve the system semantic color
+            // explicitly so it cannot fall back to black in dark mode.
+            return colorScheme == .dark ? .white : .black
+        }
+        return themePalette.primaryForeground
     }
 
     private var htmlLinkColor: Color {
-        visualStyle == .artwork ? .secondary : (themePalette.accent ?? themePalette.controlForeground)
+        visualStyle == .artwork ? htmlForeground : (themePalette.accent ?? themePalette.controlForeground)
     }
 }
 

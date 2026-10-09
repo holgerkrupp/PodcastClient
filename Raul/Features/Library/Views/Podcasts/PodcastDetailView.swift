@@ -109,6 +109,33 @@ struct PodcastDetailView: View {
         confirmedSubscriptionState ?? podcast.isSubscribed
     }
 
+    @ViewBuilder
+    private var subscriptionControls: some View {
+        Button {
+            Task { await toggleSubscriptionStatus() }
+        } label: {
+            switch subscriptionOperation {
+            case .committing(let targetState):
+                ProgressView()
+                    .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
+            case .idle:
+                Label(
+                    displayedIsSubscribed ? "Unsubscribe" : "Subscribe",
+                    systemImage: displayedIsSubscribed ? "bell.slash" : "bell"
+                )
+            }
+        }
+        .buttonStyle(.glass(.clear))
+        .disabled(subscriptionOperation != .idle)
+        .accessibilityIdentifier("podcast-detail-subscription-button")
+
+        if let subscriptionErrorMessage {
+            Text(subscriptionErrorMessage)
+                .font(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
 #if DEBUG
     private var displayedPredictedReleaseDate: Date? {
         podcast.metaData?.nextPredictedReleaseDate ?? predictedReleaseDate
@@ -358,31 +385,7 @@ struct PodcastDetailView: View {
                             showsLiveMetadata: showLivePodcasts
                         )
 
-                        Button {
-                            Task {
-                                await toggleSubscriptionStatus()
-                            }
-                        } label: {
-                            switch subscriptionOperation {
-                            case .committing(let targetState):
-                                ProgressView()
-                                    .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
-                            case .idle:
-                                Label(
-                                    displayedIsSubscribed ? "Unsubscribe" : "Subscribe",
-                                    systemImage: displayedIsSubscribed ? "bell.slash" : "bell"
-                                )
-                            }
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .disabled(subscriptionOperation != .idle)
-                        .accessibilityIdentifier("podcast-detail-subscription-button")
-
-                        if let subscriptionErrorMessage {
-                            Text(subscriptionErrorMessage)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
+                        subscriptionControls
 
                         if availableAlternativeFeeds.isEmpty == false {
                             Menu {
@@ -831,11 +834,17 @@ struct PodcastDetailView: View {
             await MainActor.run {
                 confirmedSubscriptionState = result.isSubscribed
                 subscriptionOperation = .idle
+                AccessibilityNotification.Announcement(
+                    result.isSubscribed ? "Subscribed" : "Unsubscribed"
+                ).post()
             }
         } catch {
             await MainActor.run {
                 subscriptionErrorMessage = "Could not update subscription: \(error.localizedDescription)"
                 subscriptionOperation = .idle
+                AccessibilityNotification.Announcement(
+                    "Could not update subscription. Try again."
+                ).post()
             }
         }
     }

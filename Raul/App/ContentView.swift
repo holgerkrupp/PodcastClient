@@ -35,6 +35,7 @@ struct ContentView: View {
     @State private var didCompleteInitialContentLoad = false
     @State private var isImportingSharedEpisodes = false
     @State private var sharedEpisodeRecovery: SharedEpisodeRecovery?
+    @State private var sharedSubscriptionError: String?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
     
     @State private var search:String = ""
@@ -199,6 +200,14 @@ struct ContentView: View {
             SharedEpisodeRecoveryView(recovery: recovery) { action in
                 handleRecovery(action, for: recovery)
             }
+        }
+        .alert("Couldn’t Subscribe", isPresented: Binding(
+            get: { sharedSubscriptionError != nil },
+            set: { if $0 == false { sharedSubscriptionError = nil } }
+        )) {
+            Button("OK", role: .cancel) { sharedSubscriptionError = nil }
+        } message: {
+            Text(sharedSubscriptionError ?? "")
         }
         .sheet(isPresented: $showOnboarding, onDismiss: {
             didCompleteOnboarding = true
@@ -370,13 +379,32 @@ struct ContentView: View {
             search = action.query ?? action.url.host() ?? action.url.absoluteString
 
         case .subscribe:
-            PendingSharedEpisodeImportStore.remove(id: action.id)
             guard let feedURL = action.feedURL else {
-                presentSharedEpisodeRecovery(for: action.url, message: "The podcast feed was not available.")
+                PendingSharedEpisodeImportStore.remove(id: action.id)
+                sharedSubscriptionError = "The podcast feed was not available."
                 return
             }
-            navigation.select(.search)
-            incomingPodcastSubscription.handleIncomingURL(feedURL)
+            do {
+                let resolution = try await PodcastFeedResolver.resolve(url: feedURL)
+                let podcastFeed: PodcastFeed
+                switch resolution {
+                case .podcast(let feed):
+                    podcastFeed = feed
+                case .requiresBasicAuth:
+                    throw PodcastFeedResolverError.authenticationRequired(feedURL)
+                case .requiresBearerToken:
+                    throw PodcastFeedResolverError.bearerAuthenticationRequired(feedURL)
+                }
+                _ = try await SubscriptionManager(modelContainer: modelContext.container)
+                    .addToLibrary(podcastFeed, subscribe: true, feedWasValidated: true)
+                PendingSharedEpisodeImportStore.remove(id: action.id)
+                CrashBreadcrumbs.shared.record("shared_podcast_subscribed", details: feedURL.redactedPodcastURLString)
+                AppDiagnostics.log("Subscribed to shared podcast: \(feedURL.redactedPodcastURLString)")
+            } catch {
+                PendingSharedEpisodeImportStore.remove(id: action.id)
+                CrashBreadcrumbs.shared.record("shared_podcast_subscription_failed", details: error.localizedDescription)
+                sharedSubscriptionError = error.localizedDescription
+            }
 
         case .importEpisode:
             await importSharedEpisode(

@@ -4,19 +4,30 @@ import SwiftData
 /// Smart playlist membership is derived from library episodes and never
 /// materialized as PlaylistEntry records.
 struct SmartPlaylistPageView: View {
-    @Query private var allEpisodes: [Episode]
+    @Environment(\.modelContext) private var modelContext
     @State private var matchingEpisodes: [Episode] = []
+    @State private var isLoadingMatches = true
+    @State private var refreshGeneration = UUID()
 
     let playlist: Playlist
 
     var body: some View {
         Group {
             if matchingEpisodes.isEmpty {
-                ContentUnavailableView(
-                    "No Matching Episodes",
-                    systemImage: Playlist.smartPlaylistSymbolName,
-                    description: Text("Edit this smart playlist's filters or wait for matching episodes to appear.")
-                )
+                if isLoadingMatches {
+                    List {
+                        ProgressView("Finding episodes…")
+                            .frame(maxWidth: .infinity, minHeight: 100)
+                            .listRowSeparator(.hidden)
+                    }
+                    .listStyle(.plain)
+                } else {
+                    ContentUnavailableView(
+                        "No Matching Episodes",
+                        systemImage: playlist.displaySymbolName,
+                        description: Text("Edit this smart playlist's filters or wait for matching episodes to appear.")
+                    )
+                }
             } else {
                 List {
                     Section {
@@ -52,21 +63,44 @@ struct SmartPlaylistPageView: View {
             }
         }
         .task(id: playlist.smartFilter) {
-            refreshMatches()
-        }
-        .onChange(of: allEpisodes.count) { _, _ in
-            refreshMatches()
+            await refreshMatches()
         }
         .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished)) { _ in
-            refreshMatches()
+            SmartPlaylistMembershipCache.invalidate()
+            Task { await refreshMatches() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistEpisodeDataDidChange)) { _ in
-            refreshMatches()
+            SmartPlaylistMembershipCache.invalidate()
+            Task { await refreshMatches() }
         }
         .navigationTitle(playlist.displayTitle)
     }
 
-    private func refreshMatches() {
-        matchingEpisodes = SmartPlaylistEngine.episodes(from: allEpisodes, for: playlist)
+    @MainActor
+    private func refreshMatches() async {
+        let generation = UUID()
+        refreshGeneration = generation
+
+        if let cachedIDs = SmartPlaylistMembershipCache.episodeIDs(
+            for: playlist.id,
+            filter: playlist.smartFilter
+        ) {
+            matchingEpisodes = cachedIDs.compactMap { modelContext.model(for: $0) as? Episode }
+            isLoadingMatches = false
+            return
+        }
+
+        isLoadingMatches = matchingEpisodes.isEmpty
+        let evaluator = SmartPlaylistEvaluationActor(modelContainer: modelContext.container)
+        do {
+            let episodeIDs = try await evaluator.matchingEpisodeIDs(for: playlist.id)
+            guard Task.isCancelled == false, refreshGeneration == generation else { return }
+            SmartPlaylistMembershipCache.store(episodeIDs, for: playlist.id, filter: playlist.smartFilter)
+            matchingEpisodes = episodeIDs.compactMap { modelContext.model(for: $0) as? Episode }
+        } catch {
+            guard refreshGeneration == generation else { return }
+            matchingEpisodes = []
+        }
+        isLoadingMatches = false
     }
 }

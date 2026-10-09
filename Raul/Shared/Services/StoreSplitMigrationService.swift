@@ -2597,6 +2597,10 @@ actor StoreSplitAuthoritativeReconciliationService {
         result.subscriptionsRepublished = republished.subscriptions
         result.episodeStatesRepublished = republished.episodeStates
         result.preferencesRepublished = republished.preferences
+        result.failed += republished.failed
+        if let error = republished.error {
+            result.error = error
+        }
 
         let playlistWriter = StoreSplitPlaylistSyncWriter(
             modelContainer: userStateContainer
@@ -2687,20 +2691,37 @@ actor StoreSplitAuthoritativeReconciliationService {
     private func republishSourceState(
         from context: ModelContext,
         at date: Date
-    ) async -> (subscriptions: Int, episodeStates: Int, preferences: Int) {
+    ) async -> (
+        subscriptions: Int,
+        episodeStates: Int,
+        preferences: Int,
+        failed: Int,
+        error: String?
+    ) {
         var subscriptions = 0
+        var failed = 0
+        var firstError: String?
         let subscriptionWriter = StoreSplitSubscriptionSyncWriter(
             modelContainer: userStateContainer
         )
         for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
             guard let feed = podcast.feed else { continue }
-            await subscriptionWriter.setSubscribed(
-                feedURL: feed,
-                isSubscribed: podcast.metaData?.isSubscribed != false,
-                accessProfile: storedPodcastAccessProfile(for: podcast),
-                at: date
-            )
-            subscriptions += 1
+            do {
+                try await subscriptionWriter.setSubscribed(
+                    feedURL: feed,
+                    isSubscribed: podcast.metaData?.isSubscribed != false,
+                    accessProfile: storedPodcastAccessProfile(for: podcast),
+                    at: date
+                )
+                subscriptions += 1
+            } catch {
+                failed += 1
+                firstError = firstError ?? error.localizedDescription
+                CrashBreadcrumbs.shared.record(
+                    "store_split_subscription_republish_failed",
+                    details: error.localizedDescription
+                )
+            }
         }
 
         let episodeStateSnapshots = ((try? context.fetch(
@@ -2763,7 +2784,13 @@ actor StoreSplitAuthoritativeReconciliationService {
             )
             preferences += 1
         }
-        return (subscriptions, episodeStateSnapshots.count, preferences)
+        return (
+            subscriptions,
+            episodeStateSnapshots.count,
+            preferences,
+            failed,
+            firstError
+        )
     }
 
     private func makeSourceSnapshot(from context: ModelContext) -> SourceSnapshot {

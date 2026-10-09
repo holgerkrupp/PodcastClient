@@ -160,6 +160,60 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(subscription.updatedAt, deletionDate)
     }
 
+    @MainActor
+    func testSubscriptionWriterTransitionsAreIdempotentAndRejectOlderRequests() async throws {
+        let container = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let feedURL = URL(string: "https://example.com/lifecycle.xml")!
+        let writer = StoreSplitSubscriptionSyncWriter(modelContainer: container)
+        let firstSubscribe = Date(timeIntervalSince1970: 1_000)
+        let unsubscribe = Date(timeIntervalSince1970: 2_000)
+        let retry = Date(timeIntervalSince1970: 3_000)
+
+        let subscribed = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            at: firstSubscribe
+        )
+        let repeatedSubscribe = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            at: Date(timeIntervalSince1970: 1_500)
+        )
+        let unsubscribed = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: false,
+            at: unsubscribe
+        )
+        let staleSubscribe = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            at: Date(timeIntervalSince1970: 1_750)
+        )
+        let resubscribed = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            at: retry
+        )
+
+        XCTAssertTrue(subscribed.didChange)
+        XCTAssertFalse(repeatedSubscribe.didChange)
+        XCTAssertEqual(repeatedSubscribe.committedAt, firstSubscribe)
+        XCTAssertTrue(unsubscribed.didChange)
+        XCTAssertFalse(staleSubscribe.didChange)
+        XCTAssertFalse(staleSubscribe.isSubscribed)
+        XCTAssertTrue(resubscribed.didChange)
+
+        let context = ModelContext(container)
+        let records = try context.fetch(FetchDescriptor<SubscriptionSync>())
+        XCTAssertEqual(records.count, 1)
+        XCTAssertTrue(records[0].isSubscribed)
+        XCTAssertNil(records[0].unsubscribedAt)
+        XCTAssertEqual(records[0].subscribedAt, retry)
+        XCTAssertEqual(records[0].updatedAt, retry)
+    }
+
     func testMergePolicyPrefersNewestIncomingRecord() {
         let existing = Date(timeIntervalSince1970: 1_000)
         let incoming = Date(timeIntervalSince1970: 2_000)

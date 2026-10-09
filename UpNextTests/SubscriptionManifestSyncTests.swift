@@ -303,4 +303,56 @@ final class SubscriptionManifestSyncTests: XCTestCase {
 
         XCTAssertEqual(feeds, [feed])
     }
+
+    @MainActor
+    func testStaleManifestCannotOverrideAuthoritativeUnsubscribeTombstone() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(
+            isStoredInMemoryOnly: true
+        )
+        let tombstoneDate = Date(timeIntervalSince1970: 2_000)
+        userState.mainContext.insert(
+            SubscriptionSync(
+                feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+                isSubscribed: false,
+                subscribedAt: Date(timeIntervalSince1970: 1_000),
+                unsubscribedAt: tombstoneDate,
+                updatedAt: tombstoneDate
+            )
+        )
+        try userState.mainContext.save()
+
+        let staleEntry = SubscriptionManifestEntry(
+            feedURL: feed.absoluteString,
+            title: "Example",
+            author: nil,
+            description: nil,
+            artworkURL: nil,
+            lastRefresh: nil,
+            lastEpisodeDate: nil,
+            lastEpisodeURL: nil
+        )
+        let staleManifest = SubscriptionManifest(
+            updatedAt: Date(timeIntervalSince1970: 1_500),
+            entries: [staleEntry]
+        )
+
+        let filteredStaleManifest = SubscriptionManifestSync.filteringKnownSubscriptionTombstones(
+            in: staleManifest,
+            userStateContainer: userState
+        )
+        XCTAssertTrue(filteredStaleManifest.entries.isEmpty)
+
+        let resubscribeDate = Date(timeIntervalSince1970: 3_000)
+        let writer = StoreSplitSubscriptionSyncWriter(modelContainer: userState)
+        _ = try await writer.setSubscribed(
+            feedURL: feed,
+            isSubscribed: true,
+            at: resubscribeDate
+        )
+        let filteredNewManifest = SubscriptionManifestSync.filteringKnownSubscriptionTombstones(
+            in: staleManifest,
+            userStateContainer: userState
+        )
+        XCTAssertEqual(filteredNewManifest.entries.count, 1)
+    }
 }

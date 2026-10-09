@@ -52,7 +52,7 @@ final class P1PodcastWorkflowTests: XCTestCase {
     func testSmartPlaylistTypedDurationLanguageAndStatusRules() throws {
         let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
         podcast.language = "de-DE"
-        let episode = Episode(title: "Walk", url: URL(string: "https://example.com/walk.mp3")!, podcast: podcast, publishDate: .now, duration: 25 * 60)
+        let episode = Episode(title: "Walk", publishDate: .now, url: URL(string: "https://example.com/walk.mp3")!, podcast: podcast, duration: 25 * 60)
         let filters = [
             SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .language, query: "de")]),
             SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .duration, comparator: .lessThan, query: "30")]),

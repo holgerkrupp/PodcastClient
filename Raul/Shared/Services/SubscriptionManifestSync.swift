@@ -168,8 +168,22 @@ enum SubscriptionManifestSync {
         modelContainer: ModelContainer,
         credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
     ) async -> SubscriptionManifestRestoreResult? {
-        guard let manifest = loadManifest(credentialStore: credentialStore),
+        guard var manifest = loadManifest(credentialStore: credentialStore),
               manifest.entries.isEmpty == false else { return nil }
+
+        // KVS is recovery/bootstrap data. Once a per-feed authoritative row
+        // exists, its current value (including an unsubscribe tombstone) wins
+        // over an older device's manifest.
+        await ModelContainerManager.shared.prepareSplitStores()
+        if let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) {
+            manifest = filteringKnownSubscriptionTombstones(
+                in: manifest,
+                userStateContainer: userStateContainer
+            )
+        }
+        guard manifest.entries.isEmpty == false else { return nil }
 
         let restoreResult = await SubscriptionManifestModelActor(modelContainer: modelContainer)
             .restoreWithStatus(
@@ -182,6 +196,30 @@ enum SubscriptionManifestSync {
             await bootstrap(restoreResult.feedsToBootstrap, modelContainer: modelContainer)
         }
         return restoreResult
+    }
+
+    static func filteringKnownSubscriptionTombstones(
+        in manifest: SubscriptionManifest,
+        userStateContainer: ModelContainer
+    ) -> SubscriptionManifest {
+        var filtered = manifest
+        let context = ModelContext(userStateContainer)
+        filtered.entries = manifest.entries.filter { entry in
+            guard let feedURL = URL(string: entry.feedURL) else { return false }
+            var newestRecord: SubscriptionSync?
+            for key in feedURL.podcastFeedComparisonKeys {
+                let descriptor = FetchDescriptor<SubscriptionSync>(
+                    predicate: #Predicate<SubscriptionSync> { $0.id == key }
+                )
+                if let record = try? context.fetch(descriptor).first,
+                   newestRecord.map({ $0.updatedAt < record.updatedAt }) ?? true {
+                    newestRecord = record
+                }
+            }
+            guard let newestRecord else { return true }
+            return newestRecord.isSubscribed && newestRecord.unsubscribedAt == nil
+        }
+        return filtered
     }
 
     static func normalizedFeedKey(_ url: URL) -> String {

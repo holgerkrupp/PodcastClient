@@ -143,6 +143,7 @@ enum PodcastSubscriptionMutationError: LocalizedError {
     case missingPodcast
     case authoritativeStoreUnavailable
     case legacyProjectionFailed(Error)
+    case supersededByNewerState
 
     var errorDescription: String? {
         switch self {
@@ -152,6 +153,8 @@ enum PodcastSubscriptionMutationError: LocalizedError {
             return "Subscription storage is temporarily unavailable. Please try again."
         case .legacyProjectionFailed:
             return "The subscription was not fully applied to the library. Please try again."
+        case .supersededByNewerState:
+            return "A newer subscription change was received. Refresh the podcast state and try again."
         }
     }
 }
@@ -638,6 +641,21 @@ actor PodcastModelActor {
         _ podcastID: PersistentIdentifier,
         isSubscribed: Bool
     ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
+        guard let feedURL = modelContext.existingModel(for: podcastID)?.feed else {
+            throw PodcastSubscriptionMutationError.missingPodcast
+        }
+        return try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
+            try await self.performSetSubscriptionStatus(
+                podcastID,
+                isSubscribed: isSubscribed
+            )
+        }
+    }
+
+    private func performSetSubscriptionStatus(
+        _ podcastID: PersistentIdentifier,
+        isSubscribed: Bool
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
               let feedURL = podcast.feed else {
             throw PodcastSubscriptionMutationError.missingPodcast
@@ -649,14 +667,17 @@ actor PodcastModelActor {
             accessProfile: storedPodcastAccessProfile(for: podcast)
         )
 
-        metaData.isSubscribed = isSubscribed
-        if isSubscribed, writerResult.didChange {
-            metaData.subscriptionDate = Date()
-        } else if isSubscribed == false {
+        let effectiveState = writerResult.isSubscribed
+        metaData.isSubscribed = effectiveState
+        if effectiveState {
+            if writerResult.didChange || metaData.subscriptionDate == nil {
+                metaData.subscriptionDate = writerResult.committedAt
+            }
+        } else {
             metaData.subscriptionDate = nil
         }
 
-        if isSubscribed == false {
+        if effectiveState == false {
             await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
         }
         do {
@@ -667,7 +688,7 @@ actor PodcastModelActor {
         if writerResult.didChange {
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
-                allowEmpty: isSubscribed == false
+                allowEmpty: effectiveState == false
             )
         }
         return writerResult
@@ -1253,6 +1274,9 @@ actor PodcastModelActor {
                   let feedURL = podcast.feed else {
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
+            guard podcast.isSubscribed else {
+                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
+            }
             let podcastID = podcast.persistentModelID
             var metadataID = podcast.metaData?.persistentModelID
             if podcast.metaData == nil {
@@ -1713,6 +1737,9 @@ actor PodcastModelActor {
             }
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+            }
             // The cache projection reads the just-committed graph and writes a
             // shared cache store. Keep it behind the same writer gate so only
             // one large materialized feed and cache projection are active.
@@ -2316,7 +2343,7 @@ actor PodcastModelActor {
         await Player.shared.prepareForLibraryDeletion(episodeURLs: episodeURLs)
 
         guard try deletePodcastRow(podcastID) != nil else { return }
-        _ = try? await updateSplitSubscription(
+        _ = try await updateSplitSubscription(
             feedURL: feedURL,
             isSubscribed: false,
             accessProfile: profile
@@ -2349,21 +2376,7 @@ actor PodcastModelActor {
         isSubscribed: Bool,
         accessProfile: PodcastAccessProfile? = nil
     ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
-        await ModelContainerManager.shared.prepareSplitStores()
-        guard let userStateContainer = await MainActor.run(body: {
-            ModelContainerManager.shared.preparedUserStateContainer
-        }) else {
-            CrashBreadcrumbs.shared.record(
-                "store_split_subscription_write_deferred",
-                details: PodcastFeedIdentity.normalizedFeedURLString(feedURL)
-            )
-            throw PodcastSubscriptionMutationError.authoritativeStoreUnavailable
-        }
-
-        let writer = StoreSplitSubscriptionSyncWriter(
-            modelContainer: userStateContainer
-        )
-        return try await writer.setSubscribed(
+        try await PodcastSubscriptionPersistence.setSubscribed(
             feedURL: feedURL,
             isSubscribed: isSubscribed,
             accessProfile: accessProfile

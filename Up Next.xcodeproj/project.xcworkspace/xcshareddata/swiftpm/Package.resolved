@@ -1,5 +1,5 @@
 {
-  "originHash" : "6c51be677a507bb69772569c246609112804038d2692a53264a9e0cd91fb34bb",
+  "originHash" : "a4ce93d249f7ecb3c9590388d974a8c31bfa6921086651e85fbf6691fb920947",
   "pins" : [
     {
       "identity" : "clouddatapresence",
@@ -35,6 +35,15 @@
       "state" : {
         "revision" : "3d645782db67d09c6e7f16481c0c0e6b9787e45b",
         "version" : "3.0.0"
+      }
+    },
+    {
+      "identity" : "sfsymbolselector",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/holgerkrupp/SFSymbolSelector.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "30703f75f4435792f6fcc9112d3bfd223e720474"
       }
     },
     {

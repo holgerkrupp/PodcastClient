@@ -161,10 +161,37 @@ actor SubscriptionManager:NSObject{
         _ podcastFeed: PodcastFeed,
         subscribe: Bool,
         feedWasValidated: Bool = false,
+        knownSubscriptionStatus: Bool? = nil,
         progress: SubscriptionProgressHandler? = nil
     ) async throws -> PersistentIdentifier {
         guard let url = podcastFeed.url else {
             throw SubscribeError.loadfeed
+        }
+
+        let wasSubscribed: Bool
+        if subscribe {
+            if let knownSubscriptionStatus {
+                wasSubscribed = knownSubscriptionStatus
+            } else {
+                wasSubscribed = await PodcastSubscriptionPersistence.isSubscribed(
+                    feedURL: url,
+                    legacyContainer: modelContainer
+                )
+            }
+        } else {
+            wasSubscribed = false
+        }
+
+        if subscribe, wasSubscribed,
+           let existing = fetchPodcast(by: url),
+           existing.metaData?.lastRefresh != nil {
+            await MainActor.run {
+                podcastFeed.existing = true
+                podcastFeed.added = true
+                podcastFeed.isImportingEpisodes = false
+                podcastFeed.importNeedsRetry = false
+            }
+            return existing.persistentModelID
         }
 
         let accessProfile: PodcastAccessProfile? = {
@@ -205,12 +232,8 @@ actor SubscriptionManager:NSObject{
         let safeURL = accessProfile == nil && url.isLikelyPrivatePodcastURL == false
             ? url
             : url.podcastNonSecretURL
-        let existingPodcast = ((try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? [])
-            .first { podcast in
-                guard let feed = podcast.feed else { return false }
-                return !feed.podcastFeedComparisonKeys
-                    .intersection(safeURL.podcastFeedComparisonKeys).isEmpty
-            }
+        let existingPodcast = fetchPodcast(by: safeURL)
+        let hadLocalPodcast = existingPodcast != nil
         do {
             let podcast: Podcast
             if let existingPodcast {
@@ -228,22 +251,39 @@ actor SubscriptionManager:NSObject{
                     metadata.authenticationRetryAfter = nil
                 }
 
-                let metadata = ensureMetadata(for: existingPodcast)
-                if subscribe, metadata.isSubscribed == false {
-                    metadata.isSubscribed = true
-                    metadata.subscriptionDate = Date()
-                }
+                _ = ensureMetadata(for: existingPodcast)
             } else {
                 let newPodcast = Podcast(from: podcastFeed)
                 let metadata = newPodcast.metaData ?? PodcastMetaData()
                 newPodcast.metaData = metadata
-                metadata.isSubscribed = subscribe
-                metadata.subscriptionDate = subscribe ? Date() : nil
+                // A new subscribe is not reflected in the compatibility
+                // projection until the authoritative row has committed.
+                metadata.isSubscribed = false
+                metadata.subscriptionDate = nil
                 modelContext.insert(newPodcast)
                 podcast = newPodcast
             }
 
-            modelContext.saveIfNeeded()
+            let subscriptionResult: StoreSplitSubscriptionSyncWriter.Result?
+            if subscribe, let feed = podcast.feed {
+                let resolvedAccessProfile = storedPodcastAccessProfile(for: podcast) ?? accessProfile
+                let podcastID = podcast.persistentModelID
+                let result = try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feed) {
+                    try await self.commitSubscription(
+                        podcastID: podcastID,
+                        feedURL: feed,
+                        accessProfile: resolvedAccessProfile
+                    )
+                }
+                subscriptionResult = result
+                guard result.isSubscribed else {
+                    throw PodcastSubscriptionMutationError.supersededByNewerState
+                }
+            } else {
+                subscriptionResult = nil
+            }
+
+            try modelContext.save()
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: subscribe == false
@@ -260,6 +300,11 @@ actor SubscriptionManager:NSObject{
 
             if let feed = podcast.feed {
                 if subscribe {
+                    let needsImport = subscriptionResult?.didChange == true
+                        || ((wasSubscribed == false || hadLocalPodcast == false)
+                            && podcast.metaData?.lastRefresh == nil
+                            && (podcast.episodes?.isEmpty ?? true))
+                    guard needsImport else { return podcast.persistentModelID }
                     await MainActor.run {
                         podcastFeed.isImportingEpisodes = true
                         podcastFeed.importNeedsRetry = false
@@ -304,22 +349,51 @@ actor SubscriptionManager:NSObject{
 
             return podcast.persistentModelID
         } catch {
-        await SubscriptionManifestSync.publishCurrentSubscriptions(
-                modelContainer: modelContainer,
-                allowEmpty: true
+            CrashBreadcrumbs.shared.record(
+                "subscription_add_to_library_failed",
+                details: "feed=\(url.redactedPodcastURLString)"
             )
             throw error
         }
+    }
+
+    private func commitSubscription(
+        podcastID: PersistentIdentifier,
+        feedURL: URL,
+        accessProfile: PodcastAccessProfile?
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
+        let result = try await PodcastSubscriptionPersistence.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            accessProfile: accessProfile
+        )
+        guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
+              podcast.feed != nil else {
+            throw PodcastSubscriptionMutationError.missingPodcast
+        }
+        let metadata = ensureMetadata(for: podcast)
+        metadata.isSubscribed = result.isSubscribed
+        if result.didChange || metadata.subscriptionDate == nil {
+            metadata.subscriptionDate = result.isSubscribed ? result.committedAt : nil
+        }
+        try modelContext.save()
+        return result
     }
     
     
     
 
     private func fetchPodcast(by feedURL: URL) -> Podcast? {
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.feed == feedURL }
-        )
-        return try? modelContext.fetch(descriptor).first
+        for key in feedURL.podcastFeedComparisonKeys {
+            guard let candidate = URL(string: key) else { continue }
+            let descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.feed == candidate }
+            )
+            if let podcast = try? modelContext.fetch(descriptor).first {
+                return podcast
+            }
+        }
+        return nil
     }
 
     private func fetchPodcast(by id: PersistentIdentifier) -> Podcast? {
@@ -443,13 +517,20 @@ actor SubscriptionManager:NSObject{
         var pendingImports = 0
 
         for (index, feed) in newPodcasts.enumerated() {
-            guard feed.url != nil else {
+            guard let feedURL = feed.url else {
                 rejected += 1
                 continue
             }
-            let wasSubscribed = feedWasSubscribedBefore(feed)
+            let wasSubscribed = await PodcastSubscriptionPersistence.isSubscribed(
+                feedURL: feedURL,
+                legacyContainer: modelContainer
+            )
             do {
-                _ = try await addToLibrary(feed, subscribe: true)
+                _ = try await addToLibrary(
+                    feed,
+                    subscribe: true,
+                    knownSubscriptionStatus: wasSubscribed
+                )
                 await MainActor.run {
                     feed.added = true
                     feed.existing = true
@@ -493,16 +574,6 @@ actor SubscriptionManager:NSObject{
                 1,
                 "\(subscribed) subscribed, \(alreadyPresent) already present, \(rejected) could not validate, \(pendingImports) imports pending"
             ))
-        }
-    }
-
-    private func feedWasSubscribedBefore(_ feed: PodcastFeed) -> Bool {
-        guard let url = feed.url else { return false }
-        return ((try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? []).contains { podcast in
-            guard podcast.metaData?.isSubscribed == true,
-                  let existingFeed = podcast.feed else { return false }
-            return existingFeed.podcastFeedComparisonKeys
-                .intersection(url.podcastFeedComparisonKeys).isEmpty == false
         }
     }
 

@@ -29,7 +29,7 @@ final class PodcastBrowseViewModel: ObservableObject {
     func loadInitialPageIfNeeded() async {
         guard initialPageLoaded == false else { return }
         initialPageLoaded = true
-        refreshSubscriptionStatus()
+        await refreshSubscriptionStatus()
         await loadPage(from: podcastFeed.url, isInitialLoad: true)
     }
 
@@ -43,23 +43,20 @@ final class PodcastBrowseViewModel: ObservableObject {
         episodePager.reset()
         errorMessage = nil
         pageLoadFailed = false
-        refreshSubscriptionStatus()
+        await refreshSubscriptionStatus()
         await loadInitialPageIfNeeded()
     }
 
     /// The discovery hint is advisory; persisted feed identity is authoritative.
-    private func refreshSubscriptionStatus() {
-        let requestedKeys = podcastFeed.url?.podcastFeedComparisonKeys ?? []
-        guard requestedKeys.isEmpty == false else {
+    func refreshSubscriptionStatus() async {
+        guard let feedURL = podcastFeed.url else {
             isSubscribed = false
             return
         }
-        let context = ModelContext(modelContainer)
-        let podcasts = (try? context.fetch(FetchDescriptor<Podcast>())) ?? []
-        isSubscribed = podcasts.contains { podcast in
-            guard podcast.isSubscribed, let feed = podcast.feed else { return false }
-            return feed.podcastFeedComparisonKeys.isDisjoint(with: requestedKeys) == false
-        }
+        isSubscribed = await PodcastSubscriptionPersistence.isSubscribed(
+            feedURL: feedURL,
+            legacyContainer: modelContainer
+        )
     }
 
     func retryPageLoad() async {
@@ -303,6 +300,7 @@ final class PodcastBrowseViewModel: ObservableObject {
 struct PodcastBrowseView: View {
     @StateObject private var viewModel: PodcastBrowseViewModel
     @Query(filter: PodcastSettingsView.defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
+    @Environment(\.scenePhase) private var scenePhase
 
     init(feed: PodcastFeed, modelContainer: ModelContainer) {
         _viewModel = StateObject(wrappedValue: PodcastBrowseViewModel(feed: feed, modelContainer: modelContainer))
@@ -414,6 +412,13 @@ struct PodcastBrowseView: View {
         .navigationTitle(viewModel.podcastFeed.title ?? "Browse Episodes")
         .task {
             await viewModel.loadInitialPageIfNeeded()
+        }
+        .onAppear {
+            Task { await viewModel.refreshSubscriptionStatus() }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await viewModel.refreshSubscriptionStatus() }
         }
         .refreshable {
             await viewModel.reload()

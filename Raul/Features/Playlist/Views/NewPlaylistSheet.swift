@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct NewPlaylistSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -20,6 +21,15 @@ struct NewPlaylistSheet: View {
                     Picker("Type", selection: $draft.kind) {
                         Text("Manual").tag(Playlist.Kind.manual)
                         Text("Smart").tag(Playlist.Kind.smart)
+                    }
+                    .onChange(of: draft.kind) { oldKind, newKind in
+                        if newKind == .smart, oldKind == .manual,
+                           draft.symbolName == Playlist.defaultManualSymbolName {
+                            draft.symbolName = Playlist.smartPlaylistSymbolName
+                        } else if newKind == .manual, oldKind == .smart,
+                                  draft.symbolName == Playlist.smartPlaylistSymbolName {
+                            draft.symbolName = Playlist.defaultManualSymbolName
+                        }
                     }
                 }
 
@@ -125,6 +135,11 @@ enum SmartPlaylistExample: String, CaseIterable, Hashable {
 
 struct SmartPlaylistFilterEditor: View {
     @Binding var filter: SmartPlaylistFilter
+    @Query(sort: \Podcast.title) private var podcasts: [Podcast]
+
+    init(filter: Binding<SmartPlaylistFilter>) {
+        self._filter = filter
+    }
 
     var body: some View {
         Section("Smart Filters") {
@@ -138,17 +153,28 @@ struct SmartPlaylistFilterEditor: View {
             Toggle("Include archived episodes", isOn: $filter.includeArchived)
 
             ForEach($filter.rules) { $rule in
-                VStack(alignment: .leading, spacing: 10) {
-                    Picker("Field", selection: $rule.field) {
-                        ForEach(SmartPlaylistField.allCases, id: \.self) { field in
-                            Text(field.displayName).tag(field)
+                Picker("Field", selection: $rule.field) {
+                    ForEach(SmartPlaylistField.allCases, id: \.self) { field in
+                        Text(field.displayName).tag(field)
+                    }
+                }
+                Picker("Condition", selection: $rule.comparator) {
+                    ForEach(SmartPlaylistComparator.allCases, id: \.self) { comparator in
+                        Text(comparator.displayName).tag(comparator)
+                    }
+                }
+                if let values = selectableValues(for: rule.field), values.isEmpty == false {
+                    Picker("Value", selection: $rule.query) {
+                        if values.contains(rule.query) == false, rule.query.isEmpty == false {
+                            Text(rule.query).tag(rule.query)
+                        }
+                        ForEach(values, id: \.self) { value in
+                            Text(displayValue(value, for: rule.field)).tag(value)
                         }
                     }
-                    Picker("Condition", selection: $rule.comparator) {
-                        ForEach(SmartPlaylistComparator.allCases, id: \.self) { comparator in
-                            Text(comparator.displayName).tag(comparator)
-                        }
-                    }
+                    .pickerStyle(.menu)
+                    .accessibilityLabel("Value for \(rule.field.displayName)")
+                } else {
 #if os(iOS)
                     TextField(valuePlaceholder(for: rule.field), text: $rule.query)
                         .textInputAutocapitalization(.never)
@@ -157,11 +183,12 @@ struct SmartPlaylistFilterEditor: View {
                     TextField(valuePlaceholder(for: rule.field), text: $rule.query)
                         .autocorrectionDisabled()
 #endif
-                    Button("Remove Filter", systemImage: "minus.circle", role: .destructive) {
-                        filter.rules.removeAll { $0.id == rule.id }
-                    }
                 }
-                .padding(.vertical, 4)
+                Button("Remove Filter", systemImage: "minus.circle", role: .destructive) {
+                    guard let index = filter.rules.firstIndex(where: { $0.id == rule.id }) else { return }
+                    filter.rules.remove(at: index)
+                }
+                .buttonStyle(.borderless)
             }
 
             Button("Add Filter", systemImage: "plus.circle") {
@@ -181,6 +208,50 @@ struct SmartPlaylistFilterEditor: View {
         case .language: "Language, e.g. de or en"
         case .category: "Feed category"
         default: "Match text"
+        }
+    }
+
+    private func selectableValues(for field: SmartPlaylistField) -> [String]? {
+        switch field {
+        case .downloaded, .archived:
+            return ["Yes", "No"]
+        case .status:
+            return ["Unplayed", "In Progress", "Played"]
+        case .episodeType:
+            return ["full", "bonus", "trailer"]
+        case .source:
+            return ["feed", "sideloaded"]
+        case .language:
+            let available = podcasts.compactMap { $0.language }
+                .map { $0.replacingOccurrences(of: "_", with: "-").split(separator: "-").first.map(String.init)?.lowercased() }
+                .compactMap { $0 }
+            return Array(Set(available + ["de", "en", "es", "fr", "it", "ja", "nl", "pt", "sv"])).sorted()
+        case .category:
+            let categories = podcasts.flatMap { $0.optionalTags?.categories ?? [] }
+                .flatMap(categoryNames)
+            return Array(Set(categories)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+        default:
+            return nil
+        }
+    }
+
+    private func categoryNames(_ node: NamespaceNode) -> [String] {
+        let ownName = node.attributes["text"] ?? node.value
+        let nested = node.children.flatMap(categoryNames)
+        guard let ownName, ownName.isEmpty == false else { return nested }
+        return [ownName] + nested
+    }
+
+    private func displayValue(_ value: String, for field: SmartPlaylistField) -> String {
+        switch field {
+        case .episodeType:
+            value.capitalized
+        case .source:
+            value == "feed" ? "Subscribed feeds" : "Sideloaded"
+        case .language:
+            Locale.current.localizedString(forLanguageCode: value)?.capitalized ?? value.uppercased()
+        default:
+            value
         }
     }
 }

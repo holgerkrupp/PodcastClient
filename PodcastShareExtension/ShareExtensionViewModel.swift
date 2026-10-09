@@ -18,12 +18,18 @@ final class ShareExtensionViewModel: ObservableObject {
     @Published private(set) var state: State = .loading
     @Published private(set) var playlists: [SharedEpisodePlaylistSnapshot] = []
     @Published private(set) var podcastFeed: ShareLinkPodcast?
+    @Published private(set) var searchResults: [ShareLinkPodcast] = []
+    @Published private(set) var isSearching = false
+    @Published private(set) var hasSearched = false
+    @Published private(set) var searchError: String?
     @Published var selectedPlaylistID: UUID?
+    @Published var searchQuery = ""
 
     private var extensionContext: NSExtensionContext?
     private var sharedURL: URL?
     private var didComplete = false
     private var isActive = true
+    private var searchTask: Task<Void, Never>?
 
     var canAdd: Bool {
         switch state {
@@ -84,6 +90,11 @@ final class ShareExtensionViewModel: ObservableObject {
         guard case .checking = state else { return }
         podcastFeed = resolution.podcastFeed ?? podcastFeed
         state = resolution.state
+        switch resolution {
+        case .unresolved(_, let query, _): searchQuery = query ?? url.host() ?? ""
+        case .podcast(let podcast): searchQuery = podcast.title
+        default: break
+        }
         ShareExtensionDiagnostics.log("url.ready")
     }
 
@@ -100,26 +111,46 @@ final class ShareExtensionViewModel: ObservableObject {
     }
 
     func subscribe() {
-        guard isActive, didComplete == false, let podcast = podcastFeed, let sharedURL else { return }
+        guard let podcast = podcastFeed else { return }
+        subscribe(to: podcast)
+    }
+
+    func subscribe(to podcast: ShareLinkPodcast) {
+        guard isActive, didComplete == false, let sharedURL else { return }
         ShareExtensionDiagnostics.log("action.subscribe")
         state = .saving
         do {
             try PendingSharedEpisodeShareStore.save(.subscribe(feedURL: podcast.feedURL, sharedURL: sharedURL))
-            state = .saved("The podcast will open in Up Next so you can subscribe.")
+            state = .saved("Up Next will subscribe to the podcast when it opens.")
         } catch {
             state = .failed(error.localizedDescription)
         }
     }
 
     func search() {
-        guard isActive, didComplete == false, let sharedURL, let query = searchQuery else { return }
-        ShareExtensionDiagnostics.log("action.search")
-        state = .saving
-        do {
-            try PendingSharedEpisodeShareStore.save(.search(query: query, sharedURL: sharedURL))
-            state = .saved("Up Next will open Add with \(query) prefilled.")
-        } catch {
-            state = .failed(error.localizedDescription)
+        guard isActive, didComplete == false else { return }
+        let query = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard query.isEmpty == false else { return }
+
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+            self.isSearching = true
+            self.hasSearched = true
+            self.searchError = nil
+            self.searchResults = []
+
+            do {
+                let results = try await SharePodcastSearchService().search(query)
+                guard self.isActive, self.didComplete == false, Task.isCancelled == false else { return }
+                self.searchResults = results
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.isActive, self.didComplete == false else { return }
+                self.searchError = "Couldn’t search podcasts. Check your connection and try again."
+            }
+            self.isSearching = false
         }
     }
 
@@ -136,15 +167,8 @@ final class ShareExtensionViewModel: ObservableObject {
     func stopHandling() {
         guard isActive else { return }
         isActive = false
+        searchTask?.cancel()
         ShareExtensionDiagnostics.log("handling.stopped")
-    }
-
-    private var searchQuery: String? {
-        switch state {
-        case .unresolved(_, let query): return query ?? sharedHost
-        case .podcast(let podcast): return podcast.title
-        default: return sharedHost
-        }
     }
 
     private var destinationDescription: String {
@@ -163,6 +187,53 @@ final class ShareExtensionViewModel: ObservableObject {
         isActive = false
         ShareExtensionDiagnostics.log("completion.requested")
         extensionContext?.completeRequest(returningItems: nil)
+    }
+}
+
+private struct SharePodcastSearchService: Sendable {
+    private struct SearchResponse: Decodable {
+        let results: [Result]
+    }
+
+    private struct Result: Decodable {
+        let collectionName: String?
+        let artistName: String?
+        let feedUrl: URL?
+        let artworkUrl600: URL?
+        let artworkUrl100: URL?
+    }
+
+    func search(_ query: String) async throws -> [ShareLinkPodcast] {
+        guard var components = URLComponents(string: "https://itunes.apple.com/search") else {
+            throw URLError(.badURL)
+        }
+        components.queryItems = [
+            URLQueryItem(name: "term", value: query),
+            URLQueryItem(name: "media", value: "podcast"),
+            URLQueryItem(name: "country", value: Locale.autoupdatingCurrent.region?.identifier.lowercased() ?? "us"),
+            URLQueryItem(name: "limit", value: "25")
+        ]
+        guard let url = components.url else { throw URLError(.badURL) }
+
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
+
+        let responseBody = try JSONDecoder().decode(SearchResponse.self, from: data)
+        return responseBody.results.compactMap { result in
+            guard let feedURL = result.feedUrl,
+                  let title = result.collectionName,
+                  title.isEmpty == false else { return nil }
+            return ShareLinkPodcast(
+                title: title,
+                feedURL: feedURL,
+                artworkURL: result.artworkUrl600 ?? result.artworkUrl100,
+                author: result.artistName
+            )
+        }
     }
 }
 
