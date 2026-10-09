@@ -381,6 +381,7 @@ class Player {
     private var adSkipPlan = AdSkipPlan(segments: [])
     private var adDetectionTask: Task<Void, Never>?
     private var adDetectionEngine: AdDetectionEngine?
+    private var adDetectionLifecycleObservers: [NSObjectProtocol] = []
     private var automaticAdSkipInFlight = false
     private var lastAutomaticallySkippedAdID: UUID?
     private let chapterBoundaryTolerance: TimeInterval = 0.35
@@ -577,6 +578,7 @@ class Player {
         pause()
         addChangeSettingsObserver()
         addDownloadObserver()
+        installAdvertisementDetectionLifecycleObservers()
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
             await loadSkipProtectionSettings()
@@ -591,6 +593,44 @@ class Player {
             )
         }
         
+    }
+
+    private func installAdvertisementDetectionLifecycleObservers() {
+#if canImport(UIKit)
+        let center = NotificationCenter.default
+        adDetectionLifecycleObservers.append(center.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.adDetectionTask?.cancel()
+                self?.adDetectionTask = nil
+                await self?.adDetectionEngine?.cancelEpisode()
+                CrashBreadcrumbs.shared.record("ad_detection_paused", details: "reason=background")
+            }
+        })
+        adDetectionLifecycleObservers.append(center.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let episode = self.currentEpisode, let url = self.currentEpisodeURL else { return }
+                await self.configureAdvertisementDetection(for: episode, episodeURL: url)
+            }
+        })
+        adDetectionLifecycleObservers.append(center.addObserver(
+            forName: .NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, let episode = self.currentEpisode, let url = self.currentEpisodeURL else { return }
+                await self.configureAdvertisementDetection(for: episode, episodeURL: url)
+            }
+        })
+#endif
     }
 
     /// Creates the SwiftData-backed actors only after the runtime container is
@@ -1459,12 +1499,7 @@ class Player {
         let transcriptProvider = RollingSpeechTranscriptProvider(existingLines: transcriptLines)
         let audioSource: any AudioAnalysisSource
 #if !os(watchOS)
-        if episode.url?.pathExtension.lowercased() == "m3u8",
-           let currentItem = videoPlayer.currentItem {
-            audioSource = AudioAnalysisSourceFactory.make(for: currentItem)
-        } else {
-            audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
-        }
+        audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
 #else
         audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
 #endif
@@ -1474,17 +1509,32 @@ class Player {
         }
         var providers: [any AdSignalProvider] = [
             TranscriptAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
-            SemanticAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
-            AcousticBoundarySignalProvider(audioSource: audioSource),
-            FingerprintAdvertisementSignalProvider(
-                audioSource: audioSource,
-                store: AdFingerprintStore.shared,
-                podcastIdentity: episode.podcast?.feed?.absoluteString
-            )
+            SemanticAdvertisementSignalProvider(transcriptProvider: transcriptProvider)
         ]
+#if canImport(UIKit)
+        let applicationIsActive = UIApplication.shared.applicationState == .active
+#else
+        let applicationIsActive = true
+#endif
+        let shouldRunPCM = AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: applicationIsActive,
+            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            sourceIsLocal: mediaURL.isFileURL
+        )
+        if shouldRunPCM {
+            providers.append(CombinedAudioAdvertisementSignalProvider(
+                audioSource: audioSource,
+                fingerprintStore: AdFingerprintStore.shared,
+                podcastIdentity: episode.podcast?.feed?.absoluteString
+            ))
+        }
         if publisherMarkers.isEmpty == false {
             providers.append(PublisherMetadataAdSignalProvider(markers: publisherMarkers))
         }
+        CrashBreadcrumbs.shared.record(
+            "ad_detection_policy_applied",
+            details: "pcm=\(shouldRunPCM),local=\(mediaURL.isFileURL),low_power=\(ProcessInfo.processInfo.isLowPowerModeEnabled)"
+        )
 
         let engine = AdDetectionEngine(configuration: configuration, providers: providers)
         adDetectionEngine = engine
@@ -1492,7 +1542,9 @@ class Player {
             episodeIdentity: episodeURL.absoluteString,
             mediaURL: mediaURL,
             languageIdentifier: episode.podcast?.language,
-            range: AdTimeRange(start: 0, end: episode.duration),
+            // Analysis is intentionally a rolling look-ahead. Starting
+            // playback must not trigger a full-episode CPU and download job.
+            range: AdTimeRange(start: 0, end: min(episode.duration ?? 300, 300)),
             configuration: configuration
         )
 

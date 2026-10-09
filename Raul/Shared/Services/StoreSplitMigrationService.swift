@@ -2601,9 +2601,18 @@ actor StoreSplitAuthoritativeReconciliationService {
         let playlistWriter = StoreSplitPlaylistSyncWriter(
             modelContainer: userStateContainer
         )
+        var playlistSnapshots: [StoreSplitPlaylistSnapshot] = []
         for playlist in sourcePlaylists(from: legacyContext) {
+            if let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
+                playlistID: playlist.id,
+                in: legacyContext
+            ) {
+                playlistSnapshots.append(snapshot)
+            }
+        }
+        for snapshot in playlistSnapshots {
             await playlistWriter.upsert(
-                playlist.storeSplitSnapshot,
+                snapshot,
                 at: now,
                 authoritative: true
             )

@@ -31,11 +31,12 @@ enum AudioAnalysisSourceError: LocalizedError, Sendable {
 
 protocol AudioAnalysisSource: Sendable {
     var kind: AudioAnalysisSourceKind { get }
-    func chunks(
+    func forEachChunk(
         in range: AdTimeRange,
         windowDuration: TimeInterval,
-        hopDuration: TimeInterval
-    ) async throws -> [PCMAnalysisChunk]
+        hopDuration: TimeInterval,
+        consume: (PCMAnalysisChunk) async throws -> Void
+    ) async throws
 }
 
 enum AudioAnalysisSourceFactory {
@@ -64,11 +65,12 @@ struct UnsupportedAudioAnalysisSource: AudioAnalysisSource {
     let reason: String
     let kind: AudioAnalysisSourceKind = .unsupported
 
-    func chunks(
+    func forEachChunk(
         in range: AdTimeRange,
         windowDuration: TimeInterval,
-        hopDuration: TimeInterval
-    ) async throws -> [PCMAnalysisChunk] {
+        hopDuration: TimeInterval,
+        consume: (PCMAnalysisChunk) async throws -> Void
+    ) async throws {
         throw AudioAnalysisSourceError.unsupported(reason)
     }
 }
@@ -85,11 +87,12 @@ struct AVAudioFileAnalysisSource: AudioAnalysisSource {
         self.kind = url.isFileURL ? .downloadedFile : .remoteFile
     }
 
-    func chunks(
+    func forEachChunk(
         in range: AdTimeRange,
         windowDuration: TimeInterval,
-        hopDuration: TimeInterval
-    ) async throws -> [PCMAnalysisChunk] {
+        hopDuration: TimeInterval,
+        consume: (PCMAnalysisChunk) async throws -> Void
+    ) async throws {
         let readableURL = try await AnalysisAssetCache.localURL(for: url)
         let file: AVAudioFile
         do {
@@ -100,42 +103,54 @@ struct AVAudioFileAnalysisSource: AudioAnalysisSource {
 
         let format = file.processingFormat
         let sampleRate = format.sampleRate
-        guard sampleRate > 0, format.channelCount > 0 else {
+        guard sampleRate.isFinite,
+              sampleRate > 0,
+              format.channelCount > 0,
+              format.channelCount <= 32 else {
             throw AudioAnalysisSourceError.noAudioTrack
         }
 
         let duration = Double(file.length) / sampleRate
-        let start = min(max(range.start, 0), duration)
-        let end = min(max(range.end ?? duration, start), duration)
-        let window = max(windowDuration, 1)
-        let hop = max(min(hopDuration, window), 0.25)
-        let windowFrames = AVAudioFrameCount(max(sampleRate * window, 1))
-        var result: [PCMAnalysisChunk] = []
+        guard duration.isFinite else { throw AudioAnalysisSourceError.noAudioTrack }
+        let requestedStart = range.start.isFinite ? max(range.start, 0) : 0
+        let requestedEnd = range.end.flatMap { $0.isFinite ? $0 : nil } ?? duration
+        let start = min(requestedStart, duration)
+        let end = min(max(requestedEnd, start), duration)
+        let window = windowDuration.isFinite ? min(max(windowDuration, 1), 300) : 30
+        let requestedHop = hopDuration.isFinite ? hopDuration : window / 2
+        let hop = max(min(requestedHop, window), 0.25)
+        // A corrupt duration/sample-rate must never turn into an oversized
+        // allocation. Analysis deliberately uses a modest maximum window.
+        let maximumFrames = 30 * 48_000
+        let requestedFrames = min(max(sampleRate * window, 1), Double(maximumFrames))
+        let windowFrames = AVAudioFrameCount(requestedFrames)
         var offset = start
 
         while offset < end {
             try Task.checkCancellation()
-            let availableFrames = AVAudioFrameCount(max((end - offset) * sampleRate, 0).rounded(.up))
+            let availableFrameValue = min(
+                max((end - offset) * sampleRate, 0).rounded(.up),
+                Double(windowFrames)
+            )
+            let availableFrames = AVAudioFrameCount(availableFrameValue)
             let frameCount = min(windowFrames, max(availableFrames, 1))
             guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { break }
+            try Task.checkCancellation()
             file.framePosition = AVAudioFramePosition((offset * sampleRate).rounded())
             try file.read(into: buffer, frameCount: frameCount)
             guard buffer.frameLength > 0 else { break }
 
             let samples = Self.monoSamples(from: buffer)
             if samples.isEmpty == false {
-                result.append(
-                    PCMAnalysisChunk(
+                try await consume(PCMAnalysisChunk(
                         start: offset,
                         duration: Double(buffer.frameLength) / sampleRate,
                         sampleRate: sampleRate,
                         samples: samples
-                    )
-                )
+                    ))
             }
             offset += hop
         }
-        return result
     }
 
     private static func monoSamples(from buffer: AVAudioPCMBuffer) -> [Float] {
@@ -183,12 +198,12 @@ final class AVPlayerSampleBufferAnalysisSource: @unchecked Sendable, AudioAnalys
         item.add(output)
     }
 
-    func chunks(
+    func forEachChunk(
         in range: AdTimeRange,
         windowDuration: TimeInterval,
-        hopDuration: TimeInterval
-    ) async throws -> [PCMAnalysisChunk] {
-        var result: [PCMAnalysisChunk] = []
+        hopDuration: TimeInterval,
+        consume: (PCMAnalysisChunk) async throws -> Void
+    ) async throws {
         while let sequence = await output.nextSampleBuffer() {
             try Task.checkCancellation()
             let sample = sequence.sampleBuffer
@@ -204,17 +219,14 @@ final class AVPlayerSampleBufferAnalysisSource: @unchecked Sendable, AudioAnalys
             // the stable timing metadata; providers that need raw frame values
             // can consume the output directly on OS 27 without copying through
             // the normal AVPlayer path.
-            result.append(
-                PCMAnalysisChunk(
+            try await consume(PCMAnalysisChunk(
                     start: start,
                     duration: duration,
                     sampleRate: 0,
                     samples: []
-                )
-            )
+                ))
             if let end = range.end, start >= end { break }
         }
-        return result
     }
 }
 #endif

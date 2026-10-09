@@ -354,6 +354,7 @@ class PodcastParser:NSObject, XMLParserDelegate{
     private var rawNamespaceNodeStack: [RawNamespaceNodeBuilder] = []
 
     private let optionalNamespaceRootTags: Set<String> = [
+        "itunes:category",
         "podcast:alternateEnclosure",
         "podcast:block",
         "podcast:chat",

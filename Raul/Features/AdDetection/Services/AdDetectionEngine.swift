@@ -24,6 +24,16 @@ struct AdDetectionSnapshot: Sendable, Equatable {
     }
 }
 
+enum AdDetectionWorkPolicy {
+    static func shouldRunPCM(
+        applicationIsActive: Bool,
+        lowPowerModeEnabled: Bool,
+        sourceIsLocal: Bool
+    ) -> Bool {
+        applicationIsActive && lowPowerModeEnabled == false && sourceIsLocal
+    }
+}
+
 /// Coordinates signal providers while keeping cancellation and rolling state
 /// outside SwiftUI and the playback actor. A disabled engine does no provider
 /// work and clears its transient state immediately.

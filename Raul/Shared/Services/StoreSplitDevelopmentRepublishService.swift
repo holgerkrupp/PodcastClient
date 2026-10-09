@@ -596,16 +596,28 @@ actor StoreSplitDevelopmentRepublishService {
         let playlistWriter = StoreSplitPlaylistSyncWriter(
             modelContainer: userStateContainer
         )
-        for playlist in (try? context.fetch(FetchDescriptor<Playlist>())) ?? [] {
+        let playlists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+        for playlist in playlists {
             removeDuplicateEntries(from: playlist, in: context)
+        }
+        var snapshots: [StoreSplitPlaylistSnapshot] = []
+        for playlist in playlists {
+            if let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
+                playlistID: playlist.id,
+                in: context
+            ) {
+                snapshots.append(snapshot)
+            }
+        }
+        context.saveIfNeeded()
+        for snapshot in snapshots {
             await playlistWriter.upsert(
-                playlist.storeSplitSnapshot,
+                snapshot,
                 at: now,
                 authoritative: true
             )
             result.playlists += 1
         }
-        context.saveIfNeeded()
     }
 
     private func republishBookmarks(

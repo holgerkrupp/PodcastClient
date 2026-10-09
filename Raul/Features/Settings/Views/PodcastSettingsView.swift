@@ -532,7 +532,8 @@ struct PodcastSettingsView: View {
             globalCategorySections(
                 category,
                 effectiveSettings: effectiveSettings,
-                globalSettings: globalSettings
+                globalSettings: globalSettings,
+                onCreatePlaylist: { showCreatePlaylistFromSettings = true }
             )
         }
         .formStyle(.grouped)
@@ -557,7 +558,8 @@ struct PodcastSettingsView: View {
     private func globalCategorySections(
         _ category: GlobalSettingsCategory,
         effectiveSettings: PodcastSettings,
-        globalSettings: PodcastSettings
+        globalSettings: PodcastSettings,
+        onCreatePlaylist: @escaping () -> Void = {}
     ) -> some View {
         switch category {
         case .playback:
@@ -568,9 +570,7 @@ struct PodcastSettingsView: View {
             globalPodcastBehaviorSections(settings: effectiveSettings)
             liveNotificationsSection(settings: globalSettings, isGlobal: true)
         case .playlists:
-            PlaylistsSettingsSections(onCreatePlaylist: {
-                showCreatePlaylistFromSettings = true
-            })
+            PlaylistsSettingsSections(onCreatePlaylist: onCreatePlaylist)
         case .transcriptions:
             transcriptionSection(settings: globalSettings)
         case .appearance:

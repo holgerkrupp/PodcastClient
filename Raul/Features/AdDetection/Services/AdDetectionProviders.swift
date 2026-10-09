@@ -271,22 +271,28 @@ struct AcousticBoundarySignalProvider: AdSignalProvider {
     }
 
     func observations(for request: AdDetectionRequest) async throws -> [AdDetectionObservation] {
-        let chunks = try await audioSource.chunks(
+        var previous: PCMAnalysisChunk?
+        var results: [AdDetectionObservation] = []
+        try await audioSource.forEachChunk(
             in: request.range,
             windowDuration: request.configuration.windowDuration,
             hopDuration: request.configuration.hopDuration
-        )
-        guard chunks.count > 1 else { return [] }
-        return zip(chunks, chunks.dropFirst()).compactMap { previous, current in
-            let score = detector.score(previous: previous, current: current)
-            guard score > 0 else { return nil }
-            return AdDetectionObservation(
-                source: source,
-                range: AdTimeRange(start: current.start, end: current.start + min(current.duration, 4)),
-                confidence: min(score * 0.7, 0.48),
-                explanation: "Acoustic change point; boundary evidence only"
-            )
+        ) { current in
+            try Task.checkCancellation()
+            if let previous {
+                let score = detector.score(previous: previous, current: current)
+                if score > 0 {
+                    results.append(AdDetectionObservation(
+                        source: source,
+                        range: AdTimeRange(start: current.start, end: current.start + min(current.duration, 4)),
+                        confidence: min(score * 0.7, 0.48),
+                        explanation: "Acoustic change point; boundary evidence only"
+                    ))
+                }
+            }
+            previous = current
         }
+        return results
     }
 }
 
@@ -389,16 +395,16 @@ struct FingerprintAdvertisementSignalProvider: AdSignalProvider {
     let podcastIdentity: String?
 
     func observations(for request: AdDetectionRequest) async throws -> [AdDetectionObservation] {
-        let chunks = try await audioSource.chunks(
+        var results: [AdDetectionObservation] = []
+        try await audioSource.forEachChunk(
             in: request.range,
             windowDuration: request.configuration.windowDuration,
             hopDuration: request.configuration.hopDuration
-        )
-        var results: [AdDetectionObservation] = []
-        for chunk in chunks {
+        ) { chunk in
+            try Task.checkCancellation()
             let signature = AudioFingerprintBuilder.signature(samples: chunk.samples)
-            guard let match = await store.bestMatch(signature: signature, podcastIdentity: podcastIdentity), match.strength >= 0.82 else { continue }
-            guard match.kind == .advertisement else { continue }
+            guard let match = await store.bestMatch(signature: signature, podcastIdentity: podcastIdentity), match.strength >= 0.82 else { return }
+            guard match.kind == .advertisement else { return }
             results.append(
                 AdDetectionObservation(
                     source: source,
@@ -407,6 +413,68 @@ struct FingerprintAdvertisementSignalProvider: AdSignalProvider {
                     explanation: "Local repeated-audio match (strength \(match.strength.formatted(.number.precision(.fractionLength(2)))))"
                 )
             )
+        }
+        return results
+    }
+}
+
+/// Runs both PCM signals over one bounded decode stream. The callback keeps
+/// only the preceding acoustic window and the small result list, so audio
+/// samples are released as soon as each window has been scored.
+struct CombinedAudioAdvertisementSignalProvider: AdSignalProvider {
+    let source: AdSignalSource = .acoustic
+    let audioSource: any AudioAnalysisSource
+    let fingerprintStore: AdFingerprintStore
+    let podcastIdentity: String?
+    let detector = AcousticChangePointDetector()
+
+    func observations(for request: AdDetectionRequest) async throws -> [AdDetectionObservation] {
+        var previous: PCMAnalysisChunk?
+        var results: [AdDetectionObservation] = []
+        var chunkCount = 0
+        var maximumRetainedSamples = 0
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        defer {
+            CrashBreadcrumbs.shared.record(
+                "ad_detection_pcm_finished",
+                details: "chunks=\(chunkCount),max_retained_samples=\(maximumRetainedSamples),elapsed_ms=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000))"
+            )
+        }
+        try await audioSource.forEachChunk(
+            in: request.range,
+            windowDuration: request.configuration.windowDuration,
+            hopDuration: request.configuration.hopDuration
+        ) { chunk in
+            try Task.checkCancellation()
+            chunkCount += 1
+            maximumRetainedSamples = max(
+                maximumRetainedSamples,
+                chunk.samples.count + (previous?.samples.count ?? 0)
+            )
+            if let previous {
+                let score = detector.score(previous: previous, current: chunk)
+                if score > 0 {
+                    results.append(AdDetectionObservation(
+                        source: .acoustic,
+                        range: AdTimeRange(start: chunk.start, end: chunk.start + min(chunk.duration, 4)),
+                        confidence: min(score * 0.7, 0.48),
+                        explanation: "Acoustic change point; boundary evidence only"
+                    ))
+                }
+            }
+            let signature = AudioFingerprintBuilder.signature(samples: chunk.samples)
+            if let match = await fingerprintStore.bestMatch(
+                signature: signature,
+                podcastIdentity: podcastIdentity
+            ), match.strength >= 0.82, match.kind == .advertisement {
+                results.append(AdDetectionObservation(
+                    source: .fingerprint,
+                    range: AdTimeRange(start: chunk.start, end: chunk.start + chunk.duration),
+                    confidence: min(match.strength, 0.98),
+                    explanation: "Local repeated-audio match (strength \(match.strength.formatted(.number.precision(.fractionLength(2)))))"
+                ))
+            }
+            previous = chunk
         }
         return results
     }

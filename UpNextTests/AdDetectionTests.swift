@@ -125,6 +125,50 @@ final class AdDetectionTests: XCTestCase {
         XCTAssertGreaterThan(AdFingerprintStore.similarity(first, second), 0.98)
     }
 
+    func testPcmPolicyDefersForBackgroundLowPowerAndRemoteMedia() {
+        XCTAssertTrue(AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: true,
+            lowPowerModeEnabled: false,
+            sourceIsLocal: true
+        ))
+        XCTAssertFalse(AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: false,
+            lowPowerModeEnabled: false,
+            sourceIsLocal: true
+        ))
+        XCTAssertFalse(AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: true,
+            lowPowerModeEnabled: true,
+            sourceIsLocal: true
+        ))
+        XCTAssertFalse(AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: true,
+            lowPowerModeEnabled: false,
+            sourceIsLocal: false
+        ))
+    }
+
+    func testCombinedAudioProviderConsumesOneStreamingDecode() async throws {
+        let audio = CountingStreamingAudioSource(chunkCount: 360)
+        let provider = CombinedAudioAdvertisementSignalProvider(
+            audioSource: audio,
+            fingerprintStore: AdFingerprintStore(),
+            podcastIdentity: nil
+        )
+        var configuration = AdDetectionConfiguration.default
+        configuration.enabled = true
+        let observations = try await provider.observations(for: AdDetectionRequest(
+            episodeIdentity: "episode",
+            mediaURL: URL(fileURLWithPath: "/tmp/episode.m4a"),
+            range: AdTimeRange(start: 0, end: 360),
+            configuration: configuration
+        ))
+
+        XCTAssertTrue(observations.isEmpty)
+        XCTAssertEqual(audio.decodeCount, 1)
+        XCTAssertEqual(audio.emittedChunkCount, 360)
+    }
+
     func testEvaluationReportsPrecisionRecallAndBoundaryError() {
         let metrics = AdDetectionEvaluator.metrics(
             detected: [AdTimeRange(start: 101, end: 129)],
@@ -134,6 +178,45 @@ final class AdDetectionTests: XCTestCase {
         XCTAssertGreaterThan(metrics.precision, 0.99)
         XCTAssertGreaterThan(metrics.recall, 0.9)
         XCTAssertEqual(metrics.boundaryError, 2, accuracy: 0.001)
+    }
+}
+
+private final class CountingStreamingAudioSource: @unchecked Sendable, AudioAnalysisSource {
+    let kind: AudioAnalysisSourceKind = .downloadedFile
+    private let lock = NSLock()
+    private let chunkCount: Int
+    private var decodeCountStorage = 0
+    private var emittedChunkCountStorage = 0
+
+    init(chunkCount: Int) { self.chunkCount = chunkCount }
+
+    var decodeCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return decodeCountStorage
+    }
+
+    var emittedChunkCount: Int {
+        lock.lock(); defer { lock.unlock() }
+        return emittedChunkCountStorage
+    }
+
+    func forEachChunk(
+        in range: AdTimeRange,
+        windowDuration: TimeInterval,
+        hopDuration: TimeInterval,
+        consume: (PCMAnalysisChunk) async throws -> Void
+    ) async throws {
+        lock.withLock { decodeCountStorage += 1 }
+        for index in 0..<chunkCount {
+            try Task.checkCancellation()
+            try await consume(PCMAnalysisChunk(
+                start: Double(index),
+                duration: 1,
+                sampleRate: 48_000,
+                samples: Array(repeating: 0.1, count: 64)
+            ))
+            lock.withLock { emittedChunkCountStorage += 1 }
+        }
     }
 }
 

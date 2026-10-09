@@ -49,6 +49,35 @@ final class P1PodcastWorkflowTests: XCTestCase {
         ))
     }
 
+    func testSmartPlaylistTypedDurationLanguageAndStatusRules() throws {
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.language = "de-DE"
+        let episode = Episode(title: "Walk", url: URL(string: "https://example.com/walk.mp3")!, podcast: podcast, publishDate: .now, duration: 25 * 60)
+        let filters = [
+            SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .language, query: "de")]),
+            SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .duration, comparator: .lessThan, query: "30")]),
+            SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .status, query: "Unplayed")])
+        ]
+        XCTAssertTrue(filters.allSatisfy { SmartPlaylistEngine.matches(episode, filter: $0) })
+        XCTAssertFalse(SmartPlaylistEngine.matches(episode, filter: SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .duration, comparator: .lessThan, query: "20")])))
+
+        let legacy = Data(#"{"matchMode":"all","requireDownloaded":false,"includeArchived":false,"rules":[{"id":"00000000-0000-0000-0000-000000000001","field":"episodeTitle","comparator":"contains","query":"walk"}]}"#.utf8)
+        let decoded = try JSONDecoder().decode(SmartPlaylistFilter.self, from: legacy)
+        XCTAssertTrue(SmartPlaylistEngine.matches(episode, filter: decoded))
+    }
+
+    func testSmartPlaylistCategoryRulesSupportNestedRSSCategories() {
+        var tags = PodcastNamespaceOptionalTags()
+        tags.append(NamespaceNode(name: "itunes:category", attributes: ["text": "Technology"], children: [
+            NamespaceNode(name: "itunes:category", attributes: ["text": "Tech News"])
+        ]))
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        podcast.optionalTags = tags
+        let episode = Episode(title: "Update", url: URL(string: "https://example.com/update.mp3")!, podcast: podcast)
+        XCTAssertTrue(SmartPlaylistEngine.matches(episode, filter: SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .category, query: "Tech News")])))
+        XCTAssertFalse(SmartPlaylistEngine.matches(episode, filter: SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .category, query: "Tech")])))
+    }
+
     func testSmartShuffleHandlesEmptySinglePodcastAndLargeLists() {
         XCTAssertEqual(SmartShuffleOrdering.interleavedIndices(groupKeys: []), [])
         XCTAssertEqual(SmartShuffleOrdering.interleavedIndices(groupKeys: ["a", "a"]), [0, 1])

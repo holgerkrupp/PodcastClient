@@ -42,6 +42,15 @@ enum SmartPlaylistField: String, Codable, CaseIterable, Hashable, Sendable {
     case author
     case description
     case metadata
+    case downloaded
+    case language
+    case duration
+    case published
+    case status
+    case archived
+    case episodeType
+    case source
+    case category
 
     var displayName: String {
         switch self {
@@ -59,6 +68,15 @@ enum SmartPlaylistField: String, Codable, CaseIterable, Hashable, Sendable {
             return "Description"
         case .metadata:
             return "Metadata"
+        case .downloaded: return "Downloaded"
+        case .language: return "Podcast language"
+        case .duration: return "Length (minutes)"
+        case .published: return "Published"
+        case .status: return "Listening status"
+        case .archived: return "Archived"
+        case .episodeType: return "Episode type"
+        case .source: return "Source"
+        case .category: return "Podcast category"
         }
     }
 }
@@ -68,6 +86,9 @@ enum SmartPlaylistComparator: String, Codable, CaseIterable, Hashable, Sendable 
     case equals
     case startsWith
     case endsWith
+    case lessThan
+    case greaterThan
+    case withinLastDays
 
     var displayName: String {
         switch self {
@@ -79,6 +100,9 @@ enum SmartPlaylistComparator: String, Codable, CaseIterable, Hashable, Sendable 
             return "Starts with"
         case .endsWith:
             return "Ends with"
+        case .lessThan: return "Less than"
+        case .greaterThan: return "At least"
+        case .withinLastDays: return "Within last days"
         }
     }
 }
@@ -88,17 +112,31 @@ struct SmartPlaylistRule: Codable, Hashable, Identifiable, Sendable {
     var field: SmartPlaylistField = .episodeTitle
     var comparator: SmartPlaylistComparator = .contains
     var query: String = ""
+    /// Typed value storage for new predicates. Legacy text rules keep using `query`.
+    var values: [String] = []
 
     init(
         id: UUID = UUID(),
         field: SmartPlaylistField,
         comparator: SmartPlaylistComparator = .contains,
-        query: String
+        query: String,
+        values: [String] = []
     ) {
         self.id = id
         self.field = field
         self.comparator = comparator
         self.query = query
+        self.values = values
+    }
+
+    private enum CodingKeys: String, CodingKey { case id, field, comparator, query, values }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        field = try container.decodeIfPresent(SmartPlaylistField.self, forKey: .field) ?? .episodeTitle
+        comparator = try container.decodeIfPresent(SmartPlaylistComparator.self, forKey: .comparator) ?? .contains
+        query = try container.decodeIfPresent(String.self, forKey: .query) ?? ""
+        values = try container.decodeIfPresent([String].self, forKey: .values) ?? []
     }
 }
 
@@ -107,9 +145,10 @@ struct SmartPlaylistFilter: Codable, Hashable, Sendable {
     var requireDownloaded: Bool = false
     var includeArchived: Bool = false
     var rules: [SmartPlaylistRule] = []
+    var resultLimit: Int? = nil
 
     var hasRules: Bool {
-        rules.contains { !$0.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        rules.contains { !$0.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !$0.values.isEmpty }
     }
 }
 

@@ -18,6 +18,7 @@ struct PlaylistsSettingsSections: View {
     private var playlists: [Playlist]
 
     @State private var playlistPendingDeletion: Playlist?
+    let onCreatePlaylist: () -> Void
 
     /// Presented by the stable parent Settings Form, not by a Section inside it.
     let onCreatePlaylist: () -> Void

@@ -113,6 +113,92 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
     }
 
     @MainActor
+    func testSnapshotBuilderFetchesAndOrdersEntriesWithoutRelationshipSorting() throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = ModelContext(container)
+        let podcast = Podcast(feed: URL(string: "https://example.com/snapshot-builder")!)
+        let episodes = (0..<8).map { index in
+            Episode(
+                guid: "snapshot-\(index)",
+                title: "Snapshot \(index)",
+                url: URL(string: "https://example.com/snapshot-\(index).mp3")!,
+                podcast: podcast
+            )
+        }
+        podcast.episodes = episodes
+        let playlist = Playlist()
+        playlist.title = "Snapshot ordering"
+        playlist.items = episodes.enumerated().map { index, episode in
+            let entry = PlaylistEntry(episode: episode, order: 7 - index)
+            entry.playlist = playlist
+            context.insert(entry)
+            return entry
+        }
+        context.insert(podcast)
+        context.insert(playlist)
+        try context.save()
+
+        let snapshot = try XCTUnwrap(StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlist.id,
+            in: context
+        ))
+        XCTAssertEqual(snapshot.entries.map(\.identity.episodeID), (0..<8).reversed().map { "guid:snapshot-\($0)" })
+        XCTAssertEqual(snapshot.entries.map(\.sortIndex), Array(0..<8))
+    }
+
+    @MainActor
+    func testSnapshotBuilderSurvivesRepeatedWritesFromAnotherContext() throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let writerContext = ModelContext(container)
+        let mutationContext = ModelContext(container)
+        let podcast = Podcast(feed: URL(string: "https://example.com/snapshot-stress")!)
+        let episode = Episode(
+            guid: "snapshot-stress-episode",
+            title: "Stress",
+            url: URL(string: "https://example.com/snapshot-stress.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        let playlist = Playlist()
+        let entry = PlaylistEntry(episode: episode, order: 0)
+        entry.playlist = playlist
+        playlist.items = [entry]
+        writerContext.insert(podcast)
+        writerContext.insert(playlist)
+        writerContext.insert(entry)
+        try writerContext.save()
+        let playlistID = playlist.id
+        let episodeURL = try XCTUnwrap(episode.url)
+
+        for iteration in 0..<100 {
+            let currentEntries = try mutationContext.fetch(FetchDescriptor<PlaylistEntry>(
+                predicate: #Predicate { $0.playlist?.id == playlistID }
+            ))
+            if iteration.isMultiple(of: 2) {
+                for currentEntry in currentEntries {
+                    mutationContext.delete(currentEntry)
+                }
+            } else if currentEntries.isEmpty,
+                      let currentPlaylist = try mutationContext.fetch(FetchDescriptor<Playlist>(
+                          predicate: #Predicate { $0.id == playlistID }
+                      )).first,
+                      let currentEpisode = try mutationContext.fetch(FetchDescriptor<Episode>(
+                          predicate: #Predicate { $0.url == episodeURL }
+                      )).first {
+                let replacement = PlaylistEntry(episode: currentEpisode, order: 0)
+                replacement.playlist = currentPlaylist
+                mutationContext.insert(replacement)
+            }
+            if mutationContext.hasChanges { try mutationContext.save() }
+            let snapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+                playlistID: playlistID,
+                in: writerContext
+            )
+            XCTAssertNotNil(snapshot)
+        }
+    }
+
+    @MainActor
     func testImportedPlaylistRetainsItsCloudIdentityWhenRepublished() async throws {
         let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
@@ -487,6 +573,36 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
         XCTAssertEqual(queueEntries.count, 1)
         XCTAssertTrue(try XCTUnwrap(playlistEntries.first).isDeleted)
         XCTAssertTrue(try XCTUnwrap(queueEntries.first).isDeleted)
+    }
+
+    @MainActor
+    func testOlderCommittedSnapshotCannotOverwriteNewerPlaylistState() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let playlistID = UUID().uuidString
+        let now = Date()
+        func snapshot(title: String, capturedAt: Date) -> StoreSplitPlaylistSnapshot {
+            StoreSplitPlaylistSnapshot(
+                id: playlistID,
+                title: title,
+                symbolName: Playlist.defaultManualSymbolName,
+                sortIndex: 1,
+                kindRawValue: Playlist.Kind.manual.rawValue,
+                smartFilterRawValue: nil,
+                isHidden: false,
+                autoDownloadEnabled: false,
+                autoDownloadEpisodeLimit: nil,
+                removesEpisodesPlayedElsewhere: true,
+                entries: [],
+                capturedAt: capturedAt
+            )
+        }
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userState)
+        await writer.upsert(snapshot(title: "Newest", capturedAt: now.addingTimeInterval(1)))
+        await writer.upsert(snapshot(title: "Stale", capturedAt: now))
+
+        let context = ModelContext(userState)
+        let savedPlaylist = try XCTUnwrap(try context.fetch(FetchDescriptor<PlaylistSync>()).first)
+        XCTAssertEqual(savedPlaylist.title, "Newest")
     }
 
     @MainActor

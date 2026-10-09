@@ -453,10 +453,10 @@ actor PlaylistModelActor {
         }
     }
 
-    private func persistLocalEpisodeClassification(
+    private func localEpisodeClassificationSnapshots(
         _ episodes: [Episode]
-    ) async {
-        let snapshots = episodes.compactMap {
+    ) -> [StoreSplitLocalEpisodeClassificationSnapshot] {
+        episodes.compactMap {
             episode -> StoreSplitLocalEpisodeClassificationSnapshot? in
             guard let metadata = episode.metaData else { return nil }
             return StoreSplitLocalEpisodeClassificationSnapshot(
@@ -467,6 +467,11 @@ actor PlaylistModelActor {
                     metadata.systemSuppressionReasonRawValue
             )
         }
+    }
+
+    private func persistLocalEpisodeClassification(
+        _ snapshots: [StoreSplitLocalEpisodeClassificationSnapshot]
+    ) async {
         guard snapshots.isEmpty == false else { return }
         await ModelContainerManager.shared.prepareSplitStores()
         guard let cacheContainer = await MainActor.run(body: {
@@ -488,10 +493,10 @@ actor PlaylistModelActor {
         )
     }
 
-    private func startDownloadIfNeeded(for episode: Episode, episodeURL: URL) async {
-        guard episode.source != .sideLoaded else { return }
-        guard episode.metaData?.calculatedIsAvailableLocally != true else { return }
-
+    private func startDownloadIfNeeded(episodeURL: URL) async {
+        guard let episode = try? fetchEpisode(byURL: episodeURL),
+              episode.source != .sideLoaded,
+              episode.metaData?.calculatedIsAvailableLocally != true else { return }
         let episodeActor = EpisodeActor(modelContainer: modelContainer)
         await episodeActor.download(episodeURL: episodeURL)
     }
@@ -623,12 +628,17 @@ actor PlaylistModelActor {
         }
         
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
-        modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(matchingEpisodes)
-        await publishSplitStorePlaylist(playlist)
+        if modelContext.hasChanges { try modelContext.save() }
+        let committedSnapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlistID,
+            in: modelContext
+        )
+        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
+        await persistLocalEpisodeClassification(classificationSnapshots)
+        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
         if startDownload {
-            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+            await startDownloadIfNeeded(episodeURL: episodeURL)
         }
         await restoreQueuedChapterImages(for: episodeURL)
         scheduleAutoDownloadPolicy()
@@ -644,6 +654,7 @@ actor PlaylistModelActor {
         startDownload: Bool = true,
         origin: InsertionOrigin = .user
     ) async throws {
+        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
@@ -657,8 +668,6 @@ actor PlaylistModelActor {
 
         // Create a working copy of the ordered entries
         var sortedEntries = try fetchOrderedEntries()
-        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
-
         let reusableEntry = try detachExistingEntries(
             for: episodeURL,
             in: playlist,
@@ -696,13 +705,18 @@ actor PlaylistModelActor {
         // Update episode metadata
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
-        modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(matchingEpisodes)
-        await publishSplitStorePlaylist(playlist)
+        if modelContext.hasChanges { try modelContext.save() }
+        let committedSnapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlistID,
+            in: modelContext
+        )
+        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
+        await persistLocalEpisodeClassification(classificationSnapshots)
+        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
         if startDownload {
-            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+            await startDownloadIfNeeded(episodeURL: episodeURL)
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
@@ -720,6 +734,7 @@ actor PlaylistModelActor {
         startDownload: Bool = true,
         origin: InsertionOrigin = .user
     ) async throws {
+        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
         guard let playlist = try fetchPlaylist() else { return }
         guard playlist.isSmartPlaylist == false else { return }
         let matchingEpisodes = try fetchEpisodes(byURL: episodeURL)
@@ -732,8 +747,6 @@ actor PlaylistModelActor {
         ) == false else { return }
 
         var sortedEntries = try fetchOrderedEntries()
-        let pinnedEpisodeURL = await currentPlayingEpisodeURL()
-
         let reusableEntry = try detachExistingEntries(
             for: episodeURL,
             in: playlist,
@@ -770,13 +783,18 @@ actor PlaylistModelActor {
 
         prepareEpisodesForPlaylistInsertion(matchingEpisodes)
 
-        modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(matchingEpisodes)
-        await publishSplitStorePlaylist(playlist)
+        if modelContext.hasChanges { try modelContext.save() }
+        let committedSnapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlistID,
+            in: modelContext
+        )
+        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
+        await persistLocalEpisodeClassification(classificationSnapshots)
+        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
         if startDownload {
-            await startDownloadIfNeeded(for: episode, episodeURL: episodeURL)
+            await startDownloadIfNeeded(episodeURL: episodeURL)
         }
         await restoreQueuedChapterImages(for: episodeURL)
 
@@ -865,8 +883,12 @@ actor PlaylistModelActor {
         for (i, entry) in reordered.enumerated() {
             entry.order = i
         }
-        modelContext.saveIfNeeded()
-        await publishSplitStorePlaylist(playlist)
+        if modelContext.hasChanges { try modelContext.save() }
+        let committedSnapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlistID,
+            in: modelContext
+        )
+        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
         scheduleAutoDownloadPolicy()
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -878,13 +900,13 @@ actor PlaylistModelActor {
     /// existing relative episode order. The currently playing entry stays at
     /// its current position, and ungrouped episodes each form their own group.
     func smartShuffle() async throws -> SmartShuffleResult {
+        let nowPlayingURL = await currentPlayingEpisodeURL()
         guard let playlist = try fetchPlaylist(), playlist.isSmartPlaylist == false else {
             return .unavailable
         }
         let sorted = try fetchOrderedEntries()
         guard sorted.count > 1 else { return .unavailable }
 
-        let nowPlayingURL = await currentPlayingEpisodeURL()
         let pinnedIndex = nowPlayingURL.flatMap { url in
             sorted.firstIndex { $0.episode?.url == url }
         }
@@ -918,7 +940,11 @@ actor PlaylistModelActor {
         if modelContext.hasChanges {
             try modelContext.save()
         }
-        await publishSplitStorePlaylist(playlist)
+        let committedSnapshot = try StoreSplitPlaylistSnapshotBuilder.build(
+            playlistID: playlistID,
+            in: modelContext
+        )
+        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
         scheduleAutoDownloadPolicy()
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -999,10 +1025,8 @@ actor PlaylistModelActor {
         await writer.tombstone(removals)
     }
 
-    private func publishSplitStorePlaylist(_ playlist: Playlist) async {
-        guard playlist.isSmartPlaylist == false else { return }
-        let snapshot = playlist.storeSplitSnapshot
-
+    private func publishSplitStorePlaylist(_ snapshot: StoreSplitPlaylistSnapshot) async {
+        guard snapshot.kindRawValue != Playlist.Kind.smart.rawValue else { return }
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedUserStateContainer

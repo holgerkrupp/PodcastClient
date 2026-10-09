@@ -145,6 +145,7 @@ struct PodcastPodrollItem: Hashable, Identifiable, Sendable {
 }
 
 struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
+    var categories: [NamespaceNode]?
     var alternateEnclosure: [NamespaceNode]?
     var block: [NamespaceNode]?
     var chat: [NamespaceNode]?
@@ -173,6 +174,7 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
     var valueTimeSplit: [NamespaceNode]?
 
     var isEmpty: Bool {
+        categories == nil &&
         alternateEnclosure == nil &&
         block == nil &&
         chat == nil &&
@@ -202,8 +204,8 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
     }
 
     var allNodes: [NamespaceNode] {
-        [
-            alternateEnclosure, block, chat, contentLink, episode, image,
+        [categories, alternateEnclosure,
+            block, chat, contentLink, episode, image,
             images, integrity, license, liveItem, location, locked, medium,
             podping, podroll, publisher, remoteItem, season, soundbite,
             source, trailer, txt, updateFrequency, value, valueRecipient,
@@ -213,6 +215,9 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
 
     mutating func append(_ node: NamespaceNode) {
         switch Self.localName(from: node.name) {
+        case "category":
+            if categories == nil { categories = [] }
+            categories?.append(node)
         case "alternateEnclosure":
             if alternateEnclosure == nil { alternateEnclosure = [] }
             alternateEnclosure?.append(node)

@@ -25,6 +25,35 @@ struct StoreSplitPlaylistSnapshot: Sendable {
     let autoDownloadEpisodeLimit: Int?
     let removesEpisodesPlayedElsewhere: Bool
     let entries: [StoreSplitPlaylistEntrySnapshot]
+    let capturedAt: Date
+
+    init(
+        id: String,
+        title: String,
+        symbolName: String,
+        sortIndex: Int,
+        kindRawValue: String,
+        smartFilterRawValue: String?,
+        isHidden: Bool,
+        autoDownloadEnabled: Bool,
+        autoDownloadEpisodeLimit: Int?,
+        removesEpisodesPlayedElsewhere: Bool,
+        entries: [StoreSplitPlaylistEntrySnapshot],
+        capturedAt: Date = .now
+    ) {
+        self.id = id
+        self.title = title
+        self.symbolName = symbolName
+        self.sortIndex = sortIndex
+        self.kindRawValue = kindRawValue
+        self.smartFilterRawValue = smartFilterRawValue
+        self.isHidden = isHidden
+        self.autoDownloadEnabled = autoDownloadEnabled
+        self.autoDownloadEpisodeLimit = autoDownloadEpisodeLimit
+        self.removesEpisodesPlayedElsewhere = removesEpisodesPlayedElsewhere
+        self.entries = entries
+        self.capturedAt = capturedAt
+    }
 }
 
 extension Playlist {
@@ -72,10 +101,68 @@ extension Playlist {
     }
 }
 
+/// Creates a value-only snapshot from a fresh, context-owned playlist fetch.
+/// Entry order comes from SQLite; no `Playlist.items` relationship sorting or
+/// model access occurs after this function returns.
+enum StoreSplitPlaylistSnapshotBuilder {
+    static func build(playlistID: UUID, in context: ModelContext) throws -> StoreSplitPlaylistSnapshot? {
+        let playlistDescriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == playlistID }
+        )
+        guard let playlist = try context.fetch(playlistDescriptor).first else { return nil }
+        let smartFilterRawValue = playlist.smartFilter
+            .flatMap { try? JSONEncoder().encode($0) }
+            .flatMap { String(data: $0, encoding: .utf8) }
+        let entryDescriptor = FetchDescriptor<PlaylistEntry>(
+            predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID },
+            sortBy: [
+                SortDescriptor(\.order, order: .forward),
+                SortDescriptor(\.dateAdded, order: .forward)
+            ]
+        )
+        var seen = Set<String>()
+        let entries = try context.fetch(entryDescriptor).compactMap { entry -> StoreSplitPlaylistEntrySnapshot? in
+            guard let episode = entry.episode else { return nil }
+            let identity = episode.stableEpisodeIdentity
+            guard seen.insert(identity.key).inserted else { return nil }
+            return StoreSplitPlaylistEntrySnapshot(
+                identity: identity,
+                sortIndex: seen.count - 1,
+                addedAt: entry.dateAdded ?? .now
+            )
+        }
+        let configuredSyncID = playlist.syncID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let syncID = playlist.title == Playlist.defaultQueueTitle
+            ? Playlist.defaultQueueSyncID
+            : ((configuredSyncID?.isEmpty == false ? configuredSyncID : nil) ?? playlist.id.uuidString)
+        CrashBreadcrumbs.shared.record(
+            "store_split_playlist_snapshot_built",
+            details: "entries=\(entries.count)"
+        )
+        return StoreSplitPlaylistSnapshot(
+            id: syncID,
+            title: playlist.title,
+            symbolName: playlist.symbolName,
+            sortIndex: playlist.sortIndex,
+            kindRawValue: playlist.kindRawValue,
+            smartFilterRawValue: smartFilterRawValue,
+            isHidden: playlist.hidden,
+            autoDownloadEnabled: playlist.autoDownloadEnabled,
+            autoDownloadEpisodeLimit: playlist.resolvedAutoDownloadEpisodeLimit,
+            removesEpisodesPlayedElsewhere: playlist.removesEpisodesPlayedElsewhere,
+            entries: entries
+        )
+    }
+}
+
 @MainActor
 enum StoreSplitPlaylistSyncCoordinator {
     static func publish(_ playlist: Playlist) {
-        let snapshot = playlist.storeSplitSnapshot
+        guard let container = ModelContainerManager.shared.preparedContainer,
+              let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
+                  playlistID: playlist.id,
+                  in: ModelContext(container)
+              ) else { return }
         Task {
             await ModelContainerManager.shared.prepareSplitStores()
             guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
@@ -101,15 +188,19 @@ enum StoreSplitPlaylistSyncCoordinator {
 actor StoreSplitPlaylistSyncWriter {
     func upsert(
         _ snapshot: StoreSplitPlaylistSnapshot,
-        at date: Date = .now,
+        at requestedDate: Date? = nil,
         authoritative: Bool = false
     ) {
+        let date = requestedDate ?? snapshot.capturedAt
         let deviceID = ListeningDeviceIdentity.current().id
         let playlistID = snapshot.id
         let playlistDescriptor = FetchDescriptor<PlaylistSync>(
             predicate: #Predicate<PlaylistSync> { $0.id == playlistID }
         )
         if let playlist = try? modelContext.fetch(playlistDescriptor).first {
+            // A suspended older publisher must never replace a newer committed
+            // local playlist snapshot when its task resumes later.
+            if authoritative == false, playlist.updatedAt > date { return }
             playlist.title = snapshot.title
             playlist.symbolName = snapshot.symbolName
             playlist.sortIndex = snapshot.sortIndex
@@ -425,9 +516,16 @@ actor StoreSplitPlaylistRepairService {
 
     private func run() async -> StoreSplitPlaylistRepairResult {
         let legacyContext = ModelContext(legacyContainer)
-        let snapshots = ((try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? [])
-            .filter { $0.isSmartPlaylist == false }
-            .map(\.storeSplitSnapshot)
+        let playlists = (try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        var snapshots: [StoreSplitPlaylistSnapshot] = []
+        for playlist in playlists where playlist.isSmartPlaylist == false {
+            if let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
+                playlistID: playlist.id,
+                in: legacyContext
+            ) {
+                snapshots.append(snapshot)
+            }
+        }
 
         let expectedPlaylistIDs = Set(snapshots.map(\.id))
         let expectedPlaylistEntryIDs = Set(snapshots.flatMap { snapshot in
