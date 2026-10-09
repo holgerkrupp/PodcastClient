@@ -11,6 +11,10 @@ struct StoreSplitUserStateImportResult: Sendable {
     var listeningHistoryApplied = 0
     var duplicatePodcastsHidden = 0
     var feedsToBootstrap: [URL] = []
+    /// Credential-free feed identities that were retained but intentionally
+    /// not fetched because this device has not supplied their credential yet.
+    var feedsAwaitingCredentials: [URL] = []
+    var credentialRequiredProfileIDs: [String] = []
     var playlistFeedsToBootstrap: [URL] = []
     var failed = 0
     var interruptedByPlayback = false
@@ -24,6 +28,8 @@ actor StoreSplitUserStateImporter {
     private let episodeScanPageSize = 200
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
+    private let credentialStore: any PodcastCredentialStore
+    private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
     private var legacyContext: ModelContext
     private var userStateContext: ModelContext
     private var podcastsByComparisonKey: [String: PersistentIdentifier] = [:]
@@ -53,10 +59,13 @@ actor StoreSplitUserStateImporter {
 
     private init(
         legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer
+        userStateContainer: ModelContainer,
+        credentialStore: any PodcastCredentialStore
     ) {
         self.legacyContainer = legacyContainer
         self.userStateContainer = userStateContainer
+        self.credentialStore = credentialStore
+        previousImportCursors = StoreSplitImportCursorStore.load()
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
         legacyContext.autosaveEnabled = false
@@ -66,9 +75,13 @@ actor StoreSplitUserStateImporter {
     nonisolated static func apply(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
+        credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current,
         authoritativePlaylists: Bool = false,
         projectListeningHistoryToLegacy: Bool = true,
-        episodeStateProjectionRecencyCutoff: Date? = nil
+        episodeStateProjectionRecencyCutoff: Date? = nil,
+        changedStreams: Set<StoreSplitUserStateStream> = Set(
+            StoreSplitUserStateStream.allCases
+        )
     ) async -> StoreSplitUserStateImportResult {
         // Run inline (not detached) so cancellation from the caller's task
         // propagates into the importer. A detached task would keep scanning the
@@ -76,12 +89,14 @@ actor StoreSplitUserStateImporter {
         // SQLite lock across suspension and triggering an 0xdead10cc kill.
         let importer = StoreSplitUserStateImporter(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            credentialStore: credentialStore
         )
         return await importer.run(
             authoritativePlaylists: authoritativePlaylists,
             projectListeningHistoryToLegacy: projectListeningHistoryToLegacy,
-            episodeStateProjectionRecencyCutoff: episodeStateProjectionRecencyCutoff
+            episodeStateProjectionRecencyCutoff: episodeStateProjectionRecencyCutoff,
+            changedStreams: changedStreams
         )
     }
 
@@ -103,7 +118,8 @@ actor StoreSplitUserStateImporter {
     ) async -> StoreSplitUserStateImportResult {
         let importer = StoreSplitUserStateImporter(
             legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
+            userStateContainer: userStateContainer,
+            credentialStore: PodcastCredentialStoreProvider.current
         )
         return await importer.runListeningHistoryOnly()
     }
@@ -133,7 +149,8 @@ actor StoreSplitUserStateImporter {
     private func run(
         authoritativePlaylists: Bool,
         projectListeningHistoryToLegacy: Bool,
-        episodeStateProjectionRecencyCutoff: Date?
+        episodeStateProjectionRecencyCutoff: Date?,
+        changedStreams: Set<StoreSplitUserStateStream>
     ) async -> StoreSplitUserStateImportResult {
         var result = StoreSplitUserStateImportResult()
         guard Task.isCancelled == false else {
@@ -141,81 +158,141 @@ actor StoreSplitUserStateImporter {
             return result
         }
         await awaitIdleWindow()
-        let podcasts = buildPodcastIndex()
+        let needsPodcastIndex = changedStreams.intersection([
+            .subscriptions,
+            .episodeState,
+            .playlists,
+            .playlistEntries,
+            .queueEntries,
+            .bookmarks,
+            .listeningHistory
+        ]).isEmpty == false
+        let podcasts = needsPodcastIndex ? buildPodcastIndex() : []
 
-        let subscriptions = deduplicatedSubscriptions(
-            (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? [],
-        )
+        let subscriptions = changedStreams.contains(.subscriptions)
+            ? deduplicatedSubscriptions(
+                (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
+            )
+            : [:]
+        let accessResolver = PodcastAccessResolver(credentialStore: credentialStore)
+        if changedStreams.contains(.subscriptions) {
         for subscription in subscriptions.values {
-            guard let feedURL = URL(string: subscription.feedURL) else {
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return result
+            }
+            guard let manifestFeedURL = URL(string: subscription.feedURL) else {
                 result.failed += 1
                 continue
             }
-            let podcast = feedURL.podcastFeedComparisonKeys.compactMap {
+            let accessProfile = accessProfile(for: subscription, resourceURL: manifestFeedURL)
+            let bootstrapDecision = accessResolver.bootstrapDecision(
+                for: accessProfile,
+                fallbackURL: manifestFeedURL
+            )
+            let resolvedFeedURL: URL
+            let hasCredential: Bool
+            switch bootstrapDecision {
+            case .publicFeed(let url), .ready(let url):
+                resolvedFeedURL = url
+                hasCredential = true
+            case .credentialsRequired(let profileID, let feedURL):
+                resolvedFeedURL = feedURL
+                hasCredential = false
+                result.feedsAwaitingCredentials.append(feedURL)
+                result.credentialRequiredProfileIDs.append(profileID)
+            }
+            var createdPodcast = false
+            let podcast = resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
-                let podcast = Podcast(feed: feedURL)
+                let podcast = Podcast(feed: resolvedFeedURL)
                 legacyContext.insert(podcast)
-                for key in feedURL.podcastFeedComparisonKeys {
+                createdPodcast = true
+                for key in resolvedFeedURL.podcastFeedComparisonKeys {
                     self.podcastsByComparisonKey[key] = podcast.persistentModelID
                 }
-                result.feedsToBootstrap.append(feedURL)
                 return podcast
             }()
             guard let podcast else { continue }
 
             let metadata = ensureMetadata(for: podcast)
-            metadata.isSubscribed = subscription.isSubscribed
+            let profileWasAlreadyApplied = metadata.accessProfileID == accessProfile?.id
+            let credentialWasMissing = metadata.credentialState == .missing
+            // A subscription can already exist locally in a credential-missing
+            // state when a Keychain entry is restored or re-entered later. In
+            // that case the row is not new, but it must still be bootstrapped
+            // once the access profile becomes usable. Do not enqueue it on
+            // every subsequent store projection.
+            if subscription.isSubscribed,
+               hasCredential,
+               createdPodcast || !profileWasAlreadyApplied || credentialWasMissing {
+                result.feedsToBootstrap.append(resolvedFeedURL)
+            }
+            setIfChanged(metadata, \.isSubscribed, subscription.isSubscribed)
+            setIfChanged(metadata, \.accessProfileID, accessProfile?.id)
+            setIfChanged(metadata, \.accessKindRawValue, accessProfile?.kind.rawValue)
+            setIfChanged(metadata, \.accessProviderID, accessProfile?.providerID?.rawValue)
+            setIfChanged(metadata, \.credentialState, hasCredential ? .available : .missing)
             if subscription.isSubscribed {
-                metadata.subscriptionDate = metadata.subscriptionDate ?? subscription.subscribedAt
+                if metadata.subscriptionDate == nil {
+                    metadata.subscriptionDate = subscription.subscribedAt
+                }
                 if let titleOverride = nonEmpty(subscription.titleOverride) {
-                    podcast.title = titleOverride
+                    setIfChanged(podcast, \.title, titleOverride)
                 }
             } else {
                 metadata.subscriptionDate = nil
             }
             result.subscriptionsApplied += 1
         }
-        if StoreDevelopmentConfiguration.modeAllowsDuplicateCleanupDuringProjection {
-            result.duplicatePodcastsHidden = hideDuplicatePodcasts(podcasts)
-        }
-        saveLegacyChanges(phase: "subscriptions", result: &result)
-        refreshContexts()
-        if await shouldStop() {
-            result.interruptedByPlayback = true
-            return result
-        }
-
-        await awaitIdleWindow()
-        await applyPreferences(result: &result)
-        saveLegacyChanges(phase: "preferences", result: &result)
-        refreshContexts()
-        if await shouldStop() {
-            result.interruptedByPlayback = true
-            return result
+            if StoreDevelopmentConfiguration.modeAllowsDuplicateCleanupDuringProjection {
+                result.duplicatePodcastsHidden = hideDuplicatePodcasts(podcasts)
+            }
+            saveLegacyChanges(phase: "subscriptions", result: &result)
+            refreshContexts()
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return result
+            }
         }
 
-        await awaitIdleWindow()
-        await applyEpisodeStates(
-            recencyCutoff: episodeStateProjectionRecencyCutoff,
-            result: &result
-        )
-        await awaitIdleWindow()
-        await applyPlaylists(
-            authoritative: authoritativePlaylists,
-            result: &result
-        )
-        await awaitIdleWindow()
-        await applyBookmarks(
-            result: &result
-        )
+        if changedStreams.contains(.preferences) {
+            await awaitIdleWindow()
+            await applyPreferences(result: &result)
+            saveLegacyChanges(phase: "preferences", result: &result)
+            refreshContexts()
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return result
+            }
+        }
+
+        if changedStreams.contains(.episodeState) {
+            await awaitIdleWindow()
+            await applyEpisodeStates(
+                recencyCutoff: episodeStateProjectionRecencyCutoff,
+                result: &result
+            )
+        }
+        if changedStreams.intersection([.playlists, .playlistEntries, .queueEntries]).isEmpty == false {
+            await awaitIdleWindow()
+            await applyPlaylists(
+                authoritative: authoritativePlaylists,
+                result: &result
+            )
+        }
+        if changedStreams.contains(.bookmarks) {
+            await awaitIdleWindow()
+            await applyBookmarks(result: &result)
+        }
         saveLegacyChanges(phase: "user_state", result: &result)
         if await shouldStop() {
             result.interruptedByPlayback = true
             return result
         }
-        if projectListeningHistoryToLegacy {
+        if projectListeningHistoryToLegacy, changedStreams.contains(.listeningHistory) {
             await awaitIdleWindow()
             // Only sessions are projected. The legacy `PlaySessionSummary` table
             // is rebuilt from them locally by `rebuildListeningStats`; writing it
@@ -225,24 +302,50 @@ actor StoreSplitUserStateImporter {
                 result: &result
             )
             saveLegacyChanges(phase: "listening_history_final", result: &result)
-        } else {
+        } else if projectListeningHistoryToLegacy == false {
             clearProjectedListeningHistory(result: &result)
+        }
+
+        if Task.isCancelled {
+            result.interruptedByPlayback = true
+            return result
         }
 
         result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
             $0.absoluteString < $1.absoluteString
         }
+        result.feedsAwaitingCredentials = Array(Set(result.feedsAwaitingCredentials)).sorted {
+            $0.absoluteString < $1.absoluteString
+        }
+        result.credentialRequiredProfileIDs = Array(Set(result.credentialRequiredProfileIDs)).sorted()
         result.playlistFeedsToBootstrap = Array(Set(result.playlistFeedsToBootstrap)).sorted {
             $0.absoluteString < $1.absoluteString
         }
         CrashBreadcrumbs.shared.record(
             "store_split_user_state_import_completed",
-            details: "subscriptions=\(result.subscriptionsApplied),preferences=\(result.preferencesApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),failed=\(result.failed)"
+            details: "subscriptions=\(result.subscriptionsApplied),preferences=\(result.preferencesApplied),episodes=\(result.episodeStatesApplied),playlists=\(result.playlistsApplied),entries=\(result.playlistEntriesApplied),bookmarks=\(result.bookmarksApplied),history=\(result.listeningHistoryApplied),duplicates=\(result.duplicatePodcastsHidden),feeds=\(result.feedsToBootstrap.count),credentials_required=\(result.feedsAwaitingCredentials.count),failed=\(result.failed)"
         )
 #if DEBUG
         logProjectionAudit(result: result)
 #endif
         return result
+    }
+
+    private func accessProfile(
+        for subscription: SubscriptionSync,
+        resourceURL: URL
+    ) -> PodcastAccessProfile? {
+        guard let id = subscription.accessProfileID,
+              let rawKind = subscription.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind) else {
+            return nil
+        }
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: resourceURL,
+            providerID: subscription.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
     }
 
     /// Indexes the library's podcasts by feed comparison key and returns them.
@@ -324,36 +427,41 @@ actor StoreSplitUserStateImporter {
                     }()
                 }
 
-                settings.isEnabled = record.isEnabled
+                setIfChanged(settings, \.isEnabled, record.isEnabled)
                 if let data = record.playNextPositionRawValue.data(using: .utf8),
                    let position = try? decoder.decode(Playlist.Position.self, from: data) {
-                    settings.playnextPosition = position
+                    setIfChanged(settings, \.playnextPosition, position)
                 }
-                settings.defaultPlaylistID = record.defaultPlaylistID.flatMap(UUID.init(uuidString:))
-                settings.playbackSpeed = record.playbackSpeed.map(Float.init)
-                settings.reduceSilenceGapsEnabled = record.reduceSilenceGapsEnabled
-                settings.silenceGapReductionLevelRawValue = record.silenceGapReductionLevelRawValue
-                settings.voiceEnhancementEnabled = record.voiceEnhancementEnabled
+                setIfChanged(settings, \.defaultPlaylistID, record.defaultPlaylistID.flatMap(UUID.init(uuidString:)))
+                setIfChanged(settings, \.playbackSpeed, record.playbackSpeed.map(Float.init))
+                setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
+                setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)
+                setIfChanged(settings, \.voiceEnhancementEnabled, record.voiceEnhancementEnabled)
+                setIfChanged(settings, \.autoDownloadFilterJSON, record.autoDownloadFilterJSON)
                 if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
                    let keywords = try? decoder.decode([skipKey].self, from: data) {
-                    settings.autoSkipKeywords = keywords
+                    if let existingData = try? JSONEncoder().encode(settings.autoSkipKeywords),
+                       existingData != data {
+                        settings.autoSkipKeywords = keywords
+                    }
                 }
-                settings.cutFront = record.cutFront.map(Float.init)
-                settings.cutEnd = record.cutEnd.map(Float.init)
-                settings.skipForward = SkipSteps(rawValue: record.skipForwardSeconds) ?? .thirty
-                settings.skipBack = SkipSteps(rawValue: record.skipBackSeconds) ?? .fifteen
-                settings.skipForwardBehaviorRawValue = record.skipForwardBehaviorRawValue
-                settings.skipBackBehaviorRawValue = record.skipBackBehaviorRawValue
-                settings.markAsPlayedAfterSubscribe = record.markAsPlayedAfterSubscribe
-                settings.playSumAdjustedbyPlayspeed = record.playSumAdjustedByPlaySpeed
-                settings.enableLockscreenSlider = record.enableLockscreenSlider
-                settings.enableInAppSlider = record.enableInAppSlider
-                settings.getContinuousPlay = record.continuousPlayEnabled
-                settings.enableLiveItemNotifications = record.liveItemNotificationsEnabled
-                settings.sleepTimerAddMinutes = record.sleepTimerAddMinutes
-                settings.sleepTimerDurationToReactivate = record.sleepTimerDurationToReactivate
-                settings.sleepTimerVoiceFeedbackEnabled = record.sleepTimerVoiceFeedbackEnabled
-                settings.sleepTimerText = record.sleepTimerText
+                setIfChanged(settings, \.cutFront, record.cutFront.map(Float.init))
+                setIfChanged(settings, \.cutEnd, record.cutEnd.map(Float.init))
+                setIfChanged(settings, \.skipForward, SkipSteps(rawValue: record.skipForwardSeconds) ?? .thirty)
+                setIfChanged(settings, \.skipBack, SkipSteps(rawValue: record.skipBackSeconds) ?? .fifteen)
+                setIfChanged(settings, \.skipForwardBehaviorRawValue, record.skipForwardBehaviorRawValue)
+                setIfChanged(settings, \.skipBackBehaviorRawValue, record.skipBackBehaviorRawValue)
+                setIfChanged(settings, \.markAsPlayedAfterSubscribe, record.markAsPlayedAfterSubscribe)
+                setIfChanged(settings, \.playSumAdjustedbyPlayspeed, record.playSumAdjustedByPlaySpeed)
+                setIfChanged(settings, \.enableLockscreenSlider, record.enableLockscreenSlider)
+                setIfChanged(settings, \.enableInAppSlider, record.enableInAppSlider)
+                setIfChanged(settings, \.getContinuousPlay, record.continuousPlayEnabled)
+                setIfChanged(settings, \.showLivePodcasts, record.showLivePodcasts)
+                setIfChanged(settings, \.enableLiveItemNotifications, record.liveItemNotificationsEnabled)
+                setIfChanged(settings, \.sleepTimerAddMinutes, record.sleepTimerAddMinutes)
+                setIfChanged(settings, \.sleepTimerDurationToReactivate, record.sleepTimerDurationToReactivate)
+                setIfChanged(settings, \.sleepTimerVoiceFeedbackEnabled, record.sleepTimerVoiceFeedbackEnabled)
+                setIfChanged(settings, \.sleepTimerText, record.sleepTimerText)
                 result.preferencesApplied += 1
             }
 
@@ -376,12 +484,7 @@ actor StoreSplitUserStateImporter {
 
         while true {
             await awaitIdleWindow()
-            let page = fetchPage(
-                EpisodeStateSync.self,
-                offset: offset,
-                limit: sourcePageSize,
-                sortBy: [SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse)]
-            )
+            let page = fetchEpisodeStatePage(offset: offset, limit: sourcePageSize)
             guard page.isEmpty == false else { break }
 
             let freshStates = page.filter {
@@ -516,13 +619,17 @@ actor StoreSplitUserStateImporter {
                     }()
                 localPlaylistBySyncedID[record.id] = playlist
                 localPlaylistByLogicalKey[logicalKey] = playlist
-                playlist.syncID = record.title == Playlist.defaultQueueTitle
-                    ? Playlist.defaultQueueSyncID
-                    : record.id
+                setIfChanged(
+                    playlist,
+                    \.syncID,
+                    record.title == Playlist.defaultQueueTitle
+                        ? Playlist.defaultQueueSyncID
+                        : record.id
+                )
 
                 if record.isDeleted || record.deletedAt != nil {
                     guard playlist.title != Playlist.defaultQueueTitle else { continue }
-                    playlist.hidden = true
+                    setIfChanged(playlist, \.hidden, true)
                     for entry in playlist.items ?? [] {
                         legacyContext.delete(entry)
                     }
@@ -530,17 +637,28 @@ actor StoreSplitUserStateImporter {
                     continue
                 }
 
-                playlist.title = record.title
-                playlist.symbolName = record.symbolName
-                playlist.sortIndex = record.sortIndex
-                playlist.kindRawValue = record.kindRawValue
-                playlist.hidden = record.isHidden
-                playlist.deleteable = record.title != Playlist.defaultQueueTitle
-                playlist.smartFilter = record.smartFilterRawValue
-                    .flatMap { $0.data(using: .utf8) }
-                    .flatMap {
-                        try? JSONDecoder().decode(SmartPlaylistFilter.self, from: $0)
-                    }
+                setIfChanged(playlist, \.title, record.title)
+                setIfChanged(playlist, \.symbolName, record.symbolName)
+                setIfChanged(playlist, \.sortIndex, record.sortIndex)
+                setIfChanged(playlist, \.kindRawValue, record.kindRawValue)
+                setIfChanged(playlist, \.hidden, record.isHidden)
+                setIfChanged(playlist, \.autoDownloadEnabled, record.autoDownloadEnabled)
+                setIfChanged(playlist, \.autoDownloadEpisodeLimit, record.autoDownloadEpisodeLimit)
+                setIfChanged(
+                    playlist,
+                    \.removesEpisodesPlayedElsewhere,
+                    record.removesEpisodesPlayedElsewhere
+                )
+                setIfChanged(playlist, \.deleteable, record.title != Playlist.defaultQueueTitle)
+                setIfChanged(
+                    playlist,
+                    \.smartFilter,
+                    record.smartFilterRawValue
+                        .flatMap { $0.data(using: .utf8) }
+                        .flatMap {
+                            try? JSONDecoder().decode(SmartPlaylistFilter.self, from: $0)
+                        }
+                )
                 result.playlistsApplied += 1
             }
 
@@ -1309,7 +1427,13 @@ actor StoreSplitUserStateImporter {
 
     private func shouldPauseForPlayback() async -> Bool {
         await MainActor.run {
-            Player.shared.isPlaying
+            // Store projection can run during launch, before the app has
+            // prepared the runtime container that Player.shared needs. In
+            // that window there is no playback state to observe yet.
+            guard ModelContainerManager.shared.preparedContainer != nil else {
+                return false
+            }
+            return Player.shared.isPlaying
         }
     }
 
@@ -1326,6 +1450,7 @@ actor StoreSplitUserStateImporter {
     /// importer from competing with the UI for the main thread. Returns promptly
     /// when the task is cancelled.
     private func awaitIdleWindow() async {
+        guard Task.isCancelled == false else { return }
         await SystemPressureGate.shared.waitUntilIdle()
     }
 
@@ -1693,10 +1818,28 @@ actor StoreSplitUserStateImporter {
         limit: Int,
         sortBy: [SortDescriptor<Model>] = []
     ) -> [Model] {
+        guard Task.isCancelled == false else { return [] }
         var descriptor = FetchDescriptor<Model>(sortBy: sortBy)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = limit
         return (try? context(for: type).fetch(descriptor)) ?? []
+    }
+
+    private func fetchEpisodeStatePage(offset: Int, limit: Int) -> [EpisodeStateSync] {
+        let cursorDate = previousImportCursors[.episodeState]?.importedThrough
+        let predicate: Predicate<EpisodeStateSync>? = cursorDate.map { date in
+            #Predicate<EpisodeStateSync> { $0.updatedAt >= date }
+        }
+        var descriptor = FetchDescriptor<EpisodeStateSync>(
+            predicate: predicate,
+            sortBy: [
+                SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse),
+                SortDescriptor(\EpisodeStateSync.id, order: .forward)
+            ]
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = limit
+        return (try? userStateContext.fetch(descriptor)) ?? []
     }
 
     private func context<Model: PersistentModel>(
