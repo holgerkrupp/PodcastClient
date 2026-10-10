@@ -65,6 +65,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     private var downloads: [URL: DownloadItem] = [:]
     private var urlToTask: [URL: URLSessionDownloadTask] = [:]
+    /// URLSession delegate callbacks can arrive before actor tasks created by
+    /// earlier callbacks. Track the concrete task so an old callback cannot
+    /// tear down a retry for the same episode URL.
+    private var activeTaskIdentifiers: [URL: Int] = [:]
+    private var pausingTaskIdentifiers: Set<Int> = []
     private var destinations: [URL: URL] = [:]
     private var resumeData: [URL: Data] = [:]
     private var profiles: [URL: PodcastAccessProfile] = [:]
@@ -157,11 +162,19 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
         let task = session.downloadTask(with: request)
         urlToTask[url] = task
+        activeTaskIdentifiers[url] = task.taskIdentifier
         await MainActor.run { item.isDownloading = true }
         task.resume()
         
         // Notify the view model that a download has started
         await notifyViewModel(for: url)
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .episodeDownloadStarted,
+                object: nil,
+                userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
+            )
+        }
         
         return item
     }
@@ -176,6 +189,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     func cancelDownload(for url: URL) {
         urlToTask[url]?.cancel()
         urlToTask[url] = nil
+        activeTaskIdentifiers[url] = nil
         downloads[url] = nil
         destinations[url] = nil
         resumeData[url] = nil
@@ -188,39 +202,52 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     func pauseDownload(for url: URL) async {
         guard let task = urlToTask[url] else { return }
+        pausingTaskIdentifiers.insert(task.taskIdentifier)
         await withCheckedContinuation { continuation in
             task.cancel { data in
                 Task {
-                    await self.storeResumeData(data, for: url)
+                    await self.storeResumeData(data, for: url, taskIdentifier: task.taskIdentifier)
                     continuation.resume()
                 }
             }
         }
     }
     
-    func resumeDownload(for url: URL) {
+    func resumeDownload(for url: URL) async {
         let profile = profiles[url] ?? profiles[authorizationKeyURL(for: url)]
+        if profile != nil,
+           (try? accessResolver.request(for: url, profile: profile)) == nil {
+            // Never fall back to old resume data without rebuilding an
+            // authorized request: resume data can contain stale auth headers.
+            return
+        }
+
+        guard let item = downloads[url] else {
+            _ = await download(from: url)
+            return
+        }
+
+        let task: URLSessionDownloadTask
         if let profile,
            let request = try? accessResolver.request(for: url, profile: profile) {
             // Resume data contains the old request headers. Rebuild the task
             // with the current Keychain credential after a re-authentication
             // so a rotated token/password is used safely.
-            let task = session.downloadTask(with: request)
-            urlToTask[url] = task
-            task.resume()
-        } else if profile != nil {
-            // Never fall back to old resume data without rebuilding an
-            // authorized request: resume data can contain stale auth headers.
-            return
-        } else if let data = resumeData[url] {
-            let task = session.downloadTask(withResumeData: data)
-            urlToTask[url] = task
-            task.resume()
-            resumeData.removeValue(forKey: url)
+            task = session.downloadTask(with: request)
+        } else if let data = resumeData.removeValue(forKey: url) {
+            task = session.downloadTask(withResumeData: data)
+        } else if let request = try? accessResolver.request(for: url, profile: nil) {
+            // Some servers do not provide resume data. Continue with a fresh
+            // request while retaining the existing observable progress item.
+            task = session.downloadTask(with: request)
         } else {
-            // start fresh if no resume data
-            Task { _ = await download(from: url) }
+            return
         }
+
+        urlToTask[url] = task
+        activeTaskIdentifiers[url] = task.taskIdentifier
+        Task { @MainActor in item.isPaused = false; item.isDownloading = true }
+        task.resume()
     }
 
     private func persistProfiles() {
@@ -272,7 +299,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                                 totalBytesExpectedToWrite: Int64) {
         guard let url = downloadTask.originalRequest?.url else { return }
         Task {
-            if let item = await DownloadManager.shared.getItem(for: url) {
+            if let item = await DownloadManager.shared.getItem(for: url, taskIdentifier: downloadTask.taskIdentifier) {
                 await MainActor.run {
                     item.update(bytesWritten: totalBytesWritten, totalBytes: totalBytesExpectedToWrite)
                 }
@@ -286,6 +313,19 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         guard let url = downloadTask.originalRequest?.url else { return }
         print("downloaded \(url.redactedPodcastURLString)")
 
+        let statusCode = (downloadTask.response as? HTTPURLResponse)?.statusCode
+        if let statusCode, !(200..<300).contains(statusCode) {
+            Task {
+                await DownloadManager.shared.handleCompletion(
+                    for: url,
+                    taskIdentifier: downloadTask.taskIdentifier,
+                    statusCode: statusCode,
+                    error: URLError(.badServerResponse)
+                )
+            }
+            return
+        }
+
         let tempCopy = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(location.pathExtension)
@@ -293,6 +333,13 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         do {
             try FileManager.default.copyItem(at: location, to: tempCopy)
         } catch {
+            Task {
+                await DownloadManager.shared.failFinalization(
+                    for: url,
+                    taskIdentifier: downloadTask.taskIdentifier,
+                    error: error
+                )
+            }
             return
         }
 
@@ -302,9 +349,9 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             
 
             
-            guard let destination = await DownloadManager.shared.getDestination(for: url) else {
+            guard await DownloadManager.shared.isActiveTask(downloadTask.taskIdentifier, for: url),
+                  let destination = await DownloadManager.shared.getDestination(for: url) else {
                 try? FileManager.default.removeItem(at: tempCopy)
-                await DownloadManager.shared.cleanUp(url: url)
                 return
             }
             var didStoreFile = false
@@ -332,23 +379,31 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             }
             
             
-            if let item = await DownloadManager.shared.getItem(for: url) {
+            if let item = await DownloadManager.shared.getItem(for: url, taskIdentifier: downloadTask.taskIdentifier) {
                 print("item received")
                 await MainActor.run {
                     item.isDownloading = false
+                    item.isPaused = false
                     item.isFinished = didStoreFile
                 }
             }
-            await markDownloaded(for: destination)
-
-            await MainActor.run {
-                NotificationCenter.default.post(
-                    name: .episodeDownloadFinished,
-                    object: nil,
-                    userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
+            if didStoreFile {
+                await markDownloaded(for: destination)
+                await MainActor.run {
+                    NotificationCenter.default.post(
+                        name: .episodeDownloadFinished,
+                        object: nil,
+                        userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
+                    )
+                }
+            } else {
+                await DownloadManager.shared.failFinalization(
+                    for: url,
+                    taskIdentifier: downloadTask.taskIdentifier,
+                    error: CocoaError(.fileWriteUnknown)
                 )
             }
-            await DownloadManager.shared.cleanUp(url: url)
+            await DownloadManager.shared.cleanUp(url: url, taskIdentifier: downloadTask.taskIdentifier)
         }
     }
 
@@ -359,6 +414,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         Task {
             await DownloadManager.shared.handleCompletion(
                 for: url,
+                taskIdentifier: task.taskIdentifier,
                 statusCode: statusCode,
                 error: error
             )
@@ -367,17 +423,30 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     private func handleCompletion(
         for url: URL,
+        taskIdentifier: Int,
         statusCode: Int?,
         error: (any Error)?
     ) async {
+        guard activeTaskIdentifiers[url] == taskIdentifier else { return }
+        // A successful download's file callback owns finalization and cleanup.
+        // URLSession may report completion before the actor task that moves the
+        // temporary file has run, so cleaning up here loses its destination.
+        if error == nil { return }
+        if pausingTaskIdentifiers.contains(taskIdentifier) {
+            pausingTaskIdentifiers.remove(taskIdentifier)
+            return
+        }
         if PodcastDownloadCompletionPolicy.preservesAuthorization(for: statusCode) {
             urlToTask[url] = nil
+            activeTaskIdentifiers[url] = nil
             if let item = downloads[url] {
                 await MainActor.run {
                     item.isDownloading = false
-                    item.isFinished = false
+                    item.isPaused = false
+                    item.isFinished = true
                 }
             }
+            downloads[url] = nil
             // Keep profiles and destinations persisted. An explicit
             // resumeDownload(for:) will resolve the current credential and
             // rebuild the request rather than reuse stale resume headers.
@@ -389,10 +458,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         if let item = downloads[url] {
             await MainActor.run {
                 item.isDownloading = false
-                item.isFinished = false
+                item.isPaused = false
+                item.isFinished = true
             }
         }
-        await cleanUp(url: url)
+        await cleanUp(url: url, taskIdentifier: taskIdentifier)
         if let error {
             print("Download failed for \(url.redactedPodcastURLString): \(error.localizedDescription)")
         }
@@ -412,13 +482,37 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
     // MARK: - Internal lookups
     func getItem(for url: URL) -> DownloadItem? { downloads[url] }
+    private func getItem(for url: URL, taskIdentifier: Int) -> DownloadItem? {
+        guard activeTaskIdentifiers[url] == taskIdentifier else { return nil }
+        return downloads[url]
+    }
+    private func isActiveTask(_ taskIdentifier: Int, for url: URL) -> Bool {
+        activeTaskIdentifiers[url] == taskIdentifier
+    }
     private func getDestination(for url: URL) -> URL? {
         destinations[url] ?? destinations[authorizationKeyURL(for: url)]
     }
 
-    private func cleanUp(url: URL) async {
+    private func failFinalization(for url: URL, taskIdentifier: Int, error: Error) async {
+        guard activeTaskIdentifiers[url] == taskIdentifier else { return }
+        if let item = downloads[url] {
+            await MainActor.run {
+                item.isDownloading = false
+                item.isPaused = false
+                item.isFinished = true
+            }
+        }
+        print("Download finalization failed for \(url.redactedPodcastURLString): \(error.localizedDescription)")
+        await cleanUp(url: url, taskIdentifier: taskIdentifier)
+    }
+
+    private func cleanUp(url: URL, taskIdentifier: Int? = nil) async {
+        if let taskIdentifier, activeTaskIdentifiers[url] != taskIdentifier { return }
         downloads.removeValue(forKey: url)
         urlToTask.removeValue(forKey: url)
+        if let active = activeTaskIdentifiers[url], taskIdentifier == nil || active == taskIdentifier {
+            activeTaskIdentifiers[url] = nil
+        }
         destinations.removeValue(forKey: url)
         resumeData.removeValue(forKey: url)
         profiles.removeValue(forKey: url)
@@ -426,8 +520,17 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         persistProfiles()
     }
 
-    private func storeResumeData(_ data: Data?, for url: URL) {
+    private func storeResumeData(_ data: Data?, for url: URL, taskIdentifier: Int) async {
+        guard activeTaskIdentifiers[url] == taskIdentifier else { return }
         if let data { resumeData[url] = data }
         urlToTask[url] = nil
+        activeTaskIdentifiers[url] = nil
+        pausingTaskIdentifiers.remove(taskIdentifier)
+        if let item = downloads[url] {
+            await MainActor.run {
+                item.isDownloading = false
+                item.isPaused = true
+            }
+        }
     }
 }

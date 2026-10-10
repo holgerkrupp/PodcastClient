@@ -9,13 +9,18 @@ final class DownloadViewModel: ObservableObject {
     private var itemCancellable: AnyCancellable?
 
     func observeDownload(for episode: Episode) async {
-        guard episode.source != .sideLoaded else { return }
-        guard let url = episode.url,
-              let found = await DownloadManager.shared.getItem(for: url),
-              Task.isCancelled == false else {
+        guard episode.source != .sideLoaded else {
+            setItem(nil)
             return
         }
-        setItem(found)
+        guard let url = episode.url,
+              Task.isCancelled == false else {
+            setItem(nil)
+            return
+        }
+        let found = await DownloadManager.shared.getItem(for: url)
+        guard Task.isCancelled == false else { return }
+        setItem(found?.isDownloading == true || found?.isPaused == true ? found : nil)
     }
 
     func startDownload(for episode: Episode) {
@@ -48,6 +53,10 @@ final class DownloadViewModel: ObservableObject {
 
     func clearFinishedItem(for url: URL) {
         guard item?.url == url, item?.isFinished == true else { return }
+        setItem(nil)
+    }
+
+    func clearItem() {
         setItem(nil)
     }
 

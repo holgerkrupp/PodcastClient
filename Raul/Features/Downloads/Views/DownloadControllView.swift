@@ -22,38 +22,40 @@ struct DownloadControllView: View {
         Group {
             if episode.source == .sideLoaded {
                 EmptyView()
-            } else if let item = viewModel.item {
-                DownloadProgressView(item: item, viewModel: viewModel)
-                    .progressViewStyle(CircularProgressViewStyle())
-            } else if episode.url != nil, isDownloaded == false {
-                if let item = viewModel.item, item.isDownloading {
+            } else if isDownloaded {
+                if showDelete {
+                    Button {
+                        Task {
+                            if let container = episode.modelContext?.container {
+                                await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
+                            }
+                        }
+                    } label: {
+                        Label("Remove Download", systemImage: "trash")
+                    }
+                    .accessibilityHint("Deletes the local file from this device")
+                } else {
+                    EmptyView()
+                }
+            } else if let item = viewModel.item, item.isDownloading || item.isPaused {
                     DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
-                } else {
-                    Button {
-                        viewModel.startDownload(for: episode)
-                    } label: {
-                        Label("Download", systemImage: "arrow.down.circle")
-                    }
-                    .accessibilityHint("Downloads this episode for offline playback")
-                }
-            } else if showDelete {
+            } else if episode.url != nil {
                 Button {
-                    Task {
-                        if let container = episode.modelContext?.container {
-                            await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
-                        }
-                    }
+                    viewModel.startDownload(for: episode)
                 } label: {
-                    Label("Remove Download", systemImage: "trash")
+                    Label("Download", systemImage: "arrow.down.circle")
                 }
-                .accessibilityHint("Deletes the local file from this device")
+                .accessibilityHint("Downloads this episode for offline playback")
             }
         }
         .labelStyle(.iconOnly)
         .buttonStyle(.glass(.clear))
         .task(id: episode.url) {
-            guard episode.source != .sideLoaded else { return }
+            if isDownloaded {
+                viewModel.clearItem()
+                return
+            }
             await viewModel.observeDownload(for: episode)
         }
         .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
@@ -64,6 +66,17 @@ struct DownloadControllView: View {
                 guard Task.isCancelled == false else { return }
                 viewModel.clearFinishedItem(for: url)
                 fileManager.refreshDownloadedFiles()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadStarted).receive(on: DispatchQueue.main)) { notification in
+            guard notificationURL(from: notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL]) == episode.url else { return }
+            Task { @MainActor in
+                await viewModel.observeDownload(for: episode)
+            }
+        }
+        .onChange(of: fileManager.downloadedFiles) { _, _ in
+            if isDownloaded {
+                viewModel.clearItem()
             }
         }
     }
