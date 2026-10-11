@@ -707,17 +707,7 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                NavigationLink {
-                    PodcastBrowseEpisodeDetailView(
-                        episode: episode,
-                        podcastFeed: podcastFeed,
-                        isSubscribed: isSubscribed,
-                        queueAction: queueAction,
-                        playAction: playAction,
-                        prepareAction: prepareAction,
-                        subscribeAction: subscribeAction
-                    )
-                } label: {
+                ZStack {
                     HStack(alignment: .top, spacing: 14) {
                     ZStack {
         CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL, maxPixelSize: 384)
@@ -782,8 +772,23 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
                     }
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                     }
+                NavigationLink {
+                    PodcastBrowseEpisodeDetailView(
+                        episode: episode,
+                        podcastFeed: podcastFeed,
+                        isSubscribed: isSubscribed,
+                        queueAction: queueAction,
+                        playAction: playAction,
+                        prepareAction: prepareAction,
+                        subscribeAction: subscribeAction
+                    )
+                } label: {
+                    EmptyView()
+                }
+                .opacity(0)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open episode \(episode.title)")
                 .accessibilityHint("Opens episode details")
 
                 HStack {
