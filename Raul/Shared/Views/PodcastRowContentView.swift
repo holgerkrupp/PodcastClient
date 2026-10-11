@@ -316,27 +316,37 @@ struct PodcastRowContentView: View {
         if colorSchemeContrast == .increased {
             content.background(Color(white: colorScheme == .dark ? 0 : 1))
         } else {
-            ZStack {
-                if let previewArtwork {
-                    previewArtwork
-                        .resizable()
-                        .scaledToFill()
-                        .blur(radius: 18)
-                } else {
-                    BlurredCoverImageView(
-                        imageURL: presentation.artworkURL,
-                        accessProfileOverride: presentation.artworkAccessProfile,
-                        maxPixelSize: 256,
-                        loadDelay: .milliseconds(350)
-                    )
+            // The blurred image is decoration: it must never participate in
+            // measuring the Library row's width. Previously scaledToFill()
+            // was applied to a ZStack containing *both* image and text,
+            // which made the entire row wider than its List cell.
+            content
+                .background {
+                    GeometryReader { geometry in
+                        Group {
+                            if let previewArtwork {
+                                previewArtwork
+                                    .resizable()
+                                    .scaledToFill()
+                                    .blur(radius: 18)
+                            } else {
+                                BlurredCoverImageView(
+                                    imageURL: presentation.artworkURL,
+                                    accessProfileOverride: presentation.artworkAccessProfile,
+                                    maxPixelSize: 256,
+                                    loadDelay: .milliseconds(350)
+                                )
+                                .scaledToFill()
+                            }
+                        }
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .clipped()
+                        .accessibilityHidden(true)
+                    }
                 }
-
-                content
-            }
-            .scaledToFill()
-            .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-            .clipped()
-            .accessibilityElement(children: .contain)
+                .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+                .clipped()
+                .accessibilityElement(children: .contain)
         }
     }
 }
