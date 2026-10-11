@@ -85,10 +85,7 @@ struct BroadcasterDiscoveryView: View {
             unavailableRow
         } else {
             ForEach(viewModel.categories) { category in
-                NavigationLink {
-                    BroadcasterCategoryPodcastsView(provider: provider, category: category)
-                        .modelContext(context)
-                } label: {
+                ZStack {
                     HStack {
                         Text(category.title)
                         if let count = category.podcastCount {
@@ -99,7 +96,23 @@ struct BroadcasterDiscoveryView: View {
                                 .accessibilityLabel("\(count) podcasts")
                         }
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    NavigationLink {
+                        BroadcasterCategoryPodcastsView(provider: provider, category: category)
+                            .modelContext(context)
+                    } label: {
+                        EmptyView()
+                    }
+                    .opacity(0)
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Browse \(category.title)")
+                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
         }
     }
@@ -144,12 +157,23 @@ struct BroadcasterDiscoveryView: View {
     @ViewBuilder
     private func podcastRows(_ podcasts: [DiscoveredPodcast]) -> some View {
         ForEach(podcasts) { podcast in
-            NavigationLink {
-                DiscoveredPodcastBrowseView(podcast: podcast)
-                    .modelContext(context)
-            } label: {
+            ZStack {
                 DiscoveredPodcastRowView(podcast: podcast)
+
+                NavigationLink {
+                    DiscoveredPodcastBrowseView(podcast: podcast)
+                        .modelContext(context)
+                } label: {
+                    EmptyView()
+                }
+                .opacity(0)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open podcast \(podcast.title)")
+            .accessibilityHint("Browse episodes for this podcast")
+            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
         }
     }
 
@@ -205,12 +229,23 @@ struct BroadcasterCategoryPodcastsView: View {
                     .padding()
             } else {
                 List(viewModel.podcasts) { podcast in
-                    NavigationLink {
-                        DiscoveredPodcastBrowseView(podcast: podcast)
-                            .modelContext(context)
-                    } label: {
+                    ZStack {
                         DiscoveredPodcastRowView(podcast: podcast)
+
+                        NavigationLink {
+                            DiscoveredPodcastBrowseView(podcast: podcast)
+                                .modelContext(context)
+                        } label: {
+                            EmptyView()
+                        }
+                        .opacity(0)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open podcast \(podcast.title)")
+                    .accessibilityHint("Browse episodes for this podcast")
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
                 .listStyle(.plain)
                 .refreshable {
