@@ -273,10 +273,12 @@ struct EpisodeControlView: View {
             Button(action: playOrToggleEpisode) {
                 Label(playbackActionTitle, systemImage: playbackActionSymbol)
                     .font(.headline.weight(.semibold))
-                    .frame(maxWidth: .infinity, minHeight: 50)
-                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    // Keep the native glass control content-sized rather than
+                    // stretching a filled button across the episode detail.
+                    .frame(minHeight: 44)
+                    .padding(.horizontal, 12)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glass(.clear))
             .accessibilityLabel(playbackActionTitle)
             .accessibilityHint(playbackActionHint)
 
@@ -309,10 +311,10 @@ struct EpisodeControlView: View {
             } label: {
                 Label("Queue", systemImage: isInPlaylist ? "checkmark.circle" : "text.badge.plus")
                     .labelStyle(.titleAndIcon)
-                    .frame(minHeight: 50)
+                    .frame(minHeight: 44)
                     .padding(.horizontal, 8)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass(.clear))
             .accessibilityHint("Choose where this episode goes in Up Next or a playlist")
             .popoverTip(showsPlaylistPickerTip ? choosePlaylistTip : nil)
             .task(id: manualPlaylists.count) {

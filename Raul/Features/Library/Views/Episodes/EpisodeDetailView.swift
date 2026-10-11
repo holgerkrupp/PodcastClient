@@ -321,7 +321,7 @@ private struct EpisodeDetailPrimaryActionsView: View {
 
             if episode.source != .sideLoaded {
                 DownloadControllView(episode: episode, showDelete: true, showsLabels: true)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .frame(minHeight: 44)
             }
         }
     }
@@ -364,19 +364,17 @@ private struct EpisodeDetailContentToolsView: View {
                 Text("Episode content")
                     .font(.headline)
 
-                LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 132), alignment: .leading)],
-                    alignment: .leading,
-                    spacing: 8
-                ) {
+                // Flow naturally sized native glass actions; don't stretch
+                // each action to occupy a wide, flat grid cell.
+                FlowRows(spacing: 8) {
                     if hasChapters {
                         Button {
                             isShowingChapters = true
                         } label: {
                             Label("Chapters", systemImage: "list.bullet")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .frame(minHeight: 44)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass(.clear))
                         .accessibilityHint("Opens this episode's chapter list")
                     }
 
@@ -384,13 +382,13 @@ private struct EpisodeDetailContentToolsView: View {
                         Button(action: openTranscript) {
                             if isLoadingTranscript {
                                 Label("Loading Transcript", systemImage: "ellipsis")
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .frame(minHeight: 44)
                             } else {
                                 Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    .frame(minHeight: 44)
                             }
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass(.clear))
                         .disabled(isLoadingTranscript)
                         .accessibilityLabel(isLoadingTranscript ? "Loading transcript" : "Open captions and transcript")
                         .accessibilityHint("Opens episode captions if available")
@@ -400,9 +398,9 @@ private struct EpisodeDetailContentToolsView: View {
                     if bookmarkCount > 0 {
                         NavigationLink(destination: BookmarkListView(episode: episode)) {
                             Label("Bookmarks (\(bookmarkCount))", systemImage: "bookmark.fill")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                .frame(minHeight: 44)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass(.clear))
                     }
                 }
 
@@ -422,9 +420,8 @@ private struct EpisodeDetailContentToolsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .padding(14)
+            .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .sheet(isPresented: $isShowingChapters) {
                 NavigationStack {
                     ChapterListView(episode: episode)
@@ -524,7 +521,7 @@ private struct EpisodeDetailMoreMenu: View {
                 .frame(minHeight: 50)
                 .padding(.horizontal, 8)
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.glass(.clear))
         .accessibilityLabel("More episode actions")
     }
 
@@ -569,7 +566,7 @@ private struct EpisodeDetailSupportSection: View {
                             Label(fund.label, systemImage: "heart")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .buttonStyle(.bordered)
+                        .buttonStyle(.glass(.clear))
                     }
 
                     if hasValueSplit {

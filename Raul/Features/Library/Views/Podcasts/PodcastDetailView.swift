@@ -140,7 +140,7 @@ struct PodcastDetailView: View {
                 }
             }
         }
-        .buttonStyle(.borderedProminent)
+        .buttonStyle(.glass(.clear))
         .disabled(displayedIsSubscribed || subscriptionOperation != .idle)
         .accessibilityIdentifier("podcast-detail-subscription-button")
 
@@ -273,7 +273,7 @@ struct PodcastDetailView: View {
                                     .labelStyle(.iconOnly)
                                     .frame(width: 44, height: 44)
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.glass(.clear))
                             .accessibilityLabel("Open podcast website")
                         }
                     }
@@ -305,9 +305,10 @@ struct PodcastDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    HStack(spacing: 12) {
+                    // Intrinsic-width glass buttons should wrap naturally on
+                    // narrow devices instead of stretching into two flat columns.
+                    FlowRows(spacing: 10) {
                         subscriptionControls
-                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         if hasSearchableTranscripts {
                             Button {
@@ -315,7 +316,7 @@ struct PodcastDetailView: View {
                             } label: {
                                 Label("Search Transcripts", systemImage: "text.magnifyingglass")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.glass(.clear))
                             .accessibilityHint("Searches every locally available transcript in this podcast")
                         }
                     }
@@ -479,7 +480,7 @@ struct PodcastDetailView: View {
                             } label: {
                                 Label("Podroll", systemImage: "rectangle.connected.to.line.below")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.glass(.clear))
                             .accessibilityHint("Shows podcasts recommended by this podcast")
                         }
 
