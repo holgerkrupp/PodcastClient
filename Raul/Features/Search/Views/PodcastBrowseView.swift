@@ -518,16 +518,16 @@ private struct PodcastBrowseHeaderView: View {
             } label: {
                 if isSubscribed {
                     Label("Subscribed", systemImage: "checkmark.circle.fill")
-                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
                 } else if isSubscribing {
                     ProgressView("Subscribing")
-                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
                 } else {
                     Label("Subscribe", systemImage: "plus.circle.fill")
-                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 44)
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.glass(.clear))
             .disabled(feed.url == nil || isSubscribed || isSubscribing)
             .accessibilityHint("Episodes can be played and queued without subscribing")
 
@@ -626,7 +626,7 @@ private struct PodcastBrowseHeaderView: View {
                 } label: {
                     Label("Alternative Feeds", systemImage: "arrow.triangle.branch")
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.glass(.clear))
                 .disabled(isSubscribing)
             }
         }
