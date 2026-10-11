@@ -78,6 +78,7 @@ struct PublicBroadcastersView: View {
                 }
             }
         }
+        .listStyle(.plain)
         .navigationTitle("Public Broadcasters")
     }
 
