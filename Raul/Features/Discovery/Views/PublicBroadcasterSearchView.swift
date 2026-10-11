@@ -41,16 +41,27 @@ struct PublicBroadcasterSearchView: View {
                     .listRowSeparator(.hidden)
             } else {
                 ForEach(viewModel.results) { podcast in
-                    NavigationLink {
-                        DiscoveredPodcastBrowseView(podcast: podcast)
-                            .modelContext(context)
-                    } label: {
+                    ZStack {
                         DiscoveredPodcastRowView(
                             podcast: podcast,
                             showsSource: true,
                             registry: viewModel.registry
                         )
+
+                        NavigationLink {
+                            DiscoveredPodcastBrowseView(podcast: podcast)
+                                .modelContext(context)
+                        } label: {
+                            EmptyView()
+                        }
+                        .opacity(0)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open podcast \(podcast.title)")
+                    .accessibilityHint("Browse episodes for this podcast")
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
         }
