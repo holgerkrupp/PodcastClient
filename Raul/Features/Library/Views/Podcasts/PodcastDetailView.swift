@@ -122,33 +122,64 @@ struct PodcastDetailView: View {
         )
     }
 
-    @ViewBuilder
     private var subscriptionControls: some View {
         Button {
             guard displayedIsSubscribed == false else { return }
             Task { await toggleSubscriptionStatus() }
         } label: {
-            switch subscriptionOperation {
-            case .committing(let targetState):
-                ProgressView()
-                    .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
-            case .idle:
-                if displayedIsSubscribed {
-                    Label("Subscribed", systemImage: "checkmark.circle.fill")
-                } else {
-                    Label("Subscribe", systemImage: "plus.circle.fill")
+            Group {
+                switch subscriptionOperation {
+                case .committing(let targetState):
+                    ProgressView()
+                        .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
+                case .idle:
+                    if displayedIsSubscribed {
+                        Label("Subscribed", systemImage: "checkmark.circle.fill")
+                    } else {
+                        Label("Subscribe", systemImage: "plus.circle.fill")
+                    }
                 }
             }
+            .frame(minHeight: 44)
         }
         .buttonStyle(.glass(.clear))
         .disabled(displayedIsSubscribed || subscriptionOperation != .idle)
         .accessibilityIdentifier("podcast-detail-subscription-button")
+    }
 
-        if let subscriptionErrorMessage {
-            Text(subscriptionErrorMessage)
-                .font(.caption)
-                .foregroundStyle(.red)
+    private var transcriptSearchControl: some View {
+        Button {
+            showTranscriptSearch = true
+        } label: {
+            Label("Search Transcripts", systemImage: "text.magnifyingglass")
+                .frame(minHeight: 44)
         }
+        .buttonStyle(.glass(.clear))
+        .accessibilityHint("Searches every locally available transcript in this podcast")
+    }
+
+    private var headerActionControls: some View {
+        // FlowRows measured native glass buttons using an unspecified proposal,
+        // creating enormous vertical capsules. Use native stacks instead and
+        // only switch to the vertical layout when the intrinsic horizontal row
+        // cannot fit the available width.
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                subscriptionControls
+                if hasSearchableTranscripts {
+                    transcriptSearchControl
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+
+            VStack(alignment: .leading, spacing: 10) {
+                subscriptionControls
+                if hasSearchableTranscripts {
+                    transcriptSearchControl
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
 #if DEBUG
@@ -305,21 +336,7 @@ struct PodcastDetailView: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
-                    // Intrinsic-width glass buttons should wrap naturally on
-                    // narrow devices instead of stretching into two flat columns.
-                    FlowRows(spacing: 10) {
-                        subscriptionControls
-
-                        if hasSearchableTranscripts {
-                            Button {
-                                showTranscriptSearch = true
-                            } label: {
-                                Label("Search Transcripts", systemImage: "text.magnifyingglass")
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityHint("Searches every locally available transcript in this podcast")
-                        }
-                    }
+                    headerActionControls
 
                     if showLivePodcasts && (currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled)) {
                         PodcastLiveItemControlsView(
