@@ -10,15 +10,26 @@ import SwiftData
 
 
 extension ModelContext{
-    func saveIfNeeded(){
-        // print("save if needed - \(self.hasChanges)")
-        if self.hasChanges{
-                do {
-                    try self.save()
-                }catch{
-                  // print(error.localizedDescription)
-                }
+    func saveIfNeeded() {
+        if hasChanges {
+            do {
+                try save()
+            } catch {
+                AppDiagnostics.log("SwiftData save failed: \(error.localizedDescription)")
+                CrashBreadcrumbs.shared.record(
+                    "swiftdata_save_failed",
+                    details: error.localizedDescription
+                )
             }
+        }
+    }
+
+    /// Commit pending model changes and propagate failures to operations that
+    /// must not report success until their write is durable.
+    func commitChangesIfNeeded() throws {
+        if hasChanges {
+            try save()
+        }
     }
 
     // These helpers intentionally remain concrete. SwiftData's query

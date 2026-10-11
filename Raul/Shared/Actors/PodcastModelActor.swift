@@ -1737,17 +1737,23 @@ actor PodcastModelActor {
             }
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
-            await MainActor.run {
-                NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+            if newEpisodeCount > 0 {
+                await InboxChangeBroadcaster.notifyInboxDidChange()
+            }
+            // Smart playlist matching is expensive on large libraries. The
+            // feed import has already classified and updated matching episodes;
+            // only invalidate memberships when it actually added episodes.
+            if newEpisodeCount > 0 {
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+                }
             }
             // The cache projection reads the just-committed graph and writes a
             // shared cache store. Keep it behind the same writer gate so only
             // one large materialized feed and cache projection are active.
-            await updateFeedCache(
-                feedURL: feedURL,
-                parsedFeed: fullPodcast,
-                deadline: deadline
-            )
+            if newEpisodeCount > 0 {
+                await updateFeedCache(feedURL: feedURL, parsedFeed: fullPodcast, deadline: deadline)
+            }
             writerHeld = false
             await commitCoordinator.release()
             await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
@@ -1874,6 +1880,7 @@ actor PodcastModelActor {
         }
         print("updateDetails for \(podcast.title)")
         var newEpisodeCount = 0
+        var feedDataChanged = false
 
         podcast.title = fullPodcast["title"] as? String ?? ""
         podcast.author = fullPodcast["itunes:author"] as? String
@@ -2007,6 +2014,10 @@ actor PodcastModelActor {
 
                 if let existingEpisode = episodeIdentifier.flatMap({ existingEpisodesByGUID[$0] })
                     ?? candidateEpisodeURL.flatMap({ existingEpisodesByURL[$0] }) {
+                    if existingEpisode.hasSameFeedData(as: episodeData) {
+                        continue
+                    }
+                    feedDataChanged = true
                     existingEpisode.update(from: episodeData)
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     existingEpisode.refreshOptionalTags(from: episodeData)
@@ -2034,6 +2045,7 @@ actor PodcastModelActor {
 
                 if let episodeURL = existingEpisodeURL(identifier: episodeIdentifier, episodeURL: candidateEpisodeURL),
                    let feed = podcast.feed {
+                    feedDataChanged = true
                     print("reusing existing episode: \(episodeData["title"] as? String ?? "")")
                     await linkEpisodeToPodcast(
                         episodeURL,
@@ -2075,6 +2087,7 @@ actor PodcastModelActor {
 
                 print("newly created")
                 modelContext.insert(episode)
+                feedDataChanged = true
                 newEpisodeCount += 1
                 if let guid = episode.guid, guid.isEmpty == false {
                     existingEpisodesByGUID[guid] = episode
@@ -2090,7 +2103,6 @@ actor PodcastModelActor {
                     )
                 }
 
-                let episodeActor = EpisodeActor(modelContainer: modelContainer)
                 if shouldProcessNewEpisodes {
                     print("NOT SILENT")
                     if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7) {
@@ -2101,11 +2113,9 @@ actor PodcastModelActor {
                         print("episode is new")
                         if let episodeURL = episode.url {
                             modelContext.saveIfNeeded()
-                            await episodeActor.processAfterCreation(episodeURL: episodeURL)
-                            // The episode is persisted at this point, so let the
-                            // inbox pick it up now instead of when the whole
-                            // refresh run finishes.
-                            await InboxChangeBroadcaster.notifyInboxDidChange()
+                            // Defer playlist, notification, and chapter work
+                            // until the graph writer is released. Inbox changes
+                            // are broadcast once after this feed is committed.
                         }
                     }
                 } else {
@@ -2126,7 +2136,7 @@ actor PodcastModelActor {
 
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
 
-            if Task.isCancelled == false,
+            if feedDataChanged, Task.isCancelled == false,
                deadline.map({ Date() < $0 }) ?? true,
                let podcastFeed = podcast.feed {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
@@ -2136,7 +2146,7 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            if updateCache {
+            if updateCache && feedDataChanged {
                 await updateFeedCache(
                     feedURL: podcastFeed,
                     parsedFeed: fullPodcast,

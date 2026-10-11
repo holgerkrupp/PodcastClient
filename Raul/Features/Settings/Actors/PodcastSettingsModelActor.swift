@@ -40,39 +40,37 @@ actor PodcastSettingsModelActor {
         }
     }
 
-    private func manualPlaylistExists(id: UUID) -> Bool {
+    private func manualPlaylistExists(id: UUID) throws -> Bool {
         let descriptor = FetchDescriptor<Playlist>(
             predicate: #Predicate<Playlist> { $0.id == id }
         )
-        guard let playlist = try? modelContext.fetch(descriptor).first else {
+        guard let playlist = try modelContext.fetch(descriptor).first else {
             return false
         }
         return playlist.isSmartPlaylist == false
     }
 
-    private func migrateAutoDownloadIncludeArchivedSettingIfNeeded() {
+    private func migrateAutoDownloadIncludeArchivedSettingIfNeeded() throws {
         let defaults = UserDefaults.standard
         guard defaults.bool(forKey: Self.includeArchivedEpisodesMigrationKey) == false else {
             return
         }
 
-        if let settings = try? modelContext.fetch(FetchDescriptor<PodcastSettings>()) {
-            for setting in settings {
-                setting.autoDownloadIncludesArchivedEpisodes = true
-            }
-            modelContext.saveIfNeeded()
+        let settings = try modelContext.fetch(FetchDescriptor<PodcastSettings>())
+        for setting in settings {
+            setting.autoDownloadIncludesArchivedEpisodes = true
         }
-
+        try modelContext.commitChangesIfNeeded()
         defaults.set(true, forKey: Self.includeArchivedEpisodesMigrationKey)
     }
 
-    private func defaultQueueID() -> UUID {
+    private func defaultQueueID() throws -> UUID {
         let defaultQueueTitle = Playlist.defaultQueueTitle
         let descriptor = FetchDescriptor<Playlist>(
             predicate: #Predicate<Playlist> { $0.title == defaultQueueTitle }
         )
 
-        if let playlist = try? modelContext.fetch(descriptor).first {
+        if let playlist = try modelContext.fetch(descriptor).first {
             var changed = false
             if playlist.deleteable {
                 playlist.deleteable = false
@@ -99,7 +97,7 @@ actor PodcastSettingsModelActor {
                 changed = true
             }
             if changed {
-                modelContext.saveIfNeeded()
+                try modelContext.commitChangesIfNeeded()
             }
             return playlist.id
         }
@@ -109,7 +107,7 @@ actor PodcastSettingsModelActor {
             predicate: #Predicate<Playlist> { $0.title == defaultQueueDisplayName }
         )
 
-        if let legacyPlaylist = try? modelContext.fetch(legacyDescriptor).first {
+        if let legacyPlaylist = try modelContext.fetch(legacyDescriptor).first {
             legacyPlaylist.title = Playlist.defaultQueueTitle
             legacyPlaylist.deleteable = false
             legacyPlaylist.hidden = false
@@ -117,13 +115,13 @@ actor PodcastSettingsModelActor {
             legacyPlaylist.sortIndex = 0
             legacyPlaylist.symbolName = Playlist.defaultQueueSymbolName
             legacyPlaylist.smartFilter = nil
-            modelContext.saveIfNeeded()
+            try modelContext.commitChangesIfNeeded()
             return legacyPlaylist.id
         }
 
         let playlist = Playlist()
         modelContext.insert(playlist)
-        modelContext.saveIfNeeded()
+        try modelContext.commitChangesIfNeeded()
         return playlist.id
     }
 
@@ -133,17 +131,29 @@ actor PodcastSettingsModelActor {
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
     func standardSettings() async -> PodcastSettings {
-        migrateAutoDownloadIncludeArchivedSettingIfNeeded()
-        let defaultPlaylistID = defaultQueueID()
+        do {
+            try migrateAutoDownloadIncludeArchivedSettingIfNeeded()
+            return try fetchOrCreateStandardSettings()
+        } catch {
+            AppDiagnostics.log("Could not load standard settings: \(error.localizedDescription)")
+            CrashBreadcrumbs.shared.record("standard_settings_read_failed", details: error.localizedDescription)
+            // Return an ephemeral value. A failed read must never create durable
+            // replacement settings or a replacement default queue.
+            return PodcastSettings()
+        }
+    }
+
+    private func fetchOrCreateStandardSettings() throws -> PodcastSettings {
+        let defaultPlaylistID = try defaultQueueID()
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate { $0.title == defaultSettingsTitle }
         )
         descriptor.fetchLimit = 1
-        if let result = try? modelContext.fetch(descriptor).first {
+        if let result = try modelContext.fetch(descriptor).first {
             if result.defaultPlaylistID == nil {
                 result.defaultPlaylistID = defaultPlaylistID
-                modelContext.saveIfNeeded()
+                try modelContext.commitChangesIfNeeded()
             }
             return result
         } else {
@@ -151,7 +161,7 @@ actor PodcastSettingsModelActor {
             newDefaultSettings.title = defaultSettingsTitle
             newDefaultSettings.defaultPlaylistID = defaultPlaylistID
             modelContext.insert(newDefaultSettings)
-            modelContext.saveIfNeeded()
+            try modelContext.commitChangesIfNeeded()
             return newDefaultSettings
         }
     }
@@ -165,21 +175,28 @@ actor PodcastSettingsModelActor {
     /// path does.
     func podcastsRouted(toPlaylistID playlistID: UUID) async -> [PlaylistRoutedPodcast] {
         let globalSettings = await standardSettings()
-        let defaultQueueID = defaultQueueID()
+        let resolvedDefaultQueueID: UUID
+        do { resolvedDefaultQueueID = try defaultQueueID() } catch {
+            AppDiagnostics.log("Could not resolve default queue for playlist routing: \(error.localizedDescription)")
+            return []
+        }
         let globalPosition = globalSettings.playnextPosition
-        let globalPlaylistID = globalSettings.defaultPlaylistID ?? defaultQueueID
+        let globalPlaylistID = globalSettings.defaultPlaylistID ?? resolvedDefaultQueueID
 
         // One fetch for every podcast's settings instead of one per podcast.
-        let customSettingsByFeed = ((try? modelContext.fetch(
+        guard let customSettings = try? modelContext.fetch(
             FetchDescriptor<PodcastSettings>(
                 predicate: #Predicate<PodcastSettings> { $0.isEnabled == true }
             )
-        )) ?? []).reduce(into: [URL: PodcastSettings]()) { partialResult, settings in
+        ), let podcasts = try? modelContext.fetch(FetchDescriptor<Podcast>()) else {
+            AppDiagnostics.log("Could not read settings or podcasts for playlist routing")
+            return []
+        }
+        let customSettingsByFeed = customSettings.reduce(into: [URL: PodcastSettings]()) { partialResult, settings in
             guard let feed = settings.podcast?.feed else { return }
             partialResult[feed] = settings
         }
 
-        let podcasts = (try? modelContext.fetch(FetchDescriptor<Podcast>())) ?? []
         var routed: [PlaylistRoutedPodcast] = []
 
         for podcast in podcasts {
@@ -190,8 +207,8 @@ actor PodcastSettingsModelActor {
             guard position != .none else { continue }
 
             var resolvedPlaylistID = customSettings?.defaultPlaylistID ?? globalPlaylistID
-            if manualPlaylistExists(id: resolvedPlaylistID) == false {
-                resolvedPlaylistID = defaultQueueID
+            if (try? manualPlaylistExists(id: resolvedPlaylistID)) == false {
+                resolvedPlaylistID = resolvedDefaultQueueID
             }
             guard resolvedPlaylistID == playlistID else { continue }
 
@@ -220,10 +237,10 @@ actor PodcastSettingsModelActor {
     }
 
     /// Example: Update a settings object (edit as needed for your app's settings editing UI)
-    func updateSettings(_ settingsID: PersistentIdentifier, apply changes: (PodcastSettings) -> Void) {
+    func updateSettings(_ settingsID: PersistentIdentifier, apply changes: (PodcastSettings) -> Void) throws {
         guard let settings: PodcastSettings = modelContext.existingModel(for: settingsID) else { return }
         changes(settings)
-        modelContext.saveIfNeeded()
+        try modelContext.commitChangesIfNeeded()
     }
     
     /// Fetch PodcastSettings by PersistentIdentifier
@@ -231,33 +248,26 @@ actor PodcastSettingsModelActor {
         modelContext.existingModel(for: settingsID)
     }
     
-    func fetchPodcast(_ podcastFeed: URL) -> Podcast? {
+    func fetchPodcast(_ podcastFeed: URL) throws -> Podcast? {
         let predicate = #Predicate<Podcast> { podcast in
             podcast.feed == podcastFeed
         }
-        do {
-            let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
-            return results.first
-        } catch {
-            // print("❌ Error fetching episode for episode ID: \(podcastID), Error: \(error)")
-            return nil
-        }
+        let results = try modelContext.fetch(FetchDescriptor<Podcast>(predicate: predicate))
+        return results.first
     }
     
     
     /// Create and insert a new PodcastSettings (optionally for a podcast)
-    func createSettings(for podcastFeed: URL) async -> PodcastSettings? {
+    func createSettings(for podcastFeed: URL) async throws -> PodcastSettings? {
         // print("PodcastSettingsModelActor - createSettings for podcastID: \(podcastID)")
-        if let settings = await fetchPodcastSettings(for: podcastFeed){
-            modelContext.insert(settings)
-            modelContext.saveIfNeeded()
+        if let settings = try await fetchPodcastSettings(for: podcastFeed) {
             return settings
-        }else if let podcast = fetchPodcast(podcastFeed){
+        } else if let podcast = try fetchPodcast(podcastFeed) {
             let settings = PodcastSettings(podcast: podcast)
             modelContext.insert(settings)
             podcast.settings = settings
 
-            modelContext.saveIfNeeded()
+            try modelContext.commitChangesIfNeeded()
             return settings
         }else{
             return nil
@@ -265,10 +275,10 @@ actor PodcastSettingsModelActor {
     }
     
     /// Example: Delete a PodcastSettings object
-    func deleteSettings(_ settingsID: PersistentIdentifier) {
+    func deleteSettings(_ settingsID: PersistentIdentifier) throws {
         guard let settings: PodcastSettings = modelContext.existingModel(for: settingsID) else { return }
         modelContext.delete(settings)
-        modelContext.saveIfNeeded()
+        try modelContext.commitChangesIfNeeded()
     }
     
 
@@ -285,7 +295,7 @@ actor PodcastSettingsModelActor {
     }
     
     
-    func fetchPodcastSettings(for podcastFeed: URL) async -> PodcastSettings? {
+    func fetchPodcastSettings(for podcastFeed: URL) async throws -> PodcastSettings? {
     //    await fetchAllPodcastSettings()
        //  AppDiagnostics.log("Fetching custom Settings for Podcast with ID: \(podcastID)")
         let predicate = #Predicate<PodcastSettings> { setting in
@@ -299,20 +309,25 @@ actor PodcastSettingsModelActor {
            //  AppDiagnostics.log("Found \(results.count) custom Settings for Podcast with ID: (\(podcastID) - \(results.first?.title ?? "nil")")
             return results.first
         } catch {
-            // print("❌ Error fetching episode for episode ID: \(podcastID), Error: \(error)")
-            return nil
+            throw error
         }
     }
     
     /// Enable custom settings for a podcast (creates or re-enables custom settings)
     func enableCustomSettings(for podcastFeed: URL) async {
-        guard let podcast = fetchPodcast(podcastFeed) else { return }
+        guard let podcast = try? fetchPodcast(podcastFeed) else { return }
 
         // Try to find existing settings for this podcast
         let predicate = #Predicate<PodcastSettings> {
             $0.podcast?.feed == podcastFeed
         }
-        let existingSettings = (try? modelContext.fetch(FetchDescriptor<PodcastSettings>(predicate: predicate)).first)
+        let existingSettings: PodcastSettings?
+        do {
+            existingSettings = try modelContext.fetch(FetchDescriptor<PodcastSettings>(predicate: predicate)).first
+        } catch {
+            AppDiagnostics.log("Could not read custom settings for \(podcastFeed.redactedPodcastURLString): \(error.localizedDescription)")
+            return
+        }
 
         if let settings = existingSettings {
             settings.isEnabled = true
@@ -349,7 +364,11 @@ actor PodcastSettingsModelActor {
             modelContext.insert(newSettings)
             podcast.settings = newSettings
         }
-        modelContext.saveIfNeeded()
+        do { try modelContext.commitChangesIfNeeded() } catch {
+            modelContext.rollback()
+            AppDiagnostics.log("Could not enable custom settings: \(error.localizedDescription)")
+            return
+        }
         if let settings = podcast.settings {
             await publishPortablePreferences(settings, feedURL: podcastFeed)
         }
@@ -357,18 +376,24 @@ actor PodcastSettingsModelActor {
 
     /// Disable custom settings for a podcast
     func disableCustomSettings(for podcastFeed: URL) async {
-        guard let podcast = fetchPodcast(podcastFeed) else { return }
+        guard let podcast = try? fetchPodcast(podcastFeed) else { return }
         if let settings = podcast.settings {
             settings.isEnabled = false
-            modelContext.saveIfNeeded()
+            do { try modelContext.commitChangesIfNeeded() } catch {
+                modelContext.rollback()
+                AppDiagnostics.log("Could not disable custom settings: \(error.localizedDescription)")
+                return
+            }
             await publishPortablePreferences(settings, feedURL: podcastFeed)
             return
         }
-        modelContext.saveIfNeeded()
+        do { try modelContext.commitChangesIfNeeded() } catch {
+            AppDiagnostics.log("Could not commit custom settings: \(error.localizedDescription)")
+        }
     }
     
     func getChapterSkipKeywords(for podcastFeed: URL?) async -> [skipKey]?{
-        guard let podcastFeed ,let playbackSpeed = await fetchPodcastSettings(for: podcastFeed)?.autoSkipKeywords  else {
+        guard let podcastFeed ,let playbackSpeed = try? await fetchPodcastSettings(for: podcastFeed)?.autoSkipKeywords  else {
            //  AppDiagnostics.log("getChapterSkipKeywords no PodcastID -> standard")
             return await standardSettings().autoSkipKeywords
         }
@@ -380,13 +405,17 @@ actor PodcastSettingsModelActor {
            //  AppDiagnostics.log("no PodcastID - not saving")
             return
         }
-        guard let settings = await fetchPodcastSettings(for: podcastFeed) else {
+        guard let settings = try? await fetchPodcastSettings(for: podcastFeed) else {
            //  AppDiagnostics.log("no Podcast Settings - not saving")
             return
         }
         
         settings.autoSkipKeywords = value
-        modelContext.saveIfNeeded()
+        do { try modelContext.commitChangesIfNeeded() } catch {
+            modelContext.rollback()
+            AppDiagnostics.log("Could not save chapter skip keywords: \(error.localizedDescription)")
+            return
+        }
         await publishPortablePreferences(settings, feedURL: podcastFeed)
     }
     
@@ -397,7 +426,7 @@ actor PodcastSettingsModelActor {
            //  AppDiagnostics.log("no PodcastID - standard PlaybackSpeed")
             return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is given, the global Settings are returned
         }
-        guard let playbackSpeed = await fetchPodcastSettings(for: podcastFeed)?.playbackSpeed else {
+        guard let playbackSpeed = try? await fetchPodcastSettings(for: podcastFeed)?.playbackSpeed else {
            //  AppDiagnostics.log("no Podcast Settings - standard PlaybackSpeed")
 
             return await standardSettings().playbackSpeed ?? 1.0 // is no podcastID is found, the global Settings are returned
@@ -409,7 +438,7 @@ actor PodcastSettingsModelActor {
 
     func getReduceSilenceGapsEnabled(for podcastFeed: URL?) async -> Bool {
         if let podcastFeed,
-           let settings = await fetchPodcastSettings(for: podcastFeed),
+           let settings = try? await fetchPodcastSettings(for: podcastFeed),
            settings.isEnabled {
             return settings.reduceSilenceGapsEnabled
         }
@@ -419,7 +448,7 @@ actor PodcastSettingsModelActor {
 
     func getSilenceGapReductionLevel(for podcastFeed: URL?) async -> SilenceGapReductionLevel {
         if let podcastFeed,
-           let settings = await fetchPodcastSettings(for: podcastFeed),
+           let settings = try? await fetchPodcastSettings(for: podcastFeed),
            settings.isEnabled {
             return settings.silenceGapReductionLevel
         }
@@ -429,7 +458,7 @@ actor PodcastSettingsModelActor {
 
     func getVoiceEnhancementEnabled(for podcastFeed: URL?) async -> Bool {
         if let podcastFeed,
-           let settings = await fetchPodcastSettings(for: podcastFeed),
+           let settings = try? await fetchPodcastSettings(for: podcastFeed),
            settings.isEnabled {
             return settings.voiceEnhancementEnabled
         }
@@ -440,7 +469,7 @@ actor PodcastSettingsModelActor {
     func getPlaybackTrim(for podcastFeed: URL?) async -> PodcastPlaybackTrim {
         let settings: PodcastSettings
         if let podcastFeed,
-           let customSettings = await fetchPodcastSettings(for: podcastFeed) {
+           let customSettings = try? await fetchPodcastSettings(for: podcastFeed) {
             settings = customSettings
         } else {
             settings = await standardSettings()
@@ -454,7 +483,7 @@ actor PodcastSettingsModelActor {
 
     func getSkipForwardStep(for podcastFeed: URL?) async -> SkipSteps {
         if let podcastFeed,
-           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipForward {
+           let customValue = try? await fetchPodcastSettings(for: podcastFeed)?.skipForward {
             return customValue
         }
 
@@ -463,7 +492,7 @@ actor PodcastSettingsModelActor {
 
     func getSkipBackStep(for podcastFeed: URL?) async -> SkipSteps {
         if let podcastFeed,
-           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipBack {
+           let customValue = try? await fetchPodcastSettings(for: podcastFeed)?.skipBack {
             return customValue
         }
 
@@ -472,7 +501,7 @@ actor PodcastSettingsModelActor {
 
     func getSkipForwardBehavior(for podcastFeed: URL?) async -> SkipButtonBehavior {
         if let podcastFeed,
-           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipForwardBehavior {
+           let customValue = try? await fetchPodcastSettings(for: podcastFeed)?.skipForwardBehavior {
             return customValue
         }
 
@@ -481,7 +510,7 @@ actor PodcastSettingsModelActor {
 
     func getSkipBackBehavior(for podcastFeed: URL?) async -> SkipButtonBehavior {
         if let podcastFeed,
-           let customValue = await fetchPodcastSettings(for: podcastFeed)?.skipBackBehavior {
+           let customValue = try? await fetchPodcastSettings(for: podcastFeed)?.skipBackBehavior {
             return customValue
         }
 
@@ -490,13 +519,17 @@ actor PodcastSettingsModelActor {
     
     func setPlaybackSpeed(for podcastFeed: URL?, to value: Float) async{
         let settings: PodcastSettings
-        if let podcastFeed, let setting = await fetchPodcastSettings(for: podcastFeed) {
+        if let podcastFeed, let setting = try? await fetchPodcastSettings(for: podcastFeed) {
             settings = setting
         } else {
             settings = await standardSettings()
         }
         settings.playbackSpeed = value
-        modelContext.saveIfNeeded()
+        do { try modelContext.commitChangesIfNeeded() } catch {
+            modelContext.rollback()
+            AppDiagnostics.log("Could not save playback speed: \(error.localizedDescription)")
+            return
+        }
         await publishPortablePreferences(settings, feedURL: podcastFeed)
     }
     
@@ -506,7 +539,7 @@ actor PodcastSettingsModelActor {
            //  AppDiagnostics.log("getPlaynextposition no PodcastID - standard Playnextposition")
             return await standardSettings().playnextPosition
         }
-        if let position =  await fetchPodcastSettings(for: podcastFeed)?.playnextPosition {
+        if let position =  try? await fetchPodcastSettings(for: podcastFeed)?.playnextPosition {
            //  AppDiagnostics.log("getPlaynextposition PodcastID - position: \(position)")
 
             return position
@@ -522,7 +555,7 @@ actor PodcastSettingsModelActor {
             return await standardSettings().defaultPlaylistID
         }
 
-        if let playlistID = await fetchPodcastSettings(for: podcastFeed)?.defaultPlaylistID {
+        if let playlistID = try? await fetchPodcastSettings(for: podcastFeed)?.defaultPlaylistID {
             return playlistID
         }
 
@@ -602,7 +635,7 @@ actor PodcastSettingsModelActor {
         }
 
         guard let podcastFeed,
-              let customSettings = await fetchPodcastSettings(for: podcastFeed),
+              let customSettings = try? await fetchPodcastSettings(for: podcastFeed),
               customSettings.isEnabled else {
             return true
         }
@@ -616,7 +649,7 @@ actor PodcastSettingsModelActor {
 
     func getArchiveFileRetentionDays(for podcastFeed: URL?) async -> Int {
         if let podcastFeed,
-           let customValue = await fetchPodcastSettings(for: podcastFeed)?.archiveFileRetentionDays {
+           let customValue = try? await fetchPodcastSettings(for: podcastFeed)?.archiveFileRetentionDays {
             return max(customValue, 0)
         }
 
@@ -719,7 +752,7 @@ actor PodcastSettingsModelActor {
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
         await logAutoDownload("policy-resolution/start feed=\(podcastFeed.redactedPodcastURLString)")
-        guard let podcast = fetchPodcast(podcastFeed) else {
+        guard let podcast = (try? fetchPodcast(podcastFeed)) ?? nil else {
             await logAutoDownload("policy-resolution/none feed=\(podcastFeed.redactedPodcastURLString) source=podcast reason=podcast-not-found")
             return nil
         }
@@ -729,7 +762,7 @@ actor PodcastSettingsModelActor {
             return nil
         }
 
-        let customSettings = await fetchPodcastSettings(for: podcastFeed)
+        let customSettings = try? await fetchPodcastSettings(for: podcastFeed)
         let globalSettings = await standardSettings()
         let settings = (customSettings?.isEnabled == true) ? customSettings : globalSettings
         let source = (customSettings?.isEnabled == true) ? "podcast" : "global"
@@ -742,9 +775,17 @@ actor PodcastSettingsModelActor {
 
         var didMutateSettings = false
 
-        let ensuredDefaultQueueID = defaultQueueID()
+        let ensuredDefaultQueueID: UUID
+        do { ensuredDefaultQueueID = try defaultQueueID() } catch {
+            await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=queue-read-failed")
+            return nil
+        }
         var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueueID
-        if manualPlaylistExists(id: resolvedGlobalPlaylistID) == false {
+        guard let globalPlaylistExists = try? manualPlaylistExists(id: resolvedGlobalPlaylistID) else {
+            await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=global-playlist-read-failed")
+            return nil
+        }
+        if globalPlaylistExists == false {
             resolvedGlobalPlaylistID = ensuredDefaultQueueID
             await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.redactedPodcastURLString) action=fallback-default-queue")
         }
@@ -763,7 +804,11 @@ actor PodcastSettingsModelActor {
         }
 
         var resolvedPlaylistID = settings.defaultPlaylistID ?? resolvedGlobalPlaylistID
-        if manualPlaylistExists(id: resolvedPlaylistID) == false {
+        guard let targetPlaylistExists = try? manualPlaylistExists(id: resolvedPlaylistID) else {
+            await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=target-playlist-read-failed")
+            return nil
+        }
+        if targetPlaylistExists == false {
             resolvedPlaylistID = resolvedGlobalPlaylistID
             settings.defaultPlaylistID = resolvedPlaylistID
             didMutateSettings = true
@@ -771,7 +816,11 @@ actor PodcastSettingsModelActor {
         }
 
         if didMutateSettings {
-            modelContext.saveIfNeeded()
+            do { try modelContext.commitChangesIfNeeded() } catch {
+                modelContext.rollback()
+                await logAutoDownload("policy-resolution/save-failed feed=\(podcastFeed.redactedPodcastURLString) error=\(error.localizedDescription)")
+                return nil
+            }
             await logAutoDownload("policy-resolution/persisted-repairs feed=\(podcastFeed.redactedPodcastURLString)")
         }
 

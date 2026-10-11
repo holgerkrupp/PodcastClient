@@ -767,6 +767,103 @@ class EpisodeDownloadStatus{
         updateEpisodeData(from: episodeData)
     }
 
+    func hasSameFeedData(as episodeData: [String: Any]) -> Bool {
+        let parsedDuration = (episodeData["itunes:duration"] as? String)?.durationAsSeconds
+        let hasLocalFile = localFile.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let expectedDuration = hasLocalFile ? duration : ((parsedDuration ?? 0) > 0 ? parsedDuration : duration)
+        let enclosures = episodeData["enclosure"] as? [[String: Any]]
+        let playable = EpisodeMedia.playableEnclosure(from: enclosures)
+        let image = EpisodeMedia.imageEnclosure(from: enclosures)
+        let expectedGUID = episodeData["guid"] as? String
+            ?? episodeData["podcast:guid"] as? String
+            ?? playable?["url"] as? String
+            ?? episodeData["link"] as? String
+        let expectedLink = URL(string: episodeData["link"] as? String ?? "")
+        let expectedType = EpisodeType(rawValue: episodeData["itunes:episodeType"] as? String ?? "unknown") ?? .unknown
+        let expectedPublishDate = (episodeData["pubDate"] as? String).flatMap(Date.dateFromRFC1123)
+        let expectedImageURL = (episodeData["itunes:image"] as? String).flatMap(URL.init(string:))
+            ?? (image?["url"] as? String).flatMap(URL.init(string:))
+        let expectedURL = (playable?["url"] as? String).flatMap(URL.init(string:))
+        let expectedMediaType = expectedURL == nil ? mediaType : playable?["type"] as? String
+        let expectedFileSize = (playable?["length"] as? String).flatMap(Int64.init) ?? fileSize
+        let expectedNumber = episodeData["itunes:episode"] as? String
+        let expectedDeepLinks = (episodeData["deepLinks"] as? [String]).map { $0.compactMap(URL.init(string:)) }
+        guard guid == expectedGUID,
+              title == (episodeData["itunes:title"] as? String ?? episodeData["title"] as? String ?? ""),
+              author == (episodeData["itunes:author"] as? String),
+              desc == (episodeData["description"] as? String),
+              subtitle == (episodeData["itunes:subtitle"] as? String),
+              content == (episodeData["content"] as? String),
+              publishDate == expectedPublishDate,
+              duration == expectedDuration,
+              number == expectedNumber,
+              type == expectedType,
+              link == expectedLink,
+              imageURL == expectedImageURL,
+              (url == expectedURL || (playable == nil && EpisodeMedia.isImage(url: url, mimeType: mediaType))),
+              mediaType == expectedMediaType,
+              fileSize == expectedFileSize,
+              deeplinks == expectedDeepLinks else { return false }
+        // Rich relationship-backed values can have publisher and app-generated
+        // representations. Fall back to the normal merge unless input is absent.
+        let incomingFiles = (episodeData["externalFiles"] as? [ExternalFile])
+            ?? (episodeData["transcripts"] as? [ExternalFile])
+            ?? []
+        let expectedDeepLinksValue = expectedDeepLinks ?? (episodeData["deepLinks"] == nil ? nil : [])
+        return externalFiles == incomingFiles
+            && (episodeData["psc:chapters"] == nil || feedChaptersMatch(episodeData["psc:chapters"] as? [[String: Any]] ?? []))
+            && (episodeData["optionalTags"] == nil || optionalTags == (episodeData["optionalTags"] as? PodcastNamespaceOptionalTags))
+            && (episodeData["funding"] == nil || funding == parsedFunding(episodeData["funding"]))
+            && (episodeData["socialInteract"] == nil || social == parsedSocial(episodeData["socialInteract"]))
+            && (episodeData["people"] == nil || people == parsedPeople(episodeData["people"]))
+            && deeplinks == expectedDeepLinksValue
+    }
+
+    private func parsedFunding(_ value: Any?) -> [FundingInfo] {
+        if let rows = value as? [[String: String]] {
+            return rows.compactMap { row in
+                guard let url = row["url"].flatMap(URL.init(string:)), let label = row["label"] else { return nil }
+                return FundingInfo(url: url, label: label)
+            }
+        }
+        return value as? [FundingInfo] ?? []
+    }
+
+    private func parsedSocial(_ value: Any?) -> [SocialInfo] {
+        if let rows = value as? [[String: Any]] {
+            return rows.compactMap { row in
+                guard let proto = row["protocol"] as? String,
+                      let url = (row["uri"] as? String).flatMap(URL.init(string:)) else { return nil }
+                return SocialInfo(url: url, socialprotocol: proto,
+                                  accountId: row["accountId"] as? String,
+                                  accountURL: (row["accountUrl"] as? String).flatMap(URL.init(string:)),
+                                  priority: row["priority"] as? Int)
+            }
+        }
+        return value as? [SocialInfo] ?? []
+    }
+
+    private func parsedPeople(_ value: Any?) -> [PersonInfo] {
+        if let rows = value as? [[String: Any]] {
+            return rows.compactMap { row in
+                guard let name = row["name"] as? String, !name.isEmpty else { return nil }
+                return PersonInfo(name: name, role: row["role"] as? String,
+                                  href: (row["href"] as? String).flatMap(URL.init(string:)),
+                                  img: (row["img"] as? String).flatMap(URL.init(string:)))
+            }
+        }
+        return value as? [PersonInfo] ?? []
+    }
+
+    private func feedChaptersMatch(_ rows: [[String: Any]]) -> Bool {
+        let current = chapters?.filter { $0.type == .podlove } ?? []
+        let incoming = rows.map { Marker(details: $0) }
+        guard current.count == incoming.count else { return false }
+        return zip(current, incoming).allSatisfy {
+            $0.title == $1.title && $0.start == $1.start && $0.end == $1.end
+        }
+    }
+
     private func feedExternalFiles(from episodeData: [String: Any]) -> [ExternalFile] {
         (episodeData["externalFiles"] as? [ExternalFile])
         ?? (episodeData["transcripts"] as? [ExternalFile])

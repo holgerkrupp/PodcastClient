@@ -402,7 +402,7 @@ private struct EpisodeDetailContentToolsView: View {
                         }
                         .buttonStyle(.glass(.clear))
                     }
-                }
+                
 
                 if let generationAction, let episodeURL = episode.url {
                     EpisodeAIGenerationControl(
@@ -418,6 +418,7 @@ private struct EpisodeDetailContentToolsView: View {
                         cancel: { Task { await aiGeneration.cancel(episodeURL: episodeURL) } }
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
+                }
                 }
             }
             .padding(.vertical, 4)

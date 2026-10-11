@@ -13,6 +13,7 @@ enum PlaylistPreferenceKeys {
     static let inboxBasePlaylistID = "inboxBasePlaylistID"
 }
 
+
 struct PlaylistSymbolOption: Identifiable, Hashable, Sendable {
     let symbolName: String
     let title: String
@@ -351,7 +352,21 @@ class Playlist {
     }
 
     static func ensureDefaultQueue(in context: ModelContext) -> Playlist {
-        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
+        do {
+            return try ensureDefaultQueueCommitted(in: context)
+        } catch {
+            AppDiagnostics.log("Could not ensure default queue: \(error.localizedDescription)")
+            CrashBreadcrumbs.shared.record(
+                "default_queue_repair_failed",
+                details: error.localizedDescription
+            )
+            // A transient fetch failure must not insert an empty replacement.
+            return Playlist()
+        }
+    }
+
+    static func ensureDefaultQueueCommitted(in context: ModelContext) throws -> Playlist {
+        let allPlaylists = try context.fetch(FetchDescriptor<Playlist>())
         let isLegacyDefaultTitle: (String) -> Bool = { title in
             title.localizedCaseInsensitiveCompare(Playlist.defaultQueueDisplayName) == .orderedSame
         }
@@ -421,7 +436,7 @@ class Playlist {
         // explicit maintenance path out of Watch background refreshes.
         guard duplicateCandidates.isEmpty == false else {
             if changed {
-                context.saveIfNeeded()
+                try context.commitChangesIfNeeded()
             }
             return defaultPlaylist
         }
@@ -475,7 +490,7 @@ class Playlist {
         }
 
         if changed {
-            context.saveIfNeeded()
+            try context.commitChangesIfNeeded()
         }
 
         return defaultPlaylist
@@ -516,9 +531,9 @@ class Playlist {
     static func resolvedSelectedManualPlaylistID(
         in context: ModelContext,
         defaults: UserDefaults = .standard
-    ) -> UUID {
-        let defaultPlaylist = ensureDefaultQueue(in: context)
-        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? [defaultPlaylist]
+    ) throws -> UUID {
+        let defaultPlaylist = try ensureDefaultQueueCommitted(in: context)
+        let allPlaylists = try context.fetch(FetchDescriptor<Playlist>())
         let manualPlaylists = manualVisibleSorted(allPlaylists)
         let fallbackPlaylist = manualPlaylists.first(where: { $0.id == defaultPlaylist.id })
             ?? manualPlaylists.first

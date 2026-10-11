@@ -70,7 +70,7 @@ actor PlaylistModelActor {
         }
 
         let selectionContext = ModelContext(container)
-        let selectedPlaylistID = Playlist.resolvedSelectedManualPlaylistID(
+        let selectedPlaylistID = try Playlist.resolvedSelectedManualPlaylistID(
             in: selectionContext
         )
 
@@ -114,7 +114,12 @@ actor PlaylistModelActor {
                 newPlaylist.kind = .manual
             }
             modelContext.insert(newPlaylist)
-            try modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                modelContext.rollback()
+                throw error
+            }
             self.playlistID = newPlaylist.id
         }
         

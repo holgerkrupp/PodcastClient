@@ -461,9 +461,11 @@ enum StoreSplitFeedCacheWriter {
                 )
                 seenIDs.insert(candidate.id)
                 if let current = existingByID.removeValue(forKey: candidate.id) {
-                    current.payload = payload
-                    current.contentHash = hash
-                    current.updatedAt = .now
+                    if current.contentHash != hash || current.payload != payload {
+                        current.payload = payload
+                        current.contentHash = hash
+                        current.updatedAt = .now
+                    }
                 } else {
                     context.insert(candidate)
                 }
