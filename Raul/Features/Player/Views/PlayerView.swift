@@ -385,12 +385,22 @@ struct PlayerView: View {
     }
 
     private func generationAction(for episode: Episode) -> EpisodeAIGenerationAction? {
-        EpisodeAIGenerationPolicy.action(
-            isAvailable: AppleIntelligenceAvailability.isAvailable,
-            hasTranscript: contentAvailability?.episodeURL == episode.url
-                && contentAvailability?.hasTranscript == true,
-            hasUsableChapters: contentAvailability?.episodeURL == episode.url
-                && contentAvailability?.hasUsableChapters == true
+        guard let availability = contentAvailability,
+              availability.episodeURL == episode.url else {
+            // Until the background availability check resolves, no absence is confirmed.
+            return nil
+        }
+
+        let hasPlaybackChapters = PlayerChapterRowPolicy.hasSelectablePlaybackChapters(
+            for: episode.url,
+            activeEpisodeURL: player.currentEpisodeURL,
+            chapterCount: player.chapters?.count,
+            firstStart: player.chapters?.first?.start
+        )
+        return PlayerChapterRowPolicy.generationAction(
+            availability: availability,
+            hasPlaybackChapters: hasPlaybackChapters,
+            aiAvailable: AppleIntelligenceAvailability.isAvailable
         )
     }
 
@@ -445,6 +455,38 @@ struct PlayerContentAvailability: Sendable, Equatable {
     let hasTranscript: Bool
     let hasChapterSelectionUI: Bool
     let hasUsableChapters: Bool
+}
+
+
+enum PlayerChapterRowPolicy {
+    /// The player's chapter array is already selected/deduplicated for playback.
+    /// Inspect only its count and first start; never fetch SwiftData relationships
+    /// while the player is opening.
+    static func hasSelectablePlaybackChapters(
+        for episodeURL: URL?,
+        activeEpisodeURL: URL?,
+        chapterCount: Int?,
+        firstStart: Double?
+    ) -> Bool {
+        guard let episodeURL, episodeURL == activeEpisodeURL else { return false }
+        return (chapterCount ?? 0) > 1
+            || (chapterCount == 1 && (firstStart ?? 0) > 0.5)
+    }
+
+    /// A missing availability snapshot is *unknown*, not "no transcript/chapters".
+    /// An active playback chapter set must also override a stale negative query.
+    static func generationAction(
+        availability: PlayerContentAvailability?,
+        hasPlaybackChapters: Bool,
+        aiAvailable: Bool
+    ) -> EpisodeAIGenerationAction? {
+        guard let availability else { return nil }
+        return EpisodeAIGenerationPolicy.action(
+            isAvailable: aiAvailable,
+            hasTranscript: availability.hasTranscript,
+            hasUsableChapters: availability.hasUsableChapters || hasPlaybackChapters
+        )
+    }
 }
 
 private actor PlayerContentAvailabilitySnapshotCache {
