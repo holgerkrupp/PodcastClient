@@ -227,14 +227,22 @@ struct PlayerControllView: View {
 
     private var hasChapterSelectionUI: Bool {
         guard let episode = player.currentEpisode else { return false }
-        if usesCachedContentAvailability {
-            return contentAvailability?.episodeURL == episode.url
-                && contentAvailability?.hasChapterSelectionUI == true
+        let snapshotMatches = contentAvailability?.episodeURL == episode.url
+        let hasSnapshotChapters = snapshotMatches
+            && contentAvailability?.hasChapterSelectionUI == true
+        // The player has already prepared these chapters for navigation.
+        // Display them on the first frame, without waiting for the actor query.
+        let hasPlaybackChapters = PlayerChapterRowPolicy.hasSelectablePlaybackChapters(
+            for: episode.url,
+            activeEpisodeURL: player.currentEpisodeURL,
+            chapterCount: player.chapters?.count,
+            firstStart: player.chapters?.first?.start
+        )
+
+        if usesCachedContentAvailability || snapshotMatches {
+            return hasSnapshotChapters || hasPlaybackChapters
         }
-        if contentAvailability?.episodeURL == episode.url {
-            return contentAvailability?.hasChapterSelectionUI == true
-        }
-        return episode.hasChapterSelectionUI
+        return hasPlaybackChapters || episode.hasChapterSelectionUI
     }
 
     private var playbackSettingsButton: some View {
