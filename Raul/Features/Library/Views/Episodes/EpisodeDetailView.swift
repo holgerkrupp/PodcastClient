@@ -9,21 +9,11 @@ import SwiftUI
 import SwiftData
 import ESADesignKit
 
-private struct IdentifiableURL: Identifiable, Equatable {
-    let url: URL
-    var id: URL { url }
-}
-
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
-    @Environment(\.deviceUIStyle) var style
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @Bindable var episode: Episode
     private let transcriptSearchNavigation: TranscriptSearchNavigation?
-    @Bindable private var player = Player.shared
-    @State private var shareURL: IdentifiableURL?
-    @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
 
     @State private var errorMessage: String? = nil
     @State private var isLoadingTranscript: Bool = false
@@ -32,300 +22,116 @@ struct EpisodeDetailView: View {
     @State private var isDeletingTranscript = false
     @State private var showDeleteTranscriptConfirmation = false
 #endif
-    @ScaledMetric(relativeTo: .title2) private var podcastCardWidth: CGFloat = 300
-
-
-    
     init(episode: Episode, transcriptSearchNavigation: TranscriptSearchNavigation? = nil) {
         self._episode = Bindable(wrappedValue: episode)
         self.transcriptSearchNavigation = transcriptSearchNavigation
         self._showTranscriptSheet = State(initialValue: transcriptSearchNavigation != nil)
     }
-    
+
     var body: some View {
-        let _ = episode.refresh
-        let hasLoadedTranscript = episode.transcriptLines?.isEmpty == false
-        let hasRemoteTranscript = episode.externalFiles.contains(where: { $0.category == .transcript })
-        
-            ZStack {
-                ScrollView {
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
                     EpisodeProgressView(episode: episode)
-                        .padding()
                         .fullPageScreenshotSupport()
-                        
-                    if episode.source != .sideLoaded {
-                        DownloadControllView(episode: episode, showDelete: false)
-                            .symbolRenderingMode(.hierarchical)
-                            .padding(8)
-                            .foregroundColor(.accent)
-                            
-                    }
-                    
-                   
-                        EpisodeControlView(episode: episode, showsPlaylistPickerTip: true)
-                            .modelContainer(context.container)
-                            .frame(height: 50)
-                            .padding(EdgeInsets(top: 0, leading: 8, bottom: 0, trailing: 8))
-                    
-                    
-                    Spacer(minLength: 16)
-                    
-                    if episode.funding.count > 0 {
-                        HStack{
-                            ForEach(episode.funding ) { fund in
-                                Link(destination: fund.url) {
-                                    Label(fund.label, systemImage: style.currencySFSymbolName)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                if fund != episode.funding.last {
-                                    Spacer()
-                                }
-                            }
+
+                    EpisodeDetailPrimaryActionsView(episode: episode)
+                        .modelContainer(context.container)
+
+                    EpisodeDetailContentToolsView(
+                        episode: episode,
+                        isLoadingTranscript: isLoadingTranscript,
+                        openTranscript: {
+                            Task { @MainActor in await openTranscript() }
                         }
-                    }
-                    PodcastValueSplitView(
-                        optionalTags: episode.optionalTags,
-                        funding: episode.funding.isEmpty ? episode.podcast?.funding ?? [] : episode.funding
                     )
-                    
-                        HStack{
-                            if let bookMarkCount = episode.bookmarks?.count, bookMarkCount > 0 {
-                                NavigationLink(destination: BookmarkListView(episode: episode)) {
-                                    Label("Bookmarks", systemImage: "bookmark.fill")
-                                        .labelStyle(.iconOnly)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .padding()
-                            }
+                    .modelContainer(context.container)
 
+                    EpisodeDetailShowNotesSection(episode: episode)
 
-                            if episode.hasAlternateVideo {
-                                Button {
-                                    Task {
-                                        await switchEpisodeMedia()
-                                    }
-                                } label: {
-                                    Label(
-                                        episodeMediaSwitchTitle,
-                                        systemImage: isCurrentEpisodeShowingVideo ? "waveform" : "play.rectangle"
-                                    )
-                                    .labelStyle(.iconOnly)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .padding()
-                                .accessibilityLabel(episodeMediaSwitchTitle)
-                                .accessibilityHint("Changes this episode between the audio enclosure and alternate video stream")
-                            }
-                            
-                            if hasLoadedTranscript || hasRemoteTranscript {
-                                Button {
-                                    Task { @MainActor in
-                                        await openTranscript()
-                                    }
-                                } label: {
-                                    if isLoadingTranscript {
-                                        Label("Loading Transcript", systemImage: "ellipsis")
-                                    } else {
-                                        Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
-                                    }
-                                }
-                                .labelStyle(.iconOnly)
-                                .buttonStyle(.glass(.clear))
-                                .padding()
-                                .disabled(isLoadingTranscript)
-                                .accessibilityLabel("Open captions and transcript")
-                                .accessibilityHint("Opens episode captions if available")
-                                .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
-                            }
-                            if let url = episode.url {
-                                EpisodeAIGenerationControl(
-                                    action: EpisodeAIGenerationPolicy.action(
-                                        isAvailable: AppleIntelligenceAvailability.isAvailable,
-                                        hasTranscript: hasLoadedTranscript,
-                                        hasUsableChapters: episode.hasDisplayableChaptersOrSoundbites
-                                    ),
-                                    state: aiGeneration.state(for: url),
-                                    start: { action in
-                                        aiGeneration.start(action: action, episodeURL: url, modelContainer: context.container)
-                                    },
-                                    cancel: { Task { await aiGeneration.cancel(episodeURL: url) } }
-                                )
-                                .padding(.horizontal)
-                                .padding(.vertical, 8)
-                            }
+                    EpisodeDetailMoreMenu(
+                        episode: episode,
+                        onDeleteTranscript: {
 #if DEBUG
-                        if hasLoadedTranscript {
-                            Button(role: .destructive) {
-                                showDeleteTranscriptConfirmation = true
-                            } label: {
-                                Label(
-                                    isDeletingTranscript ? "Deleting…" : "Delete Transcript",
-                                    systemImage: "trash"
-                                )
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .tint(.blue)
-                            .padding(.horizontal)
-                            .padding(.vertical, 8)
-                            .disabled(isDeletingTranscript)
-                            .accessibilityHint("Deletes this episode's transcript so it can be generated again")
-                        }
-
-                            Spacer()
-                        
+                            showDeleteTranscriptConfirmation = true
 #endif
                         }
-                    
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
+                    EpisodeDetailSupportSection(episode: episode)
 
-                    
-                    Spacer(minLength: 10)
-                    
-
-                    
-                    HStack{
-                        if let episodeLink = episode.link {
-                            Link(destination: episodeLink) {
-                                Label("Open in Browser", systemImage: "safari")
-                                    .labelStyle(.iconOnly)
-                            
-                        
-                            }
-                            .buttonStyle(.glass(.clear))
-                        }
-                        Spacer()
-#if DEBUG
-                        NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
-                            Image(systemName: "ladybug")
-                                .imageScale(.small)
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .tint(.blue)
-                        .accessibilityLabel("Episode debug metadata")
-                        Spacer()
-#endif
-                        if let url = episode.deeplinks?.first ?? episode.link {
-                            ShareLink(item: url) {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                                    .labelStyle(.iconOnly)
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityLabel("Share episode")
-                            .accessibilityHint("Opens the share sheet for this episode")
-                        }
-                    }
-                    .padding()
                     if let podcast = episode.podcast {
-                        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
-                            
-                            PodcastRowView(podcast: podcast)
-                            /*
-                            HStack {
-                                CoverImageView(episode: episode)
-                                    .frame(width: 50, height: 50)
-                                Text(podcast.title)
-                                    .font(.title2)
-                                    .esaForeground(.primary)
-                            }
-                             */
-                        }
-                     //   .padding()
-                     //   .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: .infinity)
+                        EpisodeDetailPodcastLink(podcast: podcast)
                     } else if episode.source == .sideLoaded {
-                        Label("Side loaded", systemImage: "square.and.arrow.down.on.square")
-                            .font(.title2.weight(.semibold))
-                            .padding()
-                            .frame(maxWidth: podcastCardWidth, alignment: .leading)
-                            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+                        Label("Side loaded episode", systemImage: "square.and.arrow.down.on.square")
+                            .font(.subheadline.weight(.semibold))
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
+
                     EpisodeDetailMetadataSections(episode: episode)
                 }
-                .coverHero(image: .url(episode.imageURL ?? episode.podcast?.imageURL), title: episode.title)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
             }
-            .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
-            .sheet(item: $shareURL) { identifiable in
-                ShareLink(item: identifiable.url) { Text("Share Episode") }
-            }
-            .alert(
-                "Transcript Error",
-                isPresented: Binding(
-                    get: { errorMessage != nil },
-                    set: { isPresented in
-                        if isPresented == false {
-                            errorMessage = nil
-                        }
-                    }
-                )
-            ) {
-                Button("OK", role: .cancel) {
-                    errorMessage = nil
-                }
-            } message: {
-                Text(errorMessage ?? "")
-            }
-#if DEBUG
-            .confirmationDialog(
-                "Delete this transcript?",
-                isPresented: $showDeleteTranscriptConfirmation,
-                titleVisibility: .visible
-            ) {
-                Button("Delete Transcript", role: .destructive) {
-                    Task { await deleteTranscript() }
-                }
-                .tint(.blue)
-                Button("Cancel", role: .cancel) {}
-                    .tint(.blue)
-            } message: {
-                Text("This removes the transcript and its transcription history so the episode can be transcribed again.")
-            }
-#endif
-            .sheet(isPresented: $showTranscriptSheet) {
-                NavigationStack {
-                    if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
-                        TranscriptListView(
-                            transcriptLines: transcriptLines,
-                            episode: episode,
-                            searchNavigation: transcriptSearchNavigation
-                        )
-                            .navigationTitle("Captions & Transcript")
-                            .platformInlineNavigationTitle()
-                    } else {
-                        ContentUnavailableView("Transcript Unavailable", systemImage: "quote.bubble")
-                    }
-                }
-            }
-            .task(id: episode.url) {
-                SystemPressureGate.shared.noteUserInteraction()
-            }
-        
-        //.navigationTitle(episode.title)
-        .platformInlineNavigationTitle()
-    }
-
-    private var isCurrentEpisode: Bool {
-        player.currentEpisodeURL == episode.url
-    }
-
-    private var isCurrentEpisodeShowingVideo: Bool {
-        isCurrentEpisode && player.currentPlaybackIsVideo
-    }
-
-    private var episodeMediaSwitchTitle: String {
-        isCurrentEpisodeShowingVideo ? "Switch to Audio" : "Switch to Video"
-    }
-
-    @MainActor
-    private func switchEpisodeMedia() async {
-        if isCurrentEpisode {
-            await player.switchCurrentEpisodeMedia()
-        } else {
-            await player.playEpisode(
-                episode.url,
-                playDirectly: true,
-                mediaSelection: .alternateVideo
-            )
+            .coverHero(image: .url(episode.imageURL ?? episode.podcast?.imageURL), title: episode.title)
         }
+        .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+        .alert(
+            "Transcript Error",
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { isPresented in
+                    if isPresented == false {
+                        errorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                errorMessage = nil
+            }
+        } message: {
+            Text(errorMessage ?? "")
+        }
+#if DEBUG
+        .confirmationDialog(
+            "Delete this transcript?",
+            isPresented: $showDeleteTranscriptConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Transcript", role: .destructive) {
+                Task { await deleteTranscript() }
+            }
+            .tint(.blue)
+            Button("Cancel", role: .cancel) {}
+                .tint(.blue)
+        } message: {
+            Text("This removes the transcript and its transcription history so the episode can be transcribed again.")
+        }
+#endif
+        .sheet(isPresented: $showTranscriptSheet) {
+            NavigationStack {
+                if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
+                    TranscriptListView(
+                        transcriptLines: transcriptLines,
+                        episode: episode,
+                        searchNavigation: transcriptSearchNavigation
+                    )
+                    .navigationTitle("Captions & Transcript")
+                    .platformInlineNavigationTitle()
+                } else {
+                    ContentUnavailableView("Transcript Unavailable", systemImage: "quote.bubble")
+                }
+            }
+        }
+        .task(id: episode.url) {
+            SystemPressureGate.shared.noteUserInteraction()
+        }
+        .platformInlineNavigationTitle()
     }
 
     @MainActor
@@ -501,13 +307,328 @@ struct EpisodeDetailView: View {
 #endif
 }
 
-// Trailing metadata block (socials, people, namespace tags, description, chapters).
-// Extracted into its own view so it forms an observation boundary: it only
-// re-evaluates when the metadata it reads changes, not on every playback-position
-// or import-driven update to the episode. Keeping it small also shrinks the
-// EpisodeDetailView body type, which is far cheaper for SwiftUI to copy/diff.
+private struct EpisodeDetailPrimaryActionsView: View {
+    let episode: Episode
+
+    var body: some View {
+        VStack(spacing: 10) {
+            EpisodeControlView(
+                episode: episode,
+                showsPlaylistPickerTip: true,
+                usesDetailLayout: true
+            )
+            .frame(maxWidth: .infinity)
+
+            if episode.source != .sideLoaded {
+                DownloadControllView(episode: episode, showDelete: true, showsLabels: true)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+        }
+    }
+}
+
+private struct EpisodeDetailContentToolsView: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var episode: Episode
+    @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
+    @State private var isShowingChapters = false
+
+    let isLoadingTranscript: Bool
+    let openTranscript: () -> Void
+
+    private var hasTranscript: Bool {
+        episode.transcriptLines?.isEmpty == false
+            || episode.externalFiles.contains(where: { $0.category == .transcript })
+    }
+
+    private var hasChapters: Bool {
+        episode.hasDisplayableChaptersOrSoundbites
+    }
+
+    private var generationAction: EpisodeAIGenerationAction? {
+        guard episode.url != nil else { return nil }
+        return EpisodeAIGenerationPolicy.action(
+            isAvailable: AppleIntelligenceAvailability.isAvailable,
+            hasTranscript: hasTranscript,
+            hasUsableChapters: hasChapters
+        )
+    }
+
+    private var bookmarkCount: Int {
+        episode.bookmarks?.count ?? 0
+    }
+
+    var body: some View {
+        if hasTranscript || hasChapters || bookmarkCount > 0 || generationAction != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Episode content")
+                    .font(.headline)
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 132), alignment: .leading)],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    if hasChapters {
+                        Button {
+                            isShowingChapters = true
+                        } label: {
+                            Label("Chapters", systemImage: "list.bullet")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityHint("Opens this episode's chapter list")
+                    }
+
+                    if hasTranscript {
+                        Button(action: openTranscript) {
+                            if isLoadingTranscript {
+                                Label("Loading Transcript", systemImage: "ellipsis")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            } else {
+                                Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(isLoadingTranscript)
+                        .accessibilityLabel(isLoadingTranscript ? "Loading transcript" : "Open captions and transcript")
+                        .accessibilityHint("Opens episode captions if available")
+                        .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
+                    }
+
+                    if bookmarkCount > 0 {
+                        NavigationLink(destination: BookmarkListView(episode: episode)) {
+                            Label("Bookmarks (\(bookmarkCount))", systemImage: "bookmark.fill")
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                }
+
+                if let generationAction, let episodeURL = episode.url {
+                    EpisodeAIGenerationControl(
+                        action: generationAction,
+                        state: aiGeneration.state(for: episodeURL),
+                        start: { action in
+                            aiGeneration.start(
+                                action: action,
+                                episodeURL: episodeURL,
+                                modelContainer: modelContext.container
+                            )
+                        },
+                        cancel: { Task { await aiGeneration.cancel(episodeURL: episodeURL) } }
+                    )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .sheet(isPresented: $isShowingChapters) {
+                NavigationStack {
+                    ChapterListView(episode: episode)
+                        .platformInlineNavigationTitle()
+                }
+                .presentationDragIndicator(.visible)
+            }
+        }
+    }
+}
+
+private struct EpisodeDetailShowNotesSection: View {
+    let episode: Episode
+
+    private var notesHTML: String {
+        episode.content ?? episode.desc ?? ""
+    }
+
+    var body: some View {
+        if notesHTML.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Show Notes")
+                    .font(.headline)
+                ShownoteContentView(html: notesHTML)
+                    .padding(.top, 4)
+            }
+        }
+    }
+}
+
+private struct EpisodeDetailMoreMenu: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable var episode: Episode
+    @Bindable private var player = Player.shared
+    let onDeleteTranscript: () -> Void
+
+    private var isCurrentEpisode: Bool {
+        guard let episodeURL = episode.url else { return false }
+        return player.currentEpisodeURL == episodeURL
+    }
+
+    private var isShowingVideo: Bool {
+        isCurrentEpisode && player.currentPlaybackIsVideo
+    }
+
+    private var mediaSwitchTitle: String {
+        isShowingVideo ? "Switch to Audio" : "Switch to Video"
+    }
+
+    var body: some View {
+        Menu {
+            if let episodeLink = episode.link {
+                Link(destination: episodeLink) {
+                    Label("Open in Browser", systemImage: "safari")
+                }
+            }
+
+            if let shareURL = episode.deeplinks?.first ?? episode.link {
+                ShareLink(item: shareURL) {
+                    Label("Share Episode", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            if episode.hasAlternateVideo {
+                Button {
+                    Task { await switchEpisodeMedia() }
+                } label: {
+                    Label(mediaSwitchTitle, systemImage: isShowingVideo ? "waveform" : "play.rectangle")
+                }
+            }
+
+            Button {
+                Task { await toggleArchivedState() }
+            } label: {
+                Label(
+                    episode.metaData?.isArchived == true ? "Unarchive Episode" : "Archive Episode",
+                    systemImage: episode.metaData?.isArchived == true ? "archivebox.fill" : "archivebox"
+                )
+            }
+
+#if DEBUG
+            Menu("Developer Tools", systemImage: "ladybug") {
+                NavigationLink {
+                    EpisodeDebugMetadataView(episode: episode)
+                } label: {
+                    Label("Episode Debug Metadata", systemImage: "info.circle")
+                }
+                if episode.transcriptLines?.isEmpty == false {
+                    Button("Delete Transcript", systemImage: "trash", role: .destructive, action: onDeleteTranscript)
+                        .accessibilityHint("Deletes this episode's transcript so it can be generated again")
+                }
+            }
+#endif
+        } label: {
+            Label("More", systemImage: "ellipsis")
+                .labelStyle(.titleAndIcon)
+                .frame(minHeight: 50)
+                .padding(.horizontal, 8)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityLabel("More episode actions")
+    }
+
+    @MainActor
+    private func switchEpisodeMedia() async {
+        if isCurrentEpisode {
+            await player.switchCurrentEpisodeMedia()
+        } else {
+            await player.playEpisode(episode.url, playDirectly: true, mediaSelection: .alternateVideo)
+        }
+    }
+
+    @MainActor
+    private func toggleArchivedState() async {
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        if episode.metaData?.isArchived == true {
+            await actor.unarchiveEpisode(episode.url)
+        } else {
+            await actor.archiveEpisode(episode.url)
+        }
+    }
+}
+
+private struct EpisodeDetailSupportSection: View {
+    let episode: Episode
+    @State private var isExpanded = false
+
+    private var funding: [FundingInfo] {
+        episode.funding.isEmpty ? episode.podcast?.funding ?? [] : episode.funding
+    }
+
+    private var hasValueSplit: Bool {
+        episode.optionalTags?.value?.contains(where: { $0.children.isEmpty == false }) == true
+    }
+
+    var body: some View {
+        if funding.isEmpty == false || hasValueSplit {
+            DisclosureGroup("Support & value", isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(funding) { fund in
+                        Link(destination: fund.url) {
+                            Label(fund.label, systemImage: "heart")
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                    }
+
+                    if hasValueSplit {
+                        PodcastValueSplitView(optionalTags: episode.optionalTags, funding: [])
+                    }
+                }
+                .padding(.top, 8)
+            }
+            .padding(12)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+    }
+}
+
+private struct EpisodeDetailPodcastLink: View {
+    let podcast: Podcast
+
+    var body: some View {
+        NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+            HStack(spacing: 12) {
+                CoverImageView(podcast: podcast, maxPixelSize: 192, loadDelay: .milliseconds(100))
+                    .frame(width: 48, height: 48)
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(podcast.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(2)
+                    if let author = podcast.author, author.isEmpty == false {
+                        Text(author)
+                            .font(.caption)
+                            .esaForeground(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, minHeight: 68, alignment: .leading)
+            .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Opens the podcast and its episodes")
+    }
+}
+
+// Metadata is kept behind native disclosures so it remains available without
+// competing with the episode's primary actions and show notes.
 private struct EpisodeDetailMetadataSections: View {
     let episode: Episode
+    @State private var isPeopleExpanded = false
+    @State private var isTechnicalExpanded = false
 
     private var fallbackAuthor: String? {
         guard episode.people.isEmpty else { return nil }
@@ -521,21 +642,35 @@ private struct EpisodeDetailMetadataSections: View {
     }
 
     var body: some View {
-        SocialView(socials: episode.social)
+        VStack(spacing: 10) {
+            if episode.social.isEmpty == false || episode.people.isEmpty == false || fallbackAuthor != nil {
+                DisclosureGroup("People & links", isExpanded: $isPeopleExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if episode.social.isEmpty == false {
+                            SocialView(socials: episode.social)
+                        }
+                        if episode.people.isEmpty == false || fallbackAuthor != nil {
+                            PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
 
-        PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
-
-        PodcastNamespaceMetadataView(
-            optionalTags: episode.optionalTags,
-            title: "Episode Metadata",
-            hidesRenderableValueBlocks: true
-        )
-
-        ShownoteContentView(html: episode.content ?? episode.desc ?? "")
-            .padding()
-
-        if episode.hasDisplayableChaptersOrSoundbites {
-            ChapterListView(episode: episode)
+            if let optionalTags = episode.optionalTags, optionalTags.isEmpty == false {
+                DisclosureGroup("Technical metadata", isExpanded: $isTechnicalExpanded) {
+                    PodcastNamespaceMetadataView(
+                        optionalTags: optionalTags,
+                        title: "Episode Metadata",
+                        hidesRenderableValueBlocks: true
+                    )
+                    .padding(.top, 8)
+                }
+                .padding(12)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
         }
     }
 }

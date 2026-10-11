@@ -44,9 +44,24 @@ struct SubscribeToPodcastView: View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 if let existingPodcast {
-                    PodcastRowView(podcast: existingPodcast)
+                    PodcastRowView(podcast: existingPodcast, density: .compact)
                 } else {
-                    PodcastDiscoveryPreviewRowView(feed: newPodcastFeed, isSubscribed: newPodcastFeed.existing)
+                    PodcastRowContentView(
+                        presentation: PodcastRowPresentation(
+                            identity: newPodcastFeed.url.map(PodcastFeedIdentity.normalizedFeedURLString)
+                                ?? newPodcastFeed.title
+                                ?? "new-podcast",
+                            feedURL: newPodcastFeed.url,
+                            title: newPodcastFeed.title
+                                ?? newPodcastFeed.url?.absoluteString
+                                ?? "New Podcast",
+                            author: newPodcastFeed.artist,
+                            summary: newPodcastFeed.description,
+                            artworkURL: newPodcastFeed.artworkURL,
+                            status: newPodcastFeed.existing ? .subscribed : .notSubscribed
+                        ),
+                        density: .compact
+                    )
                 }
 
                 if showsBrowseNavigationLink, newPodcastFeed.url != nil, deadFeedStatus == nil {
@@ -152,92 +167,6 @@ struct SubscribeToPodcastView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-}
-
-private struct PodcastDiscoveryPreviewRowView: View {
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @Environment(\.esaVisualStyle) private var visualStyle
-    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
-    @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
-    @State private var compactDescription: String?
-
-    let feed: PodcastFeed
-    let isSubscribed: Bool
-
-    private var title: String {
-        feed.title ?? feed.url.map { $0.isLikelyPrivatePodcastURL ? $0.redactedPodcastURLString : $0.absoluteString } ?? "New Podcast"
-    }
-
-    var body: some View {
-        let content = HStack(spacing: 14) {
-            CoverImageView(imageURL: feed.artworkURL, maxPixelSize: 384)
-                .frame(width: artworkSize, height: artworkSize)
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(title)
-                    .font(.headline)
-                    .lineLimit(2)
-                    .esaForeground(.primary)
-
-                if let author = feed.artist, author.isEmpty == false {
-                    Text(author)
-                        .font(.subheadline)
-                        .esaForeground(.secondary)
-                        .lineLimit(1)
-                }
-
-                if let compactDescription, compactDescription.isEmpty == false {
-                    Text(compactDescription)
-                        .font(.caption)
-                        .esaForeground(.secondary)
-                        .lineLimit(3)
-                }
-
-                Label(isSubscribed ? "Subscribed" : "Not Subscribed", systemImage: isSubscribed ? "checkmark.circle" : "pause.circle")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(isSubscribed ? .green : .orange)
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(8)
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-        .background {
-            if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(.thinMaterial)
-            }
-        }
-
-        Group {
-            if visualStyle != .artwork {
-                content.ESA_RowView(image: feed.artworkURL, minHeight: rowHeight)
-            } else if colorSchemeContrast == .increased {
-                content.background(Color(white: colorScheme == .dark ? 0 : 1))
-            } else {
-                ZStack {
-                    BlurredCoverImageView(
-                        imageURL: feed.artworkURL,
-                        maxPixelSize: 512,
-                        loadDelay: .milliseconds(200)
-                    )
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                    .clipped()
-                    .accessibilityHidden(true)
-                    content
-                }
-            }
-        }
-        .task(id: feed.description) {
-            guard let description = feed.description, description.isEmpty == false else {
-                compactDescription = nil
-                return
-            }
-            compactDescription = description.plainTextFromHTML() ?? description
-        }
     }
 }
 

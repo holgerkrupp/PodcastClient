@@ -88,10 +88,18 @@ actor AutomaticTranscriptionCandidateProvider {
         playlistScan: for playlist in playlists {
             let episodes: [Episode]
             if playlist.isSmartPlaylist {
-                if allEpisodes == nil {
-                    allEpisodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+                if SmartPlaylistEngine.candidatePlan(for: playlist.smartFilter) != nil {
+                    let candidates = (try? SmartPlaylistEngine.candidateEpisodes(
+                        in: modelContext,
+                        for: playlist.smartFilter
+                    )) ?? []
+                    episodes = SmartPlaylistEngine.episodes(from: candidates, for: playlist)
+                } else {
+                    if allEpisodes == nil {
+                        allEpisodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+                    }
+                    episodes = SmartPlaylistEngine.episodes(from: allEpisodes ?? [], for: playlist)
                 }
-                episodes = SmartPlaylistEngine.episodes(from: allEpisodes ?? [], for: playlist)
             } else {
                 episodes = orderedEntries(in: playlist.id).compactMap(\.episode)
             }

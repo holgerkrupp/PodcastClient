@@ -220,33 +220,19 @@ struct PredictedReleaseRefreshSchedule: Codable, Sendable, Equatable {
 actor PredictedReleaseRefreshScheduleStore {
     static let shared = PredictedReleaseRefreshScheduleStore()
 
-    private enum Constants {
-        static let defaultsKey = "DevelopmentPredictedReleaseRefreshSchedule.v1"
-    }
-
-    private let defaults: UserDefaults
-    private let encoder = JSONEncoder()
-    private let decoder = JSONDecoder()
-
-    init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
-    }
+    private var scheduledRefresh: PredictedReleaseRefreshSchedule?
 
     func schedule() -> PredictedReleaseRefreshSchedule? {
-        guard let data = defaults.data(forKey: Constants.defaultsKey) else {
-            return nil
-        }
-        return try? decoder.decode(PredictedReleaseRefreshSchedule.self, from: data)
+        scheduledRefresh
     }
 
     func record(_ schedule: PredictedReleaseRefreshSchedule) {
-        guard let data = try? encoder.encode(schedule) else { return }
-        defaults.set(data, forKey: Constants.defaultsKey)
+        scheduledRefresh = schedule
         notifyDidChange()
     }
 
     func clear() {
-        defaults.removeObject(forKey: Constants.defaultsKey)
+        scheduledRefresh = nil
         notifyDidChange()
     }
 

@@ -184,14 +184,13 @@ actor PlaylistModelActor {
         return p
     }
 
-    private func allEpisodes() throws -> [Episode] {
-        try modelContext.fetch(FetchDescriptor<Episode>())
-    }
-
     private func orderedEpisodes(for playlist: Playlist) throws -> [Episode] {
         if playlist.isSmartPlaylist {
-            let episodes = try allEpisodes()
-            return SmartPlaylistEngine.episodes(from: episodes, for: playlist)
+            let candidates = try SmartPlaylistEngine.candidateEpisodes(
+                in: modelContext,
+                for: playlist.smartFilter
+            )
+            return SmartPlaylistEngine.episodes(from: candidates, for: playlist)
         }
 
         return try fetchOrderedEntries().compactMap { $0.episode }

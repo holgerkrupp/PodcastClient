@@ -14,42 +14,45 @@ struct DownloadControllView: View {
     @StateObject var viewModel = DownloadViewModel()
     @State var episode: Episode
     var showDelete: Bool = true
+    var showsLabels: Bool = false
 
     var body: some View {
         let downloadedFiles = fileManager.downloadedFiles
         let isDownloaded = isDownloaded(downloadedFiles: downloadedFiles)
 
         Group {
-            if episode.source == .sideLoaded {
-                EmptyView()
-            } else if isDownloaded {
-                if showDelete {
-                    Button {
-                        Task {
-                            if let container = episode.modelContext?.container {
-                                await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
-                            }
-                        }
-                    } label: {
-                        Label("Remove Download", systemImage: "trash")
-                    }
-                    .accessibilityHint("Deletes the local file from this device")
-                } else {
+            Group {
+                if episode.source == .sideLoaded {
                     EmptyView()
-                }
-            } else if let item = viewModel.item, item.isDownloading || item.isPaused {
+                } else if isDownloaded {
+                    if showDelete {
+                        Button {
+                            Task {
+                                if let container = episode.modelContext?.container {
+                                    await EpisodeActor(modelContainer: container).deleteFile(episodeURL: episode.url)
+                                }
+                            }
+                        } label: {
+                            Label("Remove Download", systemImage: "trash")
+                        }
+                        .accessibilityHint("Deletes the local file from this device")
+                    } else {
+                        EmptyView()
+                    }
+                } else if let item = viewModel.item, item.isDownloading || item.isPaused {
                     DownloadProgressView(item: item, viewModel: viewModel)
                         .progressViewStyle(CircularProgressViewStyle())
-            } else if episode.url != nil {
-                Button {
-                    viewModel.startDownload(for: episode)
-                } label: {
-                    Label("Download", systemImage: "arrow.down.circle")
+                } else if episode.url != nil {
+                    Button {
+                        viewModel.startDownload(for: episode)
+                    } label: {
+                        Label("Download", systemImage: "arrow.down.circle")
+                    }
+                    .accessibilityHint("Downloads this episode for offline playback")
                 }
-                .accessibilityHint("Downloads this episode for offline playback")
             }
+            .labelStyle(AnyEpisodeDownloadLabelStyle(showsTitle: showsLabels))
         }
-        .labelStyle(.iconOnly)
         .buttonStyle(.glass(.clear))
         .task(id: episode.url) {
             if isDownloaded {
@@ -98,6 +101,21 @@ struct DownloadControllView: View {
             return URL(string: string)
         }
         return nil
+    }
+}
+
+private struct AnyEpisodeDownloadLabelStyle: LabelStyle {
+    let showsTitle: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        if showsTitle {
+            HStack(spacing: 6) {
+                configuration.icon
+                configuration.title
+            }
+        } else {
+            configuration.icon
+        }
     }
 }
 

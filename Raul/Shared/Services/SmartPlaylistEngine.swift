@@ -1,14 +1,50 @@
 import Foundation
 import SwiftData
 
+extension Notification.Name {
+    static let smartPlaylistMembershipCacheDidInvalidate = Notification.Name("smartPlaylistMembershipCacheDidInvalidate")
+}
+
+enum SmartPlaylistCandidatePlan: Equatable {
+    /// A necessary condition for every match when the filter uses `.all`.
+    case publishedAtOrAfter(Date)
+}
+
 enum SmartPlaylistEngine {
-    static func episodes(from allEpisodes: [Episode], for playlist: Playlist) -> [Episode] {
+    static func episodes(
+        from allEpisodes: [Episode],
+        for playlist: Playlist,
+        shouldContinue: () -> Bool = { true }
+    ) -> [Episode] {
         guard playlist.isSmartPlaylist else {
             return playlist.ordered.compactMap { $0.episode }
         }
+        guard let filter = playlist.smartFilter else { return [] }
 
-        let filtered = allEpisodes.filter { matches($0, filter: playlist.smartFilter) }
-        let sorted = filtered.sorted { lhs, rhs in
+        // These values depend only on the filter. Preparing them once avoids
+        // allocating and scanning the rules for every episode in a large library.
+        let activeRules = filter.rules.filter(isConfigured)
+        let explicitlyMatchesArchive = activeRules.contains {
+            $0.field == .archived && ($0.values.first ?? $0.query).lowercased() == "yes"
+        }
+
+        var filtered: [Episode] = []
+        filtered.reserveCapacity(min(allEpisodes.count, 256))
+        for (index, episode) in allEpisodes.enumerated() {
+            if index.isMultiple(of: 64), shouldContinue() == false { return [] }
+            if matches(
+                episode,
+                filter: filter,
+                activeRules: activeRules,
+                explicitlyMatchesArchive: explicitlyMatchesArchive,
+                shouldContinue: shouldContinue
+            ) {
+                filtered.append(episode)
+            }
+        }
+        guard shouldContinue() else { return [] }
+
+        filtered.sort { lhs, rhs in
             let lhsDate = lhs.publishDate ?? .distantPast
             let rhsDate = rhs.publishDate ?? .distantPast
             if lhsDate != rhsDate {
@@ -23,8 +59,11 @@ enum SmartPlaylistEngine {
 
             return (lhs.url?.absoluteString ?? "") < (rhs.url?.absoluteString ?? "")
         }
-        if let limit = playlist.smartFilter?.resultLimit, limit > 0 { return Array(sorted.prefix(limit)) }
-        return sorted
+        guard shouldContinue() else { return [] }
+        if let limit = filter.resultLimit, limit > 0, filtered.count > limit {
+            filtered.removeSubrange(limit...)
+        }
+        return filtered
     }
 
     static func matches(_ episode: Episode, filter: SmartPlaylistFilter?) -> Bool {
@@ -32,21 +71,80 @@ enum SmartPlaylistEngine {
             return false
         }
 
-        if filter.requireDownloaded,
-           episode.metaData?.calculatedIsAvailableLocally != true {
-            return false
-        }
-
-        let explicitlyMatchesArchive = filter.rules.contains {
+        let activeRules = filter.rules.filter(isConfigured)
+        let explicitlyMatchesArchive = activeRules.contains {
             $0.field == .archived && ($0.values.first ?? $0.query).lowercased() == "yes"
         }
+        return matches(
+            episode,
+            filter: filter,
+            activeRules: activeRules,
+            explicitlyMatchesArchive: explicitlyMatchesArchive,
+            shouldContinue: { true }
+        )
+    }
+
+    /// Restricts a database fetch only when a supported rule is a necessary
+    /// condition for the complete filter. The caller must still evaluate every
+    /// rule against the candidates returned here.
+    static func candidatePlan(for filter: SmartPlaylistFilter?) -> SmartPlaylistCandidatePlan? {
+        guard let filter, filter.matchMode == .all else { return nil }
+
+        let lowerBounds = filter.rules.compactMap { rule -> Date? in
+            guard isConfigured(rule),
+                  rule.field == .published else { return nil }
+            let value = rule.values.first ?? rule.query
+            switch rule.comparator {
+            case .greaterThan:
+                return ISO8601DateFormatter().date(from: value)
+            case .withinLastDays:
+                guard let days = Double(value), days >= 0 else { return nil }
+                return Calendar.current.date(byAdding: .day, value: -Int(days), to: .now)
+            default:
+                return nil
+            }
+        }
+        guard let lowerBound = lowerBounds.max() else { return nil }
+        return .publishedAtOrAfter(lowerBound)
+    }
+
+    /// Fetches a safe candidate superset through a stored/indexed field where
+    /// possible. Unsupported and OR filters retain the full-library path.
+    static func candidateEpisodes(in context: ModelContext, for filter: SmartPlaylistFilter?) throws -> [Episode] {
+        guard let plan = candidatePlan(for: filter) else {
+            return try context.fetch(FetchDescriptor<Episode>())
+        }
+
+        switch plan {
+        case let .publishedAtOrAfter(lowerBound):
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { episode in
+                    episode.publishDate != nil && episode.publishDate! >= lowerBound
+                }
+            )
+            return try context.fetch(descriptor)
+        }
+    }
+
+    private static func matches(
+        _ episode: Episode,
+        filter: SmartPlaylistFilter,
+        activeRules: [SmartPlaylistRule],
+        explicitlyMatchesArchive: Bool,
+        shouldContinue: () -> Bool
+    ) -> Bool {
+        var isAvailableLocally: Bool?
+        if filter.requireDownloaded {
+            let available = episode.metaData?.calculatedIsAvailableLocally == true
+            isAvailableLocally = available
+            guard available else { return false }
+        }
+
         if filter.includeArchived == false,
            explicitlyMatchesArchive == false,
            episode.metaData?.isArchived == true {
             return false
         }
-
-        let activeRules = filter.rules.filter { isConfigured($0) }
 
         guard activeRules.isEmpty == false else {
             // The download-only toggle is itself a complete smart-playlist
@@ -55,23 +153,33 @@ enum SmartPlaylistEngine {
             return filter.requireDownloaded
         }
 
-        let evaluations = activeRules.map { rule in
-            matches(episode, rule: rule)
-        }
-
         switch filter.matchMode {
         case .all:
-            return evaluations.allSatisfy { $0 }
+            for (index, rule) in activeRules.enumerated() {
+                if index.isMultiple(of: 16), shouldContinue() == false { return false }
+                guard matches(episode, rule: rule, isAvailableLocally: &isAvailableLocally) else { return false }
+            }
+            return true
         case .any:
-            return evaluations.contains(true)
+            for (index, rule) in activeRules.enumerated() {
+                if index.isMultiple(of: 16), shouldContinue() == false { return false }
+                if matches(episode, rule: rule, isAvailableLocally: &isAvailableLocally) { return true }
+            }
+            return false
         }
     }
 
-    private static func matches(_ episode: Episode, rule: SmartPlaylistRule) -> Bool {
+    private static func matches(
+        _ episode: Episode,
+        rule: SmartPlaylistRule,
+        isAvailableLocally: inout Bool?
+    ) -> Bool {
         let queryValue = rule.values.first ?? rule.query
         if rule.field == .downloaded {
             let expected = queryValue.lowercased() == "yes" || queryValue.lowercased() == "true"
-            return (episode.metaData?.calculatedIsAvailableLocally == true) == expected
+            let available = isAvailableLocally ?? (episode.metaData?.calculatedIsAvailableLocally == true)
+            isAvailableLocally = available
+            return available == expected
         }
         if rule.field == .archived {
             let expected = queryValue.lowercased() == "yes" || queryValue.lowercased() == "true"
@@ -275,42 +383,75 @@ enum SmartPlaylistEngine {
 /// large library never blocks the playlist switch animation or scrolling.
 @ModelActor
 actor SmartPlaylistEvaluationActor {
-    func matchingEpisodeIDs(for playlistID: UUID) throws -> [PersistentIdentifier] {
-        let playlistIDValue = playlistID
-        var playlistDescriptor = FetchDescriptor<Playlist>(
-            predicate: #Predicate<Playlist> { $0.id == playlistIDValue }
+    func matchingEpisodeIDs(
+        for playlistID: UUID,
+        expectedFilter: SmartPlaylistFilter?
+    ) throws -> [PersistentIdentifier] {
+        let startedAt = Date.now
+        let candidateSource = SmartPlaylistEngine.candidatePlan(for: expectedFilter) == nil
+            ? "full_scan"
+            : "published_date_after"
+        var candidateCount = 0
+        var resultCount = 0
+        CrashBreadcrumbs.shared.record(
+            "smart_playlist_evaluation_started",
+            details: "duration_ms=0 candidate_count=not_yet_fetched result_count=not_yet_evaluated candidate_source=\(candidateSource)"
         )
-        playlistDescriptor.fetchLimit = 1
-        guard let playlist = try modelContext.fetch(playlistDescriptor).first,
-              playlist.isSmartPlaylist else {
-            return []
-        }
 
-        let episodes = try modelContext.fetch(FetchDescriptor<Episode>())
-        return SmartPlaylistEngine.episodes(from: episodes, for: playlist)
-            .map(\.persistentModelID)
-    }
-
-    func prefetchEpisodeIDs(for requests: [SmartPlaylistPrefetchRequest]) throws -> [UUID: [PersistentIdentifier]] {
-        let playlists = try modelContext.fetch(FetchDescriptor<Playlist>())
-        let playlistsByID = Dictionary(uniqueKeysWithValues: playlists.map { ($0.id, $0) })
-        let episodes = try modelContext.fetch(FetchDescriptor<Episode>())
-        var result: [UUID: [PersistentIdentifier]] = [:]
-
-        for request in requests {
-            guard let playlist = playlistsByID[request.playlistID],
+        do {
+            try Task.checkCancellation()
+            let playlistIDValue = playlistID
+            var playlistDescriptor = FetchDescriptor<Playlist>(
+                predicate: #Predicate<Playlist> { $0.id == playlistIDValue }
+            )
+            playlistDescriptor.fetchLimit = 1
+            guard let playlist = try modelContext.fetch(playlistDescriptor).first,
                   playlist.isSmartPlaylist,
-                  playlist.smartFilter == request.filter else { continue }
-            let matching = SmartPlaylistEngine.episodes(from: episodes, for: playlist)
-            result[request.playlistID] = matching.map(\.persistentModelID)
-        }
-        return result
-    }
-}
+                  playlist.smartFilter == expectedFilter else {
+                throw CancellationError()
+            }
 
-struct SmartPlaylistPrefetchRequest: Sendable {
-    let playlistID: UUID
-    let filter: SmartPlaylistFilter?
+            let episodes = try SmartPlaylistEngine.candidateEpisodes(
+                in: modelContext,
+                for: playlist.smartFilter
+            )
+            candidateCount = episodes.count
+            try Task.checkCancellation()
+            let matching = SmartPlaylistEngine.episodes(
+                from: episodes,
+                for: playlist,
+                shouldContinue: { withUnsafeCurrentTask { $0?.isCancelled == false } }
+            )
+            try Task.checkCancellation()
+            var episodeIDs: [PersistentIdentifier] = []
+            episodeIDs.reserveCapacity(matching.count)
+            for (index, episode) in matching.enumerated() {
+                if index.isMultiple(of: 64), Task.isCancelled {
+                    throw CancellationError()
+                }
+                episodeIDs.append(episode.persistentModelID)
+            }
+            try Task.checkCancellation()
+            resultCount = episodeIDs.count
+            CrashBreadcrumbs.shared.record(
+                "smart_playlist_evaluation_completed",
+                details: "duration_ms=\(elapsedMilliseconds(since: startedAt)) candidate_count=\(candidateCount) result_count=\(resultCount)"
+            )
+            return episodeIDs
+        } catch is CancellationError {
+            CrashBreadcrumbs.shared.record(
+                "smart_playlist_evaluation_cancelled",
+                details: "duration_ms=\(elapsedMilliseconds(since: startedAt)) candidate_count=\(candidateCount) result_count=\(resultCount)"
+            )
+            throw CancellationError()
+        } catch {
+            throw error
+        }
+    }
+
+    private func elapsedMilliseconds(since start: Date) -> Int {
+        Int(max(0, Date.now.timeIntervalSince(start) * 1_000).rounded())
+    }
 }
 
 /// A process-local cache of derived membership. It stores identifiers only;
@@ -323,43 +464,153 @@ enum SmartPlaylistMembershipCache {
         let createdAt: Date
     }
 
+    private struct InFlightEvaluation {
+        let filter: SmartPlaylistFilter?
+        let generation: Int
+        let id: UUID
+        let task: Task<[PersistentIdentifier], Error>
+    }
+
     private static var entries: [UUID: Entry] = [:]
+    private static var evaluations: [UUID: InFlightEvaluation] = [:]
+    private static var notificationObservers: [NSObjectProtocol] = []
+    private static var invalidationDebounceTask: Task<Void, Never>?
     private static var invalidationGeneration = 0
     private static let lifetime: TimeInterval = 30
 
     static func episodeIDs(for playlistID: UUID, filter: SmartPlaylistFilter?) -> [PersistentIdentifier]? {
+        ensureObservingMembershipChanges()
         guard let entry = entries[playlistID],
               entry.filter == filter,
               Date.now.timeIntervalSince(entry.createdAt) < lifetime else { return nil }
         return entry.episodeIDs
     }
 
-    static func store(_ episodeIDs: [PersistentIdentifier], for playlistID: UUID, filter: SmartPlaylistFilter?) {
-        entries[playlistID] = Entry(filter: filter, episodeIDs: episodeIDs, createdAt: .now)
-    }
-
-    static func invalidate(_ playlistID: UUID? = nil) {
+    static func invalidate() {
         invalidationGeneration &+= 1
-        if let playlistID {
-            entries[playlistID] = nil
-        } else {
-            entries.removeAll(keepingCapacity: true)
+        entries.removeAll(keepingCapacity: true)
+        let staleEvaluations = evaluations
+        for (playlistID, evaluation) in staleEvaluations {
+            Task { @MainActor in
+                await cancelAndRetire(evaluation, for: playlistID)
+            }
         }
     }
 
-    static func prefetch(_ requests: [SmartPlaylistPrefetchRequest], using container: ModelContainer) async {
-        let missingRequests = requests.filter {
-            episodeIDs(for: $0.playlistID, filter: $0.filter) == nil
+    private static func ensureObservingMembershipChanges() {
+        guard notificationObservers.isEmpty else { return }
+        let center = NotificationCenter.default
+        let names: [Notification.Name] = [
+            .episodeDownloadFinished,
+            .smartPlaylistEpisodeDataDidChange
+        ]
+        notificationObservers = names.map { name in
+            center.addObserver(forName: name, object: nil, queue: nil) { _ in
+                Task { @MainActor in
+                    scheduleMembershipInvalidation()
+                }
+            }
         }
-        guard missingRequests.isEmpty == false else { return }
-        let generation = invalidationGeneration
+    }
 
-        let evaluator = SmartPlaylistEvaluationActor(modelContainer: container)
-        guard let prefetched = try? await evaluator.prefetchEpisodeIDs(for: missingRequests) else { return }
-        guard generation == invalidationGeneration else { return }
-        for request in missingRequests {
-            guard let episodeIDs = prefetched[request.playlistID] else { continue }
-            store(episodeIDs, for: request.playlistID, filter: request.filter)
+    private static func scheduleMembershipInvalidation() {
+        invalidationDebounceTask?.cancel()
+        invalidationDebounceTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 300_000_000)
+            } catch {
+                return
+            }
+            guard Task.isCancelled == false else { return }
+            invalidate()
+            NotificationCenter.default.post(name: .smartPlaylistMembershipCacheDidInvalidate, object: nil)
+            invalidationDebounceTask = nil
+        }
+    }
+
+    static func matchingEpisodeIDs(
+        for playlistID: UUID,
+        filter: SmartPlaylistFilter?,
+        using container: ModelContainer
+    ) async throws -> [PersistentIdentifier] {
+        try Task.checkCancellation()
+        if let cached = episodeIDs(for: playlistID, filter: filter) { return cached }
+
+        var generation = invalidationGeneration
+        var selectedEvaluation: InFlightEvaluation?
+        while selectedEvaluation == nil {
+            try Task.checkCancellation()
+            generation = invalidationGeneration
+            if let cached = episodeIDs(for: playlistID, filter: filter) { return cached }
+
+            if let existing = evaluations[playlistID] {
+                if existing.filter == filter,
+                   existing.generation == generation,
+                   existing.task.isCancelled == false {
+                    selectedEvaluation = existing
+                } else {
+                    await cancelAndRetire(existing, for: playlistID)
+                }
+                continue
+            }
+
+            let id = UUID()
+            let evaluator = SmartPlaylistEvaluationActor(modelContainer: container)
+            let task = Task<[PersistentIdentifier], Error>(priority: .userInitiated) {
+                try await evaluator.matchingEpisodeIDs(for: playlistID, expectedFilter: filter)
+            }
+            let evaluation = InFlightEvaluation(
+                filter: filter,
+                generation: generation,
+                id: id,
+                task: task
+            )
+            evaluations[playlistID] = evaluation
+            selectedEvaluation = evaluation
+        }
+        guard let evaluation = selectedEvaluation else { throw CancellationError() }
+
+        do {
+            let matchedEpisodeIDs = try await withTaskCancellationHandler {
+                try await evaluation.task.value
+            } onCancel: {
+                Task { @MainActor in
+                    guard evaluations[playlistID]?.id == evaluation.id else { return }
+                    await cancelAndRetire(evaluation, for: playlistID)
+                }
+            }
+            try Task.checkCancellation()
+            guard generation == invalidationGeneration else {
+                throw CancellationError()
+            }
+            if evaluations[playlistID]?.id == evaluation.id {
+                entries[playlistID] = Entry(filter: filter, episodeIDs: matchedEpisodeIDs, createdAt: .now)
+                evaluations[playlistID] = nil
+            } else if let cached = episodeIDs(for: playlistID, filter: filter) {
+                // Another caller sharing this evaluation may have stored the
+                // result first and removed the in-flight entry.
+                return cached
+            } else {
+                throw CancellationError()
+            }
+            return matchedEpisodeIDs
+        } catch {
+            if evaluations[playlistID]?.id == evaluation.id,
+               Task.isCancelled == false,
+               evaluation.task.isCancelled == false {
+                evaluations[playlistID] = nil
+            }
+            throw error
+        }
+    }
+
+    @MainActor
+    private static func cancelAndRetire(_ evaluation: InFlightEvaluation, for playlistID: UUID) async {
+        guard evaluations[playlistID]?.id == evaluation.id else { return }
+        evaluation.task.cancel()
+        _ = try? await evaluation.task.value
+        if evaluations[playlistID]?.id == evaluation.id {
+            evaluations[playlistID] = nil
         }
     }
 }

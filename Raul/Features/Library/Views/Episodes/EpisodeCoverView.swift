@@ -14,6 +14,8 @@ struct CoverImageView: View {
     var episode: Episode? = nil
     var podcast: Podcast? = nil
     var imageURL: URL? = nil
+    /// A lightweight credential profile supplied by value-only row presenters.
+    var accessProfileOverride: PodcastAccessProfile? = nil
     // timecode remains as input to determine the active chapter,
     // but we will NOT key the async task directly off this Double.
     var timecode: Double? = nil
@@ -86,6 +88,9 @@ struct CoverImageView: View {
     }
 
     private var accessProfile: PodcastAccessProfile? {
+        if let accessProfileOverride {
+            return accessProfileOverride
+        }
         let sourcePodcast = episode?.podcast ?? podcast
         guard let metadata = sourcePodcast?.metaData,
               let id = metadata.accessProfileID,
@@ -283,6 +288,8 @@ struct BlurredCoverImageView: View {
     var episode: Episode? = nil
     var podcast: Podcast? = nil
     var imageURL: URL? = nil
+    /// A lightweight credential profile supplied by value-only row presenters.
+    var accessProfileOverride: PodcastAccessProfile? = nil
     var radius: CGFloat = 8
     var maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
     var loadDelay: Duration = .zero
@@ -336,6 +343,9 @@ struct BlurredCoverImageView: View {
     }
 
     private var accessProfile: PodcastAccessProfile? {
+        if let accessProfileOverride {
+            return accessProfileOverride
+        }
         let sourcePodcast = episode?.podcast ?? podcast
         guard let metadata = sourcePodcast?.metaData,
               let id = metadata.accessProfileID,

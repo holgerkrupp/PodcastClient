@@ -131,15 +131,19 @@ struct PlayerView: View {
 
     private func playerContentPane(episode: Episode) -> some View {
         return VStack(spacing: 0) {
-            Picker("Player content", selection: $contentTab) {
-                ForEach(PlayerContentTab.allCases) { tab in
-                    Text(tab.title)
-                        .tag(tab)
+            HStack(spacing: 12) {
+                Picker("Player content", selection: $contentTab) {
+                    ForEach(PlayerContentTab.allCases) { tab in
+                        Text(tab.title)
+                            .tag(tab)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Player content")
+
+                playerMoreActionsMenu(episode: episode)
             }
-            .pickerStyle(.segmented)
             .padding()
-            .accessibilityLabel("Player content")
 
             Divider()
 
@@ -289,61 +293,71 @@ struct PlayerView: View {
             Divider()
 
             HStack {
-                if let episodeLink = episode.link {
-                    Link(destination: episodeLink) {
-                        Label("Open in Browser", systemImage: "safari")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.glass(.clear))
-                }
-
+                Text("Shownotes")
+                    .font(.headline)
                 Spacer()
-#if DEBUG
-                NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
-                    Image(systemName: "ladybug")
-                        .imageScale(.small)
-                }
-                .buttonStyle(.glass(.clear))
-                .tint(.blue)
-                .accessibilityLabel("Episode debug metadata")
-#endif
-
-                if player.canSwitchCurrentEpisodeMedia {
-                    Button {
-                        Task { await player.switchCurrentEpisodeMedia() }
-                    } label: {
-                        Label(
-                            player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video",
-                            systemImage: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle"
-                        )
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.glass)
-                    .accessibilityLabel(player.currentPlaybackIsVideo ? "Switch to audio" : "Switch to video")
-                }
-
-                Spacer()
-
-                if let url = episode.deeplinks?.first ?? episode.link {
-                    ShareLink(item: positionedURL(for: url)) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.glass(.clear))
-                    .accessibilityLabel("Share episode link at current time")
-                }
-
-                ListenTogetherButton(episode: episode)
+                playerMoreActionsMenu(episode: episode)
             }
-
-            Text("Shownotes")
-                .font(.headline)
 
             PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func playerMoreActionsMenu(episode: Episode) -> some View {
+        Menu {
+            if let episodeLink = episode.link {
+                Link(destination: episodeLink) {
+                    Label("Open Episode Website", systemImage: "safari")
+                }
+            }
+
+            if let url = episode.deeplinks?.first ?? episode.link {
+                ShareLink(item: positionedURL(for: url)) {
+                    Label("Share at Current Position", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            if player.canSwitchCurrentEpisodeMedia {
+                Button {
+                    Task { await player.switchCurrentEpisodeMedia() }
+                } label: {
+                    Label(
+                        player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video",
+                        systemImage: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle"
+                    )
+                }
+            }
+
+            if ListenTogetherController.shared.isInSession {
+                Button {
+                    ListenTogetherController.shared.leave()
+                } label: {
+                    Label("Leave SharePlay", systemImage: "shareplay.slash")
+                }
+            } else if let activity = ListenTogetherActivity(episode: episode) {
+                ShareLink(
+                    item: ListenTogetherInvitation(activity: activity),
+                    preview: SharePreview(episode.title)
+                ) {
+                    Label("Listen Together", systemImage: "shareplay")
+                }
+            }
+
+#if DEBUG
+            NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                Label("Episode Debug Metadata", systemImage: "ladybug")
+            }
+#endif
+        } label: {
+            Label("More", systemImage: "ellipsis")
+                .labelStyle(.titleAndIcon)
+        }
+        .accessibilityLabel("More episode actions")
+        .accessibilityHint("Opens website, sharing, media, and developer actions")
     }
 
     private func compactPlayer(episode: Episode) -> some View {

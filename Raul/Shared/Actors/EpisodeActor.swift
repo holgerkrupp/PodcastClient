@@ -35,6 +35,16 @@ private struct EpisodeTranscriptionSnapshot {
     let publishesTranscripts: Bool
 }
 
+private struct EpisodeSmartPlaylistMembershipState: Equatable {
+    let hasPlaybackHistory: Bool
+    let isPlayed: Bool
+
+    init(_ episode: Episode) {
+        hasPlaybackHistory = episode.hasPlaybackHistory
+        isPlayed = episode.isPlayed
+    }
+}
+
 enum EpisodeCompletionError: LocalizedError {
     case episodeNotFound(URL)
 
@@ -255,6 +265,33 @@ actor EpisodeActor {
         metadata.episode = episode
         episode.metaData = metadata
     }
+
+    private func notifySmartPlaylistMembershipChangeIfNeeded(
+        from previousStates: [EpisodeSmartPlaylistMembershipState],
+        for episodes: [Episode]
+    ) async {
+        guard previousStates.count == episodes.count,
+              zip(previousStates, episodes).contains(where: { pair in
+                  pair.0 != EpisodeSmartPlaylistMembershipState(pair.1)
+              }) else {
+            return
+        }
+
+        // Some history setters are intentionally lightweight and do not save
+        // themselves. Persist only when they cross one of the status-filter
+        // boundaries so another ModelContext can observe the new membership.
+        modelContext.saveIfNeeded()
+        await MainActor.run {
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
+    private func notifySmartPlaylistMembershipChangeIfNeeded(
+        from previousState: EpisodeSmartPlaylistMembershipState,
+        for episode: Episode
+    ) async {
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: [previousState], for: [episode])
+    }
     
     func getLastPlayedEpisode() async -> Episode? {
         guard let episodeURL = await getLastPlayedEpisodeURL() else { return nil }
@@ -287,10 +324,12 @@ actor EpisodeActor {
                 return false
             }
 
+            let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
             episode.duration = seconds
             episode.refresh.toggle()
             print("new duration: \(seconds)")
             modelContext.saveIfNeeded()
+            await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
             return true
         } catch {
             print(error)
@@ -337,19 +376,23 @@ actor EpisodeActor {
     
     func addplaybackStartTimes(episodeURL: URL, date: Date = Date()) async{
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         if episode.metaData?.playbackStartTimes == nil  {
             episode.metaData?.playbackStartTimes = .init([])
         }
         episode.metaData?.playbackStartTimes?.elements.append(date)
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
     }
     
     func addPlaybackDuration(episodeURL: URL, duration: TimeInterval) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         if episode.metaData?.playbackDurations == nil {
             episode.metaData?.playbackDurations = .init([])
         }
         episode.metaData?.playbackDurations?.elements.append(duration)
         episode.metaData?.totalListenTime += duration
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
     }
 
     func addPlaybackSpeed(episodeURL: URL, speed: Double) async {
@@ -362,20 +405,26 @@ actor EpisodeActor {
 
     func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         ensureMetadata(for: episode)
         episode.metaData?.completionDate = date ?? Date()
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
     }
 
     func setFirstListenDateIfNeeded(episodeURL: URL, date: Date? = nil) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         if episode.metaData?.firstListenDate == nil {
             episode.metaData?.firstListenDate = date ?? Date()
         }
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
     }
 
     func markEpisodeAsSkipped(episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         episode.metaData?.wasSkipped = true
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
     }
     
     func getLastPlayedEpisodeURL() async -> URL? {
@@ -412,15 +461,18 @@ actor EpisodeActor {
     
     func setLastPlayed(episodeURL: URL, to date: Date = Date()) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         ensureMetadata(for: episode)
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
         await persistLocalEpisodeClassification([episode])
         await publishSplitEpisodeState(episode)
     }
     
     func setPlayPosition(episodeURL: URL, position: TimeInterval, force: Bool = false) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         ensureMetadata(for: episode)
         let previousPosition = episode.metaData?.playPosition ?? 0.0
         if force || abs(previousPosition - position) >= 10 {
@@ -429,6 +481,7 @@ actor EpisodeActor {
             }
             episode.metaData?.playPosition = position
             modelContext.saveIfNeeded()
+            await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
             await publishSplitEpisodeState(episode)
         }
 
@@ -451,6 +504,7 @@ actor EpisodeActor {
         }
 
         let position = max(0, finalPlaybackPosition.isFinite ? finalPlaybackPosition : 0)
+        let previousMemberships = episodes.map(EpisodeSmartPlaylistMembershipState.init)
         for episode in episodes {
             ensureMetadata(for: episode)
             episode.metaData?.playPosition = position
@@ -470,6 +524,7 @@ actor EpisodeActor {
         // Do not use saveIfNeeded here: a completion handoff must be able to
         // report a failed commit instead of continuing as though it succeeded.
         try modelContext.save()
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMemberships, for: episodes)
 
         // These projections are useful follow-up work, but the local SwiftData
         // save above is the durable completion boundary used by playback recovery.
@@ -497,6 +552,7 @@ actor EpisodeActor {
         lastPlayed: Date? = nil
     ) async -> Bool {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         ensureMetadata(for: episode)
 
         let storedMaxPosition = episode.metaData?.maxPlayposition ?? 0.0
@@ -524,6 +580,7 @@ actor EpisodeActor {
         guard modelContext.hasChanges else { return true }
         do {
             try modelContext.save()
+            await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
             await publishSplitEpisodeState(episode)
             return true
         } catch {
@@ -541,6 +598,7 @@ actor EpisodeActor {
     
     func markasPlayed(_ episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+        let previousMembership = EpisodeSmartPlaylistMembershipState(episode)
         ensureMetadata(for: episode)
         episode.metaData?.completionDate = Date()
         episode.metaData?.isHistory = true
@@ -548,6 +606,7 @@ actor EpisodeActor {
         episode.metaData?.status = .history
 
         modelContext.saveIfNeeded()
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
         await persistLocalEpisodeClassification([episode])
         await publishSplitEpisodeState(episode)
 
@@ -765,6 +824,7 @@ actor EpisodeActor {
     func moveToHistory(episodeURL: URL) async {
         let episodes = await fetchEpisodes(byURL: episodeURL)
         guard episodes.isEmpty == false else { return }
+        let previousMemberships = episodes.map(EpisodeSmartPlaylistMembershipState.init)
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         await logAutoDownload("trigger/move-to-history episode=\(episodeURL.redactedPodcastURLString) matchedEpisodes=\(episodes.count) affectedFeeds=\(podcastFeeds.count)")
         await removeFromPlaylist(episodeURL)
@@ -783,6 +843,7 @@ actor EpisodeActor {
         }
         
         modelContext.saveIfNeeded()
+        await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMemberships, for: episodes)
         await persistLocalEpisodeClassification(episodes)
         for episode in episodes {
             await publishSplitEpisodeState(episode)

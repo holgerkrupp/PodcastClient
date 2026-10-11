@@ -166,14 +166,19 @@ struct PodcastSearchView: View {
                 }
             }
             else if let urlErrorMessage = viewModel.urlErrorMessage {
-                Label("Couldn’t add podcast from URL", systemImage: "exclamationmark.triangle")
-                    .font(.headline)
-                Text(urlErrorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                ContentUnavailableView {
+                    Label("Couldn’t Add Podcast", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(urlErrorMessage)
+                } actions: {
+                    Text("Check the link or try the podcast’s website address.")
+                        .font(.footnote)
+                }
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             }
             else if !viewModel.searchText.isEmpty{
-                Text("no results for \(search)")
+                ContentUnavailableView.search(text: search)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             }

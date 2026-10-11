@@ -17,6 +17,7 @@ enum BackgroundTaskConfiguration {
     static let predictedReleaseRefreshOffset: TimeInterval = 5 * 60
     static let predictedReleaseRefreshMinimumScheduleDelay: TimeInterval = 60
     static let predictedReleaseRefreshRetryDelay: TimeInterval = 30 * 60
+    static let refreshScheduleSnapshotMaximumAge: TimeInterval = 60 * 60 * 6
     static let predictedReleaseRefreshPodcastLimit = 5
     /// Floor for the overnight migration pass. `requiresExternalPower` already
     /// restricts it to charging, so a short floor just makes the request eligible
@@ -48,19 +49,265 @@ enum BackgroundTaskConfiguration {
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
 }
 
+/// A small, durable snapshot of the scheduling decisions that were made while
+/// the app had a safe foreground window. Scene background transitions only
+/// read this value; they never open a SwiftData context or walk the library.
+struct BackgroundRefreshScheduleSnapshot: Sendable {
+    let computedAt: Date
+    let feedEarliestBeginDate: Date
+    let predictedReleaseTarget: SubscriptionManager.PredictedReleaseRefreshTarget?
+    let predictedReleaseEarliestBeginDate: Date?
+    let hasPredictedReleaseTarget: Bool
+
+    init(
+        computedAt: Date,
+        feedEarliestBeginDate: Date,
+        predictedReleaseTarget: SubscriptionManager.PredictedReleaseRefreshTarget?,
+        predictedReleaseEarliestBeginDate: Date?,
+        hasPredictedReleaseTarget: Bool? = nil
+    ) {
+        self.computedAt = computedAt
+        self.feedEarliestBeginDate = feedEarliestBeginDate
+        self.predictedReleaseTarget = predictedReleaseTarget
+        self.predictedReleaseEarliestBeginDate = predictedReleaseEarliestBeginDate
+        self.hasPredictedReleaseTarget = hasPredictedReleaseTarget ?? (predictedReleaseTarget != nil)
+    }
+}
+
+private struct PersistedBackgroundRefreshScheduleDates: Codable {
+    let computedAt: Date
+    let feedEarliestBeginDate: Date
+    let predictedReleaseEarliestBeginDate: Date?
+    let hasPredictedReleaseTarget: Bool
+}
+
+actor BackgroundRefreshScheduleSnapshotStore {
+    static let shared = BackgroundRefreshScheduleSnapshotStore()
+
+    private static let defaultsKey = "BackgroundRefreshScheduleSnapshot.v1"
+
+    private let defaults: UserDefaults
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
+    private var snapshot: BackgroundRefreshScheduleSnapshot?
+    private var refreshTask: Task<BackgroundRefreshScheduleSnapshot?, Never>?
+    private var refreshID: UUID?
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    func cachedSnapshot() -> BackgroundRefreshScheduleSnapshot? {
+        if let snapshot { return snapshot }
+        guard let data = defaults.data(forKey: Self.defaultsKey),
+              let restored = try? decoder.decode(PersistedBackgroundRefreshScheduleDates.self, from: data) else {
+            return nil
+        }
+        let restoredSnapshot = BackgroundRefreshScheduleSnapshot(
+            computedAt: restored.computedAt,
+            feedEarliestBeginDate: restored.feedEarliestBeginDate,
+            predictedReleaseTarget: nil,
+            predictedReleaseEarliestBeginDate: restored.predictedReleaseEarliestBeginDate,
+            hasPredictedReleaseTarget: restored.hasPredictedReleaseTarget
+        )
+        snapshot = restoredSnapshot
+        return restoredSnapshot
+    }
+
+    /// Coalesces overlapping foreground requests into one pass. The actual
+    /// SwiftData reads run away from the scene callback and the cached value is
+    /// readable while the pass is in flight.
+    func refresh(using container: ModelContainer) async -> BackgroundRefreshScheduleSnapshot? {
+        guard Task.isCancelled == false else { return nil }
+        if let existingTask = refreshTask {
+            let existingID = refreshID
+            let inFlight = await existingTask.value
+            guard Task.isCancelled == false else { return nil }
+            if refreshID == existingID {
+                self.refreshTask = nil
+                refreshID = nil
+                guard let inFlight else { return nil }
+                persist(inFlight)
+                return inFlight
+            }
+            // Another waiter already retired this worker. If it replaced the
+            // task, join that new flight; if it published a result, reuse it.
+            if refreshTask != nil {
+                return await refresh(using: container)
+            }
+            return snapshot
+        }
+        guard Task.isCancelled == false else { return nil }
+
+        let id = UUID()
+        let task = Task.detached(priority: .utility) { () -> BackgroundRefreshScheduleSnapshot? in
+            var didAcquirePredictionWindow = false
+            for _ in 0..<30 {
+                guard Task.isCancelled == false else { return nil }
+                if await FeedRefreshRunCoordinator.shared.beginSchedulePrediction() {
+                    didAcquirePredictionWindow = true
+                    break
+                }
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return nil
+                }
+            }
+            guard didAcquirePredictionWindow else { return nil }
+
+            let feedDate = await FeedRefreshScheduler.predictedBeginDate(using: container)
+                ?? Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
+            guard Task.isCancelled == false else {
+                await FeedRefreshRunCoordinator.shared.finishSchedulePrediction()
+                return nil
+            }
+#if os(iOS)
+            let predictedRelease = await PredictedReleaseRefreshScheduler
+                .predictedReleaseRefreshSchedule(using: container)
+#else
+            let predictedRelease: (
+                target: SubscriptionManager.PredictedReleaseRefreshTarget,
+                earliestBeginDate: Date
+            )? = nil
+#endif
+            await FeedRefreshRunCoordinator.shared.finishSchedulePrediction()
+            guard Task.isCancelled == false else { return nil }
+            return BackgroundRefreshScheduleSnapshot(
+                computedAt: Date(),
+                feedEarliestBeginDate: feedDate,
+                predictedReleaseTarget: predictedRelease?.target,
+                predictedReleaseEarliestBeginDate: predictedRelease?.earliestBeginDate
+            )
+        }
+        refreshID = id
+        refreshTask = task
+
+        let updated = await task.value
+        guard Task.isCancelled == false else {
+            if refreshID == id {
+                refreshTask = nil
+                refreshID = nil
+            }
+            return nil
+        }
+        guard refreshID == id else {
+            if refreshTask != nil {
+                return await refresh(using: container)
+            }
+            return snapshot
+        }
+        refreshTask = nil
+        refreshID = nil
+        guard let updated else { return nil }
+        persist(updated)
+        return updated
+    }
+
+    private func persist(_ updated: BackgroundRefreshScheduleSnapshot) {
+        let persisted = PersistedBackgroundRefreshScheduleDates(
+            computedAt: updated.computedAt,
+            feedEarliestBeginDate: updated.feedEarliestBeginDate,
+            predictedReleaseEarliestBeginDate: updated.predictedReleaseEarliestBeginDate,
+            hasPredictedReleaseTarget: updated.hasPredictedReleaseTarget
+        )
+        if let data = try? encoder.encode(persisted) {
+            defaults.set(data, forKey: Self.defaultsKey)
+        }
+        snapshot = updated
+    }
+
+    func cancelForegroundRefresh() {
+        refreshTask?.cancel()
+    }
+}
+
+enum BackgroundRefreshScheduleSnapshotCoordinator {
+    /// Refresh prediction data only while the application is active. This is
+    /// intentionally safe to call from startup and foreground refresh paths:
+    /// concurrent requests share the same single in-flight computation.
+    static func refreshIfSafe(using container: ModelContainer) async {
+#if os(iOS)
+        guard await waitForSafeForegroundWindow() else { return }
+        guard let snapshot = await BackgroundRefreshScheduleSnapshotStore.shared.refresh(using: container) else {
+            return
+        }
+        guard await waitForSafeForegroundWindow() else { return }
+        _ = await FeedRefreshScheduler.schedule(using: nil)
+        await PredictedReleaseRefreshScheduler.schedule(using: nil)
+        CrashBreadcrumbs.shared.record(
+            "background_refresh_schedule_snapshot_updated",
+            details: "release_target=\(snapshot.predictedReleaseTarget != nil)"
+        )
+#endif
+    }
+
+#if os(iOS)
+    private static func waitForSafeForegroundWindow() async -> Bool {
+        for _ in 0..<15 {
+            guard Task.isCancelled == false else { return false }
+#if canImport(UIKit)
+            let isActive = await MainActor.run(body: {
+                UIApplication.shared.applicationState == .active
+            })
+            guard isActive else { return false }
+#endif
+            let canPredict = await MainActor.run(body: {
+                Player.hasActivePlaybackInProcess == false
+                    && ModelContainerManager.shared.isCloudKitExportInProgress == false
+            })
+            guard canPredict else { return false }
+
+            if await FeedRefreshRunCoordinator.shared.hasActiveRefreshRun() == false {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return false
+                }
+                guard Task.isCancelled == false,
+                      await FeedRefreshRunCoordinator.shared.hasActiveRefreshRun() == false else {
+                    continue
+                }
+                let stillSafe = await MainActor.run(body: {
+                    Player.hasActivePlaybackInProcess == false
+                        && ModelContainerManager.shared.isCloudKitExportInProgress == false
+                })
+                if stillSafe { return true }
+                return false
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(2))
+            } catch {
+                return false
+            }
+        }
+        return false
+    }
+#endif
+}
+
 /// Submits the general feed-refresh background task.
 ///
-/// Free-standing (rather than a method on `RaulApp`) so it can run off the main
-/// actor: it reads the predicted refresh window for every subscribed podcast,
-/// and doing that on the main actor during the `.background` transition held the
-/// main thread past the 5s suspension deadline and got the app killed.
+/// Free-standing so foreground snapshot calculation and BGTask submission do
+/// not depend on the SwiftUI App value. `schedule` only consumes cached data;
+/// the library read happens in the foreground snapshot coordinator.
 enum FeedRefreshScheduler {
     static func schedule(using container: ModelContainer?) async -> Date? {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_feed_refresh_requested")
         AppDiagnostics.log("schedule checkFeedUpdates")
 
-        let earliestBeginDate = await predictedBeginDate(using: container)
+        _ = container // Scene and task handoffs must not calculate predictions.
+        let snapshot = await BackgroundRefreshScheduleSnapshotStore.shared.cachedSnapshot()
+        let fallback = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
+        let snapshotIsFresh = snapshot.map {
+            Date().timeIntervalSince($0.computedAt)
+                <= BackgroundTaskConfiguration.refreshScheduleSnapshotMaximumAge
+        } ?? false
+        let predicted = snapshotIsFresh ? snapshot?.feedEarliestBeginDate ?? fallback : fallback
+        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
+        let earliestBeginDate = min(max(predicted, minimumDelay), fallback)
         let request = BGAppRefreshTaskRequest(
             identifier: BackgroundTaskConfiguration.feedRefreshIdentifier
         )
@@ -70,7 +317,7 @@ enum FeedRefreshScheduler {
             try BGTaskScheduler.shared.submit(request)
             CrashBreadcrumbs.shared.record(
                 "schedule_feed_refresh_submitted",
-                details: earliestBeginDate.map { "earliest=\($0)" }
+                details: "earliest=\(earliestBeginDate)"
             )
         } catch {
             CrashBreadcrumbs.shared.record(
@@ -85,7 +332,7 @@ enum FeedRefreshScheduler {
 #endif
     }
 
-    private static func predictedBeginDate(using container: ModelContainer?) async -> Date? {
+    static func predictedBeginDate(using container: ModelContainer?) async -> Date? {
         let fallback = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshInterval)
         guard let container else { return fallback }
         guard let predicted = await SubscriptionManager(modelContainer: container)
@@ -103,22 +350,42 @@ enum PredictedReleaseRefreshScheduler {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_predicted_release_refresh_requested")
         AppDiagnostics.log("schedule refreshPredictedRelease")
-        BGTaskScheduler.shared.cancel(
-            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-        )
-
-        guard let container else {
+        _ = container // Scheduling consumes a foreground-computed snapshot only.
+        guard let snapshot = await BackgroundRefreshScheduleSnapshotStore.shared.cachedSnapshot() else {
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_not_scheduled",
-                details: "reason=model_container_unavailable"
+                details: "reason=no_snapshot_existing_request_preserved"
             )
-#if DEBUG
-            await PredictedReleaseRefreshScheduleStore.shared.clear()
-#endif
             return
         }
 
-        guard let schedule = await predictedReleaseRefreshSchedule(using: container) else {
+        guard Date().timeIntervalSince(snapshot.computedAt)
+                <= BackgroundTaskConfiguration.refreshScheduleSnapshotMaximumAge else {
+            if snapshot.hasPredictedReleaseTarget {
+                CrashBreadcrumbs.shared.record(
+                    "schedule_predicted_release_refresh_not_scheduled",
+                    details: "reason=stale_snapshot_retry"
+                )
+                await scheduleRetryAfterBackgroundPass(
+                    delay: BackgroundTaskConfiguration.feedRefreshInterval
+                )
+            } else {
+                BGTaskScheduler.shared.cancel(
+                    taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+                )
+                CrashBreadcrumbs.shared.record(
+                    "schedule_predicted_release_refresh_not_scheduled",
+                    details: "reason=stale_snapshot_without_target"
+                )
+            }
+            return
+        }
+
+        guard snapshot.hasPredictedReleaseTarget,
+              let cachedEarliestBeginDate = snapshot.predictedReleaseEarliestBeginDate else {
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+            )
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_not_scheduled",
                 details: "reason=no_prediction"
@@ -129,27 +396,37 @@ enum PredictedReleaseRefreshScheduler {
             return
         }
 
+        BGTaskScheduler.shared.cancel(
+            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+
         let request = BGAppRefreshTaskRequest(
             identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
         )
-        request.earliestBeginDate = schedule.earliestBeginDate
+        let minimumBeginDate = Date(
+            timeIntervalSinceNow: BackgroundTaskConfiguration.predictedReleaseRefreshMinimumScheduleDelay
+        )
+        let earliestBeginDate = max(cachedEarliestBeginDate, minimumBeginDate)
+        request.earliestBeginDate = earliestBeginDate
 
         do {
             try BGTaskScheduler.shared.submit(request)
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_submitted",
-                details: "earliest=\(schedule.earliestBeginDate)"
+                details: "earliest=\(earliestBeginDate)"
             )
 #if DEBUG
-            await PredictedReleaseRefreshScheduleStore.shared.record(
-                PredictedReleaseRefreshSchedule(
-                    scheduledAt: Date(),
-                    title: schedule.target.title,
-                    feedURL: schedule.target.feed.absoluteString,
-                    releaseDate: schedule.target.releaseDate,
-                    earliestBeginDate: schedule.earliestBeginDate
+            if let target = snapshot.predictedReleaseTarget {
+                await PredictedReleaseRefreshScheduleStore.shared.record(
+                    PredictedReleaseRefreshSchedule(
+                        scheduledAt: Date(),
+                        title: target.title,
+                        feedURL: target.feed.absoluteString,
+                        releaseDate: target.releaseDate,
+                        earliestBeginDate: earliestBeginDate
+                    )
                 )
-            )
+            }
 #endif
         } catch {
             CrashBreadcrumbs.shared.record(
@@ -164,8 +441,40 @@ enum PredictedReleaseRefreshScheduler {
 #endif
     }
 
+    /// Re-arms a request after a granted background pass without reopening the
+    /// library to recompute predictions during the suspension window.
+    static func scheduleRetryAfterBackgroundPass(
+        delay: TimeInterval = BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay
+    ) async {
 #if os(iOS)
-    private static func predictedReleaseRefreshSchedule(
+        BGTaskScheduler.shared.cancel(
+            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+        let earliestBeginDate = Date(
+            timeIntervalSinceNow: delay
+        )
+        let request = BGAppRefreshTaskRequest(
+            identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+        request.earliestBeginDate = earliestBeginDate
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_retry_submitted",
+                details: "earliest=\(earliestBeginDate)"
+            )
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_retry_failed",
+                details: error.localizedDescription
+            )
+            AppDiagnostics.log(error.localizedDescription)
+        }
+#endif
+    }
+
+#if os(iOS)
+    static func predictedReleaseRefreshSchedule(
         using container: ModelContainer
     ) async -> (
         target: SubscriptionManager.PredictedReleaseRefreshTarget,
@@ -205,6 +514,7 @@ struct RaulApp: App {
     @State private var foregroundCleanupTask: Task<Void, Never>?
     @State private var foregroundStorageTask: Task<Void, Never>?
     @State private var foregroundTranscriptionTask: Task<Void, Never>?
+    @State private var foregroundScheduleSnapshotTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if os(macOS)
     @NSApplicationDelegateAdaptor(MacAppDelegate.self)
@@ -290,6 +600,11 @@ struct RaulApp: App {
             case .background:
                 launchHealthTask?.cancel()
                 launchHealthTask = nil
+                foregroundScheduleSnapshotTask?.cancel()
+                foregroundScheduleSnapshotTask = nil
+                Task {
+                    await BackgroundRefreshScheduleSnapshotStore.shared.cancelForegroundRefresh()
+                }
                 foregroundCleanupTask?.cancel()
                 foregroundCleanupTask = nil
                 foregroundStorageTask?.cancel()
@@ -306,10 +621,9 @@ struct RaulApp: App {
                 // started the full reconcile with no granted budget.
                 cloudImportReconciliationTask?.cancel()
                 cloudImportReconciliationTask = nil
-                // Detached on purpose: both schedulers read the predicted
-                // refresh window for every subscribed podcast, and running that
-                // on the main actor during the suspension hand-off held the main
-                // thread past the 5s deadline and got the app killed.
+                // These calls only read the precomputed snapshot or choose a
+                // safe fallback. The library prediction pass runs opportunistically
+                // while the scene is active, never during this handoff.
                 let containerForScheduling = modelContainerManager.preparedContainer
                 Task.detached(priority: .utility) {
                     _ = await FeedRefreshScheduler.schedule(using: containerForScheduling)
@@ -339,7 +653,21 @@ struct RaulApp: App {
                 foregroundCleanupTask?.cancel()
                 foregroundStorageTask?.cancel()
                 foregroundTranscriptionTask?.cancel()
+                foregroundScheduleSnapshotTask?.cancel()
+                foregroundScheduleSnapshotTask = nil
+                Task {
+                    await BackgroundRefreshScheduleSnapshotStore.shared.cancelForegroundRefresh()
+                }
                 guard modelContainerManager.preparedContainer != nil else { return }
+                if let container = modelContainerManager.preparedContainer {
+                    foregroundScheduleSnapshotTask = Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(3))
+                        guard Task.isCancelled == false,
+                              isAppActiveForForegroundWork else { return }
+                        await BackgroundRefreshScheduleSnapshotCoordinator.refreshIfSafe(using: container)
+                        foregroundScheduleSnapshotTask = nil
+                    }
+                }
                 SiriShortcutVocabularyCoordinator.scheduleRefresh()
                 modelContainerManager.resumeSplitStoreWorkForForeground()
                 launchHealthTask = Task(priority: .utility) {
@@ -397,6 +725,11 @@ struct RaulApp: App {
             case .inactive:
                 launchHealthTask?.cancel()
                 launchHealthTask = nil
+                foregroundScheduleSnapshotTask?.cancel()
+                foregroundScheduleSnapshotTask = nil
+                Task {
+                    await BackgroundRefreshScheduleSnapshotStore.shared.cancelForegroundRefresh()
+                }
                 foregroundCleanupTask?.cancel()
                 foregroundCleanupTask = nil
                 foregroundStorageTask?.cancel()
@@ -470,10 +803,21 @@ struct RaulApp: App {
             }
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
-            await schedulePredictedReleaseRefresh()
-            _ = await StoreCloudKitActivityMonitor.shared
+            await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
+            let exportDrainStartedAt = Date()
+            let exportSettled = await StoreCloudKitActivityMonitor.shared
                 .waitForExportQuiescence(maximumDuration: 8)
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_completed")
+            let cancelled = Task.isCancelled
+            await MainActor.run {
+                self.recordAppRefreshExportDrain(
+                    taskIdentifier: BackgroundTaskConfiguration.feedRefreshIdentifier,
+                    operation: "feed_refresh",
+                    startedAt: exportDrainStartedAt,
+                    settled: exportSettled,
+                    cancelled: cancelled
+                )
+            }
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("predicted_release_refresh_background_task_started")
@@ -486,7 +830,7 @@ struct RaulApp: App {
                     "predicted_release_refresh_background_task_aborted",
                     details: "reason=model_container_unavailable"
                 )
-                await schedulePredictedReleaseRefresh()
+                await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
                 return
             }
 
@@ -496,13 +840,24 @@ struct RaulApp: App {
                     releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset
                 )
 
-            await schedulePredictedReleaseRefresh()
-            _ = await StoreCloudKitActivityMonitor.shared
+            await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
+            let exportDrainStartedAt = Date()
+            let exportSettled = await StoreCloudKitActivityMonitor.shared
                 .waitForExportQuiescence(maximumDuration: 8)
             CrashBreadcrumbs.shared.record(
                 "predicted_release_refresh_background_task_completed",
                 details: "attempted_count=\(attemptedCount)"
             )
+            let cancelled = Task.isCancelled
+            await MainActor.run {
+                self.recordAppRefreshExportDrain(
+                    taskIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier,
+                    operation: "predicted_release_refresh",
+                    startedAt: exportDrainStartedAt,
+                    settled: exportSettled,
+                    cancelled: cancelled
+                )
+            }
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.storageCleanupIdentifier)) { task in
             await scheduleStorageCleanup()
@@ -815,6 +1170,28 @@ struct RaulApp: App {
 #endif
     }
 
+    private func recordAppRefreshExportDrain(
+        taskIdentifier: String,
+        operation: String,
+        startedAt: Date,
+        settled: Bool,
+        cancelled: Bool
+    ) {
+        let monitor = StoreCloudKitActivityMonitor.shared
+        let elapsedMilliseconds = Int(Date().timeIntervalSince(startedAt) * 1_000)
+        let storeExportIdentifiers = StoreCloudKitActivityMonitor.StoreKind.allCases
+            .map { kind in
+                let identifiers = monitor.activeExportIdentifiers(for: kind)
+                return "\(kind.rawValue):\(identifiers.isEmpty ? "none" : identifiers.joined(separator: "+"))"
+            }
+            .joined(separator: ";")
+        let timedOut = settled == false && cancelled == false
+        CrashBreadcrumbs.shared.record(
+            "app_refresh_export_drain",
+            details: "task=\(taskIdentifier),operation=\(operation),drain_ms=\(elapsedMilliseconds),settled=\(settled),timeout=\(timedOut),cancelled=\(cancelled),active_export_ids=\(storeExportIdentifiers)"
+        )
+    }
+
     func scheduleFeedProcessing() {
 #if os(iOS)
         CrashBreadcrumbs.shared.record("schedule_feed_processing_requested")
@@ -993,6 +1370,15 @@ private struct RootWindowView: View {
                     // its own startup delay, so it must not queue behind the
                     // deferred service bootstrap (TipKit + CloudKit monitor).
                     Player.shared.startRecoveryIfNeeded()
+#if canImport(UIKit)
+                    Task(priority: .utility) {
+                        try? await Task.sleep(for: .seconds(6))
+                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard Task.isCancelled == false,
+                              UIApplication.shared.applicationState == .active else { return }
+                        await BackgroundRefreshScheduleSnapshotCoordinator.refreshIfSafe(using: container)
+                    }
+#endif
                     Task(priority: .userInitiated) {
                         try? await Task.sleep(for: .milliseconds(250))
                         await modelContainerManager.waitUntilApplicationQueriesReady()

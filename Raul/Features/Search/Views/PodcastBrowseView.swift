@@ -449,29 +449,91 @@ private struct PodcastBrowseHeaderView: View {
         feed.importedLastRefresh?.formatted(date: .numeric, time: .shortened)
     }
 
+    private var identityPresentation: PodcastRowPresentation {
+        let identity = feed.url.map(PodcastFeedIdentity.normalizedFeedURLString)
+            ?? feed.title
+            ?? "unsaved-podcast"
+        let accessProfile: PodcastAccessProfile? = {
+            guard let credential = feed.accessCredential,
+                  let feedURL = feed.url else { return nil }
+            let kind = feed.accessKind ?? {
+                switch credential {
+                case .privateURL: return PodcastAccessKind.privateURL
+                case .httpBasic: return PodcastAccessKind.httpBasic
+                case .bearerToken: return PodcastAccessKind.bearerToken
+                }
+            }()
+            return PodcastAccessProfile.make(for: feedURL, kind: kind)
+        }()
+
+        return PodcastRowPresentation(
+            identity: identity,
+            feedURL: feed.url,
+            title: feed.title ?? "Untitled Podcast",
+            author: feed.artist,
+            summary: feed.description,
+            artworkURL: feed.artworkURL,
+            artworkAccessProfile: accessProfile,
+            status: isSubscribed ? .subscribed : .notSubscribed
+        )
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 14) {
-                CoverImageView(imageURL: feed.artworkURL)
-                    .frame(width: 50, height: 50)
-                    .cornerRadius(8)
+                CoverImageView(
+                    imageURL: identityPresentation.artworkURL,
+                    accessProfileOverride: identityPresentation.artworkAccessProfile
+                )
+                    .frame(width: 72, height: 72)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(feed.title ?? "Untitled Podcast")
+                        .font(.title3.weight(.semibold))
+                        .lineLimit(3)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let artist = feed.artist, artist.isEmpty == false {
                         Text(artist)
-                            .font(.caption)
-                    }
-                    Text(feed.title ?? "Untitled Podcast")
-                        .font(.headline)
-                        .lineLimit(2)
-                    if let subtitle = feed.subtitle, subtitle.isEmpty == false {
-                        Text(subtitle)
-                            .font(.caption)
+                            .font(.subheadline)
                             .esaForeground(.secondary)
                             .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let summary = identityPresentation.summary {
+                        Text(summary)
+                            .font(.caption)
+                            .esaForeground(.secondary)
+                            .lineLimit(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 }
             }
+
+            Button {
+                Task {
+                    await subscribeAction()
+                }
+            } label: {
+                if isSubscribed {
+                    Label("Subscribed", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                } else if isSubscribing {
+                    ProgressView("Subscribing")
+                        .frame(maxWidth: .infinity)
+                } else {
+                    Label("Subscribe", systemImage: "plus.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(feed.url == nil || isSubscribed || isSubscribing)
+            .accessibilityHint("Episodes can be played and queued without subscribing")
+
+            Text("You can play and queue episodes without subscribing.")
+                .font(.caption)
+                .esaForeground(.secondary)
 
             DisclosureGroup(isExpanded: $isDetailsExpanded) {
                 if isDetailsExpanded {
@@ -562,32 +624,11 @@ private struct PodcastBrowseHeaderView: View {
                         }
                     }
                 } label: {
-                    Label("Subscribe to Alternative Feed", systemImage: "arrow.triangle.branch")
+                    Label("Alternative Feeds", systemImage: "arrow.triangle.branch")
                 }
-                .buttonStyle(.glass(.clear))
+                .buttonStyle(.bordered)
                 .disabled(isSubscribing)
             }
-
-            Button {
-                Task {
-                    await subscribeAction()
-                }
-            } label: {
-                if isSubscribed {
-                    Label("Subscribed", systemImage: "checkmark.circle.fill")
-                } else if isSubscribing {
-                    ProgressView()
-                        .frame(width: 50)
-                } else {
-                    Label("Subscribe", systemImage: "plus.circle")
-                }
-            }
-            .buttonStyle(.glass(.clear))
-            .disabled(feed.url == nil || isSubscribed || isSubscribing)
-
-            Text("This feed stays transient until you play or queue an episode. Subscribing stays optional.")
-                .font(.caption)
-                .esaForeground(.secondary)
         }
     }
 }

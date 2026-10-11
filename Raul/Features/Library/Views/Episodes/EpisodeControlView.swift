@@ -42,9 +42,13 @@ struct EpisodeControlView: View {
     /// Only one screen should anchor the playlist picker tip; list rows would
     /// otherwise compete to present the same popover.
     let showsPlaylistPickerTip: Bool
+    /// The full episode detail uses a prominent playback action and a single
+    /// native queue menu. Library rows keep their existing compact controls.
+    let usesDetailLayout: Bool
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.episodeControlPlaylists) private var manualPlaylists
+    @Bindable private var player = Player.shared
 
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var preferredPlaylistID: String = ""
     @State private var isSelectingFrontPlaylist = false
@@ -55,12 +59,14 @@ struct EpisodeControlView: View {
         episode: Episode,
         showsRemoveFromInboxAction: Bool = false,
         showsRemoveFromPlaylistAction: Bool = false,
-        showsPlaylistPickerTip: Bool = false
+        showsPlaylistPickerTip: Bool = false,
+        usesDetailLayout: Bool = false
     ) {
         self.episode = episode
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
         self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
         self.showsPlaylistPickerTip = showsPlaylistPickerTip
+        self.usesDetailLayout = usesDetailLayout
     }
 
     private var resolvedPlaylistID: UUID? {
@@ -85,9 +91,13 @@ struct EpisodeControlView: View {
         return playlist.title
     }
 
+    @ViewBuilder
     var body: some View {
         let isInPlaylist = (episode.playlist?.isEmpty ?? true) == false
 
+        if usesDetailLayout {
+            detailLayout(isInPlaylist: isInPlaylist)
+        } else {
         HStack {
             Button(action: {
                 Task {
@@ -254,6 +264,102 @@ struct EpisodeControlView: View {
                             : "Changes archive state without changing inbox or playlist membership")
                 )
             }
+        }
+        }
+    }
+
+    private func detailLayout(isInPlaylist: Bool) -> some View {
+        HStack(spacing: 10) {
+            Button(action: playOrToggleEpisode) {
+                Label(playbackActionTitle, systemImage: playbackActionSymbol)
+                    .font(.headline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 50)
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel(playbackActionTitle)
+            .accessibilityHint(playbackActionHint)
+
+            Menu {
+                Button("Add to Up Next", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                    Task { await addEpisode(to: defaultQueueID, position: .end) }
+                }
+                Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
+                    Task { await addEpisode(to: resolvedPlaylistID, position: .front) }
+                }
+                Button("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward") {
+                    Task { await addEpisode(to: resolvedPlaylistID, position: .end) }
+                }
+
+                if manualPlaylists.isEmpty == false {
+                    Divider()
+                    Menu("Add to Playlist") {
+                        ForEach(manualPlaylists) { playlist in
+                            Menu(playlist.title, systemImage: playlist.symbolName) {
+                                Button("Play Next") {
+                                    Task { await addEpisode(to: playlist.id, position: .front) }
+                                }
+                                Button("Play Last") {
+                                    Task { await addEpisode(to: playlist.id, position: .end) }
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Queue", systemImage: isInPlaylist ? "checkmark.circle" : "text.badge.plus")
+                    .labelStyle(.titleAndIcon)
+                    .frame(minHeight: 50)
+                    .padding(.horizontal, 8)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityHint("Choose where this episode goes in Up Next or a playlist")
+            .popoverTip(showsPlaylistPickerTip ? choosePlaylistTip : nil)
+            .task(id: manualPlaylists.count) {
+                guard showsPlaylistPickerTip else { return }
+                ChoosePlaylistTip.manualPlaylistCount = manualPlaylists.count
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var defaultQueueID: UUID? {
+        manualPlaylists.first(where: \.isDefaultQueue)?.id
+    }
+
+    private var playbackActionTitle: String {
+        guard isCurrentEpisode else {
+            return episode.hasPlaybackHistory ? "Resume" : "Play"
+        }
+        return player.isPlaying ? "Pause" : "Resume"
+    }
+
+    private var playbackActionSymbol: String {
+        playbackActionTitle == "Pause" ? "pause.fill" : "play.fill"
+    }
+
+    private var playbackActionHint: String {
+        switch playbackActionTitle {
+        case "Pause": "Pauses this episode"
+        case "Resume": "Continues this episode from its saved position"
+        default: "Starts this episode immediately"
+        }
+    }
+
+    private var isCurrentEpisode: Bool {
+        guard let episodeURL = episode.url else { return false }
+        return player.currentEpisodeURL == episodeURL
+    }
+
+    private func playOrToggleEpisode() {
+        if isCurrentEpisode {
+            if player.isPlaying {
+                player.pause()
+            } else {
+                player.play()
+            }
+        } else {
+            Task { await player.playEpisode(episode.url) }
         }
     }
 

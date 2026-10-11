@@ -841,24 +841,25 @@ actor SubscriptionManager:NSObject{
 
     func nextPredictedFeedRefreshDate(after now: Date = Date()) async -> Date? {
         fetchData()
-        let predictedRefreshDates = podcasts
-            .filter { $0.metaData?.isSubscribed != false }
-            .compactMap { podcast -> Date? in
-                // Reuse the persisted window where it is still valid. This pass
-                // runs on every background transition; recomputing it per
-                // podcast used to fault the episode table for the whole library.
-                if let cached = PodcastReleasePredictor.cachedRefreshWindow(
-                    for: podcast,
-                    now: now
-                ) {
-                    return cached.refreshStart
-                }
-
-                return PodcastReleasePredictor
-                    .updateCachedPrediction(for: podcast, after: now)?
-                    .refreshStart
+        guard Task.isCancelled == false else { return nil }
+        var predictedRefreshDates: [Date] = []
+        for podcast in podcasts {
+            guard Task.isCancelled == false else { break }
+            guard podcast.metaData?.isSubscribed != false else { continue }
+            // Reuse the persisted window where it is still valid. This pass
+            // runs opportunistically in the foreground; recomputing a stale
+            // prediction can fault the episode table for a podcast.
+            if let cached = PodcastReleasePredictor.cachedRefreshWindow(
+                for: podcast,
+                now: now
+            ) {
+                predictedRefreshDates.append(cached.refreshStart)
+            } else if let predicted = PodcastReleasePredictor
+                .updateCachedPrediction(for: podcast, after: now)?.refreshStart {
+                predictedRefreshDates.append(predicted)
             }
-
+        }
+        guard Task.isCancelled == false else { return nil }
         modelContext.saveIfNeeded()
         return predictedRefreshDates.min()
     }
@@ -909,12 +910,15 @@ actor SubscriptionManager:NSObject{
         releaseDelay: TimeInterval = 0,
         retryDelay: TimeInterval = 0
     ) async -> PredictedReleaseRefreshTarget? {
+        guard Task.isCancelled == false else { return nil }
         fetchData()
+        guard Task.isCancelled == false else { return nil }
         let target = nextPredictedReleaseRefreshTargetFromLoadedPodcasts(
             after: now,
             releaseDelay: releaseDelay,
             retryDelay: retryDelay
         )
+        guard Task.isCancelled == false else { return nil }
         modelContext.saveIfNeeded()
         return target
     }
@@ -923,11 +927,14 @@ actor SubscriptionManager:NSObject{
         after now: Date = Date(),
         limit: Int? = nil
     ) async -> [PredictedReleaseRefreshTarget] {
+        guard Task.isCancelled == false else { return [] }
         fetchData()
+        guard Task.isCancelled == false else { return [] }
         let targets = predictedReleaseRefreshCandidatesFromLoadedPodcasts(
             after: now,
             limit: limit
         )
+        guard Task.isCancelled == false else { return [] }
         modelContext.saveIfNeeded()
         return targets
     }
@@ -988,28 +995,30 @@ actor SubscriptionManager:NSObject{
     private func predictedReleaseRefreshTargetsFromLoadedPodcasts(
         after now: Date
     ) -> [PredictedReleaseRefreshTarget] {
-        podcasts
-            .filter { $0.metaData?.isSubscribed != false }
-            .compactMap { podcast -> PredictedReleaseRefreshTarget? in
-                guard let feed = podcast.feed else { return nil }
+        var targets: [PredictedReleaseRefreshTarget] = []
+        for podcast in podcasts {
+            guard Task.isCancelled == false else { break }
+            guard podcast.metaData?.isSubscribed != false,
+                  let feed = podcast.feed else { continue }
 
-                let window: PodcastReleasePredictor.RefreshWindow
-                if let cached = PodcastReleasePredictor.cachedRefreshWindow(
-                    for: podcast,
-                    now: now
-                ) {
-                    window = cached
-                } else if let prediction = PodcastReleasePredictor.updateCachedPrediction(
-                    for: podcast,
-                    after: now,
-                    allowRelationshipFallback: true
-                ) {
-                    window = prediction.window
-                } else {
-                    return nil
-                }
+            let window: PodcastReleasePredictor.RefreshWindow
+            if let cached = PodcastReleasePredictor.cachedRefreshWindow(
+                for: podcast,
+                now: now
+            ) {
+                window = cached
+            } else if let prediction = PodcastReleasePredictor.updateCachedPrediction(
+                for: podcast,
+                after: now,
+                allowRelationshipFallback: true
+            ) {
+                window = prediction.window
+            } else {
+                continue
+            }
 
-                return PredictedReleaseRefreshTarget(
+            targets.append(
+                PredictedReleaseRefreshTarget(
                     title: podcast.title,
                     feed: feed,
                     releaseDate: window.releaseDate,
@@ -1023,7 +1032,9 @@ actor SubscriptionManager:NSObject{
                         now: now
                     )
                 )
-            }
+            )
+        }
+        return targets
     }
 
     @discardableResult
@@ -1612,15 +1623,39 @@ actor SubscriptionManager:NSObject{
 
 }
 
-private actor FeedRefreshRunCoordinator {
+actor FeedRefreshRunCoordinator {
     static let shared = FeedRefreshRunCoordinator()
 
     private var isRunning = false
+    private var isSchedulePredictionRunning = false
 
-    func begin() -> Bool {
+    func hasActiveRefreshRun() -> Bool {
+        isRunning
+    }
+
+    func begin() async -> Bool {
+        while isSchedulePredictionRunning {
+            guard Task.isCancelled == false else { return false }
+            do {
+                try await Task.sleep(for: .milliseconds(100))
+            } catch {
+                return false
+            }
+        }
         guard isRunning == false else { return false }
         isRunning = true
         return true
+    }
+
+    func beginSchedulePrediction() -> Bool {
+        guard isRunning == false,
+              isSchedulePredictionRunning == false else { return false }
+        isSchedulePredictionRunning = true
+        return true
+    }
+
+    func finishSchedulePrediction() {
+        isSchedulePredictionRunning = false
     }
 
     func finish() {

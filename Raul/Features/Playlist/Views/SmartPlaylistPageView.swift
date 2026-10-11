@@ -1,13 +1,21 @@
 import SwiftUI
 import SwiftData
 
+private struct SmartPlaylistRefreshKey: Equatable {
+    let playlistID: UUID
+    let filter: SmartPlaylistFilter?
+    let generation: Int
+    let scenePhase: ScenePhase
+}
+
 /// Smart playlist membership is derived from library episodes and never
 /// materialized as PlaylistEntry records.
 struct SmartPlaylistPageView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @State private var matchingEpisodes: [Episode] = []
     @State private var isLoadingMatches = true
-    @State private var refreshGeneration = UUID()
+    @State private var refreshGeneration = 0
 
     let playlist: Playlist
 
@@ -62,25 +70,23 @@ struct SmartPlaylistPageView: View {
                 .listStyle(.plain)
             }
         }
-        .task(id: playlist.smartFilter) {
+        .task(id: SmartPlaylistRefreshKey(
+            playlistID: playlist.id,
+            filter: playlist.smartFilter,
+            generation: refreshGeneration,
+            scenePhase: scenePhase
+        )) {
+            guard scenePhase == .active else { return }
             await refreshMatches()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished)) { _ in
-            SmartPlaylistMembershipCache.invalidate()
-            Task { await refreshMatches() }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistEpisodeDataDidChange)) { _ in
-            SmartPlaylistMembershipCache.invalidate()
-            Task { await refreshMatches() }
+        .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistMembershipCacheDidInvalidate)) { _ in
+            refreshGeneration &+= 1
         }
         .navigationTitle(playlist.displayTitle)
     }
 
     @MainActor
     private func refreshMatches() async {
-        let generation = UUID()
-        refreshGeneration = generation
-
         if let cachedIDs = SmartPlaylistMembershipCache.episodeIDs(
             for: playlist.id,
             filter: playlist.smartFilter
@@ -91,16 +97,22 @@ struct SmartPlaylistPageView: View {
         }
 
         isLoadingMatches = matchingEpisodes.isEmpty
-        let evaluator = SmartPlaylistEvaluationActor(modelContainer: modelContext.container)
         do {
-            let episodeIDs = try await evaluator.matchingEpisodeIDs(for: playlist.id)
-            guard Task.isCancelled == false, refreshGeneration == generation else { return }
-            SmartPlaylistMembershipCache.store(episodeIDs, for: playlist.id, filter: playlist.smartFilter)
+            let episodeIDs = try await SmartPlaylistMembershipCache.matchingEpisodeIDs(
+                for: playlist.id,
+                filter: playlist.smartFilter,
+                using: modelContext.container
+            )
+            guard Task.isCancelled == false else { return }
             matchingEpisodes = episodeIDs.compactMap { modelContext.model(for: $0) as? Episode }
+        } catch is CancellationError {
+            return
         } catch {
-            guard refreshGeneration == generation else { return }
+            guard Task.isCancelled == false else { return }
             matchingEpisodes = []
         }
+        guard Task.isCancelled == false else { return }
         isLoadingMatches = false
     }
+
 }

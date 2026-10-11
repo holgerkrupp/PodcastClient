@@ -44,6 +44,7 @@ struct PodcastDetailView: View {
     @State private var refreshProgress: Double = 0
     @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
+    @State private var isFilteringEpisodes = false
     @State private var subscriptionErrorMessage: String?
     @State private var subscriptionOperation: SubscriptionOperationState = .idle
     @State private var confirmedSubscriptionState: Bool?
@@ -109,9 +110,22 @@ struct PodcastDetailView: View {
         confirmedSubscriptionState ?? podcast.isSubscribed
     }
 
+    private var identityPresentation: PodcastRowPresentation {
+        PodcastRowPresentation(
+            identity: podcast.stablePodcastIdentityKey,
+            feedURL: podcast.feed,
+            title: podcast.title,
+            author: podcast.author,
+            summary: podcast.desc,
+            artworkURL: podcast.imageURL,
+            status: displayedIsSubscribed ? .subscribed : .notSubscribed
+        )
+    }
+
     @ViewBuilder
     private var subscriptionControls: some View {
         Button {
+            guard displayedIsSubscribed == false else { return }
             Task { await toggleSubscriptionStatus() }
         } label: {
             switch subscriptionOperation {
@@ -119,14 +133,15 @@ struct PodcastDetailView: View {
                 ProgressView()
                     .accessibilityLabel(targetState ? "Subscribing" : "Unsubscribing")
             case .idle:
-                Label(
-                    displayedIsSubscribed ? "Unsubscribe" : "Subscribe",
-                    systemImage: displayedIsSubscribed ? "bell.slash" : "bell"
-                )
+                if displayedIsSubscribed {
+                    Label("Subscribed", systemImage: "checkmark.circle.fill")
+                } else {
+                    Label("Subscribe", systemImage: "plus.circle.fill")
+                }
             }
         }
-        .buttonStyle(.glass(.clear))
-        .disabled(subscriptionOperation != .idle)
+        .buttonStyle(.borderedProminent)
+        .disabled(displayedIsSubscribed || subscriptionOperation != .idle)
         .accessibilityIdentifier("podcast-detail-subscription-button")
 
         if let subscriptionErrorMessage {
@@ -216,261 +231,149 @@ struct PodcastDetailView: View {
     
   
     var body: some View {
-            List {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 14) {
+                        CoverImageView(podcast: podcast)
+                            .frame(width: 72, height: 72)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            .accessibilityHidden(true)
 
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(podcast.title)
+                                .font(.title3.weight(.semibold))
+                                .fixedSize(horizontal: false, vertical: true)
 
-
-                Section{
-                    VStack(alignment: .leading) {
-
-                        HStack{
-                            if let lastBuildDate = podcast.lastBuildDate {
-                                Text("Last updated: \(lastBuildDate.formatted(date: .numeric, time: .shortened))")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
+                            if let author = podcast.author, author.isEmpty == false {
+                                Text(author)
+                                    .font(.subheadline)
+                                    .esaForeground(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
                             }
-                            Spacer()
-                            if let metaData = podcast.metaData, let lastRefreshDate = metaData.feedUpdateCheckDate {
-                                Text("Last refresh: \(lastRefreshDate.formatted(date: .numeric, time: .shortened))")
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
+
+                            if let summary = identityPresentation.summary {
+                                Text(summary)
+                                    .font(.caption)
+                                    .esaForeground(.secondary)
+                                    .lineLimit(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+
+                            let metadataChips = PodcastDetailMetadataChipsView(podcast: podcast)
+                            if metadataChips.hasContent {
+                                metadataChips
                             }
                         }
-                        if let predictedReleaseFrequencyLabel {
-                            Label(
-                                "Release schedule: \(predictedReleaseFrequencyLabel)",
-                                systemImage: "calendar"
-                            )
-                            .font(.caption2)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if let podcastLink = podcast.link {
+                            Link(destination: podcastLink) {
+                                Label("Open podcast website", systemImage: "safari")
+                                    .labelStyle(.iconOnly)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityLabel("Open podcast website")
+                        }
+                    }
+
+                    if isLoading {
+                        refreshProgressCard
+                    }
+
+                    abandonedFeedCard
+
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if let subscriptionErrorMessage {
+                        Label(subscriptionErrorMessage, systemImage: "exclamationmark.triangle")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if displayedIsSubscribed == false {
+                        Text("This podcast stays in your library but is skipped by bulk refresh until you subscribe.")
+                            .font(.caption)
                             .esaForeground(.secondary)
-                        }
-#if DEBUG
-                        Text(
-                            displayedPredictedReleaseDate.map {
-                                "Next predicted release: \($0.formatted(date: .abbreviated, time: .shortened))"
-                            } ?? "Next predicted release: Unavailable"
-                        )
-                        .font(.caption2.monospacedDigit())
-                        .esaForeground(.secondary)
-#endif
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
-                        abandonedFeedCard
-
-                        if isLoading {
-                            refreshProgressCard
-                                .padding(.top, 6)
-                        }
-                        
-                        HStack {
-                            
-                            CoverImageView(podcast: podcast)
-                                .frame(width: 50, height: 50)
-                                .cornerRadius(8)
-                            
-                            VStack{
-                                if let author = podcast.author {
-                                    Text(author)
-                                        .font(.caption)
-                                }
-                                Text(podcast.title)
-                                    .font(.headline)
-                                    .lineLimit(2)
-                            }
-
-                            Spacer(minLength: 8)
-
-                            if let podcastLink = podcast.link {
-                                Link(destination: podcastLink) {
-                                    Image(systemName: "link")
-                                        .imageScale(.medium)
-                                }
-                                .buttonStyle(.glass(.clear))
-                                .accessibilityLabel("Open podcast website")
-                            }
-#if DEBUG
-                            Button {
-                                showDebugMetadata = true
-                            } label: {
-                                Image(systemName: "ladybug")
-                                    .imageScale(.small)
-                                    .foregroundStyle(.blue)
-                            }
-                            .buttonStyle(.plain)
-                            .tint(.blue)
-                            .accessibilityLabel("Podcast debug metadata")
-#endif
-                        }
-
-                        let metadataChips = PodcastDetailMetadataChipsView(podcast: podcast)
-                        if metadataChips.hasContent {
-                            metadataChips
-                                .padding(.top, 4)
-                        }
-
-                        if showLivePodcasts && (currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled)) {
-                            PodcastLiveItemControlsView(
-                                currentLiveItem: currentLiveItem,
-                                nextLiveItem: nextLiveItem,
-                                liveItemNotificationsEnabled: liveItemNotificationsEnabled,
-                                podcastTitle: podcast.title,
-                                artworkURL: podcast.imageURL
-                            ) { liveItem in
-                                Task {
-                                    await scheduleLiveNotification(for: liveItem)
-                                }
-                            }
-                            .padding(.top, 4)
-                        }
-
-                        PodcastTrailerButton(
-                            trailers: podcastTrailers,
-                            podcastTitle: podcast.title,
-                            artworkURL: podcast.imageURL
-                        )
+                    HStack(spacing: 12) {
+                        subscriptionControls
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         if hasSearchableTranscripts {
                             Button {
                                 showTranscriptSearch = true
                             } label: {
-                                Label("Search transcripts", systemImage: "text.magnifyingglass")
+                                Label("Search Transcripts", systemImage: "text.magnifyingglass")
                             }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityLabel("Search transcripts in this podcast")
+                            .buttonStyle(.bordered)
                             .accessibilityHint("Searches every locally available transcript in this podcast")
                         }
+                    }
 
-                        if podrollItems.isEmpty == false {
-                            Button {
-                                showPodroll = true
-                            } label: {
-                                Label("Podroll", systemImage: "rectangle.connected.to.line.below")
+                    if showLivePodcasts && (currentLiveItem != nil || (nextLiveItem != nil && liveItemNotificationsEnabled)) {
+                        PodcastLiveItemControlsView(
+                            currentLiveItem: currentLiveItem,
+                            nextLiveItem: nextLiveItem,
+                            liveItemNotificationsEnabled: liveItemNotificationsEnabled,
+                            podcastTitle: podcast.title,
+                            artworkURL: podcast.imageURL
+                        ) { liveItem in
+                            Task {
+                                await scheduleLiveNotification(for: liveItem)
                             }
-                            .buttonStyle(.glass(.clear))
-                            .accessibilityLabel("Open podroll")
-                            .accessibilityHint("Shows podcasts recommended by this podcast")
-                        }
-
-                        if podcast.funding.count > 0 {
-                            HStack{
-                                ForEach(podcast.funding ) { fund in
-                                    Link(destination: fund.url) {
-                                        Label(fund.label, systemImage: style.currencySFSymbolName)
-                                    }
-                                    .buttonStyle(.glass(.clear))
-                                    
-                                    if fund != podcast.funding.last {
-                                        Spacer()
-                                    }
-                                }
-                            }
-                        }
-
-                        PodcastValueSplitView(optionalTags: podcast.optionalTags, funding: podcast.funding)
-                        /*
-                    
-                            NavigationLink(destination: BookmarkListView(podcast: podcast)) {
-                                Label("Show Bookmarks", systemImage: "bookmark.fill")
-                                   
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .padding()
-                        */
-                        
-                        if let copyright = podcast.copyright {
-                            Text(copyright)
-                                .font(.caption)
-                        }
-                        PodcastDetailMetadataSections(
-                            podcast: podcast,
-                            showsLiveMetadata: showLivePodcasts
-                        )
-
-                        subscriptionControls
-
-                        if availableAlternativeFeeds.isEmpty == false {
-                            Menu {
-                                ForEach(availableAlternativeFeeds) { alternativeFeed in
-                                    Button {
-                                        Task {
-                                            await switchToAlternativeFeed(alternativeFeed)
-                                        }
-                                    } label: {
-                                        Label(alternativeFeed.displayTitle, systemImage: "dot.radiowaves.left.and.right")
-                                    }
-                                }
-                            } label: {
-                                if isSwitchingAlternativeFeed {
-                                    ProgressView()
-                                } else {
-                                    Label("Switch Alternative Feed", systemImage: "arrow.triangle.branch")
-                                }
-                            }
-                            .buttonStyle(.glass(.clear))
-                            .disabled(isLoading || isSwitchingAlternativeFeed)
-                        }
-
-                        Button {
-                            showFeedRepair = true
-                        } label: {
-                            Label("Repair Feed URL", systemImage: "wrench.and.screwdriver")
-                        }
-                        .buttonStyle(.glass(.clear))
-                        .disabled(isLoading)
-
-                        if let errorMessage {
-                            Text(errorMessage)
-                                .font(.caption)
-                                .esaForeground(.secondary)
-                        }
-
-                        if displayedIsSubscribed == false {
-                            Text("This podcast stays in the database, but it is skipped by bulk refresh.")
-                                .font(.caption)
-                                .esaForeground(.secondary)
                         }
                     }
-                    .fullPageScreenshotSupport()
                 }
-                .listRowSeparator(.hidden)
-                .background(.clear)
-                .listRowBackground(Color.clear)
-
+                .fullPageScreenshotSupport()
                 .overlay {
-                    if  let message = podcast.message {
-                        
-                        ZStack {
-                            RoundedRectangle(cornerRadius:  8.0)
-                                .fill(Color.clear)
-                                .ignoresSafeArea()
-                            HStack(alignment: .center) {
-                                
-                                ProgressView()
-                                    .frame(width: 100, height: 50)
-                                Text(message)
-                                    .esaForeground(.primary)
-                                    .font(.title.bold())
-                                    
-                            }
+                    if let message = podcast.message {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                            Text(message)
+                                .font(.headline)
                         }
-                        .background{
-                            RoundedRectangle(cornerRadius:  8.0)
-                                .fill(.background.opacity(0.3))
-                        }
-                     
-                        
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-                    
-                  
-                        
-                     
+                        .padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .frame(maxWidth: 300)
                     }
-                
                 }
-                
-                Section{
+            }
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+
+            Section {
+                if visibleFilteredEpisodes.isEmpty {
+                    if isLoading || isFilteringEpisodes {
+                        ProgressView("Loading episodes…")
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    } else if searchText.isEmpty == false {
+                        ContentUnavailableView.search(text: searchText)
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                    } else {
+                        ContentUnavailableView(
+                            "No Episodes Yet",
+                            systemImage: "dot.radiowaves.left.and.right",
+                            description: Text("Refresh the podcast to check for episodes.")
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                    }
+                } else {
                     ForEach(visibleFilteredEpisodes, id: \.persistentModelID) { episode in
-                        ZStack{
+                        ZStack {
                             EpisodeRowView(episode: episode)
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
@@ -481,10 +384,7 @@ struct PodcastDetailView: View {
                         .accessibilityHint("Opens this episode details screen")
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0,
-                                             leading: 0,
-                                             bottom: 0,
-                                             trailing: 0))
+                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                         .task {
                             await Task.yield()
                             guard Task.isCancelled == false else { return }
@@ -494,177 +394,329 @@ struct PodcastDetailView: View {
                     .onDelete { indexSet in
                         Task {
                             for index in indexSet {
-                                 let episodeID = filteredEpisodes[index].persistentModelID
-                                    try? await PodcastModelActor(modelContainer: modelContext.container).deleteEpisode(episodeID)
-
+                                let episodeID = filteredEpisodes[index].persistentModelID
+                                try? await PodcastModelActor(modelContainer: modelContext.container)
+                                    .deleteEpisode(episodeID)
                             }
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
+            } header: {
+                Text("Episodes")
             }
-            .coverHero(image: .url(podcast.imageURL), title: podcast.title)
-            .ESAFullBackground(image: podcast.imageURL)
+            .listRowSeparator(.hidden)
 
-            .listStyle(PlainListStyle())
-            .padding(.top, 0)
-            .searchable(text: $searchText)
-            .task {
-                SystemPressureGate.shared.noteUserInteraction()
-                applyEpisodeFilters()
-                await updatePredictedReleaseInfo()
-                await refreshEpisodesIfNeeded()
-                await updatePredictedReleaseInfo()
-            }
-            .onAppear {
-                if subscriptionOperation == .idle {
-                    confirmedSubscriptionState = podcast.isSubscribed
+            Section {
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 14) {
+                        if let predictedReleaseFrequencyLabel {
+                            Label("Release schedule: \(predictedReleaseFrequencyLabel)", systemImage: "calendar")
+                                .font(.caption)
+                                .esaForeground(.secondary)
+                        }
+
+                        HStack {
+                            if let lastBuildDate = podcast.lastBuildDate {
+                                Text("Last updated: \(lastBuildDate.formatted(date: .numeric, time: .shortened))")
+                                    .font(.caption2)
+                                    .esaForeground(.secondary)
+                            }
+                            Spacer()
+                        if let lastRefreshDate = podcast.metaData?.feedUpdateCheckDate {
+                            Text("Last checked: \(lastRefreshDate.formatted(date: .numeric, time: .shortened))")
+                                .font(.caption2)
+                                .esaForeground(.secondary)
+                        }
+                        }
+
+                        if let metadata = podcast.metaData {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if let status = metadata.feedFailureStatusDescription {
+                                    LabeledContent("Last feed response", value: status)
+                                }
+                                if let failedAt = metadata.lastFeedFailureDate {
+                                    LabeledContent("Last failed check") {
+                                        Text(failedAt.formatted(date: .abbreviated, time: .shortened))
+                                    }
+                                }
+                                if metadata.consecutiveFeedFailureCount > 0 {
+                                    LabeledContent("Consecutive failures") {
+                                        Text("\(metadata.consecutiveFeedFailureCount)")
+                                            .monospacedDigit()
+                                    }
+                                }
+                                if let failure = metadata.lastFeedFailureMessage, failure.isEmpty == false {
+                                    Text(failure)
+                                        .font(.caption2)
+                                        .esaForeground(.secondary)
+                                        .textSelection(.enabled)
+                                }
+                            }
+                            .font(.caption)
+                        }
+
+#if DEBUG
+                        Text(
+                            displayedPredictedReleaseDate.map {
+                                "Next predicted release: \($0.formatted(date: .abbreviated, time: .shortened))"
+                            } ?? "Next predicted release: Unavailable"
+                        )
+                        .font(.caption2.monospacedDigit())
+                        .esaForeground(.secondary)
+#endif
+
+                        if podcastTrailers.isEmpty == false {
+                            PodcastTrailerButton(
+                                trailers: podcastTrailers,
+                                podcastTitle: podcast.title,
+                                artworkURL: podcast.imageURL
+                            )
+                        }
+
+                        if podrollItems.isEmpty == false {
+                            Button {
+                                showPodroll = true
+                            } label: {
+                                Label("Podroll", systemImage: "rectangle.connected.to.line.below")
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint("Shows podcasts recommended by this podcast")
+                        }
+
+                        if podcast.funding.isEmpty == false {
+                            ForEach(podcast.funding) { fund in
+                                Link(destination: fund.url) {
+                                    Label(fund.label, systemImage: style.currencySFSymbolName)
+                                }
+                            }
+                        }
+
+                        PodcastValueSplitView(optionalTags: podcast.optionalTags, funding: podcast.funding)
+
+                        if let copyright = podcast.copyright {
+                            Text(copyright)
+                                .font(.caption)
+                                .esaForeground(.secondary)
+                        }
+
+                        PodcastDetailMetadataSections(
+                            podcast: podcast,
+                            showsLiveMetadata: showLivePodcasts
+                        )
+                    }
+                    .padding(.top, 8)
+                } label: {
+                    Label("About & Podcast Details", systemImage: "info.circle")
                 }
             }
-            .task(id: podcast.stablePodcastIdentityKey) {
-                let service = TranscriptSearchActor(modelContainer: modelContext.container)
-                hasSearchableTranscripts = (try? await service
-                    .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
+            .listRowSeparator(.hidden)
+        }
+        .coverHero(image: .url(podcast.imageURL), title: podcast.title)
+        .ESAFullBackground(image: podcast.imageURL)
+        .listStyle(.plain)
+        .padding(.top, 0)
+        .navigationTitle(podcast.title)
+        .platformInlineNavigationTitle()
+        .searchable(text: $searchText)
+        .task {
+            SystemPressureGate.shared.noteUserInteraction()
+            applyEpisodeFilters()
+            await updatePredictedReleaseInfo()
+            await refreshEpisodesIfNeeded()
+            await updatePredictedReleaseInfo()
+        }
+        .onAppear {
+            if subscriptionOperation == .idle {
+                confirmedSubscriptionState = podcast.isSubscribed
             }
-            .onChange(of: searchText) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                debounceEpisodeFilters()
+        }
+        .task(id: podcast.stablePodcastIdentityKey) {
+            let service = TranscriptSearchActor(modelContainer: modelContext.container)
+            hasSearchableTranscripts = (try? await service
+                .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
+        }
+        .onChange(of: searchText) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            debounceEpisodeFilters()
+        }
+        .onChange(of: searchInTitle) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            applyEpisodeFilters()
+        }
+        .onChange(of: searchInAuthor) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            applyEpisodeFilters()
+        }
+        .onChange(of: searchInDescription) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            applyEpisodeFilters()
+        }
+        .onChange(of: searchInTranscript) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            debounceEpisodeFilters()
+        }
+        .onChange(of: hidePlayedAndArchived) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            applyEpisodeFilters()
+        }
+        .onChange(of: sortOptionRawValue) { _, _ in
+            filteredEpisodeDisplayLimit = Self.episodePageSize
+            applyEpisodeFilters()
+        }
+        .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
+            Task {
+                await updatePredictedReleaseInfo()
             }
-            .onChange(of: searchInTitle) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-            }
-            .onChange(of: searchInAuthor) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-            }
-            .onChange(of: searchInDescription) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-            }
-            .onChange(of: searchInTranscript) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                debounceEpisodeFilters()
-            }
-            .onChange(of: hidePlayedAndArchived) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-            }
-            .onChange(of: sortOptionRawValue) { _, _ in
-                filteredEpisodeDisplayLimit = Self.episodePageSize
-                applyEpisodeFilters()
-            }
-            .onChange(of: podcast.metaData?.feedUpdateCheckDate) { _, _ in
-                Task {
-                    await updatePredictedReleaseInfo()
-                }
-            }
-            .onChange(of: podcast.isSubscribed) { _, newValue in
-                guard subscriptionOperation == .idle else { return }
-                confirmedSubscriptionState = newValue
-            }
-            .onDisappear {
-                episodeFilterTask?.cancel()
-            }
-      //      .navigationTitle(podcast.title)
-            .navigationDestination(isPresented: $showPodroll) {
-                PodcastPodrollView(
-                    podcastTitle: podcast.title,
-                    items: podrollItems
+        }
+        .onChange(of: podcast.isSubscribed) { _, newValue in
+            guard subscriptionOperation == .idle else { return }
+            confirmedSubscriptionState = newValue
+        }
+        .onDisappear {
+            episodeFilterTask?.cancel()
+        }
+        .navigationDestination(isPresented: $showPodroll) {
+            PodcastPodrollView(
+                podcastTitle: podcast.title,
+                items: podrollItems
+            )
+        }
+        .sheet(isPresented: $showTranscriptSearch) {
+            NavigationStack {
+                TranscriptSearchView(
+                    scope: .podcast(podcast.stablePodcastIdentityKey),
+                    title: "Search \(podcast.title)",
+                    emptyDescription: "Search every locally available transcript in this podcast."
                 )
             }
-            .sheet(isPresented: $showTranscriptSearch) {
-                NavigationStack {
-                    TranscriptSearchView(
-                        scope: .podcast(podcast.stablePodcastIdentityKey),
-                        title: "Search \(podcast.title)",
-                        emptyDescription: "Search every locally available transcript in this podcast."
-                    )
-                }
+        }
+        .sheet(isPresented: $showFeedRepair) {
+            FeedURLRepairSheet(
+                podcastID: podcast.persistentModelID,
+                currentURL: podcast.feed,
+                modelContainer: modelContext.container
+            ) {
+                applyEpisodeFilters()
             }
-            .sheet(isPresented: $showFeedRepair) {
-                FeedURLRepairSheet(
-                    podcastID: podcast.persistentModelID,
-                    currentURL: podcast.feed,
-                    modelContainer: modelContext.container
-                ) {
-                    applyEpisodeFilters()
-                }
-            }
+        }
 #if DEBUG
-            .navigationDestination(isPresented: $showDebugMetadata) {
-                PodcastDebugMetadataView(podcast: podcast)
-            }
+        .navigationDestination(isPresented: $showDebugMetadata) {
+            PodcastDebugMetadataView(podcast: podcast)
+        }
 #endif
-            .refreshable {
-                Task{
-                    await refreshEpisodes()
+        .refreshable {
+            await refreshEpisodes()
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .secondaryAction) {
+                Picker("Sort by", selection: Binding(
+                    get: { sortOptionRawValue },
+                    set: { sortOptionRawValue = $0 }
+                )) {
+                    ForEach(EpisodeSortOption.allCases) { option in
+                        Text(option.label).tag(option.rawValue)
+                    }
                 }
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .secondaryAction) {
-                    Picker("Sort by", selection: Binding(
-                        get: { sortOptionRawValue },
-                        set: { sortOptionRawValue = $0 }
-                    )) {
-                        ForEach(EpisodeSortOption.allCases) { option in
-                            Text(option.label).tag(option.rawValue)
+                .accessibilityHint("Sort the episodes in this podcast")
+
+                Toggle(isOn: $hidePlayedAndArchived) {
+                    Label("Hide played Episodes", systemImage: "eye.slash")
+                }
+
+                Menu {
+                    if availableAlternativeFeeds.isEmpty == false {
+                        Section("Alternative Feeds") {
+                            ForEach(availableAlternativeFeeds) { alternativeFeed in
+                                Button {
+                                    Task {
+                                        await switchToAlternativeFeed(alternativeFeed)
+                                    }
+                                } label: {
+                                    Label(alternativeFeed.displayTitle, systemImage: "dot.radiowaves.left.and.right")
+                                }
+                                .disabled(isLoading || isSwitchingAlternativeFeed)
+                            }
                         }
                     }
-                    .accessibilityHint("Sort the episodes in this podcast")
 
-                    Toggle(isOn: $hidePlayedAndArchived) {
-                        Label("Hide played Episodes", systemImage: "eye.slash")
+                    if displayedIsSubscribed {
+                        Button(role: .destructive) {
+                            Task { await toggleSubscriptionStatus() }
+                        } label: {
+                            Label("Unsubscribe", systemImage: "bell.slash")
+                        }
+                        .disabled(subscriptionOperation != .idle)
                     }
 
-                    Button(action: {
+                    Button {
                         openSettings(.podcast(podcast))
-                    }) {
+                    } label: {
                         Label("Podcast Settings", systemImage: "gear")
                     }
-                    .accessibilityHint("Open this podcast's settings")
 
-                    Button(action: {
+                    Button {
+                        showFeedRepair = true
+                    } label: {
+                        Label("Repair Feed URL", systemImage: "wrench.and.screwdriver")
+                    }
+                    .disabled(isLoading)
+
+                    Button {
                         Task {
                             try? await PodcastModelActor(modelContainer: modelContext.container)
                                 .archiveEpisodes(of: podcast.persistentModelID)
                         }
-                    }) {
+                    } label: {
                         Label("Archive all episodes", systemImage: "archivebox")
                     }
-                    .accessibilityHint("Archive every episode in this podcast")
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button(action: {
-                        Task {
-                            await refreshEpisodes()
-                        }
-                    }) {
-                        if isLoading {
-                            CircularProgressView(
-                                value: max(refreshProgress, 0.02),
-                                total: 1.0
-                            )
-                        } else {
-                            Label(
-                                needsEpisodeImportRetry ? "Retry Import" : "Refresh podcast",
-                                systemImage: "arrow.clockwise"
-                            )
-                        }
+
+#if DEBUG
+                    Button {
+                        showDebugMetadata = true
+                    } label: {
+                        Label("Podcast debug metadata", systemImage: "ladybug")
                     }
-                    .disabled(displayedIsSubscribed == false || isLoading)
-                    .accessibilityLabel(isLoading ? "Refreshing podcast" : (needsEpisodeImportRetry ? "Retry episode import" : "Refresh podcast"))
-                    .accessibilityHint(needsEpisodeImportRetry ? "Retries importing episodes for this podcast" : "Downloads the latest episodes from this podcast feed")
-                    .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast"), Text("Retry import")])
+#endif
+                } label: {
+                    Label("Manage Podcast", systemImage: "ellipsis")
                 }
+                .accessibilityLabel("Manage podcast")
             }
+
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task {
+                        await refreshEpisodes()
+                    }
+                } label: {
+                    if isLoading {
+                        CircularProgressView(value: max(refreshProgress, 0.02), total: 1.0)
+                    } else {
+                        Label(
+                            needsEpisodeImportRetry ? "Retry Import" : "Refresh podcast",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                }
+                .disabled(displayedIsSubscribed == false || isLoading)
+                .accessibilityLabel(
+                    isLoading
+                        ? "Refreshing podcast"
+                        : (needsEpisodeImportRetry ? "Retry episode import" : "Refresh podcast")
+                )
+                .accessibilityHint(
+                    needsEpisodeImportRetry
+                        ? "Retries importing episodes for this podcast"
+                        : "Downloads the latest episodes from this podcast feed"
+                )
+                .accessibilityInputLabels([Text("Refresh podcast"), Text("Update podcast"), Text("Retry import")])
+            }
+        }
         .alert("Live notification", isPresented: isLiveNotificationPresented) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(liveNotificationMessage ?? "")
         }
-        
-
     }
 
     private func updatePredictedReleaseInfo() async {
@@ -713,7 +765,13 @@ struct PodcastDetailView: View {
         let actor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
 
         episodeFilterTask?.cancel()
+        isFilteringEpisodes = true
         episodeFilterTask = Task {
+            defer {
+                if Task.isCancelled == false {
+                    isFilteringEpisodes = false
+                }
+            }
             do {
                 let episodeIDs = try await actor.episodeIDs(
                     podcastID: podcastID,
@@ -934,68 +992,22 @@ private struct PodcastAbandonedFeedCard: View {
     var body: some View {
         if let metadata,
            let assessment = metadata.feedAbandonmentAssessment {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 Label(
                     assessment.title,
                     systemImage: assessment.kind == .unavailableFeed
                         ? "exclamationmark.triangle.fill"
                         : "calendar.badge.exclamationmark"
                 )
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
 
                 Text(assessment.detail)
                     .font(.caption)
                     .esaForeground(.secondary)
-
-                LabeledContent("Last visible") {
-                    Text(metadata.lastRefresh?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                }
-
-                LabeledContent("Last checked") {
-                    Text(metadata.feedUpdateCheckDate?.formatted(date: .abbreviated, time: .shortened) ?? "Never")
-                }
-
-                if let cadence = assessment.predictedCadenceLabel {
-                    LabeledContent("Predicted cadence") {
-                        Text(cadence)
-                    }
-                }
-
-                if let missedReleaseCount = assessment.missedReleaseCount {
-                    LabeledContent("Expected releases missed") {
-                        Text("\(missedReleaseCount)")
-                            .monospacedDigit()
-                    }
-                }
-
-                if assessment.kind == .unavailableFeed {
-                    LabeledContent("Server response") {
-                        Text(metadata.feedFailureStatusDescription ?? "Unknown")
-                    }
-
-                    LabeledContent("First failed check") {
-                        Text(metadata.firstConsecutiveFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                    }
-
-                    LabeledContent("Latest failed check") {
-                        Text(metadata.lastFeedFailureDate?.formatted(date: .abbreviated, time: .shortened) ?? "Unknown")
-                    }
-
-                    LabeledContent("Consecutive failures") {
-                        Text("\(metadata.consecutiveFeedFailureCount)")
-                            .monospacedDigit()
-                    }
-                }
-
-                if let error = metadata.lastFeedFailureMessage, error.isEmpty == false {
-                    Text(error)
-                        .font(.caption2)
-                        .esaForeground(.secondary)
-                        .textSelection(.enabled)
-                }
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .font(.caption)
-            .padding(12)
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.secondary.opacity(0.12))
@@ -1004,7 +1016,7 @@ private struct PodcastAbandonedFeedCard: View {
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .strokeBorder(Color.secondary.opacity(0.3))
             }
-            .padding(.top, 6)
+            .accessibilityElement(children: .combine)
         }
     }
 }

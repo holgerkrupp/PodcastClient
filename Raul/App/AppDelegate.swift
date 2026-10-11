@@ -197,15 +197,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let processingTask = Task(priority: .utility) {
             await ModelContainerManager.shared.runStoreSplitMigrationBackgroundPass()
 
-            let exportSettled = await StoreCloudKitActivityMonitor.shared
-                .waitForExportQuiescence()
-
             // Re-arm only if work remains (state still pre-completion).
             Self.scheduleStoreSplitMigrationProcessingIfNeeded()
 
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_background_task_completed",
-                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled),export_settled=\(exportSettled)"
+                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled)"
             )
 #if DEBUG
             StoreSplitMigrationDebugLog.record(
@@ -213,7 +210,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 details: "cancelled=\(Task.isCancelled), pending=\(ModelContainerManager.hasPendingStoreSplitBackgroundWork)"
             )
 #endif
-            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
+            await self.finishBackgroundProcessingTask(
+                task,
+                operation: "store_split_migration",
+                requestedSuccess: Task.isCancelled == false,
+                waitForExportQuiescence: true,
+                details: "state=\(StoreSplitRollout.state.rawValue)"
+            )
         }
 
         task.expirationHandler = {
@@ -248,6 +251,44 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         guard playbackStateBackgroundTaskID != .invalid else { return }
         UIApplication.shared.endBackgroundTask(playbackStateBackgroundTaskID)
         playbackStateBackgroundTaskID = .invalid
+    }
+
+    /// Record the CloudKit export state before reporting a background task as
+    /// complete. Tasks that wrote to a mirrored store keep their grant through
+    /// a bounded quiet period so Core Data can finish exporting those writes.
+    private func finishBackgroundProcessingTask(
+        _ task: BGProcessingTask,
+        operation: String,
+        requestedSuccess: Bool,
+        waitForExportQuiescence: Bool,
+        details: String? = nil
+    ) async {
+        let monitor = StoreCloudKitActivityMonitor.shared
+        let drainStartedAt = Date()
+        let exportSettled: Bool
+        if waitForExportQuiescence {
+            exportSettled = await monitor.waitForExportQuiescence()
+        } else {
+            exportSettled = monitor.isAnyStoreExporting == false
+        }
+        let elapsedMilliseconds = Int(Date().timeIntervalSince(drainStartedAt) * 1_000)
+        let storeExportStatus = StoreCloudKitActivityMonitor.StoreKind.allCases
+            .map { kind in
+                let identifiers = monitor.activeExportIdentifiers(for: kind)
+                return "\(kind.rawValue):\(monitor.activeExportStatus(for: kind)):ids=\(identifiers.isEmpty ? "none" : identifiers.joined(separator: "+"))"
+            }
+            .joined(separator: ";")
+        let cancelled = Task.isCancelled
+        let succeeded = requestedSuccess
+            && cancelled == false
+            && (waitForExportQuiescence == false || exportSettled)
+        let detail = "task=\(task.identifier),operation=\(operation),requested_success=\(requestedSuccess),cancelled=\(cancelled),drain_required=\(waitForExportQuiescence),export_settled=\(exportSettled),drain_ms=\(elapsedMilliseconds),exports=\(storeExportStatus)"
+            + (details.map { ",\($0)" } ?? "")
+        CrashBreadcrumbs.shared.record(
+            "background_task_export_diagnostics",
+            details: detail
+        )
+        task.setTaskCompleted(success: succeeded)
     }
 
     /// Keeps the automatic transcription pass armed.
@@ -405,7 +446,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let processingTask = Task(priority: .utility) {
             guard Player.hasActivePlaybackInProcess == false else {
                 await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
-                task.setTaskCompleted(success: true)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: true,
+                    waitForExportQuiescence: true,
+                    details: "skipped=playback_active"
+                )
                 return
             }
 
@@ -414,12 +461,24 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                   let cacheContainer = await MainActor.run(body: {
                       ModelContainerManager.shared.preparedCacheContainer
                   }) else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "container_available=false"
+                )
                 return
             }
             let settingsActor = PodcastSettingsModelActor(modelContainer: episodeContainer)
             guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else {
-                task.setTaskCompleted(success: true)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: true,
+                    waitForExportQuiescence: true,
+                    details: "enabled=false"
+                )
                 return
             }
             await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
@@ -430,7 +489,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 episodeLimit: BackgroundTaskConfiguration.publisherTranscriptSynchronizationEpisodeLimit
             )
             guard Task.isCancelled == false else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "completed_count=\(completedCount)"
+                )
                 return
             }
 
@@ -439,7 +504,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 "publisher_transcript_sync_background_task_completed",
                 details: "completed_count=\(completedCount)"
             )
-            task.setTaskCompleted(success: true)
+            await self.finishBackgroundProcessingTask(
+                task,
+                operation: "publisher_transcript_sync",
+                requestedSuccess: true,
+                waitForExportQuiescence: true,
+                details: "completed_count=\(completedCount)"
+            )
         }
 
         task.expirationHandler = {
@@ -472,19 +543,37 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     "feed_processing_background_task_skipped",
                     details: "playback_active"
                 )
-                task.setTaskCompleted(success: true)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "feed_processing",
+                    requestedSuccess: true,
+                    waitForExportQuiescence: false,
+                    details: "skipped=playback_active"
+                )
                 return
             }
             await ModelContainerManager.shared.prepareContainer()
             guard let container = ModelContainerManager.shared.preparedContainer else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "feed_processing",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: false,
+                    details: "container_available=false"
+                )
                 return
             }
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
             await PredictedReleaseRefreshScheduler.schedule(using: container)
             guard Task.isCancelled == false else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "feed_processing",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_feed_refresh=true"
+                )
                 return
             }
 
@@ -507,16 +596,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     )
             }
             guard Task.isCancelled == false else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "feed_processing",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_transcript_import=true"
+                )
                 return
             }
             CrashBreadcrumbs.shared.record(
                 "feed_processing_background_task_completed",
                 details: "imported_transcripts=\(importedTranscriptCount)"
             )
-            let exportSettled = await StoreCloudKitActivityMonitor.shared
-                .waitForExportQuiescence()
-            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
+            await self.finishBackgroundProcessingTask(
+                task,
+                operation: "feed_processing",
+                requestedSuccess: true,
+                waitForExportQuiescence: true,
+                details: "imported_transcripts=\(importedTranscriptCount)"
+            )
         }
 
         task.expirationHandler = {
@@ -532,18 +631,36 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     "automatic_transcription_background_task_skipped",
                     details: "playback_active"
                 )
-                task.setTaskCompleted(success: true)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "automatic_transcription",
+                    requestedSuccess: true,
+                    waitForExportQuiescence: false,
+                    details: "skipped=playback_active"
+                )
                 return
             }
             await ModelContainerManager.shared.prepareContainer()
             guard ModelContainerManager.shared.preparedContainer != nil else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "automatic_transcription",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: false,
+                    details: "container_available=false"
+                )
                 return
             }
 
             await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
             guard Task.isCancelled == false else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "automatic_transcription",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_schedule=true"
+                )
                 return
             }
 
@@ -562,7 +679,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 details: "processed_count=\(processedCount)"
             )
             guard Task.isCancelled == false else {
-                task.setTaskCompleted(success: false)
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "automatic_transcription",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "processed_count=\(processedCount)"
+                )
                 return
             }
 
@@ -570,9 +693,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // No-ops when the request submitted at the start of the pass is still
             // pending, so this only covers the case where it was not.
             await Self.scheduleAutomaticTranscriptionProcessingIfNeeded()
-            let exportSettled = await StoreCloudKitActivityMonitor.shared
-                .waitForExportQuiescence()
-            task.setTaskCompleted(success: Task.isCancelled == false && exportSettled)
+            await self.finishBackgroundProcessingTask(
+                task,
+                operation: "automatic_transcription",
+                requestedSuccess: true,
+                waitForExportQuiescence: true,
+                details: "processed_count=\(processedCount)"
+            )
         }
 
         task.expirationHandler = {

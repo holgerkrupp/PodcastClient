@@ -4,214 +4,67 @@
 //
 //  Created by Holger Krupp on 11.07.25.
 //
+
 import SwiftUI
 import SwiftData
 import ESADesignKit
 
-@MainActor
-private enum CompactPodcastDescriptionCache {
-    private static let values: NSCache<NSString, NSString> = {
-        let cache = NSCache<NSString, NSString>()
-        cache.countLimit = 512
-        cache.totalCostLimit = 1_000_000
-        return cache
-    }()
-
-    static func text(for source: String, podcastID: PersistentIdentifier) -> String {
-        var hasher = Hasher()
-        source.hash(into: &hasher)
-        let key = "\(podcastID)-\(hasher.finalize())" as NSString
-        if let cached = values.object(forKey: key) {
-            return cached as String
-        }
-
-        let normalized = source.plainTextFromHTML() ?? source
-        values.setObject(normalized as NSString, forKey: key, cost: normalized.utf8.count)
-        return normalized
-    }
-}
-
+/// Library adapter that snapshots the podcast's existing row fields into the
+/// shared value-driven presenter. It intentionally does not inspect episodes
+/// or calculate release/abandonment health while SwiftUI renders the row.
 struct PodcastRowView: View {
     let podcast: Podcast
+    var density: PodcastRowContentView.Density = .comfortable
     var previewArtwork: Image? = nil
     var previewArtworkSource: ESAImageSource? = nil
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.esaVisualStyle) private var visualStyle
-    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 140
-    @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 112
-
-    private func abandonmentLabel(for assessment: PodcastFeedAbandonmentAssessment) -> String {
-        switch assessment.kind {
-        case .unavailableFeed:
-            return "Unavailable"
-        case .likelyCancelled:
-            return "Possibly Cancelled"
-        }
-    }
 
     var body: some View {
-        let abandonmentAssessment = podcast.metaData?.feedAbandonmentAssessment
-        let isAbandoned = abandonmentAssessment != nil
-
-        let rowContent = ZStack {
-            if visualStyle == .artwork && colorSchemeContrast == .increased {
-                Rectangle()
-                    .fill(Color(white: colorScheme == .dark ? 0 : 1))
-                    .accessibilityHidden(true)
-            } else if visualStyle == .artwork {
-                Group {
-                    if let previewArtwork {
-                        previewArtwork
-                            .resizable()
-                            .scaledToFill()
-                            .blur(radius: 18)
-                    } else {
-                        BlurredCoverImageView(
-                            podcast: podcast,
-                            // The decorative image is blurred and clipped to a
-                            // row-height strip, so a smaller decode is enough.
-                            // Keep the foreground cover's 384px decode crisp.
-                            maxPixelSize: 256,
-                            loadDelay: .milliseconds(350)
-                        )
-                    }
-                }
-                    .scaledToFill()
-                    .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-                    .clipped()
-                    .accessibilityHidden(true)
-            }
-
-            HStack(spacing: 14) {
-                Group {
-                    if let previewArtwork {
-                        previewArtwork
-                            .resizable()
-                            .scaledToFit()
-                    } else {
-                        CoverImageView(
-                            podcast: podcast,
-                            maxPixelSize: 384,
-                            loadDelay: .milliseconds(200)
-                        )
-                    }
-                }
-                    .frame(width: artworkSize, height: artworkSize)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(podcast.title)
-                        .font(.headline)
-                        .lineLimit(2)
-                        .esaForeground(.primary)
-
-                    if let author = podcast.author, author.isEmpty == false {
-                        Text(author)
-                            .font(.subheadline)
-                            .esaForeground(.secondary)
-                            .lineLimit(1)
-                    }
-
-                    if let desc = podcast.desc, desc.isEmpty == false {
-                        Text(CompactPodcastDescriptionCache.text(
-                            for: desc,
-                            podcastID: podcast.persistentModelID
-                        ))
-                            .font(.caption)
-                            .esaForeground(.secondary)
-                            .lineLimit(3)
-                    }
-
-                    if podcast.isSubscribed == false {
-                        Label("Not Subscribed", systemImage: "pause.circle")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.orange)
-                    }
-
-                    Spacer(minLength: 0)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .padding(8)
-            .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-            .background {
-                if visualStyle == .artwork && colorSchemeContrast == .standard {
-                    Rectangle().fill(.thinMaterial)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-        .grayscale(isAbandoned ? 1 : 0)
-        .overlay(alignment: .topLeading) {
-            if let abandonmentAssessment {
-                let label = abandonmentLabel(for: abandonmentAssessment)
-                Text(label)
-                    .font(.caption2.weight(.bold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 5)
-                    .background(.black.opacity(0.85), in: UnevenRoundedRectangle(bottomTrailingRadius: 8))
-                    .accessibilityLabel(label)
-            }
-        }
-        .overlay(alignment: .topTrailing) {
-            if let feedIssueDescription {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.orange)
-                    .padding(9)
-                    .accessibilityLabel(feedIssueDescription)
-                    .help(feedIssueDescription)
-            }
-        }
-        .overlay {
-            if  let message = podcast.message {
-                ZStack {
-                    RoundedRectangle(cornerRadius:  8.0)
-                        .fill(Color.clear)
-                        .ignoresSafeArea()
-                    HStack(alignment: .center) {
-                        
-                        ProgressView()
-                            .frame(width: 100, height: 50)
-                        Text(message)
-                            .esaForeground(.primary)
-                            .font(.title.bold())
-                            
-                    }
-                        }
-                        .background{
-                            RoundedRectangle(cornerRadius:  8.0)
-                                .fill(.background.opacity(0.3))
-                        }
-                        .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
-                        .frame(maxWidth: 300, maxHeight: 150, alignment: .center)
-            }
-        }
-
-        if visualStyle == .artwork {
-            rowContent
-        } else if let previewArtworkSource {
-            ESARowView(image: previewArtworkSource, minHeight: rowHeight) {
-                rowContent
-            }
-        } else {
-            rowContent.ESA_RowView(image: podcast.imageURL, minHeight: rowHeight)
-        }
+        PodcastRowContentView(
+            presentation: presentation,
+            density: density,
+            previewArtwork: previewArtwork,
+            previewArtworkSource: previewArtworkSource
+        )
     }
 
-    private var feedIssueDescription: String? {
-        if let assessment = podcast.metaData?.feedAbandonmentAssessment,
-           assessment.kind == .unavailableFeed {
-            return "\(assessment.title). \(assessment.detail)"
-        }
-        guard let metadata = podcast.metaData,
-              metadata.lastFeedFailureDate != nil else {
+    private var presentation: PodcastRowPresentation {
+        let metadata = podcast.metaData
+        return PodcastRowPresentation(
+            identity: podcast.stablePodcastIdentityKey,
+            feedURL: podcast.feed,
+            title: podcast.title,
+            author: podcast.author,
+            summary: podcast.desc,
+            artworkURL: podcast.imageURL,
+            artworkAccessProfile: accessProfile(from: metadata, feedURL: podcast.feed),
+            status: podcast.isSubscribed ? .subscribed : .notSubscribed,
+            diagnosticBadge: metadata?.lastFeedFailureDate == nil ? nil : "Feed issue",
+            diagnosticMessage: feedIssueDescription(from: metadata),
+            progressMessage: metadata?.message
+        )
+    }
+
+    private func accessProfile(from metadata: PodcastMetaData?, feedURL: URL?) -> PodcastAccessProfile? {
+        guard let metadata,
+              let id = metadata.accessProfileID,
+              let rawKind = metadata.accessKindRawValue,
+              let kind = PodcastAccessKind(rawValue: rawKind),
+              let feedURL else {
             return nil
         }
+        return PodcastAccessProfile(
+            id: id,
+            kind: kind,
+            resourceURL: feedURL,
+            providerID: metadata.accessProviderID.flatMap(PremiumPodcastProviderID.init(rawValue:))
+        )
+    }
 
+    /// Only reads already stored failure fields; release-pattern prediction is
+    /// deliberately kept out of row rendering to avoid episode relationship
+    /// faults in large lists.
+    private func feedIssueDescription(from metadata: PodcastMetaData?) -> String? {
+        guard let metadata, metadata.lastFeedFailureDate != nil else { return nil }
         let reason = metadata.feedFailureStatusDescription
             ?? metadata.lastFeedFailureMessage
             ?? "The podcast feed could not be refreshed."
@@ -222,7 +75,7 @@ struct PodcastRowView: View {
 #Preview {
     let metaData: PodcastMetaData = {
         let metaData = PodcastMetaData()
-        metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600) // 1 hour ago
+        metaData.feedUpdateCheckDate = Date().addingTimeInterval(-3600)
         metaData.consecutiveFeedFailureCount = 4
         metaData.firstConsecutiveFeedFailureDate = Date().addingTimeInterval(-8 * 24 * 60 * 60)
         metaData.lastFeedFailureDate = Date().addingTimeInterval(-3600)
@@ -236,8 +89,8 @@ struct PodcastRowView: View {
         podcast.title = "Swift Over Coffee"
         podcast.author = "Paul Hudson & Sean Allen"
         podcast.desc = "A show about Swift, iOS development, and general Apple nerdery."
-        podcast.lastBuildDate = Date().addingTimeInterval(-7200) // 2 hours ago
-        podcast.imageURL = nil // Or provide a sample image URL if your PodcastCoverView handles it
+        podcast.lastBuildDate = Date().addingTimeInterval(-7200)
+        podcast.imageURL = nil
         podcast.metaData = metaData
         return podcast
     }()

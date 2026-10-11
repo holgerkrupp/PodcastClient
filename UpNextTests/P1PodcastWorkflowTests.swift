@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 @testable import UpNext
 
 final class P1PodcastWorkflowTests: XCTestCase {
@@ -76,6 +77,75 @@ final class P1PodcastWorkflowTests: XCTestCase {
         let episode = Episode(title: "Update", url: URL(string: "https://example.com/update.mp3")!, podcast: podcast)
         XCTAssertTrue(SmartPlaylistEngine.matches(episode, filter: SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .category, query: "Tech News")])))
         XCTAssertFalse(SmartPlaylistEngine.matches(episode, filter: SmartPlaylistFilter(rules: [SmartPlaylistRule(field: .category, query: "Tech")])))
+    }
+
+    @MainActor
+    func testSmartPlaylistPublishedDatePlanPreservesFullEvaluationResults() throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let cutoff = Date(timeIntervalSince1970: 1_700_000_000)
+        let dateQuery = ISO8601DateFormatter().string(from: cutoff)
+        let episodes = [
+            Episode(title: "include older", publishDate: cutoff.addingTimeInterval(-1), url: URL(string: "https://example.com/older.mp3")!),
+            Episode(title: "include at cutoff", publishDate: cutoff, url: URL(string: "https://example.com/cutoff.mp3")!),
+            Episode(title: "include newer", publishDate: cutoff.addingTimeInterval(1), url: URL(string: "https://example.com/newer.mp3")!),
+            Episode(title: "exclude newer", publishDate: cutoff.addingTimeInterval(2), url: URL(string: "https://example.com/excluded.mp3")!),
+            Episode(title: "include undated", url: URL(string: "https://example.com/undated.mp3")!)
+        ]
+        episodes.forEach { context.insert($0) }
+        try context.save()
+
+        var filter = SmartPlaylistFilter(
+            matchMode: .all,
+            rules: [
+                SmartPlaylistRule(field: .published, comparator: .greaterThan, query: dateQuery),
+                SmartPlaylistRule(field: .episodeTitle, comparator: .contains, query: "include")
+            ]
+        )
+        filter.resultLimit = 1
+        let playlist = Playlist()
+        playlist.kind = .smart
+        playlist.smartFilter = filter
+
+        let plan = SmartPlaylistEngine.candidatePlan(for: filter)
+        XCTAssertEqual(plan, .publishedAtOrAfter(cutoff))
+
+        let allEpisodes = try context.fetch(FetchDescriptor<Episode>())
+        let candidates = try SmartPlaylistEngine.candidateEpisodes(in: context, for: filter)
+        let fullEvaluation = SmartPlaylistEngine.episodes(from: allEpisodes, for: playlist)
+        let plannedEvaluation = SmartPlaylistEngine.episodes(from: candidates, for: playlist)
+
+        XCTAssertLessThan(candidates.count, allEpisodes.count)
+        XCTAssertEqual(plannedEvaluation.map(\.url), fullEvaluation.map(\.url))
+        XCTAssertEqual(plannedEvaluation.first?.title, "include newer")
+    }
+
+    @MainActor
+    func testSmartPlaylistCandidatePlanFallsBackForOrAndUnsupportedFilters() throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let episodes = [
+            Episode(title: "Older", publishDate: Date(timeIntervalSince1970: 1_600_000_000), url: URL(string: "https://example.com/older.mp3")!),
+            Episode(title: "Newer", publishDate: Date(timeIntervalSince1970: 1_800_000_000), url: URL(string: "https://example.com/newer.mp3")!)
+        ]
+        episodes.forEach { context.insert($0) }
+        try context.save()
+
+        let publishedRule = SmartPlaylistRule(
+            field: .published,
+            comparator: .greaterThan,
+            query: "2023-11-14T22:13:20Z"
+        )
+        let unsupportedAllFilter = SmartPlaylistFilter(
+            matchMode: .all,
+            rules: [SmartPlaylistRule(field: .episodeTitle, query: "new")]
+        )
+        let anyFilter = SmartPlaylistFilter(matchMode: .any, rules: [publishedRule])
+
+        XCTAssertNil(SmartPlaylistEngine.candidatePlan(for: unsupportedAllFilter))
+        XCTAssertNil(SmartPlaylistEngine.candidatePlan(for: anyFilter))
+        XCTAssertEqual(try SmartPlaylistEngine.candidateEpisodes(in: context, for: unsupportedAllFilter).count, episodes.count)
+        XCTAssertEqual(try SmartPlaylistEngine.candidateEpisodes(in: context, for: anyFilter).count, episodes.count)
     }
 
     func testSmartShuffleHandlesEmptySinglePodcastAndLargeLists() {

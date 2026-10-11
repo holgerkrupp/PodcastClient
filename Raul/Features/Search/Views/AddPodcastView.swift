@@ -13,10 +13,7 @@ struct AddPodcastView: View {
 
     @Binding var search: String
     @StateObject private var recentSearchStore = PodcastRecentSearchStore.shared
-    enum Selection {
-        case search, hot, importexport
-    }
-    @State private var listSelection: Selection = .search
+    @State private var showingAllRecentSearches = false
 
     private var isSearching: Bool {
         search.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
@@ -27,80 +24,57 @@ struct AddPodcastView: View {
             // While the user is typing, the results are what matters — the
             // entry points would only push them off screen.
             if isSearching == false {
-                Section("Discover") {
-                    NavigationLink {
-                        PrivatePodcastEntryView()
-                            .modelContext(context)
-                    } label: {
-                        AddPodcastDestinationRow(
-                            symbol: "lock.shield.fill",
-                            title: "Add Private Podcast",
-                            subtitle: "Use a private RSS link or authenticated feed"
-                        )
-                    }
+                Section {
+                    Text("Search by podcast name, paste a website or RSS/XML link, or browse popular shows.")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
 
                     NavigationLink {
                         PodcastCategoryView()
                             .modelContext(context)
                     } label: {
-                        AddPodcastDestinationRow(
-                            symbol: "square.grid.2x2.fill",
-                            title: "Browse by Category",
-                            subtitle: "Powered by the Apple Podcasts catalog"
-                        )
-                    }
-
-                    NavigationLink {
-                        PublicBroadcastersView()
-                            .modelContext(context)
-                    } label: {
-                        AddPodcastDestinationRow(
-                            symbol: "antenna.radiowaves.left.and.right",
-                            title: "Public Broadcasters",
-                            subtitle: "Browse public-service podcasts"
-                        )
+                        Label("Browse Categories", systemImage: "square.grid.2x2")
                     }
 
                     NavigationLink {
                         HotPodcastView()
                             .modelContext(context)
                     } label: {
-                        AddPodcastDestinationRow(
-                            symbol: "flame.fill",
-                            title: "Hot Podcasts",
-                            subtitle: "Top charts in your region"
-                        )
+                        Label("Top Charts", systemImage: "chart.line.uptrend.xyaxis")
                     }
-                }
 
-                Section("Your Library") {
                     NavigationLink {
-                        ImportExportView()
+                        PublicBroadcastersView()
                             .modelContext(context)
                     } label: {
-                        AddPodcastDestinationRow(
-                            symbol: "square.and.arrow.down.on.square",
-                            title: "Import / Export",
-                            subtitle: "Move subscriptions with OPML files"
-                        )
+                        Label("Public Broadcasters", systemImage: "antenna.radiowaves.left.and.right")
+                    }
+                }
+                header: {
+                    Text("Discover")
+                }
+
+                Section("Add a Private Feed") {
+                    NavigationLink {
+                        PrivatePodcastEntryView()
+                            .modelContext(context)
+                    } label: {
+                        Label("Private RSS or Authenticated Feed", systemImage: "lock.shield")
                     }
                 }
 
                 if recentSearchStore.searches.isEmpty == false {
                     Section {
-                        ForEach(recentSearchStore.searches, id: \.self) { query in
-                            Button {
-                                search = query
-                            } label: {
-                                Label(query, systemImage: "clock.arrow.circlepath")
-                                    .lineLimit(2)
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Recent search: \(query)")
-                            .swipeActions {
-                                Button("Delete", systemImage: "trash", role: .destructive) {
-                                    recentSearchStore.remove(query)
-                                }
+                        ForEach(Array(recentSearchStore.searches.prefix(5)), id: \.self) { query in
+                            recentSearchRow(query)
+                        }
+
+                        if recentSearchStore.searches.count > 5 {
+                            Button("See All Recent Searches") {
+                                showingAllRecentSearches = true
                             }
                         }
                     } header: {
@@ -111,7 +85,17 @@ struct AddPodcastView: View {
                                 recentSearchStore.clear()
                             }
                             .font(.caption)
+                            .accessibilityLabel("Clear recent searches")
                         }
+                    }
+                }
+
+                Section("Library") {
+                    NavigationLink {
+                        ImportExportView()
+                            .modelContext(context)
+                    } label: {
+                        Label("Import / Export Subscriptions", systemImage: "square.and.arrow.down.on.square")
                     }
                 }
             }
@@ -126,6 +110,42 @@ struct AddPodcastView: View {
         }
         .listStyle(.plain)
         .navigationTitle("Add Podcast")
+        .sheet(isPresented: $showingAllRecentSearches) {
+            NavigationStack {
+                List {
+                    ForEach(recentSearchStore.searches, id: \.self) { query in
+                        recentSearchRow(query)
+                    }
+                }
+                .navigationTitle("Recent Searches")
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done") { showingAllRecentSearches = false }
+                    }
+                    ToolbarItem(placement: .destructiveAction) {
+                        Button("Clear") { recentSearchStore.clear() }
+                    }
+                }
+            }
+            .presentationDetents([.medium, .large])
+        }
+    }
+
+    private func recentSearchRow(_ query: String) -> some View {
+        Button {
+            search = query
+            showingAllRecentSearches = false
+        } label: {
+            Label(query, systemImage: "clock.arrow.circlepath")
+                .lineLimit(2)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Recent search: \(query)")
+        .swipeActions {
+            Button("Delete", systemImage: "trash", role: .destructive) {
+                recentSearchStore.remove(query)
+            }
+        }
     }
 }
 
@@ -150,45 +170,6 @@ private struct PrivatePodcastEntryView: View {
         .listStyle(.plain)
         .navigationTitle("Add Private Podcast")
         .searchable(text: $search, prompt: "Private RSS URL")
-    }
-}
-
-/// One entry point on the Add Podcast screen. Every row has the same shape —
-/// symbol, title, one line of explanation — so the list reads as one set of
-/// choices rather than a pile of unrelated links.
-private struct AddPodcastDestinationRow: View {
-    let symbol: String
-    let title: LocalizedStringKey
-    let subtitle: LocalizedStringKey
-
-    @ScaledMetric(relativeTo: .body) private var iconSize: CGFloat = 38
-
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                RoundedRectangle(cornerRadius: iconSize / 4, style: .continuous)
-                    .fill(Color.accentColor.opacity(0.15))
-
-                Image(systemName: symbol)
-                    .font(.system(size: iconSize * 0.45))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.tint)
-            }
-            .frame(width: iconSize, height: iconSize)
-            .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.headline)
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.vertical, 6)
-        .accessibilityElement(children: .combine)
     }
 }
 
