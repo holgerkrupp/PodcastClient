@@ -381,6 +381,7 @@ class Player {
     private var adSkipPlan = AdSkipPlan(segments: [])
     private var adDetectionTask: Task<Void, Never>?
     private var adDetectionEngine: AdDetectionEngine?
+    private var adDetectionConfigurationKey: String?
     private var adDetectionLifecycleObservers: [NSObjectProtocol] = []
     private var automaticAdSkipInFlight = false
     private var lastAutomaticallySkippedAdID: UUID?
@@ -453,6 +454,12 @@ class Player {
         didSet {
             scheduleCurrentArtworkUpdate()
             NotificationCenter.default.post(name: .playerChapterDataDidChange, object: nil)
+            if oldValue?.url != currentEpisode?.url {
+                Task { @MainActor in
+                    await Task.yield()
+                    await PlayNextWidgetSync.publishPlaybackState()
+                }
+            }
             if oldValue?.url != currentEpisode?.url {
                 lastTranscriptSynchronizationEpisodeURL = nil
                 lastTranscriptSynchronizationPosition = nil
@@ -1469,18 +1476,45 @@ class Player {
     }
 
     private func configureAdvertisementDetection(for episode: Episode, episodeURL: URL) async {
+#if DEBUG
+        adDetectionEnabled = await settingsActor?.getAdvertisementDetectionEnabled() ?? false
+        showDetectedAdvertisements = await settingsActor?.getDetectedAdvertisementsVisible() ?? false
+        automaticAdvertisementSkippingEnabled = await settingsActor?.getAutomaticAdvertisementSkippingEnabled() ?? false
+        AppDiagnostics.log(
+            "ad_detection_effective_settings enabled=\(adDetectionEnabled) visible=\(showDetectedAdvertisements) automatic_skip=\(automaticAdvertisementSkippingEnabled)"
+        )
+
+#if canImport(UIKit)
+        let applicationIsActive = UIApplication.shared.applicationState == .active
+#else
+        let applicationIsActive = true
+#endif
+        let mediaURL = episode.localFile ?? episode.url
+        let configurationKey = [
+            episodeURL.absoluteString,
+            mediaURL?.absoluteString ?? "no-media",
+            String(adDetectionEnabled),
+            String(showDetectedAdvertisements),
+            String(automaticAdvertisementSkippingEnabled),
+            String(ProcessInfo.processInfo.isLowPowerModeEnabled),
+            String(applicationIsActive),
+            String(episode.transcriptLines?.count ?? 0),
+            String(episode.chapters?.count ?? 0)
+        ].joined(separator: "|")
+        if adDetectionConfigurationKey == configurationKey, adDetectionTask != nil {
+            return
+        }
+
         adDetectionTask?.cancel()
         adDetectionTask = nil
         adDetectionEngine = nil
         adSegments = []
         adSkipPlan = AdSkipPlan(segments: [])
-        adDetectionEnabled = await settingsActor?.getAdvertisementDetectionEnabled() ?? false
-        showDetectedAdvertisements = await settingsActor?.getDetectedAdvertisementsVisible() ?? false
-        automaticAdvertisementSkippingEnabled = await settingsActor?.getAutomaticAdvertisementSkippingEnabled() ?? false
+        adDetectionConfigurationKey = configurationKey
 
         guard adDetectionEnabled,
               episode.isVideo == false,
-              let mediaURL = episode.localFile ?? episode.url else {
+              let mediaURL else {
             configureChapterBoundaryObserver()
             return
         }
@@ -1511,11 +1545,6 @@ class Player {
             TranscriptAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
             SemanticAdvertisementSignalProvider(transcriptProvider: transcriptProvider)
         ]
-#if canImport(UIKit)
-        let applicationIsActive = UIApplication.shared.applicationState == .active
-#else
-        let applicationIsActive = true
-#endif
         let shouldRunPCM = AdDetectionWorkPolicy.shouldRunPCM(
             applicationIsActive: applicationIsActive,
             lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
@@ -1572,9 +1601,22 @@ class Player {
                 AppDiagnostics.log("ad detection unavailable: \(error.localizedDescription)")
             }
         }
+#else
+        adDetectionTask?.cancel()
+        adDetectionTask = nil
+        await adDetectionEngine?.cancelEpisode()
+        adDetectionEngine = nil
+        adSegments = []
+        adSkipPlan = AdSkipPlan(segments: [])
+        adDetectionEnabled = false
+        showDetectedAdvertisements = false
+        automaticAdvertisementSkippingEnabled = false
+        configureChapterBoundaryObserver()
+#endif
     }
 
     private func reloadAdvertisementDetection() async {
+        adDetectionConfigurationKey = nil
         guard let episode = currentEpisode, let episodeURL = currentEpisodeURL else {
             adDetectionTask?.cancel()
             adDetectionTask = nil
@@ -2926,6 +2968,9 @@ class Player {
 
         isPlaying = true
         updateNowPlayingInfo()
+        Task { @MainActor in
+            await PlayNextWidgetSync.publishPlaybackState()
+        }
         loadSkipDurations()
         startPlaybackUpdates()
         initRemoteCommandCenter()
@@ -2965,6 +3010,7 @@ class Player {
                 engine.pause()
             }
             await captureCurrentPlaybackStateFromEngine(force: true)
+            await PlayNextWidgetSync.publishPlaybackState()
 
             if currentEpisode != nil, currentPlaybackSource != .liveRemote {
                 await flushSilenceGapTimeSaved()
@@ -3103,6 +3149,7 @@ class Player {
 
         playPosition = safeTime
         updateNowPlayingInfo()
+        await PlayNextWidgetSync.publishPlaybackState()
         _ = updateCurrentChapter()
         updateChapterProgress()
         cacheCurrentPlaybackState()
@@ -3185,6 +3232,7 @@ class Player {
                 case .position(let time):
                     let sanitizedTime = self.sanitizedPosition(time)
                     self.playPosition = sanitizedTime
+                    await PlayNextWidgetSync.publishPlaybackPositionIfDue()
                     self.requestTranscriptSynchronizationIfNeeded(at: sanitizedTime)
                     self.updateEpisodeProgress(to: sanitizedTime)
                     if self.finishAtOutroIfNeeded(

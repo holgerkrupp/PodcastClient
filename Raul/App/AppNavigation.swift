@@ -277,13 +277,23 @@ private struct IOSPlayerPresentationHost: ViewModifier {
                                 HStack(spacing: 0) {
                                     Spacer(minLength: 0)
 
+                                    // In the open Duo layout, the player is a
+                                    // compact phone presentation within a
+                                    // regular-width scene. Give it more of the
+                                    // available scene width so the clip and
+                                    // bookmark actions clear the transport
+                                    // buttons. Keep the established iPad pane
+                                    // width unchanged.
+                                    let playerWidth = proxy.size.width
+                                        * (PlatformSupport.isPhone ? 0.6 : 0.5)
+
                                     PlayerView(
                                         fullSize: true,
                                         usesExpandedLayout: false,
                                         onDismiss: { navigation.isPlayerPresented = false }
                                     )
                                     .frame(
-                                        width: proxy.size.width * 0.5,
+                                        width: playerWidth,
                                         height: proxy.size.height
                                     )
                                     .background(.regularMaterial)

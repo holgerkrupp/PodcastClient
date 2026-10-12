@@ -1,5 +1,23 @@
 import Foundation
 import SwiftData
+import os
+
+enum PodcastDetailFetchSignposts {
+    private static let log = OSLog(
+        subsystem: Bundle.main.bundleIdentifier ?? "PodcastClient",
+        category: .pointsOfInterest
+    )
+
+    static func begin(_ name: StaticString) -> OSSignpostID {
+        let id = OSSignpostID(log: log)
+        os_signpost(.begin, log: log, name: name, signpostID: id)
+        return id
+    }
+
+    static func end(_ name: StaticString, id: OSSignpostID, count: Int = -1) {
+        os_signpost(.end, log: log, name: name, signpostID: id, "count=%{public}d", count)
+    }
+}
 
 enum PodcastEpisodeListSort: Sendable {
     case newestFirst
@@ -24,35 +42,46 @@ actor PodcastEpisodeFilterActor {
         podcastID: PersistentIdentifier,
         request: PodcastEpisodeFilterRequest
     ) throws -> [PersistentIdentifier] {
-        let started = Date()
-        CrashBreadcrumbs.shared.record("podcast_detail_fetch_begin", details: "model=Episode predicate=parent_feed")
-        defer {
-            CrashBreadcrumbs.shared.record(
-                "podcast_detail_fetch_end",
-                details: "model=Episode elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1_000))"
-            )
-        }
-        // Resolve the parent in this actor's context and keep the relationship's
-        // persistentModelID comparison out of Core Data's SQL generator.
+        // Resolve the parent in this actor's context. Keep the relationship's
+        // PersistentIdentifier comparison out of Core Data's SQL generator.
+        let parentFetchID = PodcastDetailFetchSignposts.begin("Podcast detail parent lookup")
         var podcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
         )
         podcastDescriptor.fetchLimit = 1
-        guard let podcast = try modelContext.fetch(podcastDescriptor).first else { return [] }
+        var parentCount = -1
+        defer {
+            PodcastDetailFetchSignposts.end(
+                "Podcast detail parent lookup",
+                id: parentFetchID,
+                count: parentCount
+            )
+        }
+        let podcast = try modelContext.fetch(podcastDescriptor).first
+        parentCount = podcast == nil ? 0 : 1
+        guard let podcast else { return [] }
         let episodesForFeed: [Episode]
+        let episodeFetchID = PodcastDetailFetchSignposts.begin("Podcast detail episode feed fetch")
+        var episodeCount = -1
+        defer {
+            PodcastDetailFetchSignposts.end(
+                "Podcast detail episode feed fetch",
+                id: episodeFetchID,
+                count: episodeCount
+            )
+        }
         if let feed = podcast.feed {
             let descriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
             )
             episodesForFeed = try modelContext.fetch(descriptor)
         } else {
-            // Feedless legacy rows are rare. Narrow them by their parent in
-            // memory instead of asking SQL to compare a relationship's ID.
             let descriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast != nil }
             )
             episodesForFeed = try modelContext.fetch(descriptor)
         }
+        episodeCount = episodesForFeed.count
         var episodes = episodesForFeed.filter {
             $0.podcast?.persistentModelID == podcastID
         }

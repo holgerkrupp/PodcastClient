@@ -4,6 +4,7 @@ import AVFoundation
 import CryptoKit
 import SwiftData
 import Speech
+import OSLog
 
 struct TranscriptSynchronizationAnchor: Codable, Hashable, Sendable {
     let transcriptTime: TimeInterval
@@ -593,7 +594,8 @@ actor TranscriptSynchronizationService {
                     maxSnippetDurationSeconds: 7,
                     maxWordsPerSnippet: 30,
                     analyzerPriority: .utility,
-                    allowModelDownload: false
+                    allowModelDownload: false,
+                    diagnosticPurpose: "publisher_sync"
                 )
                 guard let results = try? await transcriber.transcribe(),
                       results.isEmpty == false else { continue }
@@ -719,9 +721,13 @@ enum TranscriptAudioSnippetError: Error {
     case invalidFormat
     case bufferAllocationFailed
     case emptySample
+    case durationLimitExceeded
 }
 
 enum TranscriptAudioSampler {
+    private static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PodcastClient", category: "TranscriptionIO")
+    private static let maximumSnippetDuration: TimeInterval = 7
+
     struct Snippet: Sendable {
         let url: URL
         let startTime: TimeInterval
@@ -744,12 +750,21 @@ enum TranscriptAudioSampler {
         guard format.sampleRate > 0, source.length > 0 else {
             throw TranscriptAudioSnippetError.invalidFormat
         }
+        guard duration.isFinite, duration > 0, duration <= maximumSnippetDuration else {
+            throw TranscriptAudioSnippetError.durationLimitExceeded
+        }
         let totalDuration = Double(source.length) / format.sampleRate
-        let actualDuration = min(max(duration, 1), totalDuration)
+        let actualDuration = min(duration, totalDuration)
         guard actualDuration > 0 else { throw TranscriptAudioSnippetError.invalidFormat }
         let startTime = min(max(center - actualDuration / 2, 0), max(totalDuration - actualDuration, 0))
         let startFrame = AVAudioFramePosition((startTime * format.sampleRate).rounded(.down))
         let frameCount = AVAudioFrameCount(max(1, actualDuration * format.sampleRate))
+        let estimatedPCMBytes = Int64(frameCount) * Int64(format.channelCount) * Int64(MemoryLayout<Float>.size)
+        // The sampler is intentionally bounded to one seven-second float PCM buffer.
+        // Refuse malformed media formats rather than allocating an unexpectedly large buffer.
+        guard estimatedPCMBytes <= 16 * 1_024 * 1_024 else {
+            throw TranscriptAudioSnippetError.bufferAllocationFailed
+        }
         source.framePosition = startFrame
         guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else {
             throw TranscriptAudioSnippetError.bufferAllocationFailed
@@ -766,6 +781,7 @@ enum TranscriptAudioSampler {
         do {
             let output = try AVAudioFile(forWriting: sampleURL, settings: format.settings)
             try output.write(from: buffer)
+            Self.logger.info("publisher_sync_snippet_written duration_seconds=\(Double(buffer.frameLength) / format.sampleRate, format: .fixed(precision: 2)) estimated_pcm_bytes=\(estimatedPCMBytes)")
             return Snippet(url: sampleURL, startTime: startTime)
         } catch {
             try? FileManager.default.removeItem(at: folder)

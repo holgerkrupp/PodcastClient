@@ -47,6 +47,20 @@ struct QueueTimelineEntry: TimelineEntry {
     let playlistID: String
     let playlistTitle: String
     let statusMessage: String?
+    let isPlaying: Bool
+    let playbackProgress: Double?
+}
+
+private struct QueuePlaybackState: Decodable {
+    let isPlaying: Bool
+    let positionSeconds: Double?
+    let durationSeconds: Double?
+
+    var progress: Double? {
+        guard let positionSeconds, let durationSeconds,
+              positionSeconds.isFinite, durationSeconds.isFinite, durationSeconds > 0 else { return nil }
+        return min(max(positionSeconds / durationSeconds, 0), 1)
+    }
 }
 
 struct QueuePlaylistEntity: AppEntity, Identifiable, Hashable {
@@ -145,7 +159,9 @@ struct QueueProvider: AppIntentTimelineProvider {
             snapshot: .empty,
             playlistID: "",
             playlistTitle: "Up Next",
-            statusMessage: "Open Up Next to prepare widget data."
+            statusMessage: "Open Up Next to prepare widget data.",
+            isPlaying: false,
+            playbackProgress: nil
         )
     }
 
@@ -196,13 +212,24 @@ struct QueueProvider: AppIntentTimelineProvider {
             statusMessage = nil
         }
 
+        let playbackState = Self.loadPlaybackState()
         return QueueTimelineEntry(
             date: .now,
             snapshot: snapshot,
             playlistID: selectedPlaylist.id,
             playlistTitle: selectedPlaylist.title,
-            statusMessage: statusMessage
+            statusMessage: statusMessage,
+            isPlaying: playbackState?.isPlaying ?? false,
+            playbackProgress: playbackState?.progress
         )
+    }
+
+    private static func loadPlaybackState() -> QueuePlaybackState? {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent("play-next-widget-playback-v1.json"),
+              let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(QueuePlaybackState.self, from: data)
     }
 
     static func loadPlaylistOptions() -> [QueuePlaylistCatalog.Item] {
@@ -328,15 +355,15 @@ private struct PlayNextQueueWidgetView: View {
     var body: some View {
         switch family {
         case .systemSmall:
-            listView(rowCount: 3)
+            smallQueueView
         case .systemMedium:
-            listView(rowCount: 3)
+            mediumQueueView
         case .systemLarge:
-            listView(rowCount: 8)
+            largeQueueView
         case .accessoryRectangular:
             accessoryView
         default:
-            listView(rowCount: 3)
+            smallQueueView
         }
     }
 
@@ -352,38 +379,73 @@ private struct PlayNextQueueWidgetView: View {
         return components.url
     }
 
-    private func listView(rowCount: Int) -> some View {
-        let items = Array(
-            ([entry.snapshot.currentItem].compactMap { $0 } + entry.snapshot.upcomingItems)
-                .prefix(rowCount)
-        )
-
-        return GeometryReader { proxy in
-            let headerHeight: CGFloat = 32
-            let rowHeight = items.isEmpty
-                ? 0
-                : max((proxy.size.height - headerHeight) / CGFloat(items.count), 0)
-
-            VStack(alignment: .leading, spacing: 0) {
-                widgetHeader
-                    .frame(height: headerHeight)
-
-                if items.isEmpty {
-                    emptyState
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                } else {
-                    ForEach(items) { item in
-                        QueueLine(
-                            item: item,
-                            style: item.isCurrent ? .current : .upNext,
-                            playlistID: entry.playlistID
-                        )
-                        .frame(height: rowHeight)
-                    }
-                }
+    private var smallQueueView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            widgetHeader.padding(.horizontal, 12).padding(.top, 10)
+            if let featuredItem {
+                QueueFeature(item: featuredItem, playlistID: entry.playlistID, compact: true, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            } else {
+                emptyState.padding(12)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
+    }
+
+    private var mediumQueueView: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 8) {
+                widgetHeader.padding(.horizontal, 14).padding(.top, 12)
+                if let mediumFeaturedItem {
+                    QueueFeature(item: mediumFeaturedItem, playlistID: entry.playlistID, compact: true, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                        .padding(.horizontal, 14)
+                } else {
+                    emptyState.padding(.horizontal, 14)
+                }
+                Spacer(minLength: 10)
+            }
+            if let mediumFeaturedItem {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(entry.snapshot.upcomingItems.filter { $0.id != mediumFeaturedItem.id }.prefix(2))) { item in
+                        QueueLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 18)
+                .padding(.trailing, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var largeQueueView: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            widgetHeader.padding(.horizontal, 16).padding(.top, 12)
+            if let largeFeaturedItem {
+                QueueFeature(item: largeFeaturedItem, playlistID: entry.playlistID, compact: false, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                    .padding(.horizontal, 16)
+                ForEach(Array(entry.snapshot.upcomingItems.filter { $0.id != largeFeaturedItem.id }.prefix(3))) { item in
+                    QueueLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                        .padding(.horizontal, 16)
+                }
+            } else {
+                emptyState.padding(.horizontal, 16)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.bottom, 12)
+    }
+
+    private var featuredItem: QueueSnapshot.Item? {
+        entry.snapshot.upcomingItems.first ?? entry.snapshot.currentItem
+    }
+
+    private var mediumFeaturedItem: QueueSnapshot.Item? {
+        entry.snapshot.currentItem ?? featuredItem
+    }
+
+    private var largeFeaturedItem: QueueSnapshot.Item? {
+        entry.snapshot.currentItem ?? featuredItem
     }
 
     private var accessoryView: some View {
@@ -470,127 +532,70 @@ private struct PlayNextQueueWidgetView: View {
     }
 }
 
-private struct QueueLine: View {
-    enum Style {
-        case current
-        case upNext
-    }
-
+private struct QueueFeature: View {
     let item: QueueSnapshot.Item
-    let style: Style
     let playlistID: String
+    let compact: Bool
+    let isPlaying: Bool
+    let playbackProgress: Double?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
-            HStack(alignment: .center, spacing: 8) {
+        HStack(spacing: 10) {
+            QueueCover(url: item.coverURL, fileName: item.coverFileName, size: compact ? 72 : 90)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(item.isCurrent ? "Now Playing" : "Up Next")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.upNextAccent)
+                    .widgetAccentable()
                 if let detailURL {
                     Link(destination: detailURL) {
-                        episodeLabel
+                        label
                     }
                     .buttonStyle(.plain)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 } else {
-                    episodeLabel
+                    label
                 }
-
-                if let playURL {
-                    Button(intent: OpenURLIntent(playURL)) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(Color.upNextAccent)
-                            .widgetAccentable()
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Play \(item.title)")
+                Spacer(minLength: 0)
+                HStack(spacing: 6) {
+                    ProgressView(value: progress).tint(Color.upNextAccent)
+                    QueuePlaybackButton(item: item, size: 40, isPlaying: isPlaying, playbackProgress: playbackProgress)
                 }
             }
-            .padding(.horizontal, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background {
-            QueueLineBackground(
-                url: item.coverURL,
-                fileName: item.coverFileName
-            )
-        }
-        .overlay(alignment: .bottomLeading) {
-            Rectangle()
-                .fill(Color.upNextAccent)
-                .frame(maxWidth: .infinity)
-                .scaleEffect(x: progress, y: 1, anchor: .leading)
-                .frame(height: 3)
-                .widgetAccentable()
-                .accessibilityHidden(true)
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var supportingText: String? {
-        switch style {
-        case .current:
-            return item.podcast ?? item.subtitle
-        case .upNext:
-            return item.podcast ?? item.subtitle
-        }
-    }
-
-    private var progress: Double {
-        min(max(item.progress ?? 0, 0), 1)
-    }
-
-    private var episodeLabel: some View {
-        HStack(alignment: .center, spacing: 8) {
-            QueueCover(
-                url: item.coverURL,
-                fileName: item.coverFileName,
-                size: 26,
-                fallbackSystemName: style == .current ? "play.circle.fill" : "text.line.first.and.arrowtriangle.forward",
-                fallbackColor: style == .current ? .upNextAccent : .secondary
-            )
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .font(.subheadline)
-                    .fontWeight(style == .current ? .semibold : .regular)
-                    .foregroundStyle(style == .current ? Color.upNextAccent : Color.primary)
-                    .lineLimit(1)
-                    .widgetAccentable(style == .current)
-
-                if let supportingText = supportingText, supportingText.isEmpty == false {
-                    Text(supportingText)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+    private var label: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            GeometryReader { geometry in
+                if geometry.size.width >= 76 {
+                    Text(item.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(compact ? 1 : 3)
                 }
+            }
+            .frame(height: compact ? 18 : 54)
+            if let podcast = item.podcast ?? item.subtitle, podcast.isEmpty == false {
+                Text(podcast).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
 
-    private var playURL: URL? {
-        guard var components = URLComponents(string: "upnext://playEpisode") else {
-            return nil
+    private var progress: Double {
+        if item.isCurrent, let playbackProgress {
+            return min(max(playbackProgress, 0), 1)
         }
-
-        components.queryItems = [
-            URLQueryItem(name: "url", value: item.id)
-        ]
-        return components.url
+        guard let value = item.progress, value.isFinite else { return 0 }
+        return min(max(value, 0), 1)
     }
 
     private var detailURL: URL? {
-        guard var components = URLComponents(string: "upnext://episode") else {
-            return nil
-        }
-
-        var queryItems = [
-            URLQueryItem(name: "url", value: item.id)
-        ]
+        guard item.id.hasPrefix("private-") == false else { return nil }
+        guard var components = URLComponents(string: "upnext://episode") else { return nil }
+        var queryItems = [URLQueryItem(name: "url", value: item.id)]
         if playlistID.isEmpty == false {
             queryItems.append(URLQueryItem(name: "playlistID", value: playlistID))
         }
@@ -599,65 +604,92 @@ private struct QueueLine: View {
     }
 }
 
-private struct QueueLineBackground: View {
-    @Environment(\.widgetRenderingMode) private var renderingMode
-
-    let url: URL?
-    let fileName: String?
+private struct QueueLine: View {
+    let item: QueueSnapshot.Item
+    let playlistID: String
+    let isPlaying: Bool
+    let playbackProgress: Double?
 
     var body: some View {
-        if renderingMode == .fullColor {
-            GeometryReader { proxy in
-                ZStack {
-                    Color.secondary.opacity(0.12)
+        HStack(spacing: 9) {
+            if let detailURL {
+                Link(destination: detailURL) { episodeLabel }
+                    .buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                episodeLabel
+            }
+            QueuePlaybackButton(item: item, size: 40, isPlaying: isPlaying, playbackProgress: playbackProgress)
+        }
+        .padding(.vertical, 3)
+    }
 
-                    artwork
-                        .scaledToFill()
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .scaleEffect(1.35)
-                        .blur(radius: 18, opaque: true)
-
-                    Rectangle()
-                        .fill(.thinMaterial)
+    private var episodeLabel: some View {
+        HStack(spacing: 9) {
+            QueueCover(url: item.coverURL, fileName: item.coverFileName, size: 42)
+            VStack(alignment: .leading, spacing: 2) {
+                GeometryReader { geometry in
+                    if geometry.size.width >= 76 {
+                        Text(item.title)
+                            .font(.subheadline.weight(item.isCurrent ? .semibold : .regular))
+                            .lineLimit(1)
+                    }
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
+                .frame(height: 18)
+                if let podcast = item.podcast ?? item.subtitle, podcast.isEmpty == false {
+                    Text(podcast).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
+
+    private var detailURL: URL? {
+        guard item.id.hasPrefix("private-") == false else { return nil }
+        guard var components = URLComponents(string: "upnext://episode") else { return nil }
+        var queryItems = [URLQueryItem(name: "url", value: item.id)]
+        if playlistID.isEmpty == false {
+            queryItems.append(URLQueryItem(name: "playlistID", value: playlistID))
+        }
+        components.queryItems = queryItems
+        return components.url
+    }
+}
+
+private struct QueuePlaybackButton: View {
+    let item: QueueSnapshot.Item
+    let size: CGFloat
+    let isPlaying: Bool
+    let playbackProgress: Double?
 
     @ViewBuilder
-    private var artwork: some View {
-        if let localImage {
-            localImage
-                .resizable()
-        } else if let url {
-            AsyncImage(url: url) { phase in
-                if case .success(let image) = phase {
-                    image
-                        .resizable()
-                } else {
-                    Color.clear
-                }
+    var body: some View {
+        if item.isCurrent {
+            Button(intent: WidgetPlayPauseIntent()) {
+                WidgetPlaybackProgressRing(
+                    progress: playbackProgress ?? 0,
+                    isPlaying: isPlaying,
+                    size: 30
+                )
+                    .frame(width: 40, height: 40)
             }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? "Pause current episode" : "Play current episode")
+        } else if item.id.hasPrefix("private-") == false {
+            Button(intent: WidgetPlayEpisodeIntent(episodeID: item.id)) { icon("play.fill") }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play \(item.title)")
         } else {
-            Color.clear
+            EmptyView()
         }
     }
 
-    private var localImage: Image? {
-        #if canImport(UIKit)
-        guard let fileName,
-              let url = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
-                .appendingPathComponent(fileName),
-              let image = UIImage(contentsOfFile: url.path)
-        else { return nil }
-
-        return Image(uiImage: image)
-        #else
-        return nil
-        #endif
+    private func icon(_ name: String) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 15, weight: .semibold))
+            .frame(width: size, height: size)
+            .contentShape(Rectangle())
     }
 }
 
@@ -678,18 +710,6 @@ private struct QueueCover: View {
                     .resizable()
                     .widgetAccentedRenderingMode(.desaturated)
                     .scaledToFill()
-            } else if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .widgetAccentedRenderingMode(.desaturated)
-                            .scaledToFill()
-                    default:
-                        fallbackIcon
-                    }
-                }
             } else {
                 fallbackIcon
             }
@@ -728,6 +748,8 @@ private struct QueueCover: View {
         snapshot: .empty,
         playlistID: "",
         playlistTitle: "Up Next",
-        statusMessage: "Open Up Next to prepare widget data."
+        statusMessage: "Open Up Next to prepare widget data.",
+        isPlaying: false,
+        playbackProgress: nil
     )
 }

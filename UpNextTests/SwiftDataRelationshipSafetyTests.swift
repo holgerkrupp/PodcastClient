@@ -79,6 +79,13 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             podcastID: podcastID, request: request
         )
         XCTAssertEqual(Set(ids), expectedIDs)
+        // Exercise the destination's second-stage visible-model resolution
+        // against a reopened SQLite store. It must issue bounded scalar-ID
+        // fetches instead of one dynamically-sized PersistentIdentifier IN
+        // predicate, and deleted rows should simply be omitted.
+        let resolvedEpisodes: [PersistentIdentifier: Episode] = reader.existingModels(for: ids)
+        XCTAssertEqual(Set(resolvedEpisodes.keys), expectedIDs)
+        XCTAssertEqual(resolvedEpisodes.count, 60)
         let emptyID = try XCTUnwrap(podcasts.first {
             $0.feed == URL(string: "https://example.com/empty.xml")
         }).persistentModelID

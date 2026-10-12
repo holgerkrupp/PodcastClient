@@ -28,6 +28,39 @@ struct PlayNextWidgetSnapshot: Codable {
     let items: [Item]
 }
 
+/// Playback-only state for the Now Playing widget. This intentionally stays
+/// separate from playlist snapshots so transport changes never fetch SwiftData
+/// or rebuild queue artwork.
+struct WidgetPlaybackSnapshot: Codable, Equatable, Sendable {
+    var schemaVersion: Int = 1
+    let updatedAt: Date
+    let episodeID: String?
+    let isPlaying: Bool
+    let positionSeconds: Double?
+    let durationSeconds: Double?
+    let playbackRate: Double?
+    let title: String?
+    let podcastTitle: String?
+    let coverFileName: String?
+
+    func hasSamePlaybackContent(as other: WidgetPlaybackSnapshot) -> Bool {
+        episodeID == other.episodeID &&
+        isPlaying == other.isPlaying &&
+        positionSeconds == other.positionSeconds &&
+        durationSeconds == other.durationSeconds &&
+        playbackRate == other.playbackRate &&
+        title == other.title &&
+        podcastTitle == other.podcastTitle &&
+        coverFileName == other.coverFileName
+    }
+
+    var playbackProgress: Double? {
+        guard let positionSeconds, let durationSeconds,
+              positionSeconds.isFinite, durationSeconds.isFinite, durationSeconds > 0 else { return nil }
+        return min(max(positionSeconds / durationSeconds, 0), 1)
+    }
+}
+
 struct PlayNextWidgetPlaylistCatalog: Codable {
     struct Item: Codable, Identifiable {
         let id: String
@@ -46,8 +79,11 @@ enum PlayNextWidgetSync {
     static let legacyFileName = "play-next-widget.json"
     static let catalogFileName = "play-next-widget-playlists.json"
     static let snapshotFilePrefix = "play-next-widget-"
+    static let playbackFileName = "play-next-widget-playback-v1.json"
     private static let refreshCoordinator = PlayNextWidgetRefreshCoordinator()
     private static let snapshotItemLimit = 12
+    @MainActor private static var lastPositionOnlyPublicationAt = Date.distantPast
+    private static let playbackSnapshotWriter = WidgetPlaybackSnapshotWriter()
 
     static func refresh(
         using container: ModelContainer? = nil,
@@ -158,6 +194,61 @@ enum PlayNextWidgetSync {
         reloadWidgets()
     }
 
+    /// Publishes only values already held by Player. Artwork is referenced
+    /// from the app-group thumbnail cache when present; this path never fetches
+    /// network artwork or touches the model graph.
+    @MainActor
+    static func publishPlaybackState() async {
+        lastPositionOnlyPublicationAt = .now
+        let player = Player.shared
+        let episode = player.currentEpisode
+        let artworkURL = episode?.imageURL
+        let coverFileName = artworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
+        let snapshot = WidgetPlaybackSnapshot(
+            updatedAt: .now,
+            episodeID: player.currentEpisodeURL.flatMap(publicWidgetEpisodeID),
+            isPlaying: player.isPlaying,
+            positionSeconds: finiteNonnegative(player.playPosition),
+            durationSeconds: episode?.duration.flatMap(finitePositive),
+            playbackRate: finitePositive(Double(player.playbackRate)),
+            title: episode?.title,
+            podcastTitle: episode?.podcast?.title,
+            coverFileName: coverFileName
+        )
+        await playbackSnapshotWriter.write(
+            snapshot,
+            appGroupID: appGroupID,
+            fileName: playbackFileName
+        )
+    }
+
+    /// Position snapshots are deliberately coarse. The player can emit more
+    /// frequent progress events, but widgets only need a minute-level estimate.
+    @MainActor
+    static func publishPlaybackPositionIfDue() async {
+        guard Player.shared.isPlaying,
+              Date.now.timeIntervalSince(lastPositionOnlyPublicationAt) >= 60 else { return }
+        await publishPlaybackState()
+    }
+
+    private static func cachedCoverThumbnailName(for coverURL: URL) -> String? {
+        let name = "\(coverThumbnailCacheKey(for: coverURL)).jpg"
+        let relativePath = "play-next-widget-covers/\(name)"
+        guard let directory = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID),
+              FileManager.default.fileExists(atPath: directory.appendingPathComponent(relativePath).path) else {
+            return nil
+        }
+        return relativePath
+    }
+
+    private static func finiteNonnegative(_ value: Double) -> Double? {
+        value.isFinite ? max(value, 0) : nil
+    }
+
+    private static func finitePositive(_ value: Double) -> Double? {
+        value.isFinite && value > 0 ? value : nil
+    }
+
     private static func persistCatalog(for playlists: [Playlist], defaultPlaylistID: UUID?, selectedPlaylistID: UUID?) {
         let items = playlists.map { playlist in
             PlayNextWidgetPlaylistCatalog.Item(
@@ -223,11 +314,11 @@ enum PlayNextWidgetSync {
             let coverFileName = await ensureCoverThumbnail(for: coverURL)
 
             items.append(PlayNextWidgetSnapshot.Item(
-                id: source.episodeURL.absoluteString,
+                id: widgetEpisodeID(for: source.episodeURL),
                 title: source.title,
                 subtitle: source.episode.desc?.trimmingCharacters(in: .whitespacesAndNewlines),
                 podcast: source.episode.podcast?.trimmingCharacters(in: .whitespacesAndNewlines),
-                coverURL: coverURL,
+                coverURL: nil,
                 coverFileName: coverFileName,
                 isCurrent: source.episode.url == currentEpisodeURL,
                 progress: source.episode.maxPlayProgress
@@ -285,6 +376,17 @@ enum PlayNextWidgetSync {
     private static func coverThumbnailCacheKey(for url: URL) -> String {
         let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
         return digest.map { String(format: "%02x", $0) }.joined()
+    }
+
+    private static func publicWidgetEpisodeID(_ url: URL) -> String? {
+        guard url.isLikelyPrivatePodcastURL == false else { return nil }
+        return url.absoluteString
+    }
+
+    private static func widgetEpisodeID(for url: URL) -> String {
+        guard url.isLikelyPrivatePodcastURL else { return url.absoluteString }
+        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
+        return "private-" + digest.map { String(format: "%02x", $0) }.joined()
     }
 
     #if canImport(UIKit)
@@ -371,6 +473,48 @@ enum PlayNextWidgetSync {
             WidgetCenter.shared.reloadAllTimelines()
         }
         #endif
+    }
+}
+
+private actor WidgetPlaybackSnapshotWriter {
+    func write(_ snapshot: WidgetPlaybackSnapshot, appGroupID: String, fileName: String) {
+        guard let url = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent(fileName) else { return }
+
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let previousSnapshot = (try? Data(contentsOf: url))
+            .flatMap { try? decoder.decode(WidgetPlaybackSnapshot.self, from: $0) }
+        if let previousSnapshot,
+           previousSnapshot.updatedAt > snapshot.updatedAt {
+            return
+        }
+        if let previousSnapshot,
+           previousSnapshot.hasSamePlaybackContent(as: snapshot) {
+            return
+        }
+
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        guard let data = try? encoder.encode(snapshot) else { return }
+        let shouldReloadQueue = previousSnapshot == nil ||
+            previousSnapshot?.episodeID != snapshot.episodeID ||
+            previousSnapshot?.isPlaying != snapshot.isPlaying ||
+            previousSnapshot?.playbackProgress != snapshot.playbackProgress
+        do {
+            try data.write(to: url, options: .atomic)
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadTimelines(ofKind: "UpNextNowPlayingWidget")
+            if shouldReloadQueue {
+                WidgetCenter.shared.reloadTimelines(ofKind: "PlayNextQueueWidget")
+            }
+            #endif
+        } catch {
+            #if DEBUG
+            print("Failed to persist widget playback state: \(error)")
+            #endif
+        }
     }
 }
 

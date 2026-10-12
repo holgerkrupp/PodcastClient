@@ -5,5 +5,6 @@ import WidgetKit
 struct PlayNextWidgetBundle: WidgetBundle {
     var body: some Widget {
         PlayNextQueueWidget()
+        UpNextNowPlayingWidget()
     }
 }

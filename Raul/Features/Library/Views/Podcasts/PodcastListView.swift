@@ -177,19 +177,40 @@ struct PodcastListView: View {
 /// Resolve the selection in the destination's context so a concurrent library
 /// refresh or deletion cannot carry the row's model instance into Detail.
 private struct PodcastDetailDestination: View {
-    @Query private var podcasts: [Podcast]
+    @Environment(\.modelContext) private var modelContext
+    @State private var podcast: Podcast?
+    @State private var didResolve = false
 
-    init(podcastID: PersistentIdentifier) {
-        _podcasts = Query(filter: #Predicate<Podcast> {
-            $0.persistentModelID == podcastID
-        })
-    }
+    let podcastID: PersistentIdentifier
 
     var body: some View {
-        if let podcast = podcasts.first {
-            PodcastDetailView(podcast: podcast)
-        } else {
-            ContentUnavailableView("Podcast Unavailable", systemImage: "dot.radiowaves.left.and.right")
+        Group {
+            if let podcast {
+                PodcastDetailView(podcast: podcast)
+            } else if didResolve {
+                ContentUnavailableView("Podcast Unavailable", systemImage: "dot.radiowaves.left.and.right")
+            } else {
+                ProgressView("Loading podcast…")
+            }
+        }
+        .task(id: podcastID) {
+            let signpostID = PodcastDetailFetchSignposts.begin("Podcast detail navigation lookup")
+            var descriptor = FetchDescriptor<Podcast>(
+                predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
+            )
+            descriptor.fetchLimit = 1
+            do {
+                podcast = try modelContext.fetch(descriptor).first
+                PodcastDetailFetchSignposts.end(
+                    "Podcast detail navigation lookup",
+                    id: signpostID,
+                    count: podcast == nil ? 0 : 1
+                )
+            } catch {
+                AppDiagnostics.log("Podcast detail navigation lookup failed")
+                PodcastDetailFetchSignposts.end("Podcast detail navigation lookup", id: signpostID, count: 0)
+            }
+            didResolve = true
         }
     }
 }

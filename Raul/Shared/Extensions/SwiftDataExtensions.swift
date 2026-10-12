@@ -79,20 +79,30 @@ extension ModelContext{
     func existingModels(for ids: [PersistentIdentifier]) -> [PersistentIdentifier: Podcast] {
         let uniqueIDs = Array(Set(ids))
         guard uniqueIDs.isEmpty == false else { return [:] }
-        let descriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { uniqueIDs.contains($0.persistentModelID) }
-        )
-        let models = (try? fetch(descriptor)) ?? []
-        return models.reduce(into: [:]) { $0[$1.persistentModelID] = $1 }
+        var resolved: [PersistentIdentifier: Podcast] = [:]
+        // Keep each SQL predicate to a single concrete persistent ID. Even
+        // modest `IN` lists of PersistentIdentifier can exercise a fragile
+        // Core Data SQL-generator path, and their size grows with library
+        // history when callers resolve every filtered row at once.
+        for id in uniqueIDs {
+            let model: Podcast? = existingModel(for: id)
+            if let model {
+                resolved[id] = model
+            }
+        }
+        return resolved
     }
 
     func existingModels(for ids: [PersistentIdentifier]) -> [PersistentIdentifier: Episode] {
         let uniqueIDs = Array(Set(ids))
         guard uniqueIDs.isEmpty == false else { return [:] }
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { uniqueIDs.contains($0.persistentModelID) }
-        )
-        let models = (try? fetch(descriptor)) ?? []
-        return models.reduce(into: [:]) { $0[$1.persistentModelID] = $1 }
+        var resolved: [PersistentIdentifier: Episode] = [:]
+        for id in uniqueIDs {
+            let model: Episode? = existingModel(for: id)
+            if let model {
+                resolved[id] = model
+            }
+        }
+        return resolved
     }
 }

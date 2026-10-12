@@ -171,6 +171,7 @@ struct TranscriptionSettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+#if DEBUG
             Section("Advertisement Detection") {
                 if let globalSettings {
                     Toggle(
@@ -220,6 +221,7 @@ struct TranscriptionSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+#endif
 
             Section("Generated Chapters") {
                 if let globalSettings {

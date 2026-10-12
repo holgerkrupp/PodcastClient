@@ -38,7 +38,8 @@ struct RollingSpeechTranscriptProvider: AdTranscriptProvider, Sendable {
             maxSnippetDurationSeconds: 2.5,
             maxWordsPerSnippet: 12,
             analyzerPriority: .utility,
-            throttle: .backgroundFriendly
+            throttle: .backgroundFriendly,
+            diagnosticPurpose: "ad_detection"
         )
         guard let results = try await transcriber.transcribe() else { return [] }
         return results.compactMap { result in

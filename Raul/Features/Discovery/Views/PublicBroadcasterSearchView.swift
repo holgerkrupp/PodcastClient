@@ -47,11 +47,7 @@ struct PublicBroadcasterSearchView: View {
                             showsSource: true,
                             registry: viewModel.registry
                         )
-
-                        NavigationLink {
-                            DiscoveredPodcastBrowseView(podcast: podcast)
-                                .modelContext(context)
-                        } label: {
+                        NavigationLink(destination: DiscoveredPodcastBrowseView(podcast: podcast).modelContext(context)) {
                             EmptyView()
                         }
                         .opacity(0)
@@ -62,6 +58,7 @@ struct PublicBroadcasterSearchView: View {
                     .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
                 }
             }
         }

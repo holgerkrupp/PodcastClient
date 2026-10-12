@@ -131,8 +131,18 @@ actor TranscriptionManager {
             return nil
         }
         print("enqueueTranscription")
-        if let existingItem = items[episodeURL] {
+        if tasks[episodeURL] != nil, let existingItem = items[episodeURL] {
             return existingItem
+        }
+
+        // Keep terminal items around long enough for the UI to show their result,
+        // but never let one suppress a later user retry. `cleanUp` removes the task
+        // while retaining its item, so the old unconditional item check could return
+        // a failed/finished/cancelled job here without scheduling any new work.
+        if tasks[episodeURL] == nil, items[episodeURL] != nil {
+            AppDiagnostics.log("transcription_stale_item_replaced origin=\(origin == .manual ? "manual" : "automatic")")
+            items[episodeURL] = nil
+            episodeSnapshots[episodeURL] = nil
         }
 
         let episodeActor = EpisodeActor(modelContainer: container)
@@ -193,7 +203,9 @@ actor TranscriptionManager {
 
             // Only one transcription runs at a time; others wait here.
             let transcriptionQueue = self.transcriptionQueue
+            AppDiagnostics.log("transcription_waiting_for_turn origin=\(origin == .manual ? "manual" : "automatic")")
             await transcriptionQueue.wait(for: episodeURL)
+            AppDiagnostics.log("transcription_turn_started origin=\(origin == .manual ? "manual" : "automatic")")
             defer { Task { await transcriptionQueue.finish(episodeURL) } }
 
             do {
@@ -218,6 +230,7 @@ actor TranscriptionManager {
                     maxSnippetDurationSeconds: maxSnippetDurationSeconds,
                     analyzerPriority: origin == .manual ? .userInitiated : .background,
                     throttle: origin == .manual ? .none : .backgroundFriendly,
+                    diagnosticPurpose: origin == .manual ? "manual" : "automatic",
                     progressHandler: { progress, status in
                         await MainActor.run {
                             let nextState: TranscriptionItem.State
@@ -298,6 +311,7 @@ actor TranscriptionManager {
         // Register the task in actor state
         tasks[episodeURL] = job
         taskOrigins[episodeURL] = origin
+        AppDiagnostics.log("transcription_job_scheduled origin=\(origin == .manual ? "manual" : "automatic")")
         return uiItem
     }
 

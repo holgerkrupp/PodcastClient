@@ -8,9 +8,11 @@
 import Foundation
 import AVFoundation
 import Speech
+import OSLog
 
 @Observable
 class AITranscripts {
+    private static let ioLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PodcastClient", category: "TranscriptionIO")
     /// Controls input throttling (duty-cycling) while feeding audio to the analyzer.
     /// Automatic/background runs use a non-zero pause so the Speech XPC's rolling CPU
     /// average stays under iOS's 50%/180s background CPU monitor. Manual runs use `.none`.
@@ -35,6 +37,8 @@ class AITranscripts {
     let analyzerPriority: TaskPriority
     let throttle: Throttle
     let allowModelDownload: Bool
+    /// Identifies the feature path in local diagnostics without recording media URLs or transcript text.
+    let diagnosticPurpose: String
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
 
 
@@ -55,6 +59,7 @@ class AITranscripts {
         analyzerPriority: TaskPriority = .userInitiated,
         throttle: Throttle = .none,
         allowModelDownload: Bool = true,
+        diagnosticPurpose: String = "unspecified",
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
     ) async {
         self.url = url
@@ -63,6 +68,7 @@ class AITranscripts {
         self.analyzerPriority = analyzerPriority
         self.throttle = throttle
         self.allowModelDownload = allowModelDownload
+        self.diagnosticPurpose = diagnosticPurpose
         self.progressHandler = progressHandler
         self.language = language.map { Locale(identifier: $0) } ?? Locale.current
         await resolveLanguageIfNeeded()
@@ -178,6 +184,9 @@ class AITranscripts {
             return nil }
 
         let audioDuration = transcriptionDuration(for: audioFile)
+        let sourceBytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let startedAt = ContinuousClock.now
+        Self.ioLogger.info("transcription_started purpose=\(self.diagnosticPurpose, privacy: .public) bytes=\(sourceBytes) audio_seconds=\(audioDuration, format: .fixed(precision: 2)) throttled=\(self.throttle.isEnabled, privacy: .public)")
 
         await resolveLanguageIfNeeded()
         print("transcribe to lang: \(language.identifier(.bcp47))")
@@ -278,6 +287,10 @@ class AITranscripts {
         await reportProgress(0.92, status: "Finalizing transcript…")
         let transcription = try await transcriptionFuture
 
+        let elapsed = startedAt.duration(to: .now).components
+        let elapsedSeconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
+        Self.ioLogger.info("transcription_finished purpose=\(self.diagnosticPurpose, privacy: .public) bytes=\(sourceBytes) audio_seconds=\(audioDuration, format: .fixed(precision: 2)) elapsed_seconds=\(elapsedSeconds, format: .fixed(precision: 2)) result_count=\(transcription.count ?? 0)")
+
         return transcription
     }
 
@@ -296,6 +309,7 @@ class AITranscripts {
         let readingFormat = audioFile.processingFormat
         let sampleRate = readingFormat.sampleRate
         let framesPerChunk = AVAudioFrameCount(max(sampleRate * throttle.chunkSeconds, 1))
+        var fedFrames: Int64 = 0
         // One converter instance reused across chunks so sample-rate conversion state
         // carries over and there are no artifacts at chunk boundaries.
         let converter = readingFormat == analyzerFormat
@@ -313,6 +327,7 @@ class AITranscripts {
                 let bufferStartTime = CMTime(value: startFrame, timescale: CMTimeScale(sampleRate))
                 let outputBuffer = try Self.convert(inputBuffer, using: converter, to: analyzerFormat)
                 continuation.yield(AnalyzerInput(buffer: outputBuffer, bufferStartTime: bufferStartTime))
+                fedFrames += Int64(inputBuffer.frameLength)
 
                 if audioFile.framePosition >= audioFile.length { break }
                 try await Task.sleep(for: .seconds(throttle.pauseSeconds))
@@ -324,6 +339,8 @@ class AITranscripts {
 
         continuation.finish()
         try await analyzer.finalizeAndFinishThroughEndOfInput()
+        let fedBytes = fedFrames * Int64(readingFormat.channelCount) * Int64(MemoryLayout<Float>.size)
+        Self.ioLogger.info("transcription_audio_fed purpose=\(self.diagnosticPurpose, privacy: .public) frames=\(fedFrames) estimated_pcm_bytes=\(fedBytes) chunk_seconds=\(throttle.chunkSeconds, format: .fixed(precision: 1)) pause_seconds=\(throttle.pauseSeconds, format: .fixed(precision: 1))")
     }
 
     /// Converts one PCM buffer to the analyzer's preferred format, reusing `converter`

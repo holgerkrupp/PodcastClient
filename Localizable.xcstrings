@@ -1874,6 +1874,7 @@
       }
     },
     "Advertisement Detection" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2832,6 +2833,7 @@
       }
     },
     "Automatically skip high-confidence advertisements" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4237,6 +4239,9 @@
         }
       }
     },
+    "Continue listening and control your podcast." : {
+
+    },
     "Continue the current or most recent episode." : {
       "localizations" : {
         "de" : {
@@ -4284,6 +4289,12 @@
           }
         }
       }
+    },
+    "Control Up Next playback." : {
+
+    },
+    "Controls the current episode." : {
+
     },
     "Could Not Open Podcast" : {
       "localizations" : {
@@ -5308,6 +5319,7 @@
       }
     },
     "Detect advertisements" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5324,6 +5336,7 @@
       }
     },
     "Detection runs on device and keeps evidence separate from publisher chapters. Showing a range never changes playback; automatic skipping is a separate opt-in." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6188,6 +6201,9 @@
         }
       }
     },
+    "Episode ID" : {
+
+    },
     "Episode is no longer available here." : {
       "localizations" : {
         "de" : {
@@ -6235,6 +6251,9 @@
           }
         }
       }
+    },
+    "Episode progress" : {
+
     },
     "Episode Progress" : {
       "localizations" : {
@@ -9827,6 +9846,9 @@
           }
         }
       }
+    },
+    "Loading podcast…" : {
+
     },
     "Loading podcasts..." : {
       "localizations" : {
@@ -13472,6 +13494,9 @@
         }
       }
     },
+    "Pause current episode" : {
+
+    },
     "Pause playback" : {
       "localizations" : {
         "de" : {
@@ -13538,6 +13563,9 @@
           }
         }
       }
+    },
+    "Paused" : {
+
     },
     "Pauses the active download" : {
       "localizations" : {
@@ -13859,6 +13887,9 @@
         }
       }
     },
+    "Play current episode" : {
+
+    },
     "Play episode" : {
       "localizations" : {
         "de" : {
@@ -14066,6 +14097,12 @@
           }
         }
       }
+    },
+    "Play or Pause" : {
+
+    },
+    "Play or resume playback" : {
+
     },
     "Play Playlist" : {
       "localizations" : {
@@ -18813,6 +18850,7 @@
       }
     },
     "Show detected advertisements" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20220,6 +20258,9 @@
         }
       }
     },
+    "Start the selected Up Next episode." : {
+
+    },
     "Start with" : {
       "localizations" : {
         "fr" : {
@@ -20293,6 +20334,9 @@
           }
         }
       }
+    },
+    "Starts the first episode in Up Next." : {
+
     },
     "Starts this episode immediately" : {
       "localizations" : {
@@ -24557,6 +24601,9 @@
           }
         }
       }
+    },
+    "Your next episode is ready" : {
+
     },
     "Your Sideloading Folder is empty" : {
       "localizations" : {

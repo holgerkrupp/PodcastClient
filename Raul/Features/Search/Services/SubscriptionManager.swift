@@ -2061,21 +2061,27 @@ struct PodcastReleasePredictor {
         descriptor.fetchLimit = pageSize
         descriptor.propertiesToFetch = [\Episode.publishDate]
 
-        let started = Date()
-        CrashBreadcrumbs.shared.record(
-            "release_prediction_fetch_begin",
-            details: "model=Episode predicate=parent_feed_with_publish_date"
-        )
-        defer {
-            CrashBreadcrumbs.shared.record(
-                "release_prediction_fetch_end",
-                details: "model=Episode elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1_000))"
-            )
-        }
         do {
             var dates: [Date] = []
             repeat {
-                let page = try context.fetch(descriptor)
+                let signpostID = PodcastDetailFetchSignposts.begin(
+                    "Podcast detail release prediction fetch"
+                )
+                let page: [Episode]
+                do {
+                    page = try context.fetch(descriptor)
+                    PodcastDetailFetchSignposts.end(
+                        "Podcast detail release prediction fetch",
+                        id: signpostID,
+                        count: page.count
+                    )
+                } catch {
+                    PodcastDetailFetchSignposts.end(
+                        "Podcast detail release prediction fetch",
+                        id: signpostID
+                    )
+                    throw error
+                }
                 dates.append(contentsOf: page.compactMap(\.publishDate).filter { $0 < cutoff })
                 if page.count < pageSize || dates.count >= limit { break }
                 descriptor.fetchOffset = (descriptor.fetchOffset ?? 0) + page.count

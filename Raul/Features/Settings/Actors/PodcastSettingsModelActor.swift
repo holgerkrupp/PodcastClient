@@ -608,15 +608,27 @@ actor PodcastSettingsModelActor {
     }
 
     func getAdvertisementDetectionEnabled() async -> Bool {
+#if DEBUG
         await standardSettings().enableAdvertisementDetection
+#else
+        false
+#endif
     }
 
     func getDetectedAdvertisementsVisible() async -> Bool {
+#if DEBUG
         await standardSettings().showDetectedAdvertisements
+#else
+        false
+#endif
     }
 
     func getAutomaticAdvertisementSkippingEnabled() async -> Bool {
+#if DEBUG
         await standardSettings().enableAutomaticAdvertisementSkipping
+#else
+        false
+#endif
     }
 
     func getAutomaticChapterGenerationEnabled() async -> Bool {
