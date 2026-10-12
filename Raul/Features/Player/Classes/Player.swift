@@ -218,6 +218,19 @@ private enum PlaybackProgressDefaultsStore {
     }
 }
 
+/// Captures the context of a pending asynchronous playback-speed preference read.
+struct PlaybackSpeedLoadToken: Equatable {
+    let feedURL: URL?
+    let requestID: UInt64
+    let selectionRevision: UInt64
+
+    func isCurrent(feedURL: URL?, requestID: UInt64, selectionRevision: UInt64) -> Bool {
+        self.feedURL == feedURL
+            && self.requestID == requestID
+            && self.selectionRevision == selectionRevision
+    }
+}
+
 @Observable
 @MainActor
 class Player {
@@ -371,6 +384,10 @@ class Player {
     private var playbackLoadGeneration: UInt64 = 0
     private var hasStartedRecovery = false
     private var wasPlayingBeforeInterruption = false
+    /// Saved preferences are only read on context/settings changes, never on resume.
+    private var playbackSpeedLoadRequestID: UInt64 = 0
+    private var playbackSpeedSelectionRevision: UInt64 = 0
+    private var applyingSavedPlaybackSpeed = false
     private var finishingEpisodeURL: URL?
     /// The manual playlist that supplied the current episode. This is captured
     /// when the episode is loaded so a later playlist selection change cannot
@@ -418,9 +435,18 @@ class Player {
         didSet {
             guard playbackRate != oldValue else { return }
             accumulateSilenceGapTimeSaved(normalRate: oldValue)
+            let persist = !applyingSavedPlaybackSpeed
+            if persist {
+                playbackSpeedSelectionRevision &+= 1
+            }
+            let revision = playbackSpeedSelectionRevision
             let rate = playbackRate
+            let podcastFeed = currentEpisode?.podcast?.feed
             Task { [weak self] in
-                await self?.applyPlaybackRate(rate, persist: true)
+                guard let self,
+                      self.playbackRate == rate,
+                      self.playbackSpeedSelectionRevision == revision else { return }
+                await self.applyPlaybackRate(rate, for: podcastFeed, persist: persist)
             }
         }
     }
@@ -1074,15 +1100,18 @@ class Player {
         }
     }
     
-    private func applyPlaybackRate(_ playbackRate: Float, persist: Bool) async {
-        if isPlaying{
+    private func applyPlaybackRate(_ playbackRate: Float, for podcastFeed: URL?, persist: Bool) async {
+        if isPlaying {
             let effectiveRate = silenceGapReductionActive
                 ? AudioSilenceGapDetector.silenceReducedRate(for: playbackRate, level: silenceGapReductionLevel)
                 : playbackRate
             await engine.setRate(effectiveRate)
-            if persist {
-                await settingsActor?.setPlaybackSpeed(for: currentEpisode?.podcast?.feed , to: playbackRate)
-            }
+        }
+
+        // A user's chosen rate is a preference even when audio is paused by
+        // another app. Capture the feed at selection time, not after an await.
+        if persist {
+            await settingsActor?.setPlaybackSpeed(for: podcastFeed, to: playbackRate)
         }
 
         if currentEpisode != nil {
@@ -1114,15 +1143,42 @@ class Player {
             
     }
     
+    private func beginPlaybackSpeedLoad() -> PlaybackSpeedLoadToken {
+        playbackSpeedLoadRequestID &+= 1
+        return PlaybackSpeedLoadToken(
+            feedURL: currentEpisode?.podcast?.feed,
+            requestID: playbackSpeedLoadRequestID,
+            selectionRevision: playbackSpeedSelectionRevision
+        )
+    }
+
     private func loadPlayBackSpeed() {
-        // this function should check if there is a custom playbackRate set for the podcast. If not load a standard or the last used playbackRate.
-        Task{
-            let savedPlaybackRate = await settingsActor?.getPlaybackSpeed(for: currentEpisode?.podcast?.feed) ?? 1.0
-            // print("loadPlayBackSpeed: did Change: \(playbackRate != savedPlaybackRate)")
-            if savedPlaybackRate > 0, playbackRate != savedPlaybackRate {
-                playbackRate = savedPlaybackRate
-            }
+        let token = beginPlaybackSpeedLoad()
+        Task { [weak self] in
+            await self?.loadPlaybackSpeed(using: token)
         }
+    }
+
+    private func reloadPlaybackSpeedForCurrentPodcast() async {
+        await loadPlaybackSpeed(using: beginPlaybackSpeedLoad())
+    }
+
+    private func loadPlaybackSpeed(using token: PlaybackSpeedLoadToken) async {
+        // A missing settings actor is not evidence that the user prefers 1.0×.
+        guard let settingsActor else { return }
+        let savedRate = await settingsActor.getPlaybackSpeed(for: token.feedURL)
+        guard savedRate.isFinite, savedRate > 0,
+              token.isCurrent(
+                feedURL: currentEpisode?.podcast?.feed,
+                requestID: playbackSpeedLoadRequestID,
+                selectionRevision: playbackSpeedSelectionRevision
+              ), savedRate != playbackRate else { return }
+
+        // Reading a stored preference must not write it back, and a delayed read
+        // must not undo a new selection made while the fetch was in flight.
+        applyingSavedPlaybackSpeed = true
+        playbackRate = savedRate
+        applyingSavedPlaybackSpeed = false
     }
 
     func loadSkipDurations() {
@@ -2260,6 +2316,7 @@ class Player {
         }
 
         let previousEpisodeURL = currentEpisodeURL
+        let previousPodcastFeed = currentEpisode?.podcast?.feed
         let playbackPlaylistID = previousEpisodeURL == episodeURL
             ? currentPlaybackPlaylistID
             : await capturePlaybackPlaylistID(for: episodeURL)
@@ -2435,6 +2492,11 @@ class Player {
         _ = updateCurrentChapter()
         await skipOverChapters()
         setupStaticNowPlayingInfo()
+        // Switching podcasts may select a different speed; ordinary pause/resume
+        // must keep the current in-memory selection without reloading settings.
+        if previousPodcastFeed != episode.podcast?.feed {
+            await reloadPlaybackSpeedForCurrentPodcast()
+        }
         if playDirectly {
             await playPreparedEpisode()
         }
@@ -3065,7 +3127,6 @@ class Player {
     }
     
     func play(){
-        loadPlayBackSpeed()
         transitionToPlaying(updateEngineRate: true, preparePlaybackSource: true)
     }
 
