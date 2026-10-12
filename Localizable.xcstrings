@@ -778,6 +778,59 @@
         }
       }
     },
+    "%lld. %@    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld. %2$@    : %3$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$lld. %2$@    : %3$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld. %@    : %@"
+          }
+        }
+      }
+    },
+    "%lld. %@: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld. %2$@: %3$@"
+          }
+        }
+      }
+    },
+    "^[%lld episode](inflect    : true)" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%lld Episode](inflect    : true)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "^[%lld épisode](inflect    : vrai)"
+          }
+        }
+      }
+    },
+    "^[%lld episode](inflect: true)" : {
+
+    },
     "+ %lld more" : {
       "localizations" : {
         "de" : {
@@ -2396,6 +2449,9 @@
         }
       }
     },
+    "Archive Episode" : {
+
+    },
     "Archive every episode in this podcast" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2835,6 +2891,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Synchronisez automatiquement les transcriptions des éditeurs"
+          }
+        }
+      }
+    },
+    "Available actions now include    : Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verfügbare Aktionen sind jetzt    : Wiedergabe fortsetzen, Wiedergabe anhalten, Lesezeichen setzen, Vorwärtsspringen, Zurückspringen, „Als Nächstes“ abspielen, nächste „Als Nächstes“-Episode abspielen, aktuelle Episode ans Ende verschieben, aktuelle Episode aus „Als Nächstes“ entfernen, Podcasts aktualisieren und Podcast-Teilen-Bild erstellen."
           }
         }
       }
@@ -4692,6 +4759,26 @@
         }
       }
     },
+    "Currently transcribing    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird gerade transkribiert    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En cours de transcription  : %@"
+          }
+        }
+      }
+    },
+    "Currently transcribing: %@" : {
+
+    },
     "Currently unavailable. Try again later." : {
       "localizations" : {
         "de" : {
@@ -5492,6 +5579,9 @@
         }
       }
     },
+    "Download Episode" : {
+
+    },
     "Download episodes automatically" : {
       "localizations" : {
         "de" : {
@@ -5731,6 +5821,26 @@
           }
         }
       }
+    },
+    "Duration    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dauer    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Durée  : %@"
+          }
+        }
+      }
+    },
+    "Duration: %@" : {
+
     },
     "e.g. ad break, intro, credits" : {
       "localizations" : {
@@ -6174,6 +6284,26 @@
         }
       }
     },
+    "Episode type    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episodentyp    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type d'épisode  : %@"
+          }
+        }
+      }
+    },
+    "Episode type: %@" : {
+
+    },
     "Episode Unavailable" : {
       "localizations" : {
         "de" : {
@@ -6525,6 +6655,26 @@
         }
       }
     },
+    "Failed rendering clip background process    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Clip konnte nicht erstellt werden    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Processus d'arrière-plan du clip de rendu échoué  : %@"
+          }
+        }
+      }
+    },
+    "Failed rendering clip background process: %@" : {
+
+    },
     "Featured" : {
       "localizations" : {
         "de" : {
@@ -6572,6 +6722,26 @@
           }
         }
       }
+    },
+    "Feed unavailable    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed nicht verfügbar    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fournitures indisponibles  : %@"
+          }
+        }
+      }
+    },
+    "Feed unavailable: %@" : {
+
     },
     "Feed URL unavailable" : {
       "localizations" : {
@@ -8431,6 +8601,9 @@
         }
       }
     },
+    "iPhone Remote" : {
+
+    },
     "Italian-language radio and podcasts from SRG SSR." : {
       "localizations" : {
         "de" : {
@@ -8720,6 +8893,20 @@
         }
       }
     },
+    "Last checked    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière vérification  : %@"
+          }
+        }
+      }
+    },
+    "Last checked: %@" : {
+
+    },
     "Last failed check" : {
       "localizations" : {
         "fr" : {
@@ -8739,6 +8926,26 @@
           }
         }
       }
+    },
+    "Last refresh    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Aktualisierung    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière mise à jour  : %@"
+          }
+        }
+      }
+    },
+    "Last refresh: %@" : {
+
     },
     "Last successful import %@" : {
       "localizations" : {
@@ -8771,6 +8978,26 @@
           }
         }
       }
+    },
+    "Last updated    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zuletzt aktualisiert    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dernière mise à jour  : %@"
+          }
+        }
+      }
+    },
+    "Last updated: %@" : {
+
     },
     "Last visible" : {
       "extractionState" : "stale",
@@ -8953,6 +9180,9 @@
           }
         }
       }
+    },
+    "Library Search" : {
+
     },
     "Likely ad break" : {
       "localizations" : {
@@ -9344,6 +9574,26 @@
         }
       }
     },
+    "Live Now    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jetzt live    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En direct maintenant  : %@"
+          }
+        }
+      }
+    },
+    "Live Now: %@" : {
+
+    },
     "Live playback is not active." : {
       "localizations" : {
         "de" : {
@@ -9621,6 +9871,7 @@
       }
     },
     "Loading Transcript" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10953,6 +11204,23 @@
         }
       }
     },
+    "Next    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächste    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prochain  : %@"
+          }
+        }
+      }
+    },
     "Next chapter" : {
       "localizations" : {
         "de" : {
@@ -10968,6 +11236,9 @@
           }
         }
       }
+    },
+    "Next Chapter" : {
+
     },
     "Next chapter in Up Next" : {
       "localizations" : {
@@ -11017,6 +11288,26 @@
         }
       }
     },
+    "Next predicted release    : Unavailable" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nächste prognostizierte Veröffentlichung    : Nicht verfügbar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prochain lancement prévu  : Indisponible"
+          }
+        }
+      }
+    },
+    "Next predicted release: Unavailable" : {
+
+    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -11048,6 +11339,9 @@
           }
         }
       }
+    },
+    "Next: %@" : {
+
     },
     "No" : {
       "localizations" : {
@@ -11513,6 +11807,9 @@
         }
       }
     },
+    "No Podcasts Found" : {
+
+    },
     "No provider account adapters are connected" : {
       "localizations" : {
         "de" : {
@@ -11939,6 +12236,26 @@
           }
         }
       }
+    },
+    "Notify Me    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilung    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alerter-moi    : %@"
+          }
+        }
+      }
+    },
+    "Notify Me: %@" : {
+
     },
     "November" : {
       "localizations" : {
@@ -13171,6 +13488,9 @@
         }
       }
     },
+    "Pause Playback" : {
+
+    },
     "Pause playback in Up Next" : {
       "localizations" : {
         "de" : {
@@ -14115,6 +14435,9 @@
         }
       }
     },
+    "Playback Settings" : {
+
+    },
     "Playback speed" : {
       "localizations" : {
         "de" : {
@@ -14130,6 +14453,9 @@
           }
         }
       }
+    },
+    "Playback Speed" : {
+
     },
     "Playback speed set to %@ times." : {
       "localizations" : {
@@ -14361,6 +14687,39 @@
         }
       }
     },
+    "Playlist entries    : %lld → %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabelisteneinträge    : %lld → %lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Playlist entries    : %1$lld → %2$lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrées de liste de lecture  : %lld → %lld"
+          }
+        }
+      }
+    },
+    "Playlist entries: %lld → %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Playlist entries: %1$lld → %2$lld"
+          }
+        }
+      }
+    },
     "Playlist icon %@" : {
       "localizations" : {
         "de" : {
@@ -14568,6 +14927,26 @@
           }
         }
       }
+    },
+    "Podcast recommendation    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcast-Empfehlung    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recommandation de podcast  : %@"
+          }
+        }
+      }
+    },
+    "Podcast recommendation: %@" : {
+
     },
     "Podcast refresh started." : {
       "localizations" : {
@@ -15423,6 +15802,9 @@
         }
       }
     },
+    "Previous Chapter" : {
+
+    },
     "Previous episode" : {
       "localizations" : {
         "de" : {
@@ -15913,6 +16295,26 @@
         }
       }
     },
+    "Recent search    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Suche    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recherche récente  : %@"
+          }
+        }
+      }
+    },
+    "Recent search: %@" : {
+
+    },
     "Recent Searches" : {
       "localizations" : {
         "de" : {
@@ -16073,6 +16475,9 @@
         }
       }
     },
+    "Refresh Inbox" : {
+
+    },
     "Refresh library" : {
       "localizations" : {
         "de" : {
@@ -16137,6 +16542,9 @@
         }
       }
     },
+    "Refresh Podcast" : {
+
+    },
     "Refresh podcasts" : {
       "localizations" : {
         "de" : {
@@ -16152,6 +16560,9 @@
           }
         }
       }
+    },
+    "Refresh Podcasts" : {
+
     },
     "Refresh sideloading" : {
       "localizations" : {
@@ -16355,6 +16766,26 @@
         }
       }
     },
+    "Release schedule    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Veröffentlichungsplan    : %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Calendrier de sortie  : %@"
+          }
+        }
+      }
+    },
+    "Release schedule: %@" : {
+
+    },
     "Remote Control iPhone" : {
       "localizations" : {
         "de" : {
@@ -16435,6 +16866,9 @@
         }
       }
     },
+    "Remove Credentials" : {
+
+    },
     "Remove Current" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -16509,6 +16943,9 @@
           }
         }
       }
+    },
+    "Remove Episode from Playlist" : {
+
     },
     "Remove episodes played in another playlist" : {
       "localizations" : {
@@ -17628,6 +18065,9 @@
         }
       }
     },
+    "Search Library" : {
+
+    },
     "Search Podcasts" : {
       "localizations" : {
         "de" : {
@@ -17952,6 +18392,9 @@
           }
         }
       }
+    },
+    "Set Sleep Timer" : {
+
     },
     "Set the same playback rate used by the player." : {
       "localizations" : {
@@ -19104,6 +19547,9 @@
         }
       }
     },
+    "Skip Forward" : {
+
+    },
     "Skip forward %lld seconds" : {
       "localizations" : {
         "de" : {
@@ -19279,6 +19725,9 @@
           }
         }
       }
+    },
+    "Sleep Timer" : {
+
     },
     "Sleep timer cancelled." : {
       "localizations" : {
@@ -20510,6 +20959,9 @@
         }
       }
     },
+    "Switch to Audio" : {
+
+    },
     "Switch to video" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20520,6 +20972,9 @@
           }
         }
       }
+    },
+    "Switch to Video" : {
+
     },
     "Sync Error" : {
       "localizations" : {
@@ -21705,6 +22160,29 @@
         }
       }
     },
+    "Title    : %@ • Background    : %@" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titel    : %1$@ • Hintergrund    : %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Title    : %1$@ • Background    : %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Titre  : %@ • Arrière-plan  : %@"
+          }
+        }
+      }
+    },
     "Title A–Z" : {
       "localizations" : {
         "de" : {
@@ -21717,6 +22195,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Titres A-Z"
+          }
+        }
+      }
+    },
+    "Title: %@ • Background: %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Title: %1$@ • Background: %2$@"
           }
         }
       }
@@ -22835,6 +23323,26 @@
         }
       }
     },
+    "Upload    : (diagnostic.activeExportCount) active" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upload    : (diagnostic.activeExportCount) aktiv"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Téléchargement  : (diagnostic.activeExportCount) actif"
+          }
+        }
+      }
+    },
+    "Upload: (diagnostic.activeExportCount) active" : {
+
+    },
     "URL" : {
       "localizations" : {
         "de" : {
@@ -23141,6 +23649,39 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Autorité de l'état de l'utilisateur"
+          }
+        }
+      }
+    },
+    "User State queue entries    : %lld → %lld" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einträge der Benutzerstatus-Warteschlange    : %lld → %lld"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "User State queue entries    : %1$lld → %2$lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrées de file d'attente de l'état de l'utilisateur  : %lld → %lld"
+          }
+        }
+      }
+    },
+    "User State queue entries: %lld → %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "User State queue entries: %1$lld → %2$lld"
           }
         }
       }
@@ -23816,6 +24357,26 @@
         }
       }
     },
+    "Y-axis    : listening time per %@." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Y-Achse    : Hörzeit pro %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Axes Y  : temps d'écoute par %@."
+          }
+        }
+      }
+    },
+    "Y-axis: listening time per %@." : {
+
+    },
     "Year" : {
       "localizations" : {
         "de" : {
@@ -24009,387 +24570,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Votre dossier de chargement latéral est vide"
-          }
-        }
-      }
-    },
-    "%lld. %@    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld. %2$@    : %3$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$lld. %2$@    : %3$@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld. %@    : %@"
-          }
-        }
-      }
-    },
-    "^[%lld episode](inflect    : true)" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "^[%lld Episode](inflect    : true)"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "^[%lld épisode](inflect    : vrai)"
-          }
-        }
-      }
-    },
-    "Available actions now include    : Resume Playback, Pause Playback, Bookmark This, Skip Forward, Skip Backward, Play Up Next, Play Next Up Next Episode, Move Current To End, Remove Current From Up Next, Refresh Podcasts, and Generate Podcast Share Image." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verfügbare Aktionen sind jetzt    : Wiedergabe fortsetzen, Wiedergabe anhalten, Lesezeichen setzen, Vorwärtsspringen, Zurückspringen, „Als Nächstes“ abspielen, nächste „Als Nächstes“-Episode abspielen, aktuelle Episode ans Ende verschieben, aktuelle Episode aus „Als Nächstes“ entfernen, Podcasts aktualisieren und Podcast-Teilen-Bild erstellen."
-          }
-        }
-      }
-    },
-    "Currently transcribing    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wird gerade transkribiert    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En cours de transcription  : %@"
-          }
-        }
-      }
-    },
-    "Duration    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dauer    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Durée  : %@"
-          }
-        }
-      }
-    },
-    "Episode type    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Episodentyp    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Type d'épisode  : %@"
-          }
-        }
-      }
-    },
-    "Failed rendering clip background process    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Der Clip konnte nicht erstellt werden    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Processus d'arrière-plan du clip de rendu échoué  : %@"
-          }
-        }
-      }
-    },
-    "Feed unavailable    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Feed nicht verfügbar    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fournitures indisponibles  : %@"
-          }
-        }
-      }
-    },
-    "Last checked    : %@" : {
-      "localizations" : {
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dernière vérification  : %@"
-          }
-        }
-      }
-    },
-    "Last refresh    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte Aktualisierung    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dernière mise à jour  : %@"
-          }
-        }
-      }
-    },
-    "Last updated    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zuletzt aktualisiert    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dernière mise à jour  : %@"
-          }
-        }
-      }
-    },
-    "Live Now    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jetzt live    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En direct maintenant  : %@"
-          }
-        }
-      }
-    },
-    "Next predicted release    : Unavailable" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nächste prognostizierte Veröffentlichung    : Nicht verfügbar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prochain lancement prévu  : Indisponible"
-          }
-        }
-      }
-    },
-    "Next    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nächste    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prochain  : %@"
-          }
-        }
-      }
-    },
-    "Notify Me    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mitteilung    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alerter-moi    : %@"
-          }
-        }
-      }
-    },
-    "Playlist entries    : %lld → %lld" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabelisteneinträge    : %lld → %lld"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "Playlist entries    : %1$lld → %2$lld"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entrées de liste de lecture  : %lld → %lld"
-          }
-        }
-      }
-    },
-    "Podcast recommendation    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Podcast-Empfehlung    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recommandation de podcast  : %@"
-          }
-        }
-      }
-    },
-    "Recent search    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Letzte Suche    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Recherche récente  : %@"
-          }
-        }
-      }
-    },
-    "Release schedule    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veröffentlichungsplan    : %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Calendrier de sortie  : %@"
-          }
-        }
-      }
-    },
-    "Title    : %@ • Background    : %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titel    : %1$@ • Hintergrund    : %2$@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Title    : %1$@ • Background    : %2$@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Titre  : %@ • Arrière-plan  : %@"
-          }
-        }
-      }
-    },
-    "Upload    : (diagnostic.activeExportCount) active" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Upload    : (diagnostic.activeExportCount) aktiv"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Téléchargement  : (diagnostic.activeExportCount) actif"
-          }
-        }
-      }
-    },
-    "User State queue entries    : %lld → %lld" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Einträge der Benutzerstatus-Warteschlange    : %lld → %lld"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "User State queue entries    : %1$lld → %2$lld"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Entrées de file d'attente de l'état de l'utilisateur  : %lld → %lld"
-          }
-        }
-      }
-    },
-    "Y-axis    : listening time per %@." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Y-Achse    : Hörzeit pro %@."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Axes Y  : temps d'écoute par %@."
           }
         }
       }

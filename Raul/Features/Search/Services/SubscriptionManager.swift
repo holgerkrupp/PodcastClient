@@ -2054,22 +2054,39 @@ struct PodcastReleasePredictor {
             predicate: #Predicate<Episode> { episode in
                 episode.podcast?.feed == feed
                     && episode.publishDate != nil
-                    && episode.publishDate! < cutoff
             },
             sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
         )
-        descriptor.fetchLimit = limit
+        let pageSize = max(limit, 64)
+        descriptor.fetchLimit = pageSize
         descriptor.propertiesToFetch = [\Episode.publishDate]
 
+        let started = Date()
+        CrashBreadcrumbs.shared.record(
+            "release_prediction_fetch_begin",
+            details: "model=Episode predicate=parent_feed_with_publish_date"
+        )
+        defer {
+            CrashBreadcrumbs.shared.record(
+                "release_prediction_fetch_end",
+                details: "model=Episode elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1_000))"
+            )
+        }
         do {
-            let dates = try context.fetch(descriptor).compactMap(\.publishDate)
+            var dates: [Date] = []
+            repeat {
+                let page = try context.fetch(descriptor)
+                dates.append(contentsOf: page.compactMap(\.publishDate).filter { $0 < cutoff })
+                if page.count < pageSize || dates.count >= limit { break }
+                descriptor.fetchOffset = (descriptor.fetchOffset ?? 0) + page.count
+            } while true
             // Never fall back to `podcast.episodes` from a UI-accessible
             // model context. That relationship can fault thousands of
             // episodes and their transformable fields synchronously on the
             // main actor, which is enough to trip the scene watchdog. An
             // empty bounded query simply means there is not enough evidence
             // for an abandonment assessment yet.
-            return dates
+            return Array(dates.prefix(limit))
         } catch {
             return []
         }

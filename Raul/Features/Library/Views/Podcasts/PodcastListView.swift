@@ -100,7 +100,9 @@ struct PodcastListView: View {
                         
                         ZStack {
                             PodcastRowView(podcast: podcast)
-                            NavigationLink(destination: PodcastDetailView(podcast: podcast)) {
+                            NavigationLink(destination: PodcastDetailDestination(
+                                podcastID: podcast.persistentModelID
+                            )) {
                                 EmptyView()
                             }
                             .opacity(0)
@@ -170,6 +172,26 @@ struct PodcastListView: View {
         }
     }
 
+}
+
+/// Resolve the selection in the destination's context so a concurrent library
+/// refresh or deletion cannot carry the row's model instance into Detail.
+private struct PodcastDetailDestination: View {
+    @Query private var podcasts: [Podcast]
+
+    init(podcastID: PersistentIdentifier) {
+        _podcasts = Query(filter: #Predicate<Podcast> {
+            $0.persistentModelID == podcastID
+        })
+    }
+
+    var body: some View {
+        if let podcast = podcasts.first {
+            PodcastDetailView(podcast: podcast)
+        } else {
+            ContentUnavailableView("Podcast Unavailable", systemImage: "dot.radiowaves.left.and.right")
+        }
+    }
 }
 
 private struct PodcastScopeQueryView<Content: View>: View {

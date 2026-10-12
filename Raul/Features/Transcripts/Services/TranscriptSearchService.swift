@@ -5,6 +5,14 @@ enum TranscriptSearchScope: Hashable, Sendable {
     case episode(String)
     case podcast(String)
     case library
+
+    var kind: String {
+        switch self {
+        case .episode: "episode"
+        case .podcast: "podcast"
+        case .library: "library"
+        }
+    }
 }
 
 struct TranscriptSearchQuery: Sendable {
@@ -134,6 +142,17 @@ actor TranscriptSearchActor: TranscriptSearching {
     }
 
     func hasSearchableTranscripts(in scope: TranscriptSearchScope) async throws -> Bool {
+        let started = Date()
+        CrashBreadcrumbs.shared.record(
+            "transcript_availability_begin",
+            details: "model=TranscriptLineAndTime predicate=scope_\(scope.kind)"
+        )
+        defer {
+            CrashBreadcrumbs.shared.record(
+                "transcript_availability_end",
+                details: "model=TranscriptLineAndTime elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1_000))"
+            )
+        }
         let predicate = try scopePredicate(scope)
         var descriptor = FetchDescriptor<TranscriptLineAndTime>(predicate: predicate)
         descriptor.fetchLimit = 1

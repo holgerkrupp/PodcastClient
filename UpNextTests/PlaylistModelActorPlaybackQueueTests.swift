@@ -209,7 +209,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         defaults.set(UUID().uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
         try queueEpisodes([1], in: fixture.defaultPlaylist, fixture: fixture)
 
-        let selectedPlaylistID = Playlist.resolvedSelectedManualPlaylistID(
+        let selectedPlaylistID = try Playlist.resolvedSelectedManualPlaylistID(
             in: fixture.context,
             defaults: defaults
         )
@@ -226,7 +226,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         defaults.set(fixture.selectedPlaylist.id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
         try queueEpisodes([2], in: fixture.selectedPlaylist, fixture: fixture)
 
-        let selectedPlaylistID = Playlist.resolvedSelectedManualPlaylistID(
+        let selectedPlaylistID = try Playlist.resolvedSelectedManualPlaylistID(
             in: fixture.context,
             defaults: defaults
         )

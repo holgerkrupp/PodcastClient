@@ -135,12 +135,16 @@ struct PodcastDetailView: View {
                 case .idle:
                     if displayedIsSubscribed {
                         Label("Subscribed", systemImage: "checkmark.circle.fill")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     } else {
                         Label("Subscribe", systemImage: "plus.circle.fill")
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
                     }
                 }
             }
-            .frame(minHeight: 44)
+            .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52)
         }
         .buttonStyle(.glass(.clear))
         .disabled(displayedIsSubscribed || subscriptionOperation != .idle)
@@ -152,31 +156,19 @@ struct PodcastDetailView: View {
             showTranscriptSearch = true
         } label: {
             Label("Search Transcripts", systemImage: "text.magnifyingglass")
-                .frame(minHeight: 44)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity, minHeight: 52, maxHeight: 52)
         }
         .buttonStyle(.glass(.clear))
         .accessibilityHint("Searches every locally available transcript in this podcast")
     }
 
     private var headerActionControls: some View {
-        // FlowRows measured native glass buttons using an unspecified proposal,
-        // creating enormous vertical capsules. Use native stacks instead and
-        // only switch to the vertical layout when the intrinsic horizontal row
-        // cannot fit the available width.
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 10) {
-                subscriptionControls
-                if hasSearchableTranscripts {
-                    transcriptSearchControl
-                }
-            }
-            .fixedSize(horizontal: true, vertical: false)
-
-            VStack(alignment: .leading, spacing: 10) {
-                subscriptionControls
-                if hasSearchableTranscripts {
-                    transcriptSearchControl
-                }
+        HStack(spacing: 10) {
+            subscriptionControls
+            if hasSearchableTranscripts {
+                transcriptSearchControl
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -796,8 +788,17 @@ struct PodcastDetailView: View {
                     request: request
                 )
                 guard Task.isCancelled == false else { return }
+                let resolutionStarted = Date()
+                CrashBreadcrumbs.shared.record(
+                    "podcast_detail_resolution_begin",
+                    details: "model=Episode predicate=id_batch count=\(episodeIDs.count)"
+                )
                 let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
                     for: episodeIDs
+                )
+                CrashBreadcrumbs.shared.record(
+                    "podcast_detail_resolution_end",
+                    details: "model=Episode elapsed_ms=\(Int(Date().timeIntervalSince(resolutionStarted) * 1_000))"
                 )
                 filteredEpisodes = episodeIDs.compactMap { episodesByID[$0] }
             } catch {

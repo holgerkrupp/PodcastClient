@@ -24,12 +24,38 @@ actor PodcastEpisodeFilterActor {
         podcastID: PersistentIdentifier,
         request: PodcastEpisodeFilterRequest
     ) throws -> [PersistentIdentifier] {
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { episode in
-                episode.podcast?.persistentModelID == podcastID
-            }
+        let started = Date()
+        CrashBreadcrumbs.shared.record("podcast_detail_fetch_begin", details: "model=Episode predicate=parent_feed")
+        defer {
+            CrashBreadcrumbs.shared.record(
+                "podcast_detail_fetch_end",
+                details: "model=Episode elapsed_ms=\(Int(Date().timeIntervalSince(started) * 1_000))"
+            )
+        }
+        // Resolve the parent in this actor's context and keep the relationship's
+        // persistentModelID comparison out of Core Data's SQL generator.
+        var podcastDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
         )
-        var episodes = try modelContext.fetch(descriptor)
+        podcastDescriptor.fetchLimit = 1
+        guard let podcast = try modelContext.fetch(podcastDescriptor).first else { return [] }
+        let episodesForFeed: [Episode]
+        if let feed = podcast.feed {
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
+            )
+            episodesForFeed = try modelContext.fetch(descriptor)
+        } else {
+            // Feedless legacy rows are rare. Narrow them by their parent in
+            // memory instead of asking SQL to compare a relationship's ID.
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.podcast != nil }
+            )
+            episodesForFeed = try modelContext.fetch(descriptor)
+        }
+        var episodes = episodesForFeed.filter {
+            $0.podcast?.persistentModelID == podcastID
+        }
 
         if request.hidePlayedAndArchived {
             episodes.removeAll { $0.maxPlayProgress >= 0.95 }
