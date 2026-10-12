@@ -32,27 +32,53 @@ struct PublicBroadcastersView: View {
 
             if registry.searchableProviders.isEmpty == false {
                 Section {
-                    NavigationLink {
-                        PublicBroadcasterSearchView(registry: registry)
-                            .modelContext(context)
-                    } label: {
+                    ZStack {
                         Label("Search Public Broadcasters", systemImage: "magnifyingglass")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+
+                        NavigationLink {
+                            PublicBroadcasterSearchView(registry: registry)
+                                .modelContext(context)
+                        } label: {
+                            EmptyView()
+                        }
+                        .opacity(0)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Search Public Broadcasters")
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
                 }
             }
 
             ForEach(registry.browsableBroadcastersByRegion, id: \.region) { group in
                 Section(String(localized: group.region.title)) {
                     ForEach(group.broadcasters) { broadcaster in
-                        NavigationLink {
-                            destination(for: broadcaster)
-                        } label: {
+                        ZStack {
                             PublicBroadcasterRow(broadcaster: broadcaster)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+
+                            NavigationLink {
+                                destination(for: broadcaster)
+                            } label: {
+                                EmptyView()
+                            }
+                            .opacity(0)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open \(broadcaster.name), \(broadcaster.countryName)")
+                        .accessibilityHint("Browse podcasts from this broadcaster")
+                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     }
                 }
             }
         }
+        .listStyle(.plain)
         .navigationTitle("Public Broadcasters")
     }
 
@@ -91,7 +117,8 @@ struct PublicBroadcasterRow: View {
                     .lineLimit(3)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(broadcaster.name), \(broadcaster.countryName)")
     }

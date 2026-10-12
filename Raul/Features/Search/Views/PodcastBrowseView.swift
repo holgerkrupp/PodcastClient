@@ -707,83 +707,93 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-                NavigationLink {
-                    PodcastBrowseEpisodeDetailView(
-                        episode: episode,
-                        podcastFeed: podcastFeed,
-                        isSubscribed: isSubscribed,
-                        queueAction: queueAction,
-                        playAction: playAction,
-                        prepareAction: prepareAction,
-                        subscribeAction: subscribeAction
-                    )
-                } label: {
+                ZStack {
                     HStack(alignment: .top, spacing: 14) {
-                    ZStack {
-        CoverImageView(imageURL: episode.imageURL ?? podcastFeed.artworkURL, maxPixelSize: 384)
+                        ZStack {
+                            CoverImageView(
+                                imageURL: episode.imageURL ?? podcastFeed.artworkURL,
+                                maxPixelSize: 384
+                            )
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 
-                        if let episodeTypeBadgeText {
-                            Text(episodeTypeBadgeText)
-                                .font(.caption2.weight(.semibold))
+                            if let episodeTypeBadgeText {
+                                Text(episodeTypeBadgeText)
+                                    .font(.caption2.weight(.semibold))
+                                    .esaForeground(.primary)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 7)
+                                    .padding(.vertical, 4)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .padding(6)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .accessibilityLabel("Episode type: \(episodeTypeBadgeText)")
+                            }
+                        }
+                        .frame(width: artworkSize, height: artworkSize)
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .top) {
+                                Text(podcastFeed.title ?? "Untitled Podcast")
+                                    .font(.caption)
+                                    .esaForeground(.secondary)
+                                    .lineLimit(2)
+                                Spacer(minLength: 8)
+                                Text(publishText)
+                                    .font(.caption)
+                                    .esaForeground(.secondary)
+                            }
+
+                            Text(episode.title)
+                                .font(.headline)
+                                .lineLimit(4)
                                 .esaForeground(.primary)
-                                .lineLimit(1)
-                                .padding(.horizontal, 7)
-                                .padding(.vertical, 4)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .padding(6)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                                .accessibilityLabel("Episode type: \(episodeTypeBadgeText)")
-                        }
-                    }
-                    .frame(width: artworkSize, height: artworkSize)
 
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(alignment: .top) {
-                            Text(podcastFeed.title ?? "Untitled Podcast")
+                            Spacer(minLength: 0)
+
+                            Text(displayTime)
                                 .font(.caption)
                                 .esaForeground(.secondary)
-                                .lineLimit(2)
-                            Spacer(minLength: 8)
-                            Text(publishText)
-                                .font(.caption)
-                                .esaForeground(.secondary)
-                        }
 
-                        Text(episode.title)
-                            .font(.headline)
-                            .lineLimit(4)
-                            .esaForeground(.primary)
+                            HStack(spacing: 10) {
+                                Image(systemName: "cloud")
+                                    .accessibilityLabel("Not downloaded")
 
-                        Spacer(minLength: 0)
+                                if episode.content != nil {
+                                    Image(systemName: "quote.bubble")
+                                        .accessibilityLabel("Has content")
+                                }
 
-                        Text(displayTime)
-                            .font(.caption)
-                            .esaForeground(.secondary)
+                                if episode.deeplinks.isEmpty == false {
+                                    Image(systemName: "link")
+                                        .accessibilityLabel("Has links")
+                                }
 
-                        HStack(spacing: 10) {
-                            Image(systemName: "cloud")
-                                .accessibilityLabel("Not downloaded")
-
-                            if episode.content != nil {
-                                Image(systemName: "quote.bubble")
-                                    .accessibilityLabel("Has content")
+                                Spacer()
                             }
-
-                            if episode.deeplinks.isEmpty == false {
-                                Image(systemName: "link")
-                                    .accessibilityLabel("Has links")
-                            }
-
-                            Spacer()
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                     }
-                    .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
+                    .contentShape(Rectangle())
+
+                    NavigationLink {
+                        PodcastBrowseEpisodeDetailView(
+                            episode: episode,
+                            podcastFeed: podcastFeed,
+                            isSubscribed: isSubscribed,
+                            queueAction: queueAction,
+                            playAction: playAction,
+                            prepareAction: prepareAction,
+                            subscribeAction: subscribeAction
+                        )
+                    } label: {
+                        EmptyView()
                     }
+                    .opacity(0)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Open episode \(episode.title)")
                 .accessibilityHint("Opens episode details")
 
                 HStack {
