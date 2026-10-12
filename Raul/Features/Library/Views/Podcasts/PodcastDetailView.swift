@@ -696,7 +696,7 @@ struct PodcastDetailView: View {
                     }
 #endif
                 } label: {
-                    Label("Manage Podcast", systemImage: "ellipsis")
+                    Label("Manage podcast", systemImage: "ellipsis")
                 }
                 .accessibilityLabel("Manage podcast")
             }
@@ -711,7 +711,7 @@ struct PodcastDetailView: View {
                         CircularProgressView(value: max(refreshProgress, 0.02), total: 1.0)
                     } else {
                         Label(
-                            needsEpisodeImportRetry ? "Retry Import" : "Refresh podcast",
+                            needsEpisodeImportRetry ? "Retry import" : "Refresh podcast",
                             systemImage: "arrow.clockwise"
                         )
                     }

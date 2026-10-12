@@ -621,7 +621,7 @@ struct StatisticsView: View {
                         ProgressView()
                             .controlSize(.small)
                     } else {
-                        Label("Rebuild Analytics", systemImage: "arrow.clockwise.circle")
+                        Label("Rebuild analytics", systemImage: "arrow.clockwise.circle")
                     }
                 }
                 .disabled(isRebuildingAnalytics)
@@ -630,7 +630,7 @@ struct StatisticsView: View {
                 .accessibilityInputLabels([Text("Rebuild analytics"), Text("Rebuild listening history")])
             }
         }
-        .alert("Rebuild Analytics", isPresented: $showRebuildAnalyticsStatus) {
+        .alert("Rebuild analytics", isPresented: $showRebuildAnalyticsStatus) {
             Button("OK", role: .cancel) { }
         } message: {
             Text(rebuildAnalyticsStatusMessage ?? "")

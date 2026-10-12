@@ -381,7 +381,7 @@ private struct EpisodeDetailContentToolsView: View {
                     if hasTranscript {
                         Button(action: openTranscript) {
                             if isLoadingTranscript {
-                                Label("Loading Transcript", systemImage: "ellipsis")
+                                    Label("Loading transcript", systemImage: "ellipsis")
                                     .frame(minHeight: 44)
                             } else {
                                 Label("Transcript", image: "custom.quote.bubble.rectangle.portrait")
@@ -482,7 +482,7 @@ private struct EpisodeDetailMoreMenu: View {
 
             if let shareURL = episode.deeplinks?.first ?? episode.link {
                 ShareLink(item: shareURL) {
-                    Label("Share Episode", systemImage: "square.and.arrow.up")
+                    Label("Share episode", systemImage: "square.and.arrow.up")
                 }
             }
 
@@ -498,7 +498,7 @@ private struct EpisodeDetailMoreMenu: View {
                 Task { await toggleArchivedState() }
             } label: {
                 Label(
-                    episode.metaData?.isArchived == true ? "Unarchive Episode" : "Archive Episode",
+                    episode.metaData?.isArchived == true ? "Unarchive episode" : "Archive episode",
                     systemImage: episode.metaData?.isArchived == true ? "archivebox.fill" : "archivebox"
                 )
             }

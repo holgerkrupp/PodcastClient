@@ -84,7 +84,7 @@ struct LivePodcastsView: View {
                     }
                 }
             }
-            .navigationTitle("Live Podcasts")
+            .navigationTitle("Live podcasts")
             .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

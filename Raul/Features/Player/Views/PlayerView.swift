@@ -355,7 +355,9 @@ struct PlayerView: View {
         } label: {
             Label("More", systemImage: "ellipsis")
                 .labelStyle(.titleAndIcon)
+            
         }
+      
         .accessibilityLabel("More episode actions")
         .accessibilityHint("Opens website, sharing, media, and developer actions")
     }

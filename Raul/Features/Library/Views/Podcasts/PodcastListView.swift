@@ -35,7 +35,7 @@ struct PodcastListView: View {
     var body: some View {
         List {
             NavigationLink(destination: LibrarySearchView()) {
-                Label("Search Library", systemImage: "magnifyingglass")
+                Label("Search library", systemImage: "magnifyingglass")
                     .font(.headline)
             }
 
@@ -713,7 +713,7 @@ private struct SideLoadedEmptyStateView: View {
                         Button {
                             openSettings()
                         } label: {
-                            Label("Open Settings", systemImage: "gearshape")
+                            Label("Open settings", systemImage: "gearshape")
                         }
                         .buttonStyle(.borderedProminent)
                     }

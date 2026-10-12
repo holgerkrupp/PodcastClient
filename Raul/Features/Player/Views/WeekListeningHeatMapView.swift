@@ -167,7 +167,7 @@ struct WeekListeningHeatMapView: View {
         .task(id: refreshSignature) {
             await recalculateBlocks()
         }
-        .navigationTitle(weekStartDate == nil ? "Weekly Listening Heat Map" : {
+        .navigationTitle(weekStartDate == nil ? "Weekly listening heat map" : {
             let weekEnd = weekStartDate.flatMap { Calendar.current.date(byAdding: .day, value: 6, to: $0) } ?? Date()
             return "Heat Map (\(weekStartDate?.formatted(date: .abbreviated, time: .omitted) ?? "") – \(weekEnd.formatted(date: .abbreviated, time: .omitted)))"
         }())

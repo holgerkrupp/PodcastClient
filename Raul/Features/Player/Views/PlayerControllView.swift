@@ -543,7 +543,7 @@ struct PlayerPlaybackUtilitiesRow: View {
 
     private var sleepTimerSheet: some View {
         List {
-            Section(header: Label("Sleep Timer", systemImage: "zzz")) {
+            Section(header: Label("Sleep timer", systemImage: "zzz")) {
                 SleepTimerView()
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -617,7 +617,7 @@ struct PlayerPrimaryTransportControlsView: View {
             HStack(spacing: centerControlsSpacing) {
                 Button(action: player.skipback) {
                     Label {
-                        Text("Skip Back")
+                        Text("Skip back")
                     } icon: {
                         Image(systemName: player.skipBackStep.triangleBackString)
                             .resizable()
@@ -658,7 +658,7 @@ struct PlayerPrimaryTransportControlsView: View {
                 
                 Button(action: player.skipforward) {
                     Label {
-                        Text("Skip Forward")
+                        Text("Skip forward")
                     } icon: {
                         Image(systemName: player.skipForwardStep.triangleForwardString)
                             .resizable()
