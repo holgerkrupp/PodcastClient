@@ -73,6 +73,9 @@ final class PlayerEngine {
     private var activePlaybackStreamID: UInt64 = 0
     private var playbackRequestID: UInt64 = 0
     private var activationRetryTask: Task<Void, Never>?
+    /// An explicit playback request is still acquiring audio-session ownership.
+    /// A temporarily paused AVPlayer must not clear the UI's play intent yet.
+    private(set) var isActivatingPlayback = false
 
 
      init() {
@@ -244,6 +247,7 @@ final class PlayerEngine {
 
 #if os(iOS)
         invalidatePendingPlaybackRequests()
+        isActivatingPlayback = true
         let requestID = playbackRequestID
         attemptPlaybackActivation(requestID: requestID, rate: rate, attempt: 1)
 #else
@@ -258,6 +262,7 @@ final class PlayerEngine {
                 guard let self, self.playbackRequestID == requestID else { return }
                 guard let failureDescription else {
                     self.activationRetryTask = nil
+                    self.isActivatingPlayback = false
                     self.avPlayer.playImmediately(atRate: rate)
                     return
                 }
@@ -266,6 +271,7 @@ final class PlayerEngine {
                     afterFailedAttempt: attempt
                 ) else {
                     self.activationRetryTask = nil
+                    self.isActivatingPlayback = false
                     self.interruptionHandler?(.activationFailed(failureDescription))
                     return
                 }
@@ -311,6 +317,7 @@ final class PlayerEngine {
      }
     
     private func invalidatePendingPlaybackRequests() {
+        isActivatingPlayback = false
         activationRetryTask?.cancel()
         activationRetryTask = nil
         playbackRequestID &+= 1
