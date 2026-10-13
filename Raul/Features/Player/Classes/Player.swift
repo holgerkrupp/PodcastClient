@@ -231,6 +231,26 @@ struct PlaybackSpeedLoadToken: Equatable {
     }
 }
 
+/// Recognize a *confirmed* system-driven pause, not a zero rate during
+/// buffering, a missing item, or a pending session-activation request.
+enum PlaybackStateReconciliationPolicy {
+    static func shouldMarkPaused(
+        status: AVPlayer.TimeControlStatus,
+        rate: Float,
+        isPlaying: Bool,
+        hasCurrentItem: Bool,
+        isActivatingPlayback: Bool,
+        isForeground: Bool
+    ) -> Bool {
+        isPlaying
+            && isForeground
+            && hasCurrentItem
+            && !isActivatingPlayback
+            && status == .paused
+            && rate == 0
+    }
+}
+
 @Observable
 @MainActor
 class Player {
@@ -373,6 +393,7 @@ class Player {
     private var playbackTask: Task<Void, Never>?
     private var playbackStatusObservation: NSKeyValueObservation?
     private var playbackRateObservation: NSKeyValueObservation?
+    private var unexpectedPauseReconciliationTask: Task<Void, Never>?
     private var settingsChangeObserver: NSObjectProtocol?
     private var downloadCompletionObserver: NSObjectProtocol?
     private var currentPlaybackSource: PlaybackSource?
@@ -2898,25 +2919,56 @@ class Player {
         }
 
         if observedPlayer.rate > 0 || observedPlayer.timeControlStatus == .playing {
+            unexpectedPauseReconciliationTask?.cancel()
+            unexpectedPauseReconciliationTask = nil
             finishEpisodeTransitionBackgroundTask()
             if isPlaying == false {
-                // In SharePlay the coordinator has already applied the group's
-                // rate; re-applying ours would change it for everyone.
+                // AVPlayer is already playing. In particular, never reactivate
+                // the audio session from a KVO callback (including SharePlay).
                 transitionToPlaying(
-                    updateEngineRate: isInSharedListeningSession == false,
+                    updateEngineRate: false,
                     preparePlaybackSource: false
                 )
             }
-        } else if isInSharedListeningSession,
-                  isPlaying,
-                  observedPlayer.timeControlStatus == .paused {
-            // Another SharePlay participant paused.
-            transitionToPaused(pauseEngine: false)
+        } else if PlaybackStateReconciliationPolicy.shouldMarkPaused(
+            status: observedPlayer.timeControlStatus,
+            rate: observedPlayer.rate,
+            isPlaying: isPlaying,
+            hasCurrentItem: observedPlayer.currentItem != nil,
+            isActivatingPlayback: engine.isActivatingPlayback,
+            isForeground: playbackPowerMode == .foreground
+        ) {
+            // iOS can pause AVPlayer without our interruption notification
+            // arriving while the app is suspended. Debounce transient status
+            // changes while a new item or audio session is being activated.
+            scheduleUnexpectedPauseReconciliation()
+        }
+    }
+
+    private func scheduleUnexpectedPauseReconciliation() {
+        guard unexpectedPauseReconciliationTask == nil else { return }
+        unexpectedPauseReconciliationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(200))
+            guard let self else { return }
+            self.unexpectedPauseReconciliationTask = nil
+            guard Task.isCancelled == false else { return }
+            let player = self.engine.avPlayer
+            guard PlaybackStateReconciliationPolicy.shouldMarkPaused(
+                status: player.timeControlStatus,
+                rate: player.rate,
+                isPlaying: self.isPlaying,
+                hasCurrentItem: player.currentItem != nil,
+                isActivatingPlayback: self.engine.isActivatingPlayback,
+                isForeground: self.playbackPowerMode == .foreground
+            ) else { return }
+            self.transitionToPaused(pauseEngine: false)
         }
     }
 
     func enterBackgroundPlaybackMode() {
         guard playbackPowerMode != .background else { return }
+        unexpectedPauseReconciliationTask?.cancel()
+        unexpectedPauseReconciliationTask = nil
         playbackPowerMode = .background
         Task { await TranscriptSynchronizationService.shared.cancelAll() }
         restartPlaybackUpdatesIfNeeded()
@@ -2950,19 +3002,11 @@ class Player {
             restartPlaybackUpdatesIfNeeded()
         }
 
-        // Becoming active can race the system releasing a higher-priority audio
-        // session, or expose a player that kept advancing after its route was
-        // lost. Reassert the listener's existing play intent so the engine
-        // reacquires an output route even when SwiftUI already shows Pause.
-        if isPlaying {
-            let effectiveRate = silenceGapReductionActive
-                ? AudioSilenceGapDetector.silenceReducedRate(
-                    for: playbackRate,
-                    level: silenceGapReductionLevel
-                )
-                : playbackRate
-            engine.resume(atRate: effectiveRate)
-        }
+        // Do not reactivate audio just because the previous UI said "playing".
+        // YouTube or another app may have stopped AVPlayer while we were
+        // suspended. Reconcile the actual state, then wait for an explicit
+        // Play command or the system's permitted interruption resume event.
+        syncPlaybackStateFromObservedPlayer(engine.avPlayer)
     }
 
     private func restartPlaybackUpdatesIfNeeded() {
@@ -3015,6 +3059,8 @@ class Player {
     }
 
     private func transitionToPlaying(updateEngineRate: Bool, preparePlaybackSource: Bool) {
+        unexpectedPauseReconciliationTask?.cancel()
+        unexpectedPauseReconciliationTask = nil
         let desiredRate = playbackRate
         let desiredEngineRate = silenceGapReductionActive
             ? AudioSilenceGapDetector.silenceReducedRate(for: desiredRate, level: silenceGapReductionLevel)
@@ -3063,14 +3109,18 @@ class Player {
     }
 
     private func transitionToPaused(pauseEngine: Bool) {
+        unexpectedPauseReconciliationTask?.cancel()
+        unexpectedPauseReconciliationTask = nil
+        // Cancel pending activation before any late AVPlayer KVO can interpret
+        // an explicitly requested pause as permission to start playback again.
+        if pauseEngine {
+            engine.pause()
+        }
         isPlaying = false
         resetSilenceGapReduction(updateEngine: false)
         stopPlaybackUpdates()
         updateNowPlayingInfo()
         Task {
-            if pauseEngine {
-                engine.pause()
-            }
             await captureCurrentPlaybackStateFromEngine(force: true)
             await PlayNextWidgetSync.publishPlaybackState()
 
