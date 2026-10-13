@@ -133,6 +133,9 @@ struct PodcastSettingsView: View {
     @State private var appIconErrorMessage: String?
     @State private var showAppIconError = false
     @State private var preparedGlobalSettings: PodcastSettings?
+    @State private var settingsSaveError: String?
+    @State private var settingsInitializationFailed = false
+    @State private var pendingAutoDownloadPolicyChanged = false
     @State private var selectedGlobalCategory: GlobalSettingsCategory? = .playback
     @State private var showCreatePlaylistFromSettings = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
@@ -269,9 +272,24 @@ struct PodcastSettingsView: View {
         }
         .tint(.accent)
         .task {
-            preparedGlobalSettings = ensureStandardSettings(in: context)
-            _ = Playlist.ensureDefaultQueue(in: context)
+            do {
+                try await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+                preparedGlobalSettings = nil
+            } catch {
+                settingsInitializationFailed = true
+                settingsSaveError = error.localizedDescription
+                CrashBreadcrumbs.shared.record("standard_settings_initialization_failed", details: error.localizedDescription)
+            }
             useCustomSettings = podcast?.settings?.isEnabled == true
+        }
+        .alert("Couldn’t Save Settings", isPresented: Binding(
+            get: { settingsSaveError != nil },
+            set: { if $0 == false { settingsSaveError = nil } }
+        )) {
+            Button("Retry") { retrySettingsSave() }
+            Button("Cancel", role: .cancel) { settingsSaveError = nil }
+        } message: {
+            Text(settingsSaveError ?? "Please try again.")
         }
         .alert("Unable to Enable Sideloading", isPresented: $showSideloadingAlert) {
             Button("OK", role: .cancel) { }
@@ -1894,15 +1912,19 @@ struct PodcastSettingsView: View {
 
     private func handleCustomSettingsToggle(_ newValue: Bool) {
         guard let podcast else { return }
-        useCustomSettings = newValue
-
-        if newValue {
-            enableCustomSettings(for: podcast, in: context)
-        } else {
-            disableCustomSettings(for: podcast, in: context)
+        do {
+            if newValue {
+                try enableCustomSettings(for: podcast, in: context)
+            } else {
+                try disableCustomSettings(for: podcast, in: context)
+            }
+            useCustomSettings = newValue
+            saveAndNotify(autoDownloadPolicyChanged: true)
+        } catch {
+            useCustomSettings = podcast.settings?.isEnabled == true
+            settingsSaveError = error.localizedDescription
+            CrashBreadcrumbs.shared.record("custom_settings_change_failed", details: error.localizedDescription)
         }
-        publishPortableSettings()
-        markAutoDownloadPolicyReconciliationPending(trigger: "scope-toggle")
     }
 
     private func saveAndNotify() {
@@ -1910,7 +1932,16 @@ struct PodcastSettingsView: View {
     }
 
     private func saveAndNotify(autoDownloadPolicyChanged: Bool) {
-        context.saveIfNeeded()
+        do {
+            try context.commitChangesIfNeeded()
+            settingsSaveError = nil
+        } catch {
+            settingsSaveError = error.localizedDescription
+            pendingAutoDownloadPolicyChanged = autoDownloadPolicyChanged
+            CrashBreadcrumbs.shared.record("settings_commit_failed", details: error.localizedDescription)
+            return
+        }
+        pendingAutoDownloadPolicyChanged = false
         publishPortableSettings()
         if let podcastFeed = podcast?.feed {
             AppDiagnostics.log("[AutoDL] trigger/settings-changed scope=podcast feed=\(podcastFeed.redactedPodcastURLString)")
@@ -1923,19 +1954,42 @@ struct PodcastSettingsView: View {
         }
     }
 
+    private func retrySettingsSave() {
+        if settingsInitializationFailed {
+            Task {
+                do {
+                    try await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+                    settingsInitializationFailed = false
+                    settingsSaveError = nil
+                } catch {
+                    settingsSaveError = error.localizedDescription
+                }
+            }
+            return
+        }
+        let autoDownloadPolicyChanged = pendingAutoDownloadPolicyChanged
+        saveAndNotify(autoDownloadPolicyChanged: autoDownloadPolicyChanged)
+    }
+
     private func publishPortableSettings() {
         let settings = podcast?.settings ?? globalSettings
-        guard let settings,
-              let userStateContainer = ModelContainerManager.shared
-                  .preparedUserStateContainer else { return }
+        guard let settings else { return }
+        guard let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer else {
+            AppDiagnostics.log("Portable settings sync is pending because the UserState store is unavailable")
+            return
+        }
         let snapshot = PortablePodcastPreferenceSnapshot.make(
             settings: settings,
             feedURL: podcast?.feed
         )
+        let publicationDate = Date.now
         Task {
-            await StoreSplitPreferenceSyncWriter(
+            let saved = await StoreSplitPreferenceSyncWriter(
                 modelContainer: userStateContainer
-            ).upsert(snapshot)
+            ).upsert(snapshot, at: publicationDate)
+            if saved == false {
+                AppDiagnostics.log("Portable settings sync remains pending after local settings commit")
+            }
         }
     }
 
@@ -3401,6 +3455,8 @@ private struct AppControlsSettingsDetailView: View {
 
 private struct PodcastOverridesManagementView: View {
     @Environment(\.modelContext) private var context
+    @State private var settingsSaveError: String?
+    @State private var pendingPodcast: Podcast?
 
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
@@ -3464,30 +3520,89 @@ private struct PodcastOverridesManagementView: View {
         .listStyle(.inset)
         .navigationTitle("Podcast Overrides")
         .platformInlineNavigationTitle()
+        .alert("Couldn’t Save Settings", isPresented: Binding(
+            get: { settingsSaveError != nil },
+            set: { if $0 == false { settingsSaveError = nil } }
+        )) {
+            Button("Retry") { retryPendingSettingsSave() }
+            Button("Cancel", role: .cancel) { settingsSaveError = nil }
+        } message: {
+            Text(settingsSaveError ?? "Please try again.")
+        }
     }
 
     private func enableCustomSettingsFromList(for podcast: Podcast) {
-        enableCustomSettings(for: podcast, in: context)
+        do {
+            try enableCustomSettings(for: podcast, in: context)
+            try context.commitChangesIfNeeded()
+            NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+            if let settings = podcast.settings, let feed = podcast.feed,
+               let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
+                let snapshot = PortablePodcastPreferenceSnapshot.make(settings: settings, feedURL: feed)
+                let publicationDate = Date.now
+                Task {
+                    let saved = await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
+                        .upsert(snapshot, at: publicationDate)
+                    if saved == false {
+                        AppDiagnostics.log("Portable podcast settings sync failed for \(feed.redactedPodcastURLString)")
+                    }
+                }
+            }
+        } catch {
+            pendingPodcast = podcast
+            settingsSaveError = error.localizedDescription
+            CrashBreadcrumbs.shared.record("custom_settings_change_failed", details: error.localizedDescription)
+            return
+        }
         guard let podcastFeed = podcast.feed else { return }
         Task {
             await EpisodeActor(modelContainer: context.container).applyAutomaticDownloadPolicy(for: podcastFeed, force: true)
         }
     }
+
+    private func retryPendingSettingsSave() {
+        do {
+            try context.commitChangesIfNeeded()
+            guard let podcast = pendingPodcast else { return }
+            pendingPodcast = nil
+            settingsSaveError = nil
+            NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+            if let settings = podcast.settings, let feed = podcast.feed,
+               let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
+                let snapshot = PortablePodcastPreferenceSnapshot.make(settings: settings, feedURL: feed)
+                let publicationDate = Date.now
+                Task {
+                    _ = await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
+                        .upsert(snapshot, at: publicationDate)
+                }
+            }
+            if let feed = podcast.feed {
+                Task {
+                    await EpisodeActor(modelContainer: context.container)
+                        .applyAutomaticDownloadPolicy(for: feed, force: true)
+                }
+            }
+        } catch {
+            settingsSaveError = error.localizedDescription
+        }
+    }
 }
 
 @MainActor
-private func ensureStandardSettings(in context: ModelContext) -> PodcastSettings {
-    let defaultPlaylist = Playlist.ensureDefaultQueue(in: context)
+private func ensureStandardSettings(in context: ModelContext) throws -> PodcastSettings {
+    // A failed settings fetch is not evidence that the row is absent. Fetch it
+    // before creating or repairing the default queue.
     let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
     var descriptor = FetchDescriptor<PodcastSettings>(
         predicate: #Predicate { $0.title == defaultSettingsTitle }
     )
     descriptor.fetchLimit = 1
-
-    if let result = try? context.fetch(descriptor).first {
+    let existingSettings = try context.fetch(descriptor).first
+    let defaultPlaylist = Playlist.ensureDefaultQueue(in: context)
+    if let result = existingSettings {
         if result.defaultPlaylistID == nil {
             result.defaultPlaylistID = defaultPlaylist.id
-            context.saveIfNeeded()
+            try context.commitChangesIfNeeded()
         }
         return result
     }
@@ -3496,13 +3611,13 @@ private func ensureStandardSettings(in context: ModelContext) -> PodcastSettings
     settings.title = defaultSettingsTitle
     settings.defaultPlaylistID = defaultPlaylist.id
     context.insert(settings)
-    context.saveIfNeeded()
+    try context.commitChangesIfNeeded()
     return settings
 }
 
 @MainActor
-private func enableCustomSettings(for podcast: Podcast, in context: ModelContext) {
-    let globalSettings = ensureStandardSettings(in: context)
+private func enableCustomSettings(for podcast: Podcast, in context: ModelContext) throws {
+    let globalSettings = try ensureStandardSettings(in: context)
 
     if let settings = podcast.settings {
         settings.isEnabled = true
@@ -3537,15 +3652,11 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
         podcast.settings = settings
     }
 
-    context.saveIfNeeded()
-    NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
 }
 
 @MainActor
-private func disableCustomSettings(for podcast: Podcast, in context: ModelContext) {
+private func disableCustomSettings(for podcast: Podcast, in context: ModelContext) throws {
     podcast.settings?.isEnabled = false
-    context.saveIfNeeded()
-    NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
 }
 
 private struct PodcastSettingsPodcastRow: View {

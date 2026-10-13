@@ -14,6 +14,10 @@ struct TranscriptionSettingsView: View {
     @State private var supportedLocales: [Locale] = []
     @State private var installedLocales: [Locale] = []
     @State private var queueEntries: [TranscriptionQueueEntry] = []
+    @State private var settingsSaveError: String?
+    @State private var settingsInitializationFailed = false
+    @State private var shouldRescheduleAfterRetry = false
+    @State private var pendingPublisherTranscriptSync: Bool?
 
     private var globalSettings: PodcastSettings? {
         defaultSettings.first
@@ -39,9 +43,11 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.enableAutomaticOnDeviceTranscriptions },
                             set: { newValue in
                                 globalSettings.enableAutomaticOnDeviceTranscriptions = newValue
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-                                rescheduleAutomaticTranscriptionProcessing()
+                                if commitSettingsChange() {
+                                    rescheduleAutomaticTranscriptionProcessing()
+                                } else {
+                                    shouldRescheduleAfterRetry = true
+                                }
                             }
                         )
                     )
@@ -53,9 +59,11 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.limitAutomaticOnDeviceTranscriptionsToCharging },
                             set: { newValue in
                                 globalSettings.limitAutomaticOnDeviceTranscriptionsToCharging = newValue
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-                                rescheduleAutomaticTranscriptionProcessing()
+                                if commitSettingsChange() {
+                                    rescheduleAutomaticTranscriptionProcessing()
+                                } else {
+                                    shouldRescheduleAfterRetry = true
+                                }
                             }
                         )
                     )
@@ -66,8 +74,7 @@ struct TranscriptionSettingsView: View {
                             get: { min(max(globalSettings.transcriptionMaxSnippetDurationSeconds, 0.4), 8.0) },
                             set: { newValue in
                                 globalSettings.transcriptionMaxSnippetDurationSeconds = min(max(newValue, 0.4), 8.0)
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         ),
                         in: 0.4...8.0,
@@ -114,7 +121,10 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.enablePublisherTranscriptSynchronization },
                             set: { enabled in
                                 globalSettings.enablePublisherTranscriptSynchronization = enabled
-                                context.saveIfNeeded()
+                                guard commitSettingsChange(notify: false) else {
+                                    pendingPublisherTranscriptSync = enabled
+                                    return
+                                }
                                 TranscriptSynchronizationStore.shared.setEnabled(enabled)
                                 if enabled == false {
                                     TranscriptSynchronizationStore.shared.clearActiveTimelines()
@@ -136,8 +146,7 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.createTranscriptGapChapters },
                             set: { enabled in
                                 globalSettings.createTranscriptGapChapters = enabled
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -148,8 +157,7 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.automaticallySkipTranscriptGapChapters },
                             set: { enabled in
                                 globalSettings.automaticallySkipTranscriptGapChapters = enabled
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -184,8 +192,7 @@ struct TranscriptionSettingsView: View {
                                     globalSettings.showDetectedAdvertisements = false
                                     globalSettings.enableAutomaticAdvertisementSkipping = false
                                 }
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -196,8 +203,7 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.showDetectedAdvertisements },
                             set: { newValue in
                                 globalSettings.showDetectedAdvertisements = newValue
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -209,8 +215,7 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.enableAutomaticAdvertisementSkipping },
                             set: { newValue in
                                 globalSettings.enableAutomaticAdvertisementSkipping = newValue
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -231,8 +236,7 @@ struct TranscriptionSettingsView: View {
                             get: { globalSettings.automaticallyGenerateChaptersWhenUnavailable },
                             set: { newValue in
                                 globalSettings.automaticallyGenerateChaptersWhenUnavailable = newValue
-                                context.saveIfNeeded()
-                                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+                                commitSettingsChange()
                             }
                         )
                     )
@@ -355,12 +359,27 @@ struct TranscriptionSettingsView: View {
             }
         }
         .navigationTitle("Transcriptions")
+        .alert("Couldn’t Save Settings", isPresented: Binding(
+            get: { settingsSaveError != nil },
+            set: { if $0 == false { settingsSaveError = nil } }
+        )) {
+            Button("Retry") { retrySettingsSave() }
+            Button("Cancel", role: .cancel) { settingsSaveError = nil }
+        } message: {
+            Text(settingsSaveError ?? "Please try again.")
+        }
         .onAppear {
             CrashBreadcrumbs.shared.record("transcription_settings_on_appear")
         }
         .task {
             CrashBreadcrumbs.shared.record("transcription_settings_task_started")
-            await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+            do {
+                try await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+            } catch {
+                settingsInitializationFailed = true
+                settingsSaveError = error.localizedDescription
+                CrashBreadcrumbs.shared.record("standard_settings_initialization_failed", details: error.localizedDescription)
+            }
             supportedLocales = await SpeechTranscriber.supportedLocales.sorted {
                 $0.identifier(.bcp47) < $1.identifier(.bcp47)
             }
@@ -377,6 +396,55 @@ struct TranscriptionSettingsView: View {
                 await refreshQueue()
                 try? await Task.sleep(for: .seconds(1))
             } while Task.isCancelled == false
+        }
+    }
+
+    @discardableResult
+    private func commitSettingsChange(notify: Bool = true) -> Bool {
+        do {
+            try context.commitChangesIfNeeded()
+            settingsSaveError = nil
+            if notify {
+                NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
+            }
+            return true
+        } catch {
+            settingsSaveError = error.localizedDescription
+            CrashBreadcrumbs.shared.record("settings_commit_failed", details: error.localizedDescription)
+            return false
+        }
+    }
+
+    private func retrySettingsSave() {
+        if settingsInitializationFailed {
+            Task {
+                do {
+                    try await PodcastSettingsModelActor(modelContainer: context.container).ensureStandardSettingsExists()
+                    settingsInitializationFailed = false
+                    settingsSaveError = nil
+                } catch {
+                    settingsSaveError = error.localizedDescription
+                }
+            }
+            return
+        }
+        guard commitSettingsChange() else { return }
+        if shouldRescheduleAfterRetry {
+            shouldRescheduleAfterRetry = false
+            rescheduleAutomaticTranscriptionProcessing()
+        }
+        if let enabled = pendingPublisherTranscriptSync {
+            pendingPublisherTranscriptSync = nil
+            TranscriptSynchronizationStore.shared.setEnabled(enabled)
+            if enabled == false {
+                TranscriptSynchronizationStore.shared.clearActiveTimelines()
+            }
+            Task {
+                await TranscriptSynchronizationService.shared.setEnabled(enabled)
+#if os(iOS)
+                await AppDelegate.schedulePublisherTranscriptSynchronizationIfNeeded()
+#endif
+            }
         }
     }
 

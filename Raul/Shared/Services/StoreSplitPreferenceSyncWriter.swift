@@ -75,7 +75,8 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
 
 @ModelActor
 actor StoreSplitPreferenceSyncWriter {
-    func upsert(_ value: PortablePodcastPreferenceSnapshot, at date: Date = .now) {
+    @discardableResult
+    func upsert(_ value: PortablePodcastPreferenceSnapshot, at date: Date = .now) -> Bool {
         let feedKey = value.feedURL.map(PodcastFeedIdentity.normalizedFeedURLString)
         let candidate = PodcastPreferenceSync(
             feedURL: feedKey,
@@ -113,40 +114,50 @@ actor StoreSplitPreferenceSyncWriter {
             predicate: #Predicate { $0.id == preferenceID }
         )
         descriptor.fetchLimit = 1
-        if let current = try? modelContext.fetch(descriptor).first {
-            guard date >= current.updatedAt else { return }
-            current.feedURL = candidate.feedURL
-            current.isEnabled = candidate.isEnabled
-            current.playNextPositionRawValue = candidate.playNextPositionRawValue
-            current.defaultPlaylistID = candidate.defaultPlaylistID
-            current.playbackSpeed = candidate.playbackSpeed
-            current.reduceSilenceGapsEnabled = candidate.reduceSilenceGapsEnabled
-            current.silenceGapReductionLevelRawValue = candidate.silenceGapReductionLevelRawValue
-            current.voiceEnhancementEnabled = candidate.voiceEnhancementEnabled
-            current.autoSkipKeywordsJSON = candidate.autoSkipKeywordsJSON
-            current.autoDownloadFilterJSON = candidate.autoDownloadFilterJSON
-            current.cutFront = candidate.cutFront
-            current.cutEnd = candidate.cutEnd
-            current.skipForwardSeconds = candidate.skipForwardSeconds
-            current.skipBackSeconds = candidate.skipBackSeconds
-            current.skipForwardBehaviorRawValue = candidate.skipForwardBehaviorRawValue
-            current.skipBackBehaviorRawValue = candidate.skipBackBehaviorRawValue
-            current.markAsPlayedAfterSubscribe = candidate.markAsPlayedAfterSubscribe
-            current.playSumAdjustedByPlaySpeed = candidate.playSumAdjustedByPlaySpeed
-            current.enableLockscreenSlider = candidate.enableLockscreenSlider
-            current.enableInAppSlider = candidate.enableInAppSlider
-            current.continuousPlayEnabled = candidate.continuousPlayEnabled
-            current.showLivePodcasts = candidate.showLivePodcasts
-            current.liveItemNotificationsEnabled = candidate.liveItemNotificationsEnabled
-            current.sleepTimerAddMinutes = candidate.sleepTimerAddMinutes
-            current.sleepTimerDurationToReactivate = candidate.sleepTimerDurationToReactivate
-            current.sleepTimerVoiceFeedbackEnabled = candidate.sleepTimerVoiceFeedbackEnabled
-            current.sleepTimerText = candidate.sleepTimerText
-            current.updatedAt = date
-            current.sourceDeviceID = candidate.sourceDeviceID
-        } else {
-            modelContext.insert(candidate)
+        do {
+            if let current = try modelContext.fetch(descriptor).first {
+                // The timestamp is captured when the user edits the setting. A
+                // queued older snapshot must never replace a newer committed edit.
+                guard date > current.updatedAt else { return false }
+                current.feedURL = candidate.feedURL
+                current.isEnabled = candidate.isEnabled
+                current.playNextPositionRawValue = candidate.playNextPositionRawValue
+                current.defaultPlaylistID = candidate.defaultPlaylistID
+                current.playbackSpeed = candidate.playbackSpeed
+                current.reduceSilenceGapsEnabled = candidate.reduceSilenceGapsEnabled
+                current.silenceGapReductionLevelRawValue = candidate.silenceGapReductionLevelRawValue
+                current.voiceEnhancementEnabled = candidate.voiceEnhancementEnabled
+                current.autoSkipKeywordsJSON = candidate.autoSkipKeywordsJSON
+                current.autoDownloadFilterJSON = candidate.autoDownloadFilterJSON
+                current.cutFront = candidate.cutFront
+                current.cutEnd = candidate.cutEnd
+                current.skipForwardSeconds = candidate.skipForwardSeconds
+                current.skipBackSeconds = candidate.skipBackSeconds
+                current.skipForwardBehaviorRawValue = candidate.skipForwardBehaviorRawValue
+                current.skipBackBehaviorRawValue = candidate.skipBackBehaviorRawValue
+                current.markAsPlayedAfterSubscribe = candidate.markAsPlayedAfterSubscribe
+                current.playSumAdjustedByPlaySpeed = candidate.playSumAdjustedByPlaySpeed
+                current.enableLockscreenSlider = candidate.enableLockscreenSlider
+                current.enableInAppSlider = candidate.enableInAppSlider
+                current.continuousPlayEnabled = candidate.continuousPlayEnabled
+                current.showLivePodcasts = candidate.showLivePodcasts
+                current.liveItemNotificationsEnabled = candidate.liveItemNotificationsEnabled
+                current.sleepTimerAddMinutes = candidate.sleepTimerAddMinutes
+                current.sleepTimerDurationToReactivate = candidate.sleepTimerDurationToReactivate
+                current.sleepTimerVoiceFeedbackEnabled = candidate.sleepTimerVoiceFeedbackEnabled
+                current.sleepTimerText = candidate.sleepTimerText
+                current.updatedAt = date
+                current.sourceDeviceID = candidate.sourceDeviceID
+            } else {
+                modelContext.insert(candidate)
+            }
+            try modelContext.commitChangesIfNeeded()
+            return true
+        } catch {
+            modelContext.rollback()
+            AppDiagnostics.log("Portable settings sync write failed: \(error.localizedDescription)")
+            CrashBreadcrumbs.shared.record("portable_settings_sync_failed", details: error.localizedDescription)
+            return false
         }
-        modelContext.saveIfNeeded()
     }
 }

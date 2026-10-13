@@ -3253,6 +3253,12 @@
         }
       }
     },
+    "Browse episodes for this podcast" : {
+
+    },
+    "Browse podcasts from this broadcaster" : {
+
+    },
     "Browse public-service podcasts" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4348,6 +4354,9 @@
           }
         }
       }
+    },
+    "Couldn’t Save Settings" : {
+
     },
     "Couldn’t Subscribe" : {
       "localizations" : {
@@ -11327,9 +11336,6 @@
         }
       }
     },
-    "Next predicted release: Unavailable" : {
-
-    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -12499,6 +12505,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ouvrir %@"
+          }
+        }
+      }
+    },
+    "Open %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Open %1$@, %2$@"
           }
         }
       }
@@ -17479,6 +17495,9 @@
           }
         }
       }
+    },
+    "Retry" : {
+
     },
     "Retry episode import" : {
       "localizations" : {

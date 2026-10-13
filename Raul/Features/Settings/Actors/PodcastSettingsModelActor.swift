@@ -125,8 +125,9 @@ actor PodcastSettingsModelActor {
         return playlist.id
     }
 
-    func ensureStandardSettingsExists() async {
-        _ = await standardSettings()
+    func ensureStandardSettingsExists() async throws {
+        try migrateAutoDownloadIncludeArchivedSettingIfNeeded()
+        _ = try fetchOrCreateStandardSettings()
     }
     
     /// Returns a standard global PodcastSettings object (for use as app-wide default)
@@ -144,13 +145,16 @@ actor PodcastSettingsModelActor {
     }
 
     private func fetchOrCreateStandardSettings() throws -> PodcastSettings {
-        let defaultPlaylistID = try defaultQueueID()
         let defaultSettingsTitle = "de.holgerkrupp.podbay.queue"
         var descriptor = FetchDescriptor<PodcastSettings>(
             predicate: #Predicate { $0.title == defaultSettingsTitle }
         )
         descriptor.fetchLimit = 1
-        if let result = try modelContext.fetch(descriptor).first {
+        // Read settings before repairing or creating the default queue. A
+        // transient settings fetch failure must not create replacement data.
+        let existingSettings = try modelContext.fetch(descriptor).first
+        let defaultPlaylistID = try defaultQueueID()
+        if let result = existingSettings {
             if result.defaultPlaylistID == nil {
                 result.defaultPlaylistID = defaultPlaylistID
                 try modelContext.commitChangesIfNeeded()
@@ -750,6 +754,7 @@ actor PodcastSettingsModelActor {
         _ settings: PodcastSettings,
         feedURL: URL?
     ) async {
+        let publicationDate = Date.now
         let snapshot = PortablePodcastPreferenceSnapshot.make(
             settings: settings,
             feedURL: feedURL
@@ -758,8 +763,11 @@ actor PodcastSettingsModelActor {
         guard let userStateContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedUserStateContainer
         }) else { return }
-        await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
-            .upsert(snapshot)
+        let saved = await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
+            .upsert(snapshot, at: publicationDate)
+        if saved == false {
+            AppDiagnostics.log("Portable settings sync failed after local settings commit")
+        }
     }
 
     func autoDownloadPolicy(for podcastFeed: URL) async -> AutoDownloadPolicySnapshot? {
