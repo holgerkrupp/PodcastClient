@@ -516,7 +516,8 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
 /// The backfill has to finish without anyone tapping anything, so the conditions
 /// that decide whether it is scheduled are covered on their own.
 final class StoreSplitAutomaticMigrationTests: XCTestCase {
-    private let completedVersionKey = "storeSplit.completedMigrationVersion"
+    private let completedVersionKey = "storeSplit.backfillMigrationVersion"
+    private let pendingMaintenanceKey = "storeSplit.migrationNeedsMaintenance.v1"
 
     private var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
@@ -524,6 +525,7 @@ final class StoreSplitAutomaticMigrationTests: XCTestCase {
 
     override func tearDown() {
         defaults.removeObject(forKey: completedVersionKey)
+        defaults.removeObject(forKey: pendingMaintenanceKey)
         super.tearDown()
     }
 
@@ -548,6 +550,12 @@ final class StoreSplitAutomaticMigrationTests: XCTestCase {
             forKey: completedVersionKey
         )
         XCTAssertFalse(ModelContainerManager.hasPendingMigrationWork)
+
+        defaults.set(true, forKey: pendingMaintenanceKey)
+        XCTAssertTrue(
+            ModelContainerManager.hasPendingMigrationWork,
+            "a stale completed-version marker must not suppress explicitly invalidated work"
+        )
     }
 
     /// The rollout marker used to gate the overnight task, which meant a device

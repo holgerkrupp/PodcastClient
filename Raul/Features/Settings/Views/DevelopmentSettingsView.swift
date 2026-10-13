@@ -450,7 +450,7 @@ struct DevelopmentSettingsView: View {
             } header: {
                 Text("Migration Completeness")
             } footer: {
-                Text("Use the checkmarks and unique live destination counts to verify subscriptions, listening history, listening statistics, and AI transcripts/chapters. Tombstones remain physically stored for CloudKit deletion propagation but are excluded from these counts. Listening history may intentionally exceed the legacy raw-session count because old raw sessions are retention-limited. AI content has separate checkpoints and is not included in the regular slice percentage.")
+                Text("Checkpoints show bounded backfill progress. Counts are informational: identities, CloudKit membership, retention, and aggregation can differ, so count equality is not proof of completeness. Completed rows say Backfilled while semantic verification is pending. Tombstones remain stored for CloudKit deletion propagation and are excluded from active counts.")
             }
 
             if launchConfiguration.mode != .legacyOnly {
@@ -895,26 +895,20 @@ struct DevelopmentSettingsView: View {
         _ phase: StoreSplitMigrationPhaseStatus
     ) -> some View {
         let metricName = migrationMetricName(for: phase.id)
-        let sourceCount = metricName.flatMap {
-            objectCount(store: "SharedDatabase.sqlite", metric: $0)
-        }
-        let countsMustMatch = [
-            "subscriptions", "playlists", "playlist_entries", "bookmarks",
-            "episode_states", "ai_transcripts", "ai_chapters"
-        ].contains(phase.id)
-        let hasCountMismatch = countsMustMatch
-            && sourceCount != nil
-            && sourceCount != phase.activeDestinationCount
-        let phaseIsComplete = phase.isComplete && hasCountMismatch == false
+        // These counters have different identity filters, retention rules and
+        // CloudKit membership. They are useful diagnostics, never a completeness
+        // predicate. A checkpoint means backfilled; semantic verification is a
+        // separate gate and must not be implied by count equality.
+        let phaseIsComplete = phase.isComplete && phase.failedCount == 0
 
         return HStack(spacing: 10) {
             Image(
                 systemName: phaseIsComplete
-                    ? "checkmark.circle.fill"
-                    : hasCountMismatch ? "exclamationmark.circle.fill" : "circle"
+                    ? "checkmark.circle"
+                    : phase.failedCount > 0 ? "exclamationmark.circle.fill" : "circle"
             )
             .foregroundStyle(
-                phaseIsComplete ? .green : hasCountMismatch ? .orange : .secondary
+                phase.failedCount > 0 ? .red : .secondary
             )
             VStack(alignment: .leading, spacing: 2) {
                 Text(phase.title)
@@ -942,14 +936,10 @@ struct DevelopmentSettingsView: View {
                 Text("\(phase.failedCount) failed")
                     .font(.caption)
                     .foregroundStyle(.red)
-            } else if hasCountMismatch {
-                Text("Count mismatch")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
             } else if phaseIsComplete {
-                Text("Complete")
+                Text("Backfilled · verification pending")
                     .font(.caption)
-                    .foregroundStyle(.green)
+                    .foregroundStyle(.secondary)
             } else {
                 Text("Pending")
                     .font(.caption)

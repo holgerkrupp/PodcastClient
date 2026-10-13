@@ -195,7 +195,7 @@ private struct NowPlayingWidgetView: View {
 
     private func transportButton(size: CGFloat) -> some View {
         Button(intent: WidgetPlayPauseIntent()) {
-            WidgetPlaybackProgressRing(
+            WidgetPlaybackControl(
                 progress: progress,
                 isPlaying: snapshot?.isPlaying == true,
                 size: size - 8

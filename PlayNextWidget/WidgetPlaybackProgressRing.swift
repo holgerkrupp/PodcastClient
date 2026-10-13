@@ -1,9 +1,11 @@
 import SwiftUI
 
-struct WidgetPlaybackProgressRing: View {
+struct WidgetPlaybackControl: View {
     let progress: Double
     let isPlaying: Bool
     let size: CGFloat
+
+    private let gaugeLayoutSize: CGFloat = 44
 
     private var normalizedProgress: Double {
         guard progress.isFinite else { return 0 }
@@ -11,23 +13,18 @@ struct WidgetPlaybackProgressRing: View {
     }
 
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(Color.secondary.opacity(0.28), lineWidth: 2)
-
-            Circle()
-                .trim(from: 0, to: normalizedProgress)
-                .stroke(
-                    Color.nowPlayingAccent,
-                    style: StrokeStyle(lineWidth: 3.5, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-
+        Gauge(value: normalizedProgress) {
+            EmptyView()
+        } currentValueLabel: {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                .font(.system(size: size * 0.42, weight: .bold))
+                .font(.system(size: gaugeLayoutSize * 0.38, weight: .bold))
                 .foregroundStyle(.primary)
                 .offset(x: isPlaying ? 0 : size * 0.025)
         }
+        .gaugeStyle(.accessoryCircular)
+        .tint(Color.nowPlayingAccent)
+        .frame(width: gaugeLayoutSize, height: gaugeLayoutSize)
+        .scaleEffect(size / gaugeLayoutSize)
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }

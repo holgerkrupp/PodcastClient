@@ -579,6 +579,10 @@ class ModelContainerManager: ObservableObject {
     /// Migration version whose phases have all completed on this device.
     nonisolated private static let completedMigrationVersionKey =
         "storeSplit.completedMigrationVersion"
+    nonisolated private static let backfillMigrationVersionKey =
+        "storeSplit.backfillMigrationVersion"
+    nonisolated private static let migrationNeedsMaintenanceKey =
+        "storeSplit.migrationNeedsMaintenance.v1"
     /// One-time source-authoritative cleanup for rows that an older upsert-only
     /// backfill left active in UserState.
     // Increment this when a later release needs to run another authoritative
@@ -739,6 +743,9 @@ class ModelContainerManager: ObservableObject {
         let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
         defaults.removeObject(forKey: lastMigrationCompletedAtKey)
         defaults.removeObject(forKey: lastMigrationHadFailuresKey)
+        defaults.removeObject(forKey: completedMigrationVersionKey)
+        defaults.removeObject(forKey: backfillMigrationVersionKey)
+        defaults.set(true, forKey: migrationNeedsMaintenanceKey)
         defaults.removeObject(forKey: authoritativeReconciliationVersionKey)
     }
 
@@ -953,6 +960,9 @@ class ModelContainerManager: ObservableObject {
         migrationReadiness = .preparing
         migrationBlocker = nil
         guard preparedUserStateContainer == nil || preparedCacheContainer == nil else {
+            if let cache = preparedCacheContainer {
+                Self.reconcileMigrationLedger(cacheContainer: cache)
+            }
             await buildRuntimeGraphIfNeeded()
             updateMigrationReadiness()
             return
@@ -1004,6 +1014,10 @@ class ModelContainerManager: ObservableObject {
 
         splitStorePreparationTask = nil
         isPreparingSplitStores = false
+
+        if let cache = preparedCacheContainer {
+            Self.reconcileMigrationLedger(cacheContainer: cache)
+        }
 
         await buildRuntimeGraphIfNeeded()
         runtimeStoreReadiness = .ready
@@ -1160,11 +1174,12 @@ class ModelContainerManager: ObservableObject {
         // Fresh devices restore UserState and rebuild PodcastCache; they do not
         // need the legacy backfill executor. After the one-way cutover, a
         // leftover file is recovery material, not normal migration work.
-        return StoreBootstrapMode.requiresLegacyBackfill(
+        return defaults.bool(forKey: migrationNeedsMaintenanceKey)
+            || StoreBootstrapMode.requiresLegacyBackfill(
             legacyStoreExists: legacyStoreExists,
             legacyCloudCutoverCompleted: StoreDevelopmentConfiguration
                 .legacyCloudCutoverCompleted,
-            completedVersion: defaults.integer(forKey: completedMigrationVersionKey),
+            completedVersion: defaults.integer(forKey: backfillMigrationVersionKey),
             currentVersion: StoreSplitMigrationService.migrationVersion
         )
     }
@@ -1783,7 +1798,11 @@ class ModelContainerManager: ObservableObject {
         guard StoreSplitMigrationService.isSliceMigrationComplete(
             cacheContainer: cacheContainer
         ) == false else {
-            markMigrationCompleted(hadFailures: false)
+            if Self.sharedStoreURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
+                markMigrationCompleted(hadFailures: false)
+            } else {
+                completeMigrationWithoutSource(cacheContainer)
+            }
             return
         }
         guard let legacyContainer = legacyMigrationSourceContainer else {
@@ -1798,7 +1817,15 @@ class ModelContainerManager: ObservableObject {
             }
             return
         }
-        guard legacyHasMigrationData(legacyContainer) else {
+        let hasLegacyData: Bool
+        do {
+            hasLegacyData = try legacyHasMigrationData(legacyContainer)
+        } catch {
+            recordMigrationBlocker("Could not inspect legacy migration source: \(error.localizedDescription)")
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return
+        }
+        guard hasLegacyData else {
             completeMigrationWithoutSource(cacheContainer)
             return
         }
@@ -1815,10 +1842,35 @@ class ModelContainerManager: ObservableObject {
     private func classifyStoreSplitRollout() async {
         await prepareSplitStores()
 
-        let legacyHasData = legacyMigrationSourceContainer
-            .map(legacyHasMigrationData) ?? false
-        let splitHasData = preparedUserStateContainer
-            .map(splitUserStateHasData) ?? false
+        let legacyHasData: Bool
+        if let legacyContainer = legacyMigrationSourceContainer {
+            do {
+                legacyHasData = try legacyHasMigrationData(legacyContainer)
+            } catch {
+                recordMigrationBlocker("Could not inspect legacy migration source: \(error.localizedDescription)")
+                scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+                return
+            }
+        } else if Self.sharedStoreURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
+            recordMigrationBlocker("Legacy migration source exists but could not be opened")
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return
+        } else {
+            legacyHasData = false
+        }
+
+        guard let userStateContainer = preparedUserStateContainer else {
+            recordMigrationBlocker("UserState store is unavailable for rollout classification")
+            return
+        }
+        let splitHasData: Bool
+        do {
+            splitHasData = try splitUserStateHasData(userStateContainer)
+        } catch {
+            recordMigrationBlocker("Could not inspect UserState store: \(error.localizedDescription)")
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return
+        }
         // Migration is "not applicable" (treated as complete) when there is no
         // legacy data to back-fill from.
         // Completing every migration phase is what makes UserState safe to read
@@ -1907,10 +1959,18 @@ class ModelContainerManager: ObservableObject {
             recordMigrationBlocker("Migration did not reach a completed checkpoint")
             return
         }
+        guard StoreSplitMigrationService.isMigrationVerified(
+            cacheContainer: cacheContainer
+        ) else {
+            recordMigrationBlocker(
+                "Backfill is complete; current semantic verification is required before split-store read authority"
+            )
+            return
+        }
         StoreSplitRollout.set(.newStoreReads)
         CrashBreadcrumbs.shared.record(
             "store_split_rollout_migration_complete",
-            details: "verified=\(StoreSplitMigrationService.isMigrationVerified(cacheContainer: cacheContainer))"
+            details: "verified=true"
         )
     }
 
@@ -1918,12 +1978,12 @@ class ModelContainerManager: ObservableObject {
     /// or listening summaries without a current subscription. Treat every
     /// independently migratable root as evidence; podcast count alone is not a
     /// lossless upgrade classifier.
-    private func legacyHasMigrationData(_ container: ModelContainer) -> Bool {
+    private func legacyHasMigrationData(_ container: ModelContainer) throws -> Bool {
         let context = ModelContext(container)
-        func hasAny<Model: PersistentModel>(_ type: Model.Type) -> Bool {
-            ((try? context.fetchCount(FetchDescriptor<Model>())) ?? 0) > 0
+        func hasAny<Model: PersistentModel>(_ type: Model.Type) throws -> Bool {
+            try context.fetchCount(FetchDescriptor<Model>()) > 0
         }
-        return hasAny(Podcast.self)
+        return try hasAny(Podcast.self)
             || hasAny(Playlist.self)
             || hasAny(PodcastSettings.self)
             || hasAny(PlaySession.self)
@@ -1932,12 +1992,12 @@ class ModelContainerManager: ObservableObject {
 
     /// Whether the synced user-state store holds any user-owned data — meaning it
     /// was migrated here previously or delivered by CloudKit from another device.
-    private func splitUserStateHasData(_ container: ModelContainer) -> Bool {
+    private func splitUserStateHasData(_ container: ModelContainer) throws -> Bool {
         let context = ModelContext(container)
-        func hasAny<Model: PersistentModel>(_ type: Model.Type) -> Bool {
-            ((try? context.fetchCount(FetchDescriptor<Model>())) ?? 0) > 0
+        func hasAny<Model: PersistentModel>(_ type: Model.Type) throws -> Bool {
+            try context.fetchCount(FetchDescriptor<Model>()) > 0
         }
-        return hasAny(SubscriptionSync.self)
+        return try hasAny(SubscriptionSync.self)
             || hasAny(EpisodeStateSync.self)
             || hasAny(PlaylistSync.self)
             || hasAny(PlaylistEntrySync.self)
@@ -2201,6 +2261,9 @@ class ModelContainerManager: ObservableObject {
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
         defaults.removeObject(forKey: Self.lastMigrationCompletedAtKey)
         defaults.removeObject(forKey: Self.lastMigrationHadFailuresKey)
+        defaults.removeObject(forKey: Self.completedMigrationVersionKey)
+        defaults.removeObject(forKey: Self.backfillMigrationVersionKey)
+        defaults.set(true, forKey: Self.migrationNeedsMaintenanceKey)
         lastMigrationCompletedAt = nil
         await splitStoreCoordinator.runManualMigration()
     }
@@ -2604,6 +2667,9 @@ class ModelContainerManager: ObservableObject {
             let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
             defaults.removeObject(forKey: Self.lastMigrationCompletedAtKey)
             defaults.removeObject(forKey: Self.lastMigrationHadFailuresKey)
+            defaults.removeObject(forKey: Self.completedMigrationVersionKey)
+            defaults.removeObject(forKey: Self.backfillMigrationVersionKey)
+            defaults.set(true, forKey: Self.migrationNeedsMaintenanceKey)
             lastMigrationCompletedAt = nil
             lastAIContentImportAt = nil
             migrationError = nil
@@ -2998,10 +3064,13 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func completeMigrationWithoutSource(_ cacheContainer: ModelContainer) {
-        StoreSplitMigrationService.markMigrationCompleteWithoutSource(
+        guard StoreSplitMigrationService.markMigrationCompleteWithoutSource(
             cacheContainer: cacheContainer
-        )
-        markMigrationCompleted(hadFailures: false)
+        ) else {
+            recordMigrationBlocker("Could not durably save no-source migration checkpoints")
+            return
+        }
+        markMigrationCompleted(hadFailures: false, verifiedNoSource: true)
     }
 
     private func updateMigrationReadiness() {
@@ -3015,6 +3084,17 @@ class ModelContainerManager: ObservableObject {
         }
         if isMigratingSplitStores {
             migrationReadiness = .running
+            return
+        }
+        if let cacheContainer = preparedCacheContainer,
+           StoreSplitMigrationService.isSliceMigrationComplete(
+               cacheContainer: cacheContainer
+           ),
+           StoreSplitMigrationService.isMigrationVerified(
+               cacheContainer: cacheContainer
+           ) == false {
+            migrationReadiness = .blocked
+            migrationBlocker = "Backfill complete; semantic verification is pending"
             return
         }
         if Self.hasPendingMigrationWork {
@@ -3126,7 +3206,18 @@ class ModelContainerManager: ObservableObject {
 #endif
     }
 
-    private func markMigrationCompleted(hadFailures: Bool) {
+    private func markMigrationCompleted(
+        hadFailures: Bool,
+        verifiedNoSource: Bool = false
+    ) {
+        guard hadFailures == false,
+              let cacheContainer = preparedCacheContainer,
+              StoreSplitMigrationService.isSliceMigrationComplete(
+                  cacheContainer: cacheContainer
+              ) else {
+            recordMigrationBlocker("Migration checkpoints are incomplete or contain failures")
+            return
+        }
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
         let completedAt = Date()
         lastMigrationCompletedAt = completedAt
@@ -3143,25 +3234,35 @@ class ModelContainerManager: ObservableObject {
         // opening a container on the app's background-transition path.
         defaults.set(
             StoreSplitMigrationService.migrationVersion,
-            forKey: Self.completedMigrationVersionKey
+            forKey: Self.backfillMigrationVersionKey
         )
+        defaults.set(false, forKey: Self.migrationNeedsMaintenanceKey)
         pendingSplitStoreWorkReason = nil
         currentSplitStoreJobDescription = nil
-        migrationReadiness = .complete
-        migrationBlocker = nil
-        migrationLastSliceResult = hadFailures
-            ? "Completed with item failures"
-            : "Completed successfully"
+        let verificationComplete = verifiedNoSource
+            || StoreSplitMigrationService.isMigrationVerified(cacheContainer: cacheContainer)
+        if verificationComplete {
+            defaults.set(
+                StoreSplitMigrationService.migrationVersion,
+                forKey: Self.completedMigrationVersionKey
+            )
+        } else {
+            defaults.removeObject(forKey: Self.completedMigrationVersionKey)
+        }
+        migrationReadiness = verificationComplete ? .complete : .blocked
+        migrationBlocker = verificationComplete
+            ? nil
+            : "Backfill complete; semantic verification is pending"
+        migrationLastSliceResult = verificationComplete
+            ? "Backfilled and verified"
+            : "Backfilled; verification pending"
 #if DEBUG
         StoreSplitMigrationDebugLog.record(
             "migration complete",
             details: "version \(StoreSplitMigrationService.migrationVersion), failures=\(hadFailures)"
         )
 #endif
-        if let cacheContainer = preparedCacheContainer,
-           StoreSplitMigrationService.isMigrationVerified(
-               cacheContainer: cacheContainer
-           ) {
+        if verificationComplete {
             StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
             // Close the disk source as soon as lossless verification succeeds.
             // The SQLite files stay untouched until the independent cleanup gate.
@@ -3446,6 +3547,34 @@ class ModelContainerManager: ObservableObject {
 #else
         return await body()
 #endif
+    }
+
+    nonisolated private static func reconcileMigrationLedger(
+        cacheContainer: ModelContainer
+    ) {
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        let checkpointsComplete = StoreSplitMigrationService.isSliceMigrationComplete(
+            cacheContainer: cacheContainer
+        )
+        let sourceExists = sharedStoreURL.map {
+            FileManager.default.fileExists(atPath: $0.path)
+        } ?? false
+        let pending = sourceExists
+            && StoreDevelopmentConfiguration.legacyCloudCutoverCompleted == false
+            && checkpointsComplete == false
+        defaults.set(pending, forKey: migrationNeedsMaintenanceKey)
+        if pending {
+            defaults.removeObject(forKey: completedMigrationVersionKey)
+            defaults.removeObject(forKey: backfillMigrationVersionKey)
+        } else if checkpointsComplete {
+            defaults.set(
+                StoreSplitMigrationService.migrationVersion,
+                forKey: backfillMigrationVersionKey
+            )
+            if StoreSplitMigrationService.isMigrationVerified(cacheContainer: cacheContainer) == false {
+                defaults.removeObject(forKey: completedMigrationVersionKey)
+            }
+        }
     }
 
     private func shouldRunUserStateImport(

@@ -667,7 +667,7 @@ private struct QueuePlaybackButton: View {
     var body: some View {
         if item.isCurrent {
             Button(intent: WidgetPlayPauseIntent()) {
-                WidgetPlaybackProgressRing(
+                WidgetPlaybackControl(
                     progress: playbackProgress ?? 0,
                     isPlaying: isPlaying,
                     size: 30
@@ -677,7 +677,10 @@ private struct QueuePlaybackButton: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPlaying ? "Pause current episode" : "Play current episode")
         } else if item.id.hasPrefix("private-") == false {
-            Button(intent: WidgetPlayEpisodeIntent(episodeID: item.id)) { icon("play.fill") }
+            Button(intent: WidgetPlayEpisodeIntent(episodeID: item.id)) {
+                WidgetPlaybackControl(progress: 0, isPlaying: false, size: 30)
+                    .frame(width: size, height: size)
+            }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Play \(item.title)")
         } else {
@@ -685,12 +688,6 @@ private struct QueuePlaybackButton: View {
         }
     }
 
-    private func icon(_ name: String) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 15, weight: .semibold))
-            .frame(width: size, height: size)
-            .contentShape(Rectangle())
-    }
 }
 
 private struct QueueCover: View {

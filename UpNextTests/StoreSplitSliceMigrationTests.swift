@@ -171,7 +171,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     // MARK: - Tests
 
     @MainActor
-    func testAuthoritativeReconciliationRemovesDestinationOnlyState() async throws {
+    func testAuthoritativeReconciliationPreservesUnprovenDestinationOnlyState() async throws {
         let containers = try makeContainers()
         try populate(containers.legacy, episodeCount: 3)
 
@@ -229,19 +229,17 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             userStateContainer: containers.userState
         )
 
-        // Per-entity writers may reconcile some rows while source records are
-        // republished, so assert the final tombstones/deletions below rather
-        // than coupling this behavior test to which pass performed each edit.
-        XCTAssertEqual(result.failed, 0)
+        XCTAssertEqual(result.failed, 1)
+        XCTAssertNotNil(result.error)
 
         let subscription = try XCTUnwrap(
             try userContext.fetch(FetchDescriptor<SubscriptionSync>())
                 .first { $0.id == "https://stale.example/feed.xml" }
         )
-        XCTAssertFalse(subscription.isSubscribed)
+        XCTAssertTrue(subscription.isSubscribed)
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<PlaylistSync>())
-                .first { $0.id == "stale-playlist" }?.isDeleted == true
+                .first { $0.id == "stale-playlist" }?.isDeleted == false
         )
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<PlaylistEntrySync>())
@@ -249,26 +247,26 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                     "stale-playlist",
                     "https://stale.example/feed.xml",
                     "stale-episode"
-                ) }?.isDeleted == true
+                ) }?.isDeleted == false
         )
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<QueueEntrySync>())
                 .first { $0.id == StableIdentityKey.make(
                     "https://stale.example/feed.xml",
                     "stale-episode"
-                ) }?.isDeleted == true
+                ) }?.isDeleted == false
         )
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<BookmarkSync>())
-                .first { $0.id == "stale-bookmark" }?.isDeleted == true
+                .first { $0.id == "stale-bookmark" }?.isDeleted == false
         )
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<PodcastPreferenceSync>())
-                .contains { $0.feedURL == "https://stale.example/feed.xml" } == false
+                .contains { $0.feedURL == "https://stale.example/feed.xml" }
         )
         XCTAssertTrue(
             try userContext.fetch(FetchDescriptor<EpisodeStateSync>())
-                .contains { $0.feedURL == "https://stale.example/feed.xml" } == false
+                .contains { $0.feedURL == "https://stale.example/feed.xml" }
         )
     }
 
@@ -340,6 +338,91 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
 
         let counts = try destinationCounts(containers.userState)
         XCTAssertEqual(counts["bookmarks"], 3)
+    }
+
+    @MainActor
+    func testAutomaticSlicesBackfillAIContentIntoPodcastCache() async throws {
+        let containers = try makeContainers()
+        let feedURL = URL(string: "https://example.com/ai-feed.xml")!
+        let episodeURL = URL(string: "https://example.com/ai-episode.mp3")!
+        let podcast = Podcast(feed: feedURL)
+        let episode = Episode(
+            guid: "ai-backfill",
+            title: "AI backfill",
+            url: episodeURL,
+            podcast: podcast
+        )
+        let line = TranscriptLineAndTime(
+            speaker: "Host",
+            text: "A recoverable transcript line",
+            startTime: 12,
+            endTime: 18
+        )
+        line.episode = episode
+        episode.transcriptLines = [line]
+        let chapter = Marker(start: 12, title: "AI chapter", type: .ai)
+        chapter.duration = 30
+        chapter.creationtime = Date(timeIntervalSince1970: 2_000)
+        chapter.analysisVariantID = "media-revision"
+        chapter.episode = episode
+        episode.chapters = [chapter]
+        podcast.episodes = [episode]
+        containers.legacy.mainContext.insert(podcast)
+        containers.legacy.mainContext.insert(
+            TranscriptionRecord(
+                episodeURL: episodeURL,
+                episodeTitle: episode.title,
+                podcastTitle: "Example",
+                localeIdentifier: "en",
+                startedAt: Date(timeIntervalSince1970: 1_900),
+                finishedAt: Date(timeIntervalSince1970: 2_000),
+                audioDuration: 30
+            )
+        )
+        try containers.legacy.mainContext.save()
+
+        var completed = false
+        for _ in 0..<30 {
+            let report = await StoreSplitMigrationService.runSlice(
+                legacyContainer: containers.legacy,
+                userStateContainer: containers.userState,
+                cacheContainer: containers.cache,
+                shouldContinue: { true }
+            )
+            if report.status == .failed {
+                XCTFail("AI migration slice failed: \(report.error ?? "unknown error")")
+                return
+            }
+            if report.status == .completed {
+                completed = true
+                break
+            }
+        }
+
+        XCTAssertTrue(completed, "bounded migration slices should finish every phase")
+        let cache = containers.cache.mainContext
+        let transcript = try XCTUnwrap(
+            try cache.fetch(FetchDescriptor<AITranscriptSync>()).first
+        )
+        let chunks = try cache.fetch(FetchDescriptor<AITranscriptChunkSync>())
+            .filter { $0.transcriptID == transcript.id }
+            .sorted { $0.chunkIndex < $1.chunkIndex }
+        let decodedLines = try AIContentSyncCodec.decodeTranscript(
+            chunks: chunks.map(\.payloadJSON),
+            expectedLineCount: transcript.lineCount,
+            expectedContentHash: transcript.contentHash
+        )
+        XCTAssertEqual(decodedLines.map(\.text), ["A recoverable transcript line"])
+
+        let chapterSet = try XCTUnwrap(
+            try cache.fetch(FetchDescriptor<AIChapterSetSync>()).first
+        )
+        let decodedChapters = try AIContentSyncCodec.decodeChapters(
+            payloadJSON: chapterSet.payloadJSON,
+            expectedContentHash: chapterSet.contentHash
+        )
+        XCTAssertEqual(decodedChapters.first?.title, "AI chapter")
+        XCTAssertEqual(decodedChapters.first?.analysisVariantID, "media-revision")
     }
 
     @MainActor
@@ -444,8 +527,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         _ = await StoreSplitMigrationService.migrate(
             legacyContainer: containers.legacy,
             userStateContainer: containers.userState,
-            cacheContainer: containers.cache,
-            includeAIContent: false
+            cacheContainer: containers.cache
         )
         let secondPass = try destinationCounts(containers.userState)
 
@@ -466,8 +548,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         _ = await StoreSplitMigrationService.migrate(
             legacyContainer: containers.legacy,
             userStateContainer: containers.userState,
-            cacheContainer: containers.cache,
-            includeAIContent: false
+            cacheContainer: containers.cache
         )
 
         XCTAssertTrue(

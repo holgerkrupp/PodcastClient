@@ -290,14 +290,14 @@ enum StoreSplitAutomaticChecks {
         } catch {
             return failed("Authoritative reconciliation", error.localizedDescription)
         }
-        let passed = result.failed == 0 && stale?.isSubscribed == false
+        let passed = result.failed > 0 && stale?.isSubscribed == true
         return .init(
             id: "204",
-            title: "Authoritative reconciliation smoke check",
+            title: "Reconciliation safety check",
             status: passed ? .partial : .failed,
             details: passed
-                ? "The small in-memory stale-subscription case reconciled correctly. This does not verify bounded pages or checkpoint resume; the current reconciliation implementation still needs that refactor."
-                : "The synthetic destination-only subscription was not tombstoned."
+                ? "Unproven destination-only CloudKit state was preserved. Cleanup remains blocked until source lineage and CloudKit convergence are available."
+                : "The reconciliation safety gate did not preserve the synthetic destination-only subscription."
         )
     }
 
@@ -520,9 +520,8 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     let pendingReason: String?
     let phases: [StoreSplitMigrationPhaseStatus]
     let podcastCacheReadiness: StoreSplitFeedCacheReadiness?
-    /// AI content is checkpointed by the importer, but is intentionally kept
-    /// out of the slice progress denominator because it is not part of the
-    /// regular user-state slice engine.
+    /// AI payloads stay in PodcastCache and have independent bounded migration
+    /// phases so their progress is visible without mixing them into UserState.
     let supplementalPhases: [StoreSplitMigrationPhaseStatus]
 
     var fractionCompleted: Double {
@@ -555,10 +554,8 @@ enum StoreSplitMigrationDiagnostics {
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     }
-    /// Keep the readout in lockstep with the phases the automatic slice engine
-    /// actually runs. Queue entries are produced by `playlist_entries`, and AI
-    /// content is intentionally deferred to its own importer; showing either as
-    /// pending migration phases made a completed backfill look permanently stuck.
+    /// Keep the readout in lockstep with the bounded automatic slice engine.
+    /// Queue entries are produced by `playlist_entries`; AI stages are explicit.
     private static let phaseTitles: [String: String] = [
         StoreSplitMigrationService.Phase.subscriptions: "Subscribed podcasts",
         StoreSplitMigrationService.Phase.playlists: "Playlists",
@@ -567,13 +564,12 @@ enum StoreSplitMigrationDiagnostics {
         StoreSplitMigrationService.Phase.preferences: "Podcast preferences",
         StoreSplitMigrationService.Phase.episodeStates: "Playback state",
         StoreSplitMigrationService.Phase.listeningSummaries: "Listening statistics",
-        StoreSplitMigrationService.Phase.listeningHistory: "Listening history"
+        StoreSplitMigrationService.Phase.listeningHistory: "Listening history",
+        StoreSplitMigrationService.Phase.aiTranscripts: "AI transcripts",
+        StoreSplitMigrationService.Phase.aiChapters: "AI chapters"
     ]
 
-    private static let supplementalPhaseTitles: [String: String] = [
-        "ai_transcripts": "AI transcripts",
-        "ai_chapters": "AI chapters"
-    ]
+    private static let supplementalPhaseTitles: [String: String] = [:]
 
     private static var phases: [(id: String, title: String)] {
         StoreSplitMigrationService.slicePhaseOrder.compactMap { phase in

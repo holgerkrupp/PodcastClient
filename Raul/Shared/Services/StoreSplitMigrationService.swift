@@ -61,7 +61,7 @@ struct StoreSplitSliceReport: Sendable {
         case advanced
         /// The current phase finished; another phase may still be pending.
         case phaseCompleted
-        /// Every non-AI phase has completed.
+        /// Every required user-state and AI-cache phase has completed.
         case completed
         /// The slice was cancelled before doing work.
         case cancelled
@@ -207,10 +207,8 @@ actor StoreSplitMigrationService {
     private static let aiContentPageSize = 10
     private static let maximumFailedItemKeys = 100
 
-    /// Ordered, memory-prioritised list of non-AI phases. Subscriptions,
-    /// playlists/queue, bookmarks, and recent playback state come first; the
-    /// heavy listening-history phases come last. AI transcript/chapter migration
-    /// is intentionally excluded from the slice engine.
+    /// Ordered, memory-prioritised migration phases. Legacy AI content is copied
+    /// to the local-only cache in its own bounded stages after user-owned state.
     nonisolated static let slicePhaseOrder = [
         Phase.subscriptions,
         Phase.playlists,
@@ -219,7 +217,9 @@ actor StoreSplitMigrationService {
         Phase.preferences,
         Phase.episodeStates,
         Phase.listeningSummaries,
-        Phase.listeningHistory
+        Phase.listeningHistory,
+        Phase.aiTranscripts,
+        Phase.aiChapters
     ]
 
     enum Phase {
@@ -232,6 +232,8 @@ actor StoreSplitMigrationService {
         static let episodeStates = "episode_states"
         static let listeningSummaries = "listening_summaries"
         static let listeningHistory = "listening_history"
+        static let aiTranscripts = "ai_transcripts"
+        static let aiChapters = "ai_chapters"
     }
 
     /// The paging order of every sliced phase, in one place. `resolvedOffset`
@@ -245,8 +247,15 @@ actor StoreSplitMigrationService {
         ]
         static let playlistEntries = [SortDescriptor(\PlaylistEntry.order)]
         static let preferences = [SortDescriptor(\PodcastSettings.title)]
-        static let episodes = [SortDescriptor(\Episode.publishDate, order: .reverse)]
+        static let episodes = [
+            SortDescriptor(\Episode.publishDate, order: .reverse),
+            SortDescriptor(\Episode.guid)
+        ]
         static let playSessions = [SortDescriptor(\PlaySession.startTime)]
+        static let transcriptionRecords = [
+            SortDescriptor(\TranscriptionRecord.finishedAt),
+            SortDescriptor(\TranscriptionRecord.id)
+        ]
     }
 
     /// Where a phase resumes.
@@ -356,8 +365,8 @@ actor StoreSplitMigrationService {
     }
 
     /// Convenience whole-run used by tests and the development "run now" path.
-    /// Loops the slice engine to completion, then migrates AI content when
-    /// requested (the slice engine itself never touches AI content).
+    /// Loops the bounded slice engine to completion. AI content uses its own
+    /// cache-only phases and may be omitted only by explicit development calls.
     nonisolated static func migrate(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
@@ -433,7 +442,7 @@ actor StoreSplitMigrationService {
         let boundedShouldContinue: @Sendable () -> Bool = {
             shouldContinue() && ContinuousClock.now < deadline
         }
-        let outcome = processPage(
+        var outcome = processPage(
             phase: phase,
             offset: offset,
             legacyContext: legacyContext,
@@ -449,22 +458,14 @@ actor StoreSplitMigrationService {
             didRelocateFail: resolved.didRelocateFail
         )
         let saveStartedAt = Date()
-        Self.recordCheckpoint(
-            phase: phase,
-            result: combined,
-            cursor: nextCursor.encoded,
-            completed: outcome.reachedEnd,
-            error: outcome.error,
-            context: cacheContext
-        )
-
         var checkpointSaveCount = 1
+        var queueCheckpointSaved = true
         if phase == Phase.playlistEntries {
             let queueResume = Self.resumeProgress(
                 phase: Phase.queueEntries,
                 context: cacheContext
             )
-            Self.recordCheckpoint(
+            queueCheckpointSaved = Self.recordCheckpoint(
                 phase: Phase.queueEntries,
                 result: queueResume.result + outcome.queueDelta,
                 cursor: nextCursor.encoded,
@@ -472,6 +473,19 @@ actor StoreSplitMigrationService {
                 context: cacheContext
             )
             checkpointSaveCount += 1
+        }
+        let phaseCheckpointSaved = Self.recordCheckpoint(
+            phase: phase,
+            result: combined,
+            cursor: nextCursor.encoded,
+            completed: outcome.reachedEnd && queueCheckpointSaved,
+            error: outcome.error ?? (queueCheckpointSaved ? nil : "queue_checkpoint_save_failed"),
+            context: cacheContext
+        )
+        let allCheckpointsSaved = phaseCheckpointSaved && queueCheckpointSaved
+        if allCheckpointsSaved == false {
+            outcome.error = "checkpoint_save_failed"
+            outcome.reachedEnd = false
         }
         let saveDuration = Date().timeIntervalSince(saveStartedAt)
 
@@ -514,7 +528,8 @@ actor StoreSplitMigrationService {
         )
 
         var result = StoreSplitMigrationResult()
-        for phase in Self.slicePhaseOrder {
+        for phase in Self.slicePhaseOrder
+        where includeAIContent || (phase != Phase.aiTranscripts && phase != Phase.aiChapters) {
             guard Task.isCancelled == false else { return result }
             let phaseResult = processPhaseFully(phase)
             switch phase {
@@ -528,27 +543,11 @@ actor StoreSplitMigrationService {
             case Phase.episodeStates: result.episodeStates = phaseResult.primary
             case Phase.listeningSummaries: result.listeningSummaries = phaseResult.primary
             case Phase.listeningHistory: result.listeningHistory = phaseResult.primary
+            case Phase.aiTranscripts: result.aiTranscripts = phaseResult.primary
+            case Phase.aiChapters: result.aiChapters = phaseResult.primary
             default: break
             }
             await Task.yield()
-        }
-
-        if includeAIContent {
-            guard Task.isCancelled == false else { return result }
-            let cacheContext = Self.makeContext(for: cacheContainer)
-            let aiContentResults = Self.migrateAIContent(
-                legacyContainer: legacyContainer,
-                destinationContext: cacheContext
-            )
-            result.aiTranscripts = aiContentResults.transcripts
-            result.aiChapters = aiContentResults.chapters
-            Self.recordCheckpoint(phase: "ai_transcripts", result: result.aiTranscripts, context: cacheContext)
-            Self.recordCheckpoint(phase: "ai_chapters", result: result.aiChapters, context: cacheContext)
-        } else {
-            CrashBreadcrumbs.shared.record(
-                "store_split_ai_migration_deferred",
-                details: "reason=automatic_memory_safety"
-            )
         }
 
         let diagnosticsCache = Self.makeContext(for: cacheContainer)
@@ -585,7 +584,7 @@ actor StoreSplitMigrationService {
                 let userStateContext = Self.makeContext(for: userStateContainer)
                 let cacheContext = Self.makeContext(for: cacheContainer)
 
-                let outcome = processPage(
+                var outcome = processPage(
                     phase: phase,
                     offset: offset,
                     legacyContext: legacyContext,
@@ -601,22 +600,28 @@ actor StoreSplitMigrationService {
                 // short here resumes safely there.
                 let cursor = SliceCursor(offset: offset, boundaryKey: boundaryKey)
 
-                Self.recordCheckpoint(
-                    phase: phase,
-                    result: run.primary,
-                    cursor: cursor.encoded,
-                    completed: outcome.reachedEnd,
-                    error: outcome.error,
-                    context: cacheContext
-                )
+                var queueSaved = true
                 if phase == Phase.playlistEntries {
-                    Self.recordCheckpoint(
+                    queueSaved = Self.recordCheckpoint(
                         phase: Phase.queueEntries,
                         result: run.queue,
                         cursor: cursor.encoded,
                         completed: outcome.reachedEnd,
                         context: cacheContext
                     )
+                }
+                let phaseSaved = Self.recordCheckpoint(
+                    phase: phase,
+                    result: run.primary,
+                    cursor: cursor.encoded,
+                    completed: outcome.reachedEnd && queueSaved,
+                    error: outcome.error ?? (queueSaved ? nil : "queue_checkpoint_save_failed"),
+                    context: cacheContext
+                )
+                let checkpointsSaved = phaseSaved && queueSaved
+                if checkpointsSaved == false {
+                    outcome.error = "checkpoint_save_failed"
+                    outcome.reachedEnd = false
                 }
                 return outcome
             }
@@ -703,6 +708,20 @@ actor StoreSplitMigrationService {
                 offset: offset,
                 legacyContext: legacyContext,
                 destinationContext: userStateContext,
+                cacheContext: cacheContext,
+                shouldContinue: shouldContinue
+            )
+        case Phase.aiTranscripts:
+            return Self.processAITranscriptPage(
+                offset: offset,
+                legacyContext: legacyContext,
+                cacheContext: cacheContext,
+                shouldContinue: shouldContinue
+            )
+        case Phase.aiChapters:
+            return Self.processAIChapterPage(
+                offset: offset,
+                legacyContext: legacyContext,
                 cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
@@ -813,6 +832,18 @@ actor StoreSplitMigrationService {
                 FetchDescriptor<PlaySession>(sortBy: SourceOrder.playSessions),
                 boundaryKey: boundaryKey, offset: offset,
                 pageSize: listeningHistoryPageSize, context: legacyContext
+            )
+        case Phase.aiTranscripts:
+            return relocate(
+                FetchDescriptor<TranscriptionRecord>(sortBy: SourceOrder.transcriptionRecords),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: aiContentPageSize, context: legacyContext
+            )
+        case Phase.aiChapters:
+            return relocate(
+                FetchDescriptor<Episode>(sortBy: SourceOrder.episodes),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: aiContentPageSize, context: legacyContext
             )
         default:
             return offset
@@ -2038,216 +2069,251 @@ actor StoreSplitMigrationService {
         return outcome
     }
 
-    // MARK: - AI content (whole-run only; excluded from the slice engine)
+    // MARK: - AI content backfill
 
-    private static func migrateAIContent(
-        legacyContainer: ModelContainer,
-        destinationContext: ModelContext
-    ) -> (
-        transcripts: StoreSplitMigrationPhaseResult,
-        chapters: StoreSplitMigrationPhaseResult
-    ) {
-        var transcriptResult = StoreSplitMigrationPhaseResult()
-        var chapterResult = StoreSplitMigrationPhaseResult()
-        // The transcript phase keeps a single legacy context alive because
-        // `latestRecordByEpisodeURL` holds faulted `TranscriptionRecord` objects
-        // from it. The chapter phase below pages with a fresh context per page.
-        let legacyContext = Self.makeContext(for: legacyContainer)
-        let records = (try? legacyContext.fetch(FetchDescriptor<TranscriptionRecord>())) ?? []
-        let latestRecordByEpisodeURL = records.reduce(
-            into: [URL: TranscriptionRecord]()
-        ) { result, record in
-            guard let episodeURL = record.episodeURL else { return }
-            if let existing = result[episodeURL], existing.finishedAt >= record.finishedAt {
-                return
-            }
-            result[episodeURL] = record
+    private static func processAITranscriptPage(
+        offset: Int,
+        legacyContext: ModelContext,
+        cacheContext: ModelContext,
+        shouldContinue: @Sendable () -> Bool
+    ) -> PageOutcome {
+        var outcome = PageOutcome()
+        var descriptor = FetchDescriptor<TranscriptionRecord>(
+            sortBy: SourceOrder.transcriptionRecords
+        )
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = aiContentPageSize
+        let records: [TranscriptionRecord]
+        do {
+            records = try legacyContext.fetch(descriptor)
+        } catch {
+            outcome.error = error.localizedDescription
+            outcome.reachedEnd = false
+            return outcome
         }
-        var transcriptsByID = ((try? destinationContext.fetch(FetchDescriptor<AITranscriptSync>())) ?? [])
-            .reduce(into: [String: AITranscriptSync]()) { $0[$1.id] = $1 }
-        var chapterSetsByID = ((try? destinationContext.fetch(FetchDescriptor<AIChapterSetSync>())) ?? [])
-            .reduce(into: [String: AIChapterSetSync]()) { $0[$1.id] = $1 }
+
         let sourceDeviceID = ListeningDeviceIdentity.current().id
-
-        for (episodeURL, record) in latestRecordByEpisodeURL {
-            autoreleasepool {
-                transcriptResult.scanned += 1
-                let episodeDescriptor = FetchDescriptor<Episode>(
-                    predicate: #Predicate<Episode> { $0.url == episodeURL }
-                )
-                guard let episode = try? legacyContext.fetch(episodeDescriptor).first,
-                      let lines = episode.transcriptLines,
-                      lines.isEmpty == false else {
-                    transcriptResult.skipped += 1
-                    return
-                }
-
-                do {
-                    let identity = episode.stableEpisodeIdentity
-                    let values = lines.map {
-                        AITranscriptLineValue(
-                            speaker: $0.speaker,
-                            text: $0.text,
-                            startTime: $0.startTime,
-                            endTime: $0.endTime
-                        )
-                    }
-                    let encoded = try AIContentSyncCodec.encodeTranscript(values)
-
-                    for (index, payload) in encoded.chunks.enumerated() {
-                        let chunkID = StableIdentityKey.make(
-                            identity.key,
-                            encoded.revisionID,
-                            String(index)
-                        )
-                        let chunkDescriptor = FetchDescriptor<AITranscriptChunkSync>(
-                            predicate: #Predicate<AITranscriptChunkSync> { $0.id == chunkID }
-                        )
-                        if (try? destinationContext.fetch(chunkDescriptor).first) == nil {
-                            let chunk = AITranscriptChunkSync(
-                                transcriptID: identity.key,
-                                revisionID: encoded.revisionID,
-                                chunkIndex: index,
-                                payloadJSON: payload,
-                                contentHash: AIContentSyncCodec.sha256Hex(Data(payload.utf8)),
-                                updatedAt: record.finishedAt
-                            )
-                            destinationContext.insert(chunk)
-                        }
-                    }
-
-                    if let transcript = transcriptsByID[identity.key] {
-                        guard record.finishedAt > transcript.updatedAt else {
-                            transcriptResult.skipped += 1
-                            return
-                        }
-                        transcript.revisionID = encoded.revisionID
-                        transcript.localeIdentifier = record.localeIdentifier
-                        transcript.chunkCount = encoded.chunks.count
-                        transcript.lineCount = encoded.lineCount
-                        transcript.contentHash = encoded.contentHash
-                        transcript.generatedAt = record.finishedAt
-                        transcript.deletedAt = nil
-                        transcript.updatedAt = record.finishedAt
-                        transcript.sourceDeviceID = sourceDeviceID
-                        transcriptResult.updated += 1
-                    } else {
-                        let transcript = AITranscriptSync(
-                            feedURL: identity.feedURL,
-                            episodeID: identity.episodeID,
-                            revisionID: encoded.revisionID,
-                            localeIdentifier: record.localeIdentifier,
-                            chunkCount: encoded.chunks.count,
-                            lineCount: encoded.lineCount,
-                            contentHash: encoded.contentHash,
-                            generatedAt: record.finishedAt,
-                            deletedAt: nil,
-                            updatedAt: record.finishedAt,
-                            sourceDeviceID: sourceDeviceID
-                        )
-                        destinationContext.insert(transcript)
-                        transcriptsByID[identity.key] = transcript
-                        transcriptResult.inserted += 1
-                    }
-                } catch {
-                    transcriptResult.failed += 1
-                }
+        for record in records {
+            guard shouldContinue() else {
+                outcome.reachedEnd = false
+                break
             }
-        }
-        save(destinationContext, result: &transcriptResult)
-
-        var episodeOffset = 0
-        while true {
-            guard Task.isCancelled == false else { break }
-            // Fresh context per page so each batch of faulted episodes (and their
-            // chapter relationships) is released before the next page loads.
-            let reachedEnd = autoreleasepool { () -> Bool in
-                let pageContext = Self.makeContext(for: legacyContainer)
-                var descriptor = FetchDescriptor<Episode>(
-                    sortBy: [SortDescriptor(\Episode.publishDate)]
-                )
-                descriptor.fetchLimit = aiContentPageSize
-                descriptor.fetchOffset = episodeOffset
-                guard let episodes = try? pageContext.fetch(descriptor),
-                      episodes.isEmpty == false else {
-                    return true
-                }
-
-                for episode in episodes {
-                let aiChapters = (episode.chapters ?? []).filter { $0.type == .ai }
-                guard aiChapters.isEmpty == false else { continue }
-                chapterResult.scanned += 1
-
-                do {
-                    let identity = episode.stableEpisodeIdentity
-                    let values = aiChapters.compactMap { chapter -> AIChapterValue? in
-                        guard let start = chapter.start else { return nil }
-                        return AIChapterValue(
-                            title: chapter.title,
-                            startTime: start,
-                            duration: chapter.duration
-                        )
-                    }
-                    guard values.isEmpty == false else {
-                        chapterResult.skipped += 1
-                        continue
-                    }
-                    let encoded = try AIContentSyncCodec.encodeChapters(values)
-                    let generatedAt = aiChapters.compactMap(\.creationtime).max() ?? .distantPast
-
-                    if let chapterSet = chapterSetsByID[identity.key] {
-                        guard generatedAt > chapterSet.updatedAt else {
-                            chapterResult.skipped += 1
-                            continue
-                        }
-                        chapterSet.revisionID = encoded.hash
-                        chapterSet.payloadJSON = encoded.payload
-                        chapterSet.chapterCount = values.count
-                        chapterSet.contentHash = encoded.hash
-                        chapterSet.generatedAt = generatedAt
-                        chapterSet.updatedAt = generatedAt
-                        chapterSet.sourceDeviceID = sourceDeviceID
-                        chapterResult.updated += 1
-                    } else {
-                        let chapterSet = AIChapterSetSync(
-                            feedURL: identity.feedURL,
-                            episodeID: identity.episodeID,
-                            revisionID: encoded.hash,
-                            payloadJSON: encoded.payload,
-                            chapterCount: values.count,
-                            contentHash: encoded.hash,
-                            generatedAt: generatedAt,
-                            updatedAt: generatedAt,
-                            sourceDeviceID: sourceDeviceID
-                        )
-                        destinationContext.insert(chapterSet)
-                        chapterSetsByID[identity.key] = chapterSet
-                        chapterResult.inserted += 1
-                    }
-                } catch {
-                    chapterResult.failed += 1
-                }
-                }
-
-                save(destinationContext, result: &chapterResult)
-                episodeOffset += episodes.count
-                return episodes.count < aiContentPageSize
+            outcome.processed += 1
+            outcome.delta.scanned += 1
+            guard let episodeURL = record.episodeURL else {
+                outcome.delta.skipped += 1
+                continue
+            }
+            let episodeDescriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate { $0.url == episodeURL }
+            )
+            let episode: Episode?
+            do {
+                episode = try legacyContext.fetch(episodeDescriptor).first
+            } catch {
+                outcome.error = error.localizedDescription
+                outcome.reachedEnd = false
+                break
+            }
+            guard let episode,
+                  let lines = episode.transcriptLines,
+                  lines.isEmpty == false else {
+                outcome.delta.skipped += 1
+                continue
             }
 
-            if reachedEnd {
+            do {
+                let identity = episode.stableEpisodeIdentity
+                let values = lines.map {
+                    AITranscriptLineValue(
+                        speaker: $0.speaker,
+                        text: $0.text,
+                        startTime: $0.startTime,
+                        endTime: $0.endTime
+                    )
+                }
+                let encoded = try AIContentSyncCodec.encodeTranscript(values)
+                let identityKey = identity.key
+                let manifestDescriptor = FetchDescriptor<AITranscriptSync>(
+                    predicate: #Predicate { $0.id == identityKey }
+                )
+                let manifest = try cacheContext.fetch(manifestDescriptor).first
+                if let manifest, record.finishedAt <= manifest.updatedAt {
+                    outcome.delta.skipped += 1
+                    continue
+                }
+
+                for (index, payload) in encoded.chunks.enumerated() {
+                    let chunkID = StableIdentityKey.make(
+                        identity.key,
+                        encoded.revisionID,
+                        String(index)
+                    )
+                    let chunkDescriptor = FetchDescriptor<AITranscriptChunkSync>(
+                        predicate: #Predicate { $0.id == chunkID }
+                    )
+                    guard try cacheContext.fetch(chunkDescriptor).first == nil else { continue }
+                    cacheContext.insert(AITranscriptChunkSync(
+                        transcriptID: identity.key,
+                        revisionID: encoded.revisionID,
+                        chunkIndex: index,
+                        payloadJSON: payload,
+                        contentHash: AIContentSyncCodec.sha256Hex(Data(payload.utf8)),
+                        updatedAt: record.finishedAt
+                    ))
+                }
+
+                if let manifest {
+                    manifest.revisionID = encoded.revisionID
+                    manifest.localeIdentifier = record.localeIdentifier
+                    manifest.chunkCount = encoded.chunks.count
+                    manifest.lineCount = encoded.lineCount
+                    manifest.contentHash = encoded.contentHash
+                    manifest.generatedAt = record.finishedAt
+                    manifest.deletedAt = nil
+                    manifest.updatedAt = record.finishedAt
+                    manifest.sourceDeviceID = sourceDeviceID
+                    outcome.delta.updated += 1
+                } else {
+                    cacheContext.insert(AITranscriptSync(
+                        feedURL: identity.feedURL,
+                        episodeID: identity.episodeID,
+                        revisionID: encoded.revisionID,
+                        localeIdentifier: record.localeIdentifier,
+                        chunkCount: encoded.chunks.count,
+                        lineCount: encoded.lineCount,
+                        contentHash: encoded.contentHash,
+                        generatedAt: record.finishedAt,
+                        updatedAt: record.finishedAt,
+                        sourceDeviceID: sourceDeviceID
+                    ))
+                    outcome.delta.inserted += 1
+                }
+            } catch {
+                outcome.delta.failed += 1
+                outcome.error = error.localizedDescription
+                outcome.reachedEnd = false
                 break
             }
         }
 
-        save(destinationContext, result: &chapterResult)
-        return (transcriptResult, chapterResult)
+        guard save(cacheContext, result: &outcome.delta) else {
+            outcome.error = "ai_transcript_cache_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
+        outcome.boundaryKey = boundaryKey(of: records, processed: outcome.processed)
+        if outcome.reachedEnd {
+            outcome.reachedEnd = records.count < aiContentPageSize
+        }
+        return outcome
+    }
+
+    private static func processAIChapterPage(
+        offset: Int,
+        legacyContext: ModelContext,
+        cacheContext: ModelContext,
+        shouldContinue: @Sendable () -> Bool
+    ) -> PageOutcome {
+        var outcome = PageOutcome()
+        var descriptor = FetchDescriptor<Episode>(sortBy: SourceOrder.episodes)
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = aiContentPageSize
+        let episodes: [Episode]
+        do {
+            episodes = try legacyContext.fetch(descriptor)
+        } catch {
+            outcome.error = error.localizedDescription
+            outcome.reachedEnd = false
+            return outcome
+        }
+
+        let sourceDeviceID = ListeningDeviceIdentity.current().id
+        for episode in episodes {
+            guard shouldContinue() else {
+                outcome.reachedEnd = false
+                break
+            }
+            outcome.processed += 1
+            let chapters = (episode.chapters ?? []).filter { $0.type == .ai }
+            guard chapters.isEmpty == false else { continue }
+            outcome.delta.scanned += 1
+            do {
+                let identity = episode.stableEpisodeIdentity
+                let values = chapters.compactMap { chapter -> AIChapterValue? in
+                    guard let start = chapter.start else { return nil }
+                    return AIChapterValue(
+                        title: chapter.title,
+                        startTime: start,
+                        duration: chapter.duration,
+                        typeRawValue: chapter.type.rawValue,
+                        analysisVariantID: chapter.analysisVariantID
+                    )
+                }
+                guard values.isEmpty == false else {
+                    outcome.delta.skipped += 1
+                    continue
+                }
+                let encoded = try AIContentSyncCodec.encodeChapters(values)
+                let generatedAt = chapters.compactMap(\.creationtime).max() ?? .distantPast
+                let identityKey = identity.key
+                let manifestDescriptor = FetchDescriptor<AIChapterSetSync>(
+                    predicate: #Predicate { $0.id == identityKey }
+                )
+                let manifest = try cacheContext.fetch(manifestDescriptor).first
+                if let manifest, generatedAt <= manifest.updatedAt {
+                    outcome.delta.skipped += 1
+                    continue
+                }
+                if let manifest {
+                    manifest.revisionID = encoded.hash
+                    manifest.payloadJSON = encoded.payload
+                    manifest.chapterCount = values.count
+                    manifest.contentHash = encoded.hash
+                    manifest.generatedAt = generatedAt
+                    manifest.updatedAt = generatedAt
+                    manifest.sourceDeviceID = sourceDeviceID
+                    outcome.delta.updated += 1
+                } else {
+                    cacheContext.insert(AIChapterSetSync(
+                        feedURL: identity.feedURL,
+                        episodeID: identity.episodeID,
+                        revisionID: encoded.hash,
+                        payloadJSON: encoded.payload,
+                        chapterCount: values.count,
+                        contentHash: encoded.hash,
+                        generatedAt: generatedAt,
+                        updatedAt: generatedAt,
+                        sourceDeviceID: sourceDeviceID
+                    ))
+                    outcome.delta.inserted += 1
+                }
+            } catch {
+                outcome.delta.failed += 1
+                outcome.error = error.localizedDescription
+                outcome.reachedEnd = false
+                break
+            }
+        }
+
+        guard save(cacheContext, result: &outcome.delta) else {
+            outcome.error = "ai_chapter_cache_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
+        outcome.boundaryKey = boundaryKey(of: episodes, processed: outcome.processed)
+        if outcome.reachedEnd {
+            outcome.reachedEnd = episodes.count < aiContentPageSize
+        }
+        return outcome
     }
 
     // MARK: - Phase bookkeeping
 
-    /// Whether every non-AI phase has a completed checkpoint for this migration
-    /// version. Used by the rollout to decide when an existing user can switch to
-    /// reading from the split store.
+    /// Whether every required user-state and AI-cache phase has a completed
+    /// checkpoint for this migration version.
     nonisolated static func isSliceMigrationComplete(
         cacheContainer: ModelContainer
     ) -> Bool {
@@ -2258,9 +2324,10 @@ actor StoreSplitMigrationService {
     /// Records the no-source case explicitly. A fresh install has no legacy
     /// rows to page, but leaving eight checkpoints absent makes diagnostics say
     /// `0/8` forever and keeps a completed no-op indistinguishable from a stall.
+    @discardableResult
     nonisolated static func markMigrationCompleteWithoutSource(
         cacheContainer: ModelContainer
-    ) {
+    ) -> Bool {
         let context = makeContext(for: cacheContainer)
         for phase in slicePhaseOrder {
             let id = checkpointID(for: phase)
@@ -2268,8 +2335,17 @@ actor StoreSplitMigrationService {
                 predicate: #Predicate { $0.id == id }
             )
             descriptor.fetchLimit = 1
-            let checkpoint = (try? context.fetch(descriptor).first)
-                ?? StoreSplitMigrationCheckpoint(
+            let existing: StoreSplitMigrationCheckpoint?
+            do {
+                existing = try context.fetch(descriptor).first
+            } catch {
+                CrashBreadcrumbs.shared.record(
+                    "store_split_no_source_checkpoint_fetch_failed",
+                    details: "phase=\(phase),error=\(error.localizedDescription)"
+                )
+                return false
+            }
+            let checkpoint = existing ?? StoreSplitMigrationCheckpoint(
                     id: id,
                     migrationVersion: migrationVersion,
                     phase: phase,
@@ -2283,7 +2359,17 @@ actor StoreSplitMigrationService {
             checkpoint.completedAt = checkpoint.completedAt ?? .now
             checkpoint.updatedAt = .now
         }
-        try? context.save()
+        do {
+            try context.save()
+            return true
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_no_source_checkpoint_save_failed",
+                details: error.localizedDescription
+            )
+            return false
+        }
     }
 
     nonisolated static func isMigrationVerified(
@@ -2313,10 +2399,15 @@ actor StoreSplitMigrationService {
         )
     }
 
-    /// The first non-AI phase whose checkpoint has not completed, or `nil` when
+    /// The first required phase whose checkpoint has not completed, or `nil` when
     /// the whole slice migration is finished.
     private static func currentPhase(cache: ModelContext) -> String? {
-        let checkpoints = ((try? cache.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>())) ?? [])
+        // A failed read is not an empty ledger. Fail closed by keeping work
+        // pending so the scheduler can retry once the cache store is readable.
+        guard let fetched = try? cache.fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>()) else {
+            return slicePhaseOrder.first
+        }
+        let checkpoints = fetched
             .filter {
                 $0.migrationVersion == migrationVersion
                     && $0.id == checkpointID(for: $0.phase)
@@ -2414,6 +2505,7 @@ actor StoreSplitMigrationService {
         )
     }
 
+    @discardableResult
     private static func recordCheckpoint(
         phase: String,
         result: StoreSplitMigrationPhaseResult,
@@ -2421,13 +2513,22 @@ actor StoreSplitMigrationService {
         completed: Bool = true,
         error: String? = nil,
         context: ModelContext
-    ) {
+    ) -> Bool {
         let checkpointID = checkpointID(for: phase)
         let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
             predicate: #Predicate { $0.id == checkpointID }
         )
-        let checkpoint = (try? context.fetch(descriptor).first)
-            ?? StoreSplitMigrationCheckpoint(
+        let existing: StoreSplitMigrationCheckpoint?
+        do {
+            existing = try context.fetch(descriptor).first
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "store_split_checkpoint_fetch_failed",
+                details: "phase=\(phase),error=\(error.localizedDescription)"
+            )
+            return false
+        }
+        let checkpoint = existing ?? StoreSplitMigrationCheckpoint(
                 id: checkpointID,
                 migrationVersion: migrationVersion,
                 phase: phase,
@@ -2446,7 +2547,21 @@ actor StoreSplitMigrationService {
         checkpoint.failedCount = result.failed
         checkpoint.lastError = error
         checkpoint.updatedAt = .now
-        try? context.save()
+        do {
+            try context.save()
+            CrashBreadcrumbs.shared.record(
+                "store_split_checkpoint_saved",
+                details: "phase=\(phase),complete=\(completed)"
+            )
+            return true
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_checkpoint_save_failed",
+                details: "phase=\(phase),error=\(error.localizedDescription)"
+            )
+            return false
+        }
     }
 
     private static func resumeProgress(
@@ -2551,449 +2666,22 @@ struct StoreSplitAuthoritativeReconciliationResult: Sendable, Equatable {
     }
 }
 
-actor StoreSplitAuthoritativeReconciliationService {
-    private let legacyContainer: ModelContainer
-    private let userStateContainer: ModelContainer
-
-    private struct SourceSnapshot {
-        var subscriptions: [String: Bool] = [:]
-        var playlistIDs = Set<String>()
-        var playlistEntryIDs = Set<String>()
-        var queueEntryIDs = Set<String>()
-        var bookmarkIDs = Set<String>()
-        var preferenceIDs = Set<String>()
-        var episodeStateIDs = Set<String>()
-    }
-
-    private init(
-        legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer
-    ) {
-        self.legacyContainer = legacyContainer
-        self.userStateContainer = userStateContainer
-    }
-
+enum StoreSplitAuthoritativeReconciliationService {
     nonisolated static func reconcile(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer
     ) async -> StoreSplitAuthoritativeReconciliationResult {
-        let service = StoreSplitAuthoritativeReconciliationService(
-            legacyContainer: legacyContainer,
-            userStateContainer: userStateContainer
-        )
-        return await service.run()
-    }
-
-    private func run() async -> StoreSplitAuthoritativeReconciliationResult {
-        let legacyContext = ModelContext(legacyContainer)
-        let source = makeSourceSnapshot(from: legacyContext)
-        let now = Date()
+        // Destination-only CloudKit rows cannot be assumed stale merely because
+        // the current device's legacy snapshot lacks them. Until source lineage,
+        // CloudKit convergence and timestamp/tombstone authority are recorded,
+        // reconciliation is intentionally a non-destructive blocked stage.
         var result = StoreSplitAuthoritativeReconciliationResult()
-
-        // The original repair only removed destination-only rows. Re-publish
-        // every current source record first so a partially completed or older
-        // migration also repairs destination-only gaps before cleanup runs.
-        let republished = await republishSourceState(from: legacyContext, at: now)
-        result.subscriptionsRepublished = republished.subscriptions
-        result.episodeStatesRepublished = republished.episodeStates
-        result.preferencesRepublished = republished.preferences
-        result.failed += republished.failed
-        if let error = republished.error {
-            result.error = error
-        }
-
-        let playlistWriter = StoreSplitPlaylistSyncWriter(
-            modelContainer: userStateContainer
+        result.failed = 1
+        result.error = "Destination-only records preserved: authoritative lineage and CloudKit convergence are not proven"
+        CrashBreadcrumbs.shared.record(
+            "store_split_reconciliation_preserved_destination_only",
+            details: "reason=authority_evidence_unavailable"
         )
-        var playlistSnapshots: [StoreSplitPlaylistSnapshot] = []
-        for playlist in sourcePlaylists(from: legacyContext) {
-            if let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
-                playlistID: playlist.id,
-                in: legacyContext
-            ) {
-                playlistSnapshots.append(snapshot)
-            }
-        }
-        for snapshot in playlistSnapshots {
-            await playlistWriter.upsert(
-                snapshot,
-                at: now,
-                authoritative: true
-            )
-        }
-
-        let bookmarkWriter = StoreSplitBookmarkSyncWriter(
-            modelContainer: userStateContainer
-        )
-        for bookmark in sourceBookmarks(from: legacyContext) {
-            guard let episode = bookmark.bookmarkEpisode,
-                  episode.podcast?.feed != nil else { continue }
-            let bookmarkID = bookmarkID(for: bookmark, episode: episode)
-            await bookmarkWriter.upsert(
-                StoreSplitBookmarkSnapshot(
-                    id: bookmarkID,
-                    identity: episode.stableEpisodeIdentity,
-                    time: bookmark.start ?? 0,
-                    title: bookmark.title,
-                    createdAt: bookmark.creationtime ?? now
-                ),
-                at: now
-            )
-        }
-
-        let context = ModelContext(userStateContainer)
-        reconcileSubscriptions(
-            source: source,
-            context: context,
-            now: now,
-            result: &result
-        )
-        reconcilePlaylists(
-            source: source,
-            context: context,
-            now: now,
-            result: &result
-        )
-        reconcileBookmarks(
-            source: source,
-            context: context,
-            now: now,
-            result: &result
-        )
-        deleteDestinationOnlyPreferences(
-            source: source,
-            context: context,
-            result: &result
-        )
-        deleteDestinationOnlyEpisodeStates(
-            source: source,
-            context: context,
-            result: &result
-        )
-        result.listeningHistoryPreserved =
-            (try? context.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
-
-        guard context.hasChanges else { return result }
-        do {
-            try context.save()
-        } catch {
-            context.rollback()
-            result.failed += 1
-            result.error = error.localizedDescription
-            CrashBreadcrumbs.shared.record(
-                "store_split_authoritative_reconciliation_failed",
-                details: error.localizedDescription
-            )
-        }
         return result
-    }
-
-    private func republishSourceState(
-        from context: ModelContext,
-        at date: Date
-    ) async -> (
-        subscriptions: Int,
-        episodeStates: Int,
-        preferences: Int,
-        failed: Int,
-        error: String?
-    ) {
-        var subscriptions = 0
-        var failed = 0
-        var firstError: String?
-        let subscriptionWriter = StoreSplitSubscriptionSyncWriter(
-            modelContainer: userStateContainer
-        )
-        for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
-            guard let feed = podcast.feed else { continue }
-            do {
-                try await subscriptionWriter.setSubscribed(
-                    feedURL: feed,
-                    isSubscribed: podcast.metaData?.isSubscribed != false,
-                    accessProfile: storedPodcastAccessProfile(for: podcast),
-                    at: date
-                )
-                subscriptions += 1
-            } catch {
-                failed += 1
-                firstError = firstError ?? error.localizedDescription
-                CrashBreadcrumbs.shared.record(
-                    "store_split_subscription_republish_failed",
-                    details: error.localizedDescription
-                )
-            }
-        }
-
-        let episodeStateSnapshots = ((try? context.fetch(
-            FetchDescriptor<Episode>()
-        )) ?? []).compactMap { episode -> StoreSplitEpisodeStateSnapshot? in
-            guard let metadata = episode.metaData,
-                  episode.podcast?.feed != nil else { return nil }
-            let isPlayed = metadata.isHistory == true
-                || metadata.status == .history
-                || metadata.completionDate != nil
-            let isArchived = metadata.isArchived == true
-                || metadata.status == .archived
-            let snapshot = StoreSplitEpisodeStateSnapshot(
-                identity: episode.stableEpisodeIdentity,
-                playPosition: max(0, metadata.playPosition ?? 0),
-                maxPlayPosition: max(
-                    0,
-                    metadata.maxPlayposition ?? 0,
-                    metadata.playPosition ?? 0
-                ),
-                duration: episode.duration,
-                isPlayed: isPlayed,
-                isArchived: isArchived,
-                wasSkipped: metadata.wasSkipped,
-                completedAt: metadata.completionDate,
-                archivedAt: metadata.archivedAt,
-                firstPlayedAt: metadata.firstListenDate,
-                lastPlayedAt: metadata.lastPlayed
-            )
-            guard snapshot.playPosition > 0
-                || snapshot.maxPlayPosition > 0
-                || snapshot.isPlayed
-                || snapshot.isArchived
-                || snapshot.wasSkipped
-                || snapshot.completedAt != nil
-                || snapshot.archivedAt != nil
-                || snapshot.firstPlayedAt != nil
-                || snapshot.lastPlayedAt != nil else {
-                return nil
-            }
-            return snapshot
-        }
-        if episodeStateSnapshots.isEmpty == false {
-            await StoreSplitEpisodeStateSyncWriter(
-                modelContainer: userStateContainer
-            ).upsert(episodeStateSnapshots, at: date)
-        }
-
-        var preferences = 0
-        let preferenceWriter = StoreSplitPreferenceSyncWriter(
-            modelContainer: userStateContainer
-        )
-        for settings in (try? context.fetch(FetchDescriptor<PodcastSettings>())) ?? [] {
-            await preferenceWriter.upsert(
-                PortablePodcastPreferenceSnapshot.make(
-                    settings: settings,
-                    feedURL: settings.podcast?.feed
-                ),
-                at: date
-            )
-            preferences += 1
-        }
-        return (
-            subscriptions,
-            episodeStateSnapshots.count,
-            preferences,
-            failed,
-            firstError
-        )
-    }
-
-    private func makeSourceSnapshot(from context: ModelContext) -> SourceSnapshot {
-        var snapshot = SourceSnapshot()
-        for podcast in (try? context.fetch(FetchDescriptor<Podcast>())) ?? [] {
-            guard let feed = podcast.feed else { continue }
-            let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
-            snapshot.subscriptions[feedKey] = podcast.metaData?.isSubscribed != false
-        }
-
-        for settings in (try? context.fetch(FetchDescriptor<PodcastSettings>())) ?? [] {
-            let feedKey = settings.podcast?.feed.map(
-                PodcastFeedIdentity.normalizedFeedURLString
-            )
-            snapshot.preferenceIDs.insert(
-                feedKey.map { StableIdentityKey.make("feed", $0) }
-                    ?? StableIdentityKey.make("global")
-            )
-        }
-
-        for playlist in sourcePlaylists(from: context) {
-            let playlistID = playlist.storeSplitSyncID
-            snapshot.playlistIDs.insert(playlistID)
-            for entry in playlist.ordered {
-                guard let episode = entry.episode,
-                      episode.podcast?.feed != nil else { continue }
-                let identity = episode.stableEpisodeIdentity
-                snapshot.playlistEntryIDs.insert(
-                    StableIdentityKey.make(
-                        playlistID,
-                        identity.feedURL,
-                        identity.episodeID
-                    )
-                )
-                if playlist.title == Playlist.defaultQueueTitle {
-                    snapshot.queueEntryIDs.insert(identity.key)
-                }
-            }
-        }
-
-        for bookmark in sourceBookmarks(from: context) {
-            guard let episode = bookmark.bookmarkEpisode,
-                  episode.podcast?.feed != nil else { continue }
-            snapshot.bookmarkIDs.insert(bookmarkID(for: bookmark, episode: episode))
-        }
-
-        for episode in (try? context.fetch(FetchDescriptor<Episode>())) ?? [] {
-            guard let metadata = episode.metaData,
-                  episode.podcast?.feed != nil,
-                  hasMeaningfulState(metadata) else { continue }
-            snapshot.episodeStateIDs.insert(episode.stableEpisodeIdentity.key)
-        }
-        return snapshot
-    }
-
-    private func sourcePlaylists(
-        from context: ModelContext
-    ) -> [Playlist] {
-        (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
-    }
-
-    private func sourceBookmarks(
-        from context: ModelContext
-    ) -> [Bookmark] {
-        (try? context.fetch(FetchDescriptor<Bookmark>())) ?? []
-    }
-
-    private func bookmarkID(
-        for bookmark: Bookmark,
-        episode: Episode
-    ) -> String {
-        bookmark.uuid?.uuidString ?? StableIdentityKey.make(
-            "legacy-bookmark",
-            episode.stableEpisodeIdentity.key,
-            String(bookmark.start ?? 0),
-            bookmark.title,
-            String((bookmark.creationtime ?? .distantPast).timeIntervalSince1970)
-        )
-    }
-
-    private func reconcileSubscriptions(
-        source: SourceSnapshot,
-        context: ModelContext,
-        now: Date,
-        result: inout StoreSplitAuthoritativeReconciliationResult
-    ) {
-        let records = (try? context.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
-        for record in records {
-            let feedKey = URL(string: record.feedURL)
-                .map(PodcastFeedIdentity.normalizedFeedURLString)
-                ?? record.feedURL
-            guard let isSubscribed = source.subscriptions[feedKey] else {
-                guard record.isSubscribed else { continue }
-                record.isSubscribed = false
-                record.unsubscribedAt = now
-                record.updatedAt = now
-                record.sourceDeviceID = ListeningDeviceIdentity.current().id
-                result.subscriptionsTombstoned += 1
-                continue
-            }
-            let needsRepair = record.isSubscribed != isSubscribed
-                || (isSubscribed && record.unsubscribedAt != nil)
-                || (isSubscribed == false && record.unsubscribedAt == nil)
-            guard needsRepair else { continue }
-            record.isSubscribed = isSubscribed
-            record.unsubscribedAt = isSubscribed ? nil : now
-            if isSubscribed { record.subscribedAt = now }
-            record.updatedAt = now
-            record.sourceDeviceID = ListeningDeviceIdentity.current().id
-            result.subscriptionsTombstoned += 1
-        }
-    }
-
-    private func reconcilePlaylists(
-        source: SourceSnapshot,
-        context: ModelContext,
-        now: Date,
-        result: inout StoreSplitAuthoritativeReconciliationResult
-    ) {
-        let playlists = (try? context.fetch(FetchDescriptor<PlaylistSync>())) ?? []
-        for playlist in playlists where source.playlistIDs.contains(playlist.id) == false {
-            guard playlist.isDeleted == false else { continue }
-            playlist.isDeleted = true
-            playlist.deletedAt = now
-            playlist.updatedAt = now
-            playlist.sourceDeviceID = ListeningDeviceIdentity.current().id
-            result.playlistsTombstoned += 1
-        }
-
-        let entries = (try? context.fetch(FetchDescriptor<PlaylistEntrySync>())) ?? []
-        for entry in entries where source.playlistEntryIDs.contains(entry.id) == false {
-            guard entry.isDeleted == false else { continue }
-            entry.isDeleted = true
-            entry.deletedAt = now
-            entry.updatedAt = now
-            entry.sourceDeviceID = ListeningDeviceIdentity.current().id
-            result.playlistEntriesTombstoned += 1
-        }
-
-        let queueEntries = (try? context.fetch(FetchDescriptor<QueueEntrySync>())) ?? []
-        for entry in queueEntries where source.queueEntryIDs.contains(entry.id) == false {
-            guard entry.isDeleted == false else { continue }
-            entry.isDeleted = true
-            entry.deletedAt = now
-            entry.updatedAt = now
-            entry.sourceDeviceID = ListeningDeviceIdentity.current().id
-            result.queueEntriesTombstoned += 1
-        }
-    }
-
-    private func reconcileBookmarks(
-        source: SourceSnapshot,
-        context: ModelContext,
-        now: Date,
-        result: inout StoreSplitAuthoritativeReconciliationResult
-    ) {
-        let bookmarks = (try? context.fetch(FetchDescriptor<BookmarkSync>())) ?? []
-        for bookmark in bookmarks where source.bookmarkIDs.contains(bookmark.id) == false {
-            guard bookmark.isDeleted == false else { continue }
-            bookmark.isDeleted = true
-            bookmark.deletedAt = now
-            bookmark.updatedAt = now
-            bookmark.sourceDeviceID = ListeningDeviceIdentity.current().id
-            result.bookmarksTombstoned += 1
-        }
-    }
-
-    private func deleteDestinationOnlyPreferences(
-        source: SourceSnapshot,
-        context: ModelContext,
-        result: inout StoreSplitAuthoritativeReconciliationResult
-    ) {
-        let preferences = (try? context.fetch(FetchDescriptor<PodcastPreferenceSync>())) ?? []
-        for preference in preferences where source.preferenceIDs.contains(preference.id) == false {
-            context.delete(preference)
-            result.preferencesDeleted += 1
-        }
-    }
-
-    private func deleteDestinationOnlyEpisodeStates(
-        source: SourceSnapshot,
-        context: ModelContext,
-        result: inout StoreSplitAuthoritativeReconciliationResult
-    ) {
-        let states = (try? context.fetch(FetchDescriptor<EpisodeStateSync>())) ?? []
-        for state in states where source.episodeStateIDs.contains(state.id) == false {
-            context.delete(state)
-            result.episodeStatesDeleted += 1
-        }
-    }
-
-    private func hasMeaningfulState(_ metadata: EpisodeMetaData) -> Bool {
-        let isPlayed = metadata.isHistory == true
-            || metadata.status == .history
-            || metadata.completionDate != nil
-        let isArchived = metadata.isArchived == true
-            || metadata.status == .archived
-        return (metadata.playPosition ?? 0) > 0
-            || (metadata.maxPlayposition ?? 0) > 0
-            || isPlayed
-            || isArchived
-            || metadata.wasSkipped
-            || metadata.firstListenDate != nil
-            || metadata.lastPlayed != nil
     }
 }
