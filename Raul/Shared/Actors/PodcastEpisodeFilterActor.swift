@@ -36,12 +36,19 @@ struct PodcastEpisodeFilterRequest: Sendable {
     let sort: PodcastEpisodeListSort
 }
 
+struct PodcastEpisodeFilterResult: Sendable {
+    let episodeIDs: [PersistentIdentifier]
+    /// Kept in the same order as `episodeIDs` so the UI can resolve a visible
+    /// page with one URL membership fetch and restore the actor's sort order.
+    let episodeURLs: [URL?]
+}
+
 @ModelActor
 actor PodcastEpisodeFilterActor {
     func episodeIDs(
         podcastID: PersistentIdentifier,
         request: PodcastEpisodeFilterRequest
-    ) throws -> [PersistentIdentifier] {
+    ) throws -> PodcastEpisodeFilterResult {
         // Resolve the parent in this actor's context. Keep the relationship's
         // PersistentIdentifier comparison out of Core Data's SQL generator.
         let parentFetchID = PodcastDetailFetchSignposts.begin("Podcast detail parent lookup")
@@ -59,7 +66,7 @@ actor PodcastEpisodeFilterActor {
         }
         let podcast = try modelContext.fetch(podcastDescriptor).first
         parentCount = podcast == nil ? 0 : 1
-        guard let podcast else { return [] }
+        guard let podcast else { return PodcastEpisodeFilterResult(episodeIDs: [], episodeURLs: []) }
         let episodesForFeed: [Episode]
         let episodeFetchID = PodcastDetailFetchSignposts.begin("Podcast detail episode feed fetch")
         var episodeCount = -1
@@ -134,7 +141,25 @@ actor PodcastEpisodeFilterActor {
             }
         }
 
-        return episodes.map(\.persistentModelID)
+        return PodcastEpisodeFilterResult(
+            episodeIDs: episodes.map(\.persistentModelID),
+            episodeURLs: episodes.map(\.url)
+        )
+    }
+
+    func hasEpisodes(podcastID: PersistentIdentifier) throws -> Bool {
+        var podcastDescriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
+        )
+        podcastDescriptor.fetchLimit = 1
+        guard let feed = try modelContext.fetch(podcastDescriptor).first?.feed else {
+            return false
+        }
+        var descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
+        )
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).isEmpty == false
     }
 
     /// Queries transcript rows directly rather than faulting

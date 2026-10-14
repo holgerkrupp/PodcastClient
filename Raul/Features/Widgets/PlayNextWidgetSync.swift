@@ -42,6 +42,10 @@ struct WidgetPlaybackSnapshot: Codable, Equatable, Sendable {
     let title: String?
     let podcastTitle: String?
     let coverFileName: String?
+    let skipBackSymbol: String?
+    let skipForwardSymbol: String?
+    let skipBackSeconds: Int?
+    let skipForwardSeconds: Int?
 
     func hasSamePlaybackContent(as other: WidgetPlaybackSnapshot) -> Bool {
         episodeID == other.episodeID &&
@@ -51,7 +55,11 @@ struct WidgetPlaybackSnapshot: Codable, Equatable, Sendable {
         playbackRate == other.playbackRate &&
         title == other.title &&
         podcastTitle == other.podcastTitle &&
-        coverFileName == other.coverFileName
+        coverFileName == other.coverFileName &&
+        skipBackSymbol == other.skipBackSymbol &&
+        skipForwardSymbol == other.skipForwardSymbol &&
+        skipBackSeconds == other.skipBackSeconds &&
+        skipForwardSeconds == other.skipForwardSeconds
     }
 
     var playbackProgress: Double? {
@@ -213,7 +221,11 @@ enum PlayNextWidgetSync {
             playbackRate: finitePositive(Double(player.playbackRate)),
             title: episode?.title,
             podcastTitle: episode?.podcast?.title,
-            coverFileName: coverFileName
+            coverFileName: coverFileName,
+            skipBackSymbol: player.skipBackStep.triangleBackString,
+            skipForwardSymbol: player.skipForwardStep.triangleForwardString,
+            skipBackSeconds: player.skipBackStep.rawValue,
+            skipForwardSeconds: player.skipForwardStep.rawValue
         )
         await playbackSnapshotWriter.write(
             snapshot,

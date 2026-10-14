@@ -78,13 +78,12 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
         let ids = try await filter.episodeIDs(
             podcastID: podcastID, request: request
         )
-        XCTAssertEqual(Set(ids), expectedIDs)
+        XCTAssertEqual(Set(ids.episodeIDs), expectedIDs)
         // Exercise the destination's second-stage visible-model resolution
-        // against a reopened SQLite store. It must issue bounded scalar-ID
-        // fetches instead of one dynamically-sized PersistentIdentifier IN
-        // predicate, and deleted rows should simply be omitted.
-        let resolvedEpisodes: [PersistentIdentifier: Episode] = reader.existingModels(for: ids)
-        XCTAssertEqual(Set(resolvedEpisodes.keys), expectedIDs)
+        // against a reopened SQLite store with one safe URL-membership query.
+        let resolvedEpisodes = reader.episodes(forURLs: ids.episodeURLs.compactMap { $0 })
+        let resolvedIDs = Set(resolvedEpisodes.map(\.persistentModelID))
+        XCTAssertEqual(resolvedIDs, expectedIDs)
         XCTAssertEqual(resolvedEpisodes.count, 60)
         let emptyID = try XCTUnwrap(podcasts.first {
             $0.feed == URL(string: "https://example.com/empty.xml")
@@ -94,8 +93,8 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
         }).persistentModelID
         let emptyIDs = try await filter.episodeIDs(podcastID: emptyID, request: request)
         let singleIDs = try await filter.episodeIDs(podcastID: singleID, request: request)
-        XCTAssertTrue(emptyIDs.isEmpty)
-        XCTAssertEqual(singleIDs.count, 1)
+        XCTAssertTrue(emptyIDs.episodeIDs.isEmpty)
+        XCTAssertEqual(singleIDs.episodeIDs.count, 1)
         XCTAssertNotNil(PodcastReleasePredictor.prediction(
             for: selectedAfterReopen, after: Date(), allowRelationshipFallback: false
         ))
@@ -147,7 +146,82 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             request: request
         )
 
-        XCTAssertEqual(matches, [episode.persistentModelID])
+        XCTAssertEqual(matches.episodeIDs, [episode.persistentModelID])
+    }
+
+    /// Run this regression on a physical iPhone as well as in CI. It covers
+    /// empty and large podcast histories, verifies that one visible page is
+    /// resolved in a single batched fetch, and exercises the no-transcript
+    /// availability path without walking episodes one at a time.
+    func testPodcastDetailLargeLibrariesUseOneVisiblePageFetchWithoutTranscripts() async throws {
+        let container = try ModelContainer(
+            for: Podcast.self,
+            PodcastMetaData.self,
+            Episode.self,
+            EpisodeMetaData.self,
+            TranscriptLineAndTime.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        var podcasts: [(PersistentIdentifier, String, Int)] = []
+        for count in [0, 100, 1_000, 10_000] {
+            let podcastContext = ModelContext(container)
+            let podcast = Podcast(feed: URL(string: "https://example.com/library-\(count).xml")!)
+            podcastContext.insert(podcast)
+            try podcastContext.save()
+            let podcastID = podcast.persistentModelID
+            let podcastIdentity = podcast.stablePodcastIdentityKey
+            podcasts.append((podcastID, podcastIdentity, count))
+
+            let feedURL = podcast.feed!
+            for lowerBound in stride(from: 0, to: count, by: 500) {
+                let context = ModelContext(container)
+                var descriptor = FetchDescriptor<Podcast>(
+                    predicate: #Predicate<Podcast> { $0.feed == feedURL }
+                )
+                descriptor.fetchLimit = 1
+                guard let storedPodcast = try context.fetch(descriptor).first else {
+                    XCTFail("Podcast fixture disappeared for count=\(count)")
+                    continue
+                }
+                for index in lowerBound..<min(lowerBound + 500, count) {
+                    context.insert(Episode(
+                        title: "Episode \(index)",
+                        publishDate: Date(timeIntervalSince1970: TimeInterval(index)),
+                        url: URL(string: "https://example.com/library-\(count)/episode-\(index).mp3")!,
+                        podcast: storedPodcast
+                    ))
+                }
+                try context.save()
+            }
+        }
+
+        let reader = ModelContext(container)
+        let actor = PodcastEpisodeFilterActor(modelContainer: container)
+        let transcriptSearch = TranscriptSearchActor(modelContainer: container)
+        let request = PodcastEpisodeFilterRequest(
+            query: "", searchInTitle: true, searchInAuthor: false,
+            searchInDescription: false, searchInTranscript: true,
+            hidePlayedAndArchived: false, sort: .newestFirst
+        )
+
+        for (podcastID, podcastIdentity, expectedCount) in podcasts {
+            let result = try await actor.episodeIDs(
+                podcastID: podcastID,
+                request: request
+            )
+            XCTAssertEqual(result.episodeIDs.count, expectedCount, "count=\(expectedCount)")
+            XCTAssertEqual(result.episodeURLs.count, expectedCount, "count=\(expectedCount)")
+            let hasEpisodes = try await actor.hasEpisodes(podcastID: podcastID)
+            XCTAssertEqual(hasEpisodes, expectedCount > 0)
+            let hasTranscripts = try await transcriptSearch.hasSearchableTranscripts(
+                in: .podcast(podcastIdentity)
+            )
+            XCTAssertFalse(hasTranscripts, "count=\(expectedCount): fixture intentionally has no transcripts")
+
+            let firstPageURLs = Array(result.episodeURLs.prefix(80).compactMap { $0 })
+            let firstPage = reader.episodes(forURLs: firstPageURLs)
+            XCTAssertEqual(firstPage.count, min(expectedCount, 80), "count=\(expectedCount)")
+        }
     }
 }
 

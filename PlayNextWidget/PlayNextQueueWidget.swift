@@ -52,9 +52,13 @@ struct QueueTimelineEntry: TimelineEntry {
 }
 
 private struct QueuePlaybackState: Decodable {
+    let episodeID: String?
     let isPlaying: Bool
     let positionSeconds: Double?
     let durationSeconds: Double?
+    let title: String?
+    let podcastTitle: String?
+    let coverFileName: String?
 
     var progress: Double? {
         guard let positionSeconds, let durationSeconds,
@@ -193,6 +197,12 @@ struct QueueProvider: AppIntentTimelineProvider {
         var snapshot = selectedSnapshot
             ?? legacySnapshot
             ?? .empty
+        if selectedPlaylist.isDefault,
+           snapshot.items.isEmpty,
+           let legacySnapshot,
+           legacySnapshot.items.isEmpty == false {
+            snapshot = legacySnapshot
+        }
         var statusMessage: String?
         if selectedSnapshot == nil, legacySnapshot == nil {
             statusMessage = catalog == nil
@@ -213,6 +223,28 @@ struct QueueProvider: AppIntentTimelineProvider {
         }
 
         let playbackState = Self.loadPlaybackState()
+        if snapshot.items.isEmpty,
+           (selectedPlaylist.isDefault || requestedPlaylistID == Self.currentPlaylistOptionID),
+           let title = playbackState?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           title.isEmpty == false {
+            let currentEpisode = QueueSnapshot.Item(
+                id: playbackState?.episodeID ?? "private-current-episode",
+                title: title,
+                subtitle: nil,
+                podcast: playbackState?.podcastTitle,
+                coverURL: nil,
+                coverFileName: playbackState?.coverFileName,
+                isCurrent: true,
+                progress: playbackState?.progress
+            )
+            snapshot = QueueSnapshot(
+                generatedAt: .now,
+                totalItemCount: 1,
+                currentIndex: 0,
+                items: [currentEpisode]
+            )
+            statusMessage = nil
+        }
         return QueueTimelineEntry(
             date: .now,
             snapshot: snapshot,
@@ -380,15 +412,21 @@ private struct PlayNextQueueWidgetView: View {
     }
 
     private var smallQueueView: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            widgetHeader.padding(.horizontal, 12).padding(.top, 10)
-            if let featuredItem {
-                QueueFeature(item: featuredItem, playlistID: entry.playlistID, compact: true, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+        VStack(alignment: .leading, spacing: 5) {
+            widgetHeader
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            let items = Array(playlistItems.prefix(3))
+            if items.isEmpty == false {
+                ForEach(items) { item in
+                    QueueCompactLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                        .padding(.horizontal, 12)
+                }
             } else {
                 emptyState.padding(12)
             }
+            Spacer(minLength: 0)
+                .frame(height: 4)
         }
     }
 
@@ -406,12 +444,12 @@ private struct PlayNextQueueWidgetView: View {
             }
             if let mediumFeaturedItem {
                 VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(entry.snapshot.upcomingItems.filter { $0.id != mediumFeaturedItem.id }.prefix(2))) { item in
-                        QueueLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                    ForEach(Array(playlistItems.filter { $0.id != mediumFeaturedItem.id }.prefix(3))) { item in
+                        QueueCompactLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
                     }
                     Spacer(minLength: 0)
                 }
-                .padding(.top, 18)
+                .padding(.top, 14)
                 .padding(.trailing, 14)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -422,10 +460,10 @@ private struct PlayNextQueueWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             widgetHeader.padding(.horizontal, 16).padding(.top, 12)
             if let largeFeaturedItem {
-                QueueFeature(item: largeFeaturedItem, playlistID: entry.playlistID, compact: false, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                QueueFeature(item: largeFeaturedItem, playlistID: entry.playlistID, compact: true, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
                     .padding(.horizontal, 16)
-                ForEach(Array(entry.snapshot.upcomingItems.filter { $0.id != largeFeaturedItem.id }.prefix(3))) { item in
-                    QueueLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
+                ForEach(Array(playlistItems.filter { $0.id != largeFeaturedItem.id }.prefix(5))) { item in
+                    QueueCompactLine(item: item, playlistID: entry.playlistID, isPlaying: entry.isPlaying, playbackProgress: entry.playbackProgress)
                         .padding(.horizontal, 16)
                 }
             } else {
@@ -434,6 +472,10 @@ private struct PlayNextQueueWidgetView: View {
             Spacer(minLength: 0)
         }
         .padding(.bottom, 12)
+    }
+
+    private var playlistItems: [QueueSnapshot.Item] {
+        ([entry.snapshot.currentItem].compactMap { $0 } + entry.snapshot.upcomingItems)
     }
 
     private var featuredItem: QueueSnapshot.Item? {
@@ -502,7 +544,6 @@ private struct PlayNextQueueWidgetView: View {
                     .lineLimit(1)
             }
         }
-        .padding(.horizontal, 14)
     }
 
     private var progressText: String? {
@@ -556,10 +597,7 @@ private struct QueueFeature: View {
                     label
                 }
                 Spacer(minLength: 0)
-                HStack(spacing: 6) {
-                    ProgressView(value: progress).tint(Color.upNextAccent)
-                    QueuePlaybackButton(item: item, size: 40, isPlaying: isPlaying, playbackProgress: playbackProgress)
-                }
+                QueuePlaybackButton(item: item, size: 40, isPlaying: isPlaying, playbackProgress: playbackProgress)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -582,14 +620,6 @@ private struct QueueFeature: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-    }
-
-    private var progress: Double {
-        if item.isCurrent, let playbackProgress {
-            return min(max(playbackProgress, 0), 1)
-        }
-        guard let value = item.progress, value.isFinite else { return 0 }
-        return min(max(value, 0), 1)
     }
 
     private var detailURL: URL? {
@@ -657,6 +687,50 @@ private struct QueueLine: View {
     }
 }
 
+private struct QueueCompactLine: View {
+    let item: QueueSnapshot.Item
+    let playlistID: String
+    let isPlaying: Bool
+    let playbackProgress: Double?
+
+    var body: some View {
+        HStack(spacing: 6) {
+            QueueCover(url: item.coverURL, fileName: item.coverFileName, size: 28)
+            GeometryReader { geometry in
+                if geometry.size.width >= 56 {
+                    if let detailURL {
+                        Link(destination: detailURL) { title }
+                            .buttonStyle(.plain)
+                    } else {
+                        title
+                    }
+                }
+            }
+            .frame(height: 15)
+            QueuePlaybackButton(item: item, size: 32, isPlaying: isPlaying, playbackProgress: playbackProgress)
+        }
+        .frame(height: 34)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var title: some View {
+        Text(item.title)
+            .font(.caption.weight(item.isCurrent ? .semibold : .regular))
+            .lineLimit(1)
+    }
+
+    private var detailURL: URL? {
+        guard item.id.hasPrefix("private-") == false,
+              var components = URLComponents(string: "upnext://episode") else { return nil }
+        var queryItems = [URLQueryItem(name: "url", value: item.id)]
+        if playlistID.isEmpty == false {
+            queryItems.append(URLQueryItem(name: "playlistID", value: playlistID))
+        }
+        components.queryItems = queryItems
+        return components.url
+    }
+}
+
 private struct QueuePlaybackButton: View {
     let item: QueueSnapshot.Item
     let size: CGFloat
@@ -670,15 +744,15 @@ private struct QueuePlaybackButton: View {
                 WidgetPlaybackControl(
                     progress: playbackProgress ?? 0,
                     isPlaying: isPlaying,
-                    size: 30
+                    size: size - 8
                 )
-                    .frame(width: 40, height: 40)
+                    .frame(width: size, height: size)
             }
                 .buttonStyle(.plain)
                 .accessibilityLabel(isPlaying ? "Pause current episode" : "Play current episode")
         } else if item.id.hasPrefix("private-") == false {
             Button(intent: WidgetPlayEpisodeIntent(episodeID: item.id)) {
-                WidgetPlaybackControl(progress: 0, isPlaying: false, size: 30)
+                WidgetPlaybackControl(progress: 0, isPlaying: false, size: size - 8)
                     .frame(width: size, height: size)
             }
                 .buttonStyle(.plain)

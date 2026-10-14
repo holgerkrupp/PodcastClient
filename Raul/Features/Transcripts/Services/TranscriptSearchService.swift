@@ -134,27 +134,6 @@ actor TranscriptSearchActor: TranscriptSearching {
     }
 
     func hasSearchableTranscripts(in scope: TranscriptSearchScope) async throws -> Bool {
-        // Podcast availability runs automatically as Podcast Detail opens. Do
-        // not generate a SQL predicate that walks line -> episode -> podcast;
-        // resolve the podcast once, fetch its episodes with a direct
-        // relationship comparison, then check transcript rows one episode at
-        // a time using a single relationship key.
-        if case .podcast(let identity) = scope {
-            let signpostID = PodcastDetailFetchSignposts.begin(
-                "Podcast detail transcript availability fetch"
-            )
-            var resultCount = -1
-            defer {
-                PodcastDetailFetchSignposts.end(
-                    "Podcast detail transcript availability fetch",
-                    id: signpostID,
-                    count: resultCount
-                )
-            }
-            let hasLines = try podcastHasSearchableTranscripts(identity: identity)
-            resultCount = hasLines ? 1 : 0
-            return hasLines
-        }
         let predicate = try scopePredicate(scope)
         var descriptor = FetchDescriptor<TranscriptLineAndTime>(predicate: predicate)
         descriptor.fetchLimit = 1
@@ -172,54 +151,6 @@ actor TranscriptSearchActor: TranscriptSearching {
         let hasLines = try modelContext.fetch(descriptor).isEmpty == false
         resultCount = hasLines ? 1 : 0
         return hasLines
-    }
-
-    private func podcastHasSearchableTranscripts(identity: String) throws -> Bool {
-        let podcastDescriptor: FetchDescriptor<Podcast>
-        if let feed = URL(string: identity), feed.scheme != nil {
-            podcastDescriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { $0.feed == feed }
-            )
-        } else if let components = StableIdentityKey.components(from: identity),
-                  components.first == "title",
-                  components.count > 1 {
-            let title = components[1]
-            podcastDescriptor = FetchDescriptor<Podcast>(
-                predicate: #Predicate<Podcast> { $0.title == title }
-            )
-        } else {
-            return false
-        }
-
-        guard let podcast = try modelContext.fetch(podcastDescriptor).first else {
-            return false
-        }
-        let episodesDescriptor: FetchDescriptor<Episode>
-        if let feed = podcast.feed {
-            episodesDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
-            )
-        } else {
-            episodesDescriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast != nil }
-            )
-        }
-        let episodes = try modelContext.fetch(episodesDescriptor).filter {
-            $0.podcast?.persistentModelID == podcast.persistentModelID
-        }
-        for episode in episodes {
-            let episodeID = episode.persistentModelID
-            var lineDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-                predicate: #Predicate<TranscriptLineAndTime> {
-                    $0.episode?.persistentModelID == episodeID
-                }
-            )
-            lineDescriptor.fetchLimit = 1
-            if try modelContext.fetch(lineDescriptor).isEmpty == false {
-                return true
-            }
-        }
-        return false
     }
 
     private func transcriptPredicate(

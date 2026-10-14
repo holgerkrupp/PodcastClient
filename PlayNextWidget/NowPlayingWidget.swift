@@ -13,10 +13,15 @@ private struct NowPlayingSnapshot: Decodable {
     let isPlaying: Bool
     let positionSeconds: Double?
     let durationSeconds: Double?
+    let progressFraction: Double?
     let playbackRate: Double?
     let title: String?
     let podcastTitle: String?
     let coverFileName: String?
+    let skipBackSymbol: String?
+    let skipForwardSymbol: String?
+    let skipBackSeconds: Int?
+    let skipForwardSeconds: Int?
 }
 
 private struct NowPlayingEntry: TimelineEntry {
@@ -38,15 +43,68 @@ private struct NowPlayingProvider: TimelineProvider {
     }
 
     private func entry() -> NowPlayingEntry {
-        guard let url = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
-            .appendingPathComponent("play-next-widget-playback-v1.json"),
-              let data = try? Data(contentsOf: url) else {
-            return .empty
-        }
+        let playbackSnapshot: NowPlayingSnapshot? = {
+            guard let url = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
+                .appendingPathComponent("play-next-widget-playback-v1.json"),
+                  let data = try? Data(contentsOf: url) else { return nil }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            return try? decoder.decode(NowPlayingSnapshot.self, from: data)
+        }()
+
+        let hasPlaybackTitle = playbackSnapshot?.title?
+            .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let snapshot = hasPlaybackTitle ? playbackSnapshot : (queuedEpisodeSnapshot() ?? playbackSnapshot)
+        return NowPlayingEntry(date: .now, snapshot: snapshot)
+    }
+
+    private func queuedEpisodeSnapshot() -> NowPlayingSnapshot? {
+        guard let directory = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID) else { return nil }
+
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return NowPlayingEntry(date: .now, snapshot: try? decoder.decode(NowPlayingSnapshot.self, from: data))
+        let catalogURL = directory.appendingPathComponent(QueueProvider.catalogFileName)
+        let catalog = (try? Data(contentsOf: catalogURL)).flatMap {
+            try? decoder.decode(QueuePlaylistCatalog.self, from: $0)
+        }
+        let playlistIDs = ([catalog?.selectedPlaylistID]
+            + [catalog?.playlists.first(where: \.isDefault)?.id]
+            + (catalog?.playlists.map(\.id) ?? []))
+            .compactMap { $0 }
+        let filenames = playlistIDs.map { "\(QueueProvider.snapshotFilePrefix)\($0).json" }
+            + [QueueProvider.legacyFileName]
+        var seenFilenames = Set<String>()
+
+        for filename in filenames where seenFilenames.insert(filename).inserted {
+            let url = directory.appendingPathComponent(filename)
+            guard let data = try? Data(contentsOf: url),
+                  let queue = try? decoder.decode(QueueSnapshot.self, from: data),
+                  let item = queue.items.first(where: \.isCurrent)
+                    ?? queue.items.first(where: { $0.isCurrent == false })
+                    ?? queue.items.first,
+                  item.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { continue }
+
+            return NowPlayingSnapshot(
+                schemaVersion: 1,
+                updatedAt: queue.generatedAt,
+                episodeID: nil,
+                isPlaying: false,
+                positionSeconds: nil,
+                durationSeconds: nil,
+                progressFraction: item.progress,
+                playbackRate: nil,
+                title: item.title,
+                podcastTitle: item.podcast ?? item.subtitle,
+                coverFileName: item.coverFileName,
+                skipBackSymbol: nil,
+                skipForwardSymbol: nil,
+                skipBackSeconds: nil,
+                skipForwardSeconds: nil
+            )
+        }
+        return nil
     }
 }
 
@@ -69,6 +127,12 @@ private struct NowPlayingWidgetView: View {
 
     private var snapshot: NowPlayingSnapshot? { entry.snapshot }
 
+    private var displayTitle: String? {
+        guard let title = snapshot?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              title.isEmpty == false else { return nil }
+        return title
+    }
+
     var body: some View {
         Group {
             if family == .systemMedium {
@@ -84,11 +148,10 @@ private struct NowPlayingWidgetView: View {
         VStack(alignment: .leading, spacing: 4) {
             artwork(size: 58)
             episodeText(titleLineLimit: 1, showMetadata: false)
-            HStack(spacing: 6) {
-                ProgressView(value: progress)
-                    .tint(.primary)
-                    .accessibilityLabel("Episode progress")
-                transportButton(size: 30)
+            HStack(spacing: 2) {
+                skipBackButton(size: 36)
+                transportButton(size: 30, hitTarget: 36)
+                skipForwardButton(size: 36)
             }
         }
         .padding(10)
@@ -101,9 +164,10 @@ private struct NowPlayingWidgetView: View {
             VStack(alignment: .leading, spacing: 7) {
                 episodeText(titleLineLimit: 3, showMetadata: true)
                 Spacer(minLength: 0)
-                HStack(alignment: .center, spacing: 9) {
-                    progressTrack
+                HStack(alignment: .center, spacing: 5) {
+                    skipBackButton(size: 40)
                     transportButton(size: 30)
+                    skipForwardButton(size: 40)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -148,7 +212,7 @@ private struct NowPlayingWidgetView: View {
         VStack(alignment: .leading, spacing: 3) {
             GeometryReader { geometry in
                 if geometry.size.width >= 76 {
-                    Text(snapshot?.title ?? "Play Up Next")
+                    Text(displayTitle ?? "Nothing queued")
                         .font(family == .systemSmall ? .subheadline : .headline)
                         .fontWeight(.semibold)
                         .lineLimit(titleLineLimit)
@@ -161,8 +225,8 @@ private struct NowPlayingWidgetView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-            } else if showMetadata, snapshot?.episodeID == nil {
-                Text("Your next episode is ready")
+            } else if showMetadata, displayTitle == nil {
+                Text("Add episodes to Up Next")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -178,29 +242,14 @@ private struct NowPlayingWidgetView: View {
         .contentShape(Rectangle())
     }
 
-    private var progressTrack: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ProgressView(value: progress)
-                .tint(.primary)
-                .accessibilityLabel("Episode progress")
-            HStack {
-                Text(snapshot?.isPlaying == true ? "Now Playing" : (snapshot?.episodeID == nil ? "Up Next" : "Paused"))
-                Spacer(minLength: 0)
-            }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-        }
-    }
-
-    private func transportButton(size: CGFloat) -> some View {
+    private func transportButton(size: CGFloat, hitTarget: CGFloat = 44) -> some View {
         Button(intent: WidgetPlayPauseIntent()) {
             WidgetPlaybackControl(
                 progress: progress,
                 isPlaying: snapshot?.isPlaying == true,
                 size: size - 8
             )
-                .frame(width: 44, height: 44)
+                .frame(width: hitTarget, height: hitTarget)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -208,7 +257,32 @@ private struct NowPlayingWidgetView: View {
         .accessibilityHint(snapshot?.episodeID == nil ? "Starts the first episode in Up Next." : "Controls the current episode.")
     }
 
+    private func skipBackButton(size: CGFloat) -> some View {
+        Button(intent: WidgetSkipBackIntent()) {
+            Image(systemName: snapshot?.skipBackSymbol ?? "15.arrow.trianglehead.counterclockwise")
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Skip back \(snapshot?.skipBackSeconds ?? 15) seconds")
+    }
+
+    private func skipForwardButton(size: CGFloat) -> some View {
+        Button(intent: WidgetSkipForwardIntent()) {
+            Image(systemName: snapshot?.skipForwardSymbol ?? "30.arrow.trianglehead.clockwise")
+                .font(.system(size: 17, weight: .medium))
+                .frame(width: size, height: size)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Skip forward \(snapshot?.skipForwardSeconds ?? 30) seconds")
+    }
+
     private var progress: Double {
+        if let fraction = snapshot?.progressFraction, fraction.isFinite {
+            return min(max(fraction, 0), 1)
+        }
         guard let position = snapshot?.positionSeconds,
               let duration = snapshot?.durationSeconds,
               position.isFinite, duration.isFinite, duration > 0 else { return 0 }

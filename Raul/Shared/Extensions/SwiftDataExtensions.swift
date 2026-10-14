@@ -105,4 +105,19 @@ extension ModelContext{
         }
         return resolved
     }
+
+    /// Resolve a visible episode page with one bounded SwiftData fetch. URL
+    /// membership predicates are supported by the SQLite store and avoid the
+    /// per-ID synchronous fetches required by `PersistentIdentifier` lookups.
+    func episodes(forURLs urls: [URL]) -> [Episode] {
+        let uniqueURLs = Array(Set(urls))
+        guard uniqueURLs.isEmpty == false else { return [] }
+        let optionalURLs = uniqueURLs.map(Optional.some)
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                optionalURLs.contains(episode.url)
+            }
+        )
+        return (try? fetch(descriptor)) ?? []
+    }
 }

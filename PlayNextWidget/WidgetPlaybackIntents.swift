@@ -29,6 +29,40 @@ struct WidgetPlayPauseIntent: AudioPlaybackIntent {
     }
 }
 
+struct WidgetSkipBackIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Skip Back"
+    static let description = IntentDescription("Skip backward in the current episode.")
+    static let supportedModes: IntentModes = .background
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        #if WIDGET_EXTENSION
+        return .result()
+        #else
+        let player = try await preparedIntentPlayer()
+        player.skipback()
+        return .result()
+        #endif
+    }
+}
+
+struct WidgetSkipForwardIntent: AudioPlaybackIntent {
+    static let title: LocalizedStringResource = "Skip Forward"
+    static let description = IntentDescription("Skip forward in the current episode.")
+    static let supportedModes: IntentModes = .background
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        #if WIDGET_EXTENSION
+        return .result()
+        #else
+        let player = try await preparedIntentPlayer()
+        player.skipforward()
+        return .result()
+        #endif
+    }
+}
+
 struct WidgetPlayEpisodeIntent: AudioPlaybackIntent {
     static let title: LocalizedStringResource = "Play Episode"
     static let description = IntentDescription("Start the selected Up Next episode.")

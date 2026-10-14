@@ -63,6 +63,7 @@ struct PodcastDetailView: View {
 #endif
     @State private var liveNotificationMessage: String?
     @State private var hasAttemptedInitialFeedImport = false
+    @State private var podcastHasEpisodes = true
     @AppStorage("EpisodeSortOption") private var sortOptionRawValue: String = EpisodeSortOption.newestFirst.rawValue
     private var sortOption: EpisodeSortOption {
         get { EpisodeSortOption(rawValue: sortOptionRawValue) ?? .newestFirst }
@@ -76,6 +77,7 @@ struct PodcastDetailView: View {
     @State private var searchInTranscript = true
     @State private var filteredEpisodes: [Episode] = []
     @State private var filteredEpisodeIDs: [PersistentIdentifier] = []
+    @State private var filteredEpisodeURLs: [URL?] = []
     @State private var filteredEpisodeDisplayLimit = Self.episodePageSize
     @State private var episodeFilterTask: Task<Void, Never>?
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
@@ -104,7 +106,7 @@ struct PodcastDetailView: View {
         displayedIsSubscribed
             && podcast.feed != nil
             && podcast.metaData?.lastRefresh == nil
-            && (podcast.episodes?.isEmpty ?? true)
+            && podcastHasEpisodes == false
     }
 
     private var displayedIsSubscribed: Bool {
@@ -532,6 +534,10 @@ struct PodcastDetailView: View {
         .task {
             SystemPressureGate.shared.noteUserInteraction()
             applyEpisodeFilters()
+            let filterActor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
+            podcastHasEpisodes = (try? await filterActor.hasEpisodes(
+                podcastID: podcast.persistentModelID
+            )) ?? true
             await updatePredictedReleaseInfo()
             await refreshEpisodesIfNeeded()
             await updatePredictedReleaseInfo()
@@ -753,16 +759,9 @@ struct PodcastDetailView: View {
         let newLimit = min(oldLimit + Self.episodePageSize, filteredEpisodeIDs.count)
         guard oldLimit < newLimit else { return }
 
-        let signpostID = PodcastDetailFetchSignposts.begin("Podcast detail visible ID resolution")
-        let pageIDs = Array(filteredEpisodeIDs[oldLimit..<newLimit])
-        let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(for: pageIDs)
-        filteredEpisodes.append(contentsOf: pageIDs.compactMap { episodesByID[$0] })
+        let page = resolveVisiblePage(from: oldLimit..<newLimit, urls: filteredEpisodeURLs)
+        filteredEpisodes.append(contentsOf: page)
         filteredEpisodeDisplayLimit = newLimit
-        PodcastDetailFetchSignposts.end(
-            "Podcast detail visible ID resolution",
-            id: signpostID,
-            count: pageIDs.count
-        )
     }
 
     private func applyEpisodeFilters() {
@@ -787,6 +786,7 @@ struct PodcastDetailView: View {
 
         episodeFilterTask?.cancel()
         filteredEpisodeIDs = []
+        filteredEpisodeURLs = []
         filteredEpisodes = []
         filteredEpisodeDisplayLimit = Self.episodePageSize
         isFilteringEpisodes = true
@@ -797,31 +797,40 @@ struct PodcastDetailView: View {
                 }
             }
             do {
-                let episodeIDs = try await actor.episodeIDs(
+                let result = try await actor.episodeIDs(
                     podcastID: podcastID,
                     request: request
                 )
                 guard Task.isCancelled == false else { return }
-                filteredEpisodeIDs = episodeIDs
-                let visibleIDs = Array(episodeIDs.prefix(Self.episodePageSize))
-                let signpostID = PodcastDetailFetchSignposts.begin(
-                    "Podcast detail visible ID resolution"
+                filteredEpisodeIDs = result.episodeIDs
+                filteredEpisodeURLs = result.episodeURLs
+                filteredEpisodes = resolveVisiblePage(
+                    from: 0..<min(result.episodeIDs.count, Self.episodePageSize),
+                    urls: result.episodeURLs
                 )
-                let episodesByID: [PersistentIdentifier: Episode] = modelContext.existingModels(
-                    for: visibleIDs
-                )
-                PodcastDetailFetchSignposts.end(
-                    "Podcast detail visible ID resolution",
-                    id: signpostID,
-                    count: visibleIDs.count
-                )
-                filteredEpisodes = visibleIDs.compactMap { episodesByID[$0] }
             } catch {
                 guard Task.isCancelled == false else { return }
                 filteredEpisodeIDs = []
+                filteredEpisodeURLs = []
                 filteredEpisodes = []
             }
         }
+    }
+
+    private func resolveVisiblePage(
+        from range: Range<Int>,
+        urls: [URL?]
+    ) -> [Episode] {
+        guard range.isEmpty == false else { return [] }
+        let pageURLs = Array(urls[range].compactMap { $0 })
+        let signpostID = PodcastDetailFetchSignposts.begin("Podcast detail visible page fetch")
+        let fetched = modelContext.episodes(forURLs: pageURLs)
+        let byURL = Dictionary(fetched.compactMap { episode in
+            episode.url.map { ($0, episode) }
+        }, uniquingKeysWith: { first, _ in first })
+        let result = pageURLs.compactMap { byURL[$0] }
+        PodcastDetailFetchSignposts.end("Podcast detail visible page fetch", id: signpostID, count: result.count)
+        return result
     }
 
     private func refreshEpisodes() async {

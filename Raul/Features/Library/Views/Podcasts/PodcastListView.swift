@@ -100,9 +100,7 @@ struct PodcastListView: View {
                         
                         ZStack {
                             PodcastRowView(podcast: podcast)
-                            NavigationLink(destination: PodcastDetailDestination(
-                                podcastID: podcast.persistentModelID
-                            )) {
+                            NavigationLink(destination: PodcastDetailDestination(podcast: podcast)) {
                                 EmptyView()
                             }
                             .opacity(0)
@@ -174,25 +172,21 @@ struct PodcastListView: View {
 
 }
 
-/// Resolve the selection in the destination's context so a concurrent library
-/// refresh or deletion cannot carry the row's model instance into Detail.
+/// Render the selected podcast immediately, then refresh the selection from the
+/// destination context so a concurrent library update is reflected in Detail.
 private struct PodcastDetailDestination: View {
     @Environment(\.modelContext) private var modelContext
-    @State private var podcast: Podcast?
-    @State private var didResolve = false
+    @State private var podcast: Podcast
 
-    let podcastID: PersistentIdentifier
+    init(podcast: Podcast) {
+        self.podcastID = podcast.persistentModelID
+        _podcast = State(initialValue: podcast)
+    }
+
+    private let podcastID: PersistentIdentifier
 
     var body: some View {
-        Group {
-            if let podcast {
-                PodcastDetailView(podcast: podcast)
-            } else if didResolve {
-                ContentUnavailableView("Podcast Unavailable", systemImage: "dot.radiowaves.left.and.right")
-            } else {
-                ProgressView("Loading podcast…")
-            }
-        }
+        PodcastDetailView(podcast: podcast)
         .task(id: podcastID) {
             let signpostID = PodcastDetailFetchSignposts.begin("Podcast detail navigation lookup")
             var descriptor = FetchDescriptor<Podcast>(
@@ -200,17 +194,18 @@ private struct PodcastDetailDestination: View {
             )
             descriptor.fetchLimit = 1
             do {
-                podcast = try modelContext.fetch(descriptor).first
+                if let resolved = try modelContext.fetch(descriptor).first {
+                    podcast = resolved
+                }
                 PodcastDetailFetchSignposts.end(
                     "Podcast detail navigation lookup",
                     id: signpostID,
-                    count: podcast == nil ? 0 : 1
+                    count: 1
                 )
             } catch {
                 AppDiagnostics.log("Podcast detail navigation lookup failed")
                 PodcastDetailFetchSignposts.end("Podcast detail navigation lookup", id: signpostID, count: 0)
             }
-            didResolve = true
         }
     }
 }
