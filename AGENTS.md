@@ -16,6 +16,20 @@ The following behavior is a strict product requirement for the full player on ev
 
 Before considering a player layout change complete, verify the resting and scrolled states on a standard portrait iPhone and an iPhone Duo configuration. Confirm the hero transition, transcript placement, top-pinned transport controls, and continuous background treatment.
 
+## User Guide maintenance (required for user-facing feature changes)
+
+The in-app User Guide is accessed through **Settings → Help & About → Using Up Next**. Issue [#347](https://github.com/holgerkrupp/PodcastClient/issues/347) tracks turning the current short help view into the canonical, searchable, illustrated guide; the planned content/asset source lives under `Documentation/UserGuide/`. Until that guide structure lands, capture missing topics and content changes in #347 instead of inventing unrelated documentation locations.
+
+**Any agent changing a user-visible feature must treat accurate user help as part of the feature's definition of done.** When adding, removing, renaming, moving or changing a control, default, gesture, screen, behavior, error message, background refresh/sync behavior, App Intent, widget, or supported platform/OS:
+
+- Inspect the relevant User Guide topics and the existing Settings help/Siri guides. Add or amend the corresponding content **in the same change** (steps, actual control labels and locations, user-visible outcomes, requirements, screenshots/illustrations, searchable terms, and cross-links); remove stale instructions. New major features require a new topic.
+- Check that any “Open …” action/deep link still reaches the correct real UI, is safe if prerequisite context is unavailable, and respects platform/OS capability gates; do not assume unsupported `upnext://` routes exist.
+- If the visible UI changes, refresh affected **real fixture-based screenshots** without leaking personal listening history, credentials or private feeds. Review compact-height iPhone, regular-width/iPad and macOS when the layout/workflow differs, plus accessibility/localization.
+- Preserve the distinction between shipped, experimental, future and DEBUG-only capabilities. Do not state that an iOS-scheduled background refresh is guaranteed at an exact time.
+- Run applicable guide registry/link/resource validation and UI/navigation/screenshot tests when available. In the PR description, identify the guide topics changed, or explicitly explain why no user-facing documentation update was needed.
+
+Also keep the canonical [view hierarchy and action-location guide](Documentation/UpNextViewHierarchy.md) aligned when an action moves or its behavior changes. Documentation is not optional follow-up work for completed user-facing features.
+
 ## Startup and loading UX
 
 Do not introduce a full-screen loading or spinner view that blocks the app at
