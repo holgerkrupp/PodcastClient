@@ -333,7 +333,7 @@ enum PlayNextWidgetSync {
                 coverURL: nil,
                 coverFileName: coverFileName,
                 isCurrent: source.episode.url == currentEpisodeURL,
-                progress: source.episode.maxPlayProgress
+                progress: source.episode.playProgress
             ))
         }
 

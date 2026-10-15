@@ -20,6 +20,7 @@ struct EpisodeSummary: Sendable, Hashable {
     let podcastCover: URL?
     let file: URL?
     let localfile: URL?
+    let playProgress: Double
     let maxPlayProgress: Double
 }
 
@@ -311,6 +312,7 @@ class EpisodeDownloadStatus{
             podcastCover: podcast?.imageURL,
             file: url,
             localfile: localFile,
+            playProgress: playProgress,
             maxPlayProgress: maxPlayProgress
         )
     }

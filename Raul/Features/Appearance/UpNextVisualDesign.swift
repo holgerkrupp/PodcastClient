@@ -1,8 +1,31 @@
 import SwiftUI
 import ESADesignKit
+#if canImport(WidgetKit)
+import WidgetKit
+#endif
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 enum UpNextVisualDesignPreference {
     static let storageKey = "upNext.visualDesign"
+    static let uniformColorKey = "upNext.uniformColorRGB"
+    static let widgetAppearanceKey = "upNext.widgetAppearance.v1"
+    static let appGroupID = "group.de.holgerkrupp.PodcastClient"
+    static let defaultDarkRGB = "#1A3B38"
+    static let defaultLightRGB = "#D4EDE6"
+
+    /// App preferences remain canonical. Migrate the in-progress shared style key once.
+    static func appDefaults() -> UserDefaults {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: storageKey) == nil,
+           let sharedStyle = UserDefaults(suiteName: appGroupID)?.string(forKey: storageKey) {
+            defaults.set(sharedStyle, forKey: storageKey)
+        }
+        return defaults
+    }
     static let whatsNewFeatureVersion = "three-designs-v1"
     static let whatsNewAcknowledgementKey = "upNext.visualDesign.whatsNew.\(whatsNewFeatureVersion)"
 
@@ -14,27 +37,100 @@ enum UpNextVisualDesignPreference {
         }
     }
 
-    /// A consistent dark teal palette for Up Next's Uniform design.
-    static let uniformPalette = ESAThemePalette(
-        background: Color(red: 0.10, green: 0.23, blue: 0.22),
-        primaryForeground: .white,
-        secondaryForeground: Color.white.opacity(0.88),
-        controlForeground: .white,
-        separator: Color.white.opacity(0.42),
-        accent: .mint
-    )
-
-    static func uniformPalette(for colorScheme: ColorScheme) -> ESAThemePalette {
-        guard colorScheme == .light else { return uniformPalette }
-        let foreground = Color(red: 0.08, green: 0.20, blue: 0.19)
+    static func uniformPalette(for colorScheme: ColorScheme, customRGB: String?, highContrast: Bool = false) -> ESAThemePalette {
+        let fallback = colorScheme == .light ? defaultLightRGB : defaultDarkRGB
+        let background = color(fromRGB: customRGB) ?? color(fromRGB: fallback)!
+        let components = rgbComponents(customRGB.flatMap(validatedRGB) ?? fallback)!
+        let luminance = relativeLuminance(components)
+        let usesBlack = luminance > 0.179
+        let foreground = usesBlack ? Color.black : Color.white
+        let separatorOpacity: Double
+        if highContrast {
+            separatorOpacity = 1
+        } else if usesBlack {
+            let targetLuminance = max((luminance + 0.05) / 3 - 0.05, 0)
+            separatorOpacity = luminance > 0 ? min(max((luminance - targetLuminance) / luminance, 0), 1) : 1
+        } else {
+            let targetLuminance = min(3 * (luminance + 0.05) - 0.05, 1)
+            separatorOpacity = luminance < 1 ? min(max((targetLuminance - luminance) / (1 - luminance), 0), 1) : 1
+        }
         return ESAThemePalette(
-            background: Color(red: 0.83, green: 0.93, blue: 0.90),
+            background: background,
             primaryForeground: foreground,
-            secondaryForeground: foreground.opacity(0.82),
+            secondaryForeground: foreground,
             controlForeground: foreground,
-            separator: foreground.opacity(0.35),
-            accent: Color(red: 0.04, green: 0.43, blue: 0.37)
+            separator: foreground.opacity(separatorOpacity),
+            accent: foreground
         )
+    }
+
+    static func validatedRGB(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let text = value.hasPrefix("#") ? String(value.dropFirst()) : value
+        guard text.count == 6, text.allSatisfy(\.isHexDigit) else { return nil }
+        return "#" + text.uppercased()
+    }
+
+    static func color(fromRGB value: String?) -> Color? {
+        guard let rgb = value.flatMap(validatedRGB), let (r, g, b) = rgbComponents(rgb) else { return nil }
+        return Color(red: r, green: g, blue: b)
+    }
+
+    static func rgbString(from color: Color) -> String? {
+        #if canImport(UIKit)
+        var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
+        guard UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return nil }
+        #elseif canImport(AppKit)
+        guard let converted = NSColor(color).usingColorSpace(.deviceRGB) else { return nil }
+        let red = converted.redComponent, green = converted.greenComponent, blue = converted.blueComponent
+        #else
+        return nil
+        #endif
+        return String(format: "#%02X%02X%02X", Int((red * 255).rounded()), Int((green * 255).rounded()), Int((blue * 255).rounded()))
+    }
+
+    private static func rgbComponents(_ value: String) -> (Double, Double, Double)? {
+        guard let rgb = validatedRGB(value) else { return nil }
+        let digits = String(rgb.dropFirst())
+        guard let number = UInt32(digits, radix: 16) else { return nil }
+        return (Double((number >> 16) & 255) / 255, Double((number >> 8) & 255) / 255, Double(number & 255) / 255)
+    }
+
+    private static func relativeLuminance(_ rgb: (Double, Double, Double)) -> Double {
+        func linear(_ value: Double) -> Double { value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4) }
+        return 0.2126 * linear(rgb.0) + 0.7152 * linear(rgb.1) + 0.0722 * linear(rgb.2)
+    }
+}
+
+private struct WidgetAppearanceSnapshot: Codable {
+    let schemaVersion: Int
+    let visualStyle: String
+    let uniformColorRGB: String?
+}
+
+@MainActor
+enum WidgetAppearancePublisher {
+    private static var pendingReload: Task<Void, Never>?
+
+    static func publishAndReloadDebounced() {
+        let defaults = UpNextVisualDesignPreference.appDefaults()
+        let style = defaults.string(forKey: UpNextVisualDesignPreference.storageKey) ?? ESAVisualStyle.artwork.rawValue
+        let rawColor = defaults.string(forKey: UpNextVisualDesignPreference.uniformColorKey)
+        let color = UpNextVisualDesignPreference.validatedRGB(rawColor)
+        let snapshot = WidgetAppearanceSnapshot(schemaVersion: 1, visualStyle: style, uniformColorRGB: color)
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        let sharedDefaults = UserDefaults(suiteName: UpNextVisualDesignPreference.appGroupID)
+        guard sharedDefaults?.data(forKey: UpNextVisualDesignPreference.widgetAppearanceKey) != data else { return }
+        sharedDefaults?.set(data, forKey: UpNextVisualDesignPreference.widgetAppearanceKey)
+        pendingReload?.cancel()
+        pendingReload = Task {
+            try? await Task.sleep(for: .milliseconds(900))
+            guard Task.isCancelled == false else { return }
+            #if canImport(WidgetKit)
+            WidgetCenter.shared.reloadTimelines(ofKind: "PlayNextQueueWidget")
+            WidgetCenter.shared.reloadTimelines(ofKind: "UpNextNowPlayingWidget")
+            #endif
+        }
     }
 }
 
@@ -72,15 +168,21 @@ extension View {
 }
 
 private struct UpNextVisualDesignRootModifier: ViewModifier {
-    @AppStorage(UpNextVisualDesignPreference.storageKey)
+    @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var storedStyle = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.uniformColorKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var customRGB = ""
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var accessibilityContrast
 
     func body(content: Content) -> some View {
         content.esaVisualStyle(
             ESAVisualStyle(rawValue: storedStyle) ?? .artwork,
-            uniformPalette: UpNextVisualDesignPreference.uniformPalette(for: colorScheme)
+            uniformPalette: UpNextVisualDesignPreference.uniformPalette(for: colorScheme, customRGB: customRGB, highContrast: accessibilityContrast == .increased)
         )
+        .task { WidgetAppearancePublisher.publishAndReloadDebounced() }
+        .onChange(of: storedStyle) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
+        .onChange(of: customRGB) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
     }
 }
 
@@ -88,6 +190,9 @@ struct VisualDesignChooser: View {
     @Binding var selection: ESAVisualStyle
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var accessibilityContrast
+    @AppStorage(UpNextVisualDesignPreference.uniformColorKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var customRGB = ""
     @State private var previewPodcast: Podcast = {
         let podcast = Podcast(feed: URL(string: "https://example.com/up-next-design-preview.xml")!)
         podcast.title = "Up Next"
@@ -105,6 +210,14 @@ struct VisualDesignChooser: View {
         (.adaptiveColor, "Adaptive Color", "A clear, accessible color drawn from each cover."),
         (.uniform, "Uniform", "One calm color palette throughout Up Next.")
     ]
+
+    private var previewPalette: ESAThemePalette {
+        UpNextVisualDesignPreference.uniformPalette(
+            for: colorScheme,
+            customRGB: customRGB,
+            highContrast: accessibilityContrast == .increased
+        )
+    }
 
     var body: some View {
         ScrollView {
@@ -130,7 +243,7 @@ struct VisualDesignChooser: View {
                                 previewArtwork: previewArtwork,
                                 previewArtworkSource: previewArtworkSource.map(ESAImageSource.platformImage)
                             )
-                            .esaVisualStyle(style, uniformPalette: UpNextVisualDesignPreference.uniformPalette(for: colorScheme))
+                            .esaVisualStyle(style, uniformPalette: previewPalette)
                             .clipShape(RoundedRectangle(cornerRadius: 14))
 
                             HStack(alignment: .top, spacing: 10) {
@@ -159,6 +272,10 @@ struct VisualDesignChooser: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("\(title). \(detail)")
                     .accessibilityAddTraits(selection == style ? [.isSelected] : [])
+
+                    if style == .uniform && selection == .uniform {
+                        uniformColorControls
+                    }
                 }
             }
             .padding()
@@ -166,11 +283,42 @@ struct VisualDesignChooser: View {
             .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("visualDesignChooser")
+        .onChange(of: customRGB) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
+    }
+
+    private var uniformColorControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            ColorPicker("Uniform color", selection: uniformColorBinding, supportsOpacity: false)
+                .accessibilityHint("Choose the background color used by the Uniform design and its widgets.")
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(UpNextVisualDesignPreference.color(fromRGB: customRGB) ?? UpNextVisualDesignPreference.uniformPalette(for: colorScheme, customRGB: nil).background)
+                    .frame(width: 24, height: 24)
+                    .overlay(Circle().strokeBorder(Color.primary.opacity(0.25), lineWidth: 1))
+                    .accessibilityLabel("Selected Uniform color")
+                Text(customRGB.isEmpty ? "Default teal" : (UpNextVisualDesignPreference.validatedRGB(customRGB) ?? "Default teal"))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button("Reset to default") { customRGB = "" }
+                    .disabled(customRGB.isEmpty)
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.bottom, 4)
+    }
+
+    private var uniformColorBinding: Binding<Color> {
+        Binding(
+            get: { UpNextVisualDesignPreference.color(fromRGB: customRGB) ?? UpNextVisualDesignPreference.color(fromRGB: colorScheme == .light ? UpNextVisualDesignPreference.defaultLightRGB : UpNextVisualDesignPreference.defaultDarkRGB)! },
+            set: { customRGB = UpNextVisualDesignPreference.rgbString(from: $0) ?? customRGB }
+        )
     }
 }
 
 struct VisualDesignSettingsView: View {
-    @AppStorage(UpNextVisualDesignPreference.storageKey) private var storedStyle = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var storedStyle = ESAVisualStyle.artwork.rawValue
     private var selection: Binding<ESAVisualStyle> {
         Binding(
             get: { ESAVisualStyle(rawValue: storedStyle) ?? .artwork },
@@ -186,7 +334,8 @@ struct VisualDesignSettingsView: View {
 }
 
 struct VisualDesignWhatsNewSheet: View {
-    @AppStorage(UpNextVisualDesignPreference.storageKey) private var storedStyle = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var storedStyle = ESAVisualStyle.artwork.rawValue
     @State private var selection: ESAVisualStyle = .artwork
     let onContinue: () -> Void
 

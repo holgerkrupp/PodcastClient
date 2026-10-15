@@ -6,10 +6,6 @@ import WidgetKit
 import UIKit
 #endif
 
-private extension Color {
-    static let upNextAccent = Color("AccentColor")
-}
-
 struct QueueSnapshot: Codable {
     struct Item: Codable, Identifiable {
         let id: String
@@ -49,6 +45,7 @@ struct QueueTimelineEntry: TimelineEntry {
     let statusMessage: String?
     let isPlaying: Bool
     let playbackProgress: Double?
+    let visualStyle: String
 }
 
 private struct QueuePlaybackState: Decodable {
@@ -165,7 +162,8 @@ struct QueueProvider: AppIntentTimelineProvider {
             playlistTitle: "Up Next",
             statusMessage: "Open Up Next to prepare widget data.",
             isPlaying: false,
-            playbackProgress: nil
+            playbackProgress: nil,
+            visualStyle: WidgetVisualDesign.selectedStyle
         )
     }
 
@@ -252,7 +250,8 @@ struct QueueProvider: AppIntentTimelineProvider {
             playlistTitle: selectedPlaylist.title,
             statusMessage: statusMessage,
             isPlaying: playbackState?.isPlaying ?? false,
-            playbackProgress: playbackState?.progress
+            playbackProgress: playbackState?.progress,
+            visualStyle: WidgetVisualDesign.selectedStyle
         )
     }
 
@@ -357,7 +356,18 @@ struct PlayNextQueueWidget: Widget {
     var body: some WidgetConfiguration {
         AppIntentConfiguration(kind: "PlayNextQueueWidget", intent: QueueConfigurationIntent.self, provider: QueueProvider()) { entry in
             PlayNextQueueWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .widgetVisualDesign(
+                    style: entry.visualStyle,
+                    artwork: WidgetVisualDesign.artwork(named: entry.snapshot.currentItem?.coverFileName
+                        ?? entry.snapshot.items.first?.coverFileName)
+                )
+                .containerBackground(for: .widget) {
+                    WidgetVisualDesignBackground(
+                        style: entry.visualStyle,
+                        artwork: WidgetVisualDesign.artwork(named: entry.snapshot.currentItem?.coverFileName
+                            ?? entry.snapshot.items.first?.coverFileName)
+                    )
+                }
         }
         .configurationDisplayName("Play Next Queue")
         .description("Shows episodes from a selected playlist.")
@@ -381,22 +391,26 @@ struct PlayNextQueueWidget: Widget {
 
 private struct PlayNextQueueWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetDesignPalette) private var palette
 
     let entry: QueueTimelineEntry
 
     var body: some View {
-        switch family {
-        case .systemSmall:
-            smallQueueView
-        case .systemMedium:
-            mediumQueueView
-        case .systemLarge:
-            largeQueueView
-        case .accessoryRectangular:
-            accessoryView
-        default:
-            smallQueueView
+        Group {
+            switch family {
+            case .systemSmall:
+                smallQueueView
+            case .systemMedium:
+                mediumQueueView
+            case .systemLarge:
+                largeQueueView
+            case .accessoryRectangular:
+                accessoryView
+            default:
+                smallQueueView
+            }
         }
+        .widgetURL(widgetURL)
     }
 
     private var widgetURL: URL? {
@@ -494,7 +508,7 @@ private struct PlayNextQueueWidgetView: View {
         VStack(alignment: .leading, spacing: 2) {
             Text(entry.playlistTitle)
                 .font(.caption2)
-                .foregroundStyle(Color.upNextAccent)
+                .foregroundStyle(palette.accent)
                 .lineLimit(1)
 
             if let first = entry.snapshot.upcomingItems.first ?? entry.snapshot.currentItem {
@@ -510,7 +524,7 @@ private struct PlayNextQueueWidgetView: View {
                         if let podcast = first.podcast, podcast.isEmpty == false {
                             Text(podcast)
                                 .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(palette.secondary)
                                 .lineLimit(1)
                         }
                     }
@@ -528,13 +542,13 @@ private struct PlayNextQueueWidgetView: View {
         HStack(spacing: 6) {
             Image(systemName: "text.line.first.and.arrowtriangle.forward")
                 .font(.caption)
-                .foregroundStyle(Color.upNextAccent)
+                .foregroundStyle(palette.accent)
                 .widgetAccentable()
             Text(entry.playlistTitle)
                 .font(.caption)
                 .fontWeight(.semibold)
                 .lineLimit(1)
-                .foregroundStyle(Color.upNextAccent)
+                .foregroundStyle(palette.accent)
                 .widgetAccentable()
             Spacer(minLength: 0)
             if let progressText {
@@ -566,7 +580,7 @@ private struct PlayNextQueueWidgetView: View {
             if entry.statusMessage == nil {
                 Text("Add episodes in the app to see them here.")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
                     .lineLimit(3)
             }
         }
@@ -574,6 +588,7 @@ private struct PlayNextQueueWidgetView: View {
 }
 
 private struct QueueFeature: View {
+    @Environment(\.widgetDesignPalette) private var palette
     let item: QueueSnapshot.Item
     let playlistID: String
     let compact: Bool
@@ -586,7 +601,7 @@ private struct QueueFeature: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.isCurrent ? "Now Playing" : "Up Next")
                     .font(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.upNextAccent)
+                    .foregroundStyle(palette.accent)
                     .widgetAccentable()
                 if let detailURL {
                     Link(destination: detailURL) {
@@ -615,7 +630,7 @@ private struct QueueFeature: View {
             }
             .frame(height: compact ? 18 : 54)
             if let podcast = item.podcast ?? item.subtitle, podcast.isEmpty == false {
-                Text(podcast).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(podcast).font(.caption).foregroundStyle(palette.secondary).lineLimit(1)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -635,6 +650,7 @@ private struct QueueFeature: View {
 }
 
 private struct QueueLine: View {
+    @Environment(\.widgetDesignPalette) private var palette
     let item: QueueSnapshot.Item
     let playlistID: String
     let isPlaying: Bool
@@ -667,7 +683,7 @@ private struct QueueLine: View {
                 }
                 .frame(height: 18)
                 if let podcast = item.podcast ?? item.subtitle, podcast.isEmpty == false {
-                    Text(podcast).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(podcast).font(.caption).foregroundStyle(palette.secondary).lineLimit(1)
                 }
             }
         }
@@ -688,6 +704,7 @@ private struct QueueLine: View {
 }
 
 private struct QueueCompactLine: View {
+    @Environment(\.widgetDesignPalette) private var palette
     let item: QueueSnapshot.Item
     let playlistID: String
     let isPlaying: Bool
@@ -742,7 +759,7 @@ private struct QueuePlaybackButton: View {
         if item.isCurrent {
             Button(intent: WidgetPlayPauseIntent()) {
                 WidgetPlaybackControl(
-                    progress: playbackProgress ?? 0,
+                    progress: playbackProgress ?? item.progress ?? 0,
                     isPlaying: isPlaying,
                     size: size - 8
                 )
@@ -752,7 +769,7 @@ private struct QueuePlaybackButton: View {
                 .accessibilityLabel(isPlaying ? "Pause current episode" : "Play current episode")
         } else if item.id.hasPrefix("private-") == false {
             Button(intent: WidgetPlayEpisodeIntent(episodeID: item.id)) {
-                WidgetPlaybackControl(progress: 0, isPlaying: false, size: size - 8)
+                WidgetPlaybackControl(progress: item.progress ?? 0, isPlaying: false, size: size - 8)
                     .frame(width: size, height: size)
             }
                 .buttonStyle(.plain)
@@ -765,11 +782,11 @@ private struct QueuePlaybackButton: View {
 }
 
 private struct QueueCover: View {
+    @Environment(\.widgetDesignPalette) private var palette
     let url: URL?
     let fileName: String?
     let size: CGFloat
     var fallbackSystemName: String = "text.line.first.and.arrowtriangle.forward"
-    var fallbackColor: Color = .secondary
 
     var body: some View {
         ZStack {
@@ -779,7 +796,7 @@ private struct QueueCover: View {
             if let localImage {
                 localImage
                     .resizable()
-                    .widgetAccentedRenderingMode(.desaturated)
+                    .widgetAccentedRenderingMode(.fullColor)
                     .scaledToFill()
             } else {
                 fallbackIcon
@@ -807,7 +824,7 @@ private struct QueueCover: View {
     private var fallbackIcon: some View {
         Image(systemName: fallbackSystemName)
             .font(.system(size: max(size * 0.48, 10), weight: .medium))
-            .foregroundStyle(fallbackColor)
+            .foregroundStyle(palette.secondary)
     }
 }
 
@@ -821,6 +838,7 @@ private struct QueueCover: View {
         playlistTitle: "Up Next",
         statusMessage: "Open Up Next to prepare widget data.",
         isPlaying: false,
-        playbackProgress: nil
+        playbackProgress: nil,
+        visualStyle: "artwork"
     )
 }

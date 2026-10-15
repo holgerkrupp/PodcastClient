@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct WidgetPlaybackControl: View {
+    @Environment(\.widgetDesignPalette) private var palette
     let progress: Double
     let isPlaying: Bool
     let size: CGFloat
@@ -18,18 +19,14 @@ struct WidgetPlaybackControl: View {
         } currentValueLabel: {
             Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                 .font(.system(size: gaugeLayoutSize * 0.38, weight: .bold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(palette.control)
                 .offset(x: isPlaying ? 0 : size * 0.025)
         }
         .gaugeStyle(.accessoryCircular)
-        .tint(Color.nowPlayingAccent)
+        .tint(palette.accent)
         .frame(width: gaugeLayoutSize, height: gaugeLayoutSize)
         .scaleEffect(size / gaugeLayoutSize)
         .frame(width: size, height: size)
         .accessibilityHidden(true)
     }
-}
-
-private extension Color {
-    static let nowPlayingAccent = Color("AccentColor")
 }

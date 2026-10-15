@@ -27,8 +27,11 @@ private struct NowPlayingSnapshot: Decodable {
 private struct NowPlayingEntry: TimelineEntry {
     let date: Date
     let snapshot: NowPlayingSnapshot?
+    let visualStyle: String
 
-    static var empty: NowPlayingEntry { .init(date: .now, snapshot: nil) }
+    static var empty: NowPlayingEntry {
+        .init(date: .now, snapshot: nil, visualStyle: WidgetVisualDesign.selectedStyle)
+    }
 }
 
 private struct NowPlayingProvider: TimelineProvider {
@@ -56,7 +59,7 @@ private struct NowPlayingProvider: TimelineProvider {
         let hasPlaybackTitle = playbackSnapshot?.title?
             .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
         let snapshot = hasPlaybackTitle ? playbackSnapshot : (queuedEpisodeSnapshot() ?? playbackSnapshot)
-        return NowPlayingEntry(date: .now, snapshot: snapshot)
+        return NowPlayingEntry(date: .now, snapshot: snapshot, visualStyle: WidgetVisualDesign.selectedStyle)
     }
 
     private func queuedEpisodeSnapshot() -> NowPlayingSnapshot? {
@@ -112,7 +115,16 @@ struct UpNextNowPlayingWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: "UpNextNowPlayingWidget", provider: NowPlayingProvider()) { entry in
             NowPlayingWidgetView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .widgetVisualDesign(
+                    style: entry.visualStyle,
+                    artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.coverFileName)
+                )
+                .containerBackground(for: .widget) {
+                    WidgetVisualDesignBackground(
+                        style: entry.visualStyle,
+                        artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.coverFileName)
+                    )
+                }
         }
         .configurationDisplayName("Now Playing")
         .description("Continue listening and control your podcast.")
@@ -123,6 +135,7 @@ struct UpNextNowPlayingWidget: Widget {
 
 private struct NowPlayingWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.widgetDesignPalette) private var palette
     let entry: NowPlayingEntry
 
     private var snapshot: NowPlayingSnapshot? { entry.snapshot }
@@ -187,7 +200,7 @@ private struct NowPlayingWidgetView: View {
             } else {
                 Image(systemName: "waveform")
                     .font(.system(size: size * 0.3, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
             }
         }
         .frame(width: size, height: size)
@@ -195,17 +208,12 @@ private struct NowPlayingWidgetView: View {
         .accessibilityHidden(true)
     }
 
+    private var localArtworkImage: WidgetPlatformImage? {
+        WidgetVisualDesign.artwork(named: snapshot?.coverFileName)
+    }
+
     private var localArtwork: Image? {
-        #if canImport(UIKit)
-        guard let filename = snapshot?.coverFileName,
-              let url = FileManager.default
-                .containerURL(forSecurityApplicationGroupIdentifier: QueueProvider.appGroupID)?
-                .appendingPathComponent(filename),
-              let image = UIImage(contentsOfFile: url.path) else { return nil }
-        return Image(uiImage: image)
-        #else
-        return nil
-        #endif
+        localArtworkImage.map { WidgetVisualDesign.image($0) }
     }
 
     private func episodeText(titleLineLimit: Int, showMetadata: Bool) -> some View {
@@ -223,18 +231,18 @@ private struct NowPlayingWidgetView: View {
             if showMetadata, let podcast = snapshot?.podcastTitle, podcast.isEmpty == false {
                 Text(podcast)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
                     .lineLimit(1)
             } else if showMetadata, displayTitle == nil {
                 Text("Add episodes to Up Next")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
                     .lineLimit(1)
             }
             if showMetadata, let remaining = remainingText {
                 Text(remaining)
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(palette.secondary)
                     .monospacedDigit()
             }
         }

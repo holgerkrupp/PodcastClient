@@ -101,7 +101,8 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
-    @AppStorage(UpNextVisualDesignPreference.storageKey) private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
 #if os(macOS)
     @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
     private var isMacMenuBarPlayerEnabled = true

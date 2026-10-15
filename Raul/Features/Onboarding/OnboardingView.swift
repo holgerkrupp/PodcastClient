@@ -10,7 +10,8 @@ enum OnboardingPreferenceKeys {
 struct OnboardingView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var selectedPage = 0
-    @AppStorage(UpNextVisualDesignPreference.storageKey) private var storedVisualStyle = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var storedVisualStyle = ESAVisualStyle.artwork.rawValue
     @State private var selectedVisualStyle: ESAVisualStyle
 
     private let requiresInitialCloudImport: Bool
@@ -19,7 +20,7 @@ struct OnboardingView: View {
     init(requiresInitialCloudImport: Bool = false, modelContainer: ModelContainer? = nil) {
         self.requiresInitialCloudImport = requiresInitialCloudImport
         self.modelContainer = modelContainer
-        let rawStyle = UserDefaults.standard.string(forKey: UpNextVisualDesignPreference.storageKey) ?? ESAVisualStyle.artwork.rawValue
+        let rawStyle = UpNextVisualDesignPreference.appDefaults().string(forKey: UpNextVisualDesignPreference.storageKey) ?? ESAVisualStyle.artwork.rawValue
         _selectedVisualStyle = State(initialValue: ESAVisualStyle(rawValue: rawStyle) ?? .artwork)
     }
 
@@ -100,6 +101,7 @@ struct OnboardingView: View {
 
                         Button {
                             storedVisualStyle = selectedVisualStyle.rawValue
+                            WidgetAppearancePublisher.publishAndReloadDebounced()
                             dismiss()
                         } label: {
                             Text("Start Listening")
