@@ -44,6 +44,11 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
                     url: URL(string: "https://example.com/\(index).mp3")!,
                     podcast: index.isMultiple(of: 2) ? selected : other
                 )
+                if index == 2 {
+                    episode.url = URL(string: "https://example.com/0.mp3")
+                } else if index == 4 {
+                    episode.url = nil
+                }
                 writer.insert(episode)
                 if index == 0 {
                     let line = TranscriptLineAndTime(text: "A stored transcript", startTime: 1)
@@ -81,10 +86,31 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
         XCTAssertEqual(Set(ids.episodeIDs), expectedIDs)
         // Exercise the destination's second-stage visible-model resolution
         // against a reopened SQLite store with one safe URL-membership query.
-        let resolvedEpisodes = reader.episodes(forURLs: ids.episodeURLs.compactMap { $0 })
+        let resolvedEpisodes = try reader.episodes(
+            forPageIDs: ids.episodeIDs,
+            urls: ids.episodeURLs
+        )
         let resolvedIDs = Set(resolvedEpisodes.map(\.persistentModelID))
         XCTAssertEqual(resolvedIDs, expectedIDs)
         XCTAssertEqual(resolvedEpisodes.count, 60)
+        XCTAssertEqual(resolvedEpisodes.map(\.persistentModelID), ids.episodeIDs)
+        XCTAssertTrue(ids.episodeURLs.contains(where: { $0 == nil }))
+        let urlOnlyEpisodes = try reader.episodes(forURLs: ids.episodeURLs.compactMap { $0 })
+        XCTAssertEqual(urlOnlyEpisodes.count, 59, "the nil-URL row is resolved by ID on the page path")
+        let firstPageIDs = Array(ids.episodeIDs.prefix(20))
+        let firstPageURLs = Array(ids.episodeURLs.prefix(20))
+        let visiblePageURLs = Array(ids.episodeURLs.prefix(20).compactMap { $0 })
+        let visiblePageWithDuplicateAndMissingURL = try reader.episodes(
+            forURLs: visiblePageURLs + [visiblePageURLs[0], URL(string: "https://example.com/missing.mp3")!]
+        )
+        let visibleURLIDs = Set(visiblePageWithDuplicateAndMissingURL.map(\.persistentModelID))
+        let expectedVisibleURLIDs = Set(zip(firstPageIDs, firstPageURLs).compactMap { id, url in
+            url == nil ? nil : id
+        })
+        XCTAssertTrue(
+            expectedVisibleURLIDs.isSubset(of: visibleURLIDs),
+            "URL membership should deduplicate input URLs and ignore missing rows without losing matching IDs"
+        )
         let emptyID = try XCTUnwrap(podcasts.first {
             $0.feed == URL(string: "https://example.com/empty.xml")
         }).persistentModelID
@@ -219,7 +245,7 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             XCTAssertFalse(hasTranscripts, "count=\(expectedCount): fixture intentionally has no transcripts")
 
             let firstPageURLs = Array(result.episodeURLs.prefix(80).compactMap { $0 })
-            let firstPage = reader.episodes(forURLs: firstPageURLs)
+            let firstPage = try reader.episodes(forURLs: firstPageURLs)
             XCTAssertEqual(firstPage.count, min(expectedCount, 80), "count=\(expectedCount)")
         }
     }

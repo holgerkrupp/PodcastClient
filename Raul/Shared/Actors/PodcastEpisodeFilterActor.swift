@@ -49,8 +49,9 @@ actor PodcastEpisodeFilterActor {
         podcastID: PersistentIdentifier,
         request: PodcastEpisodeFilterRequest
     ) throws -> PodcastEpisodeFilterResult {
-        // Resolve the parent in this actor's context. Keep the relationship's
-        // PersistentIdentifier comparison out of Core Data's SQL generator.
+        // Resolve the parent in this actor's context. Keep relationship
+        // traversal out of predicates because Core Data's SQL generator can
+        // abort the process while compiling those SwiftData fetches on device.
         let parentFetchID = PodcastDetailFetchSignposts.begin("Podcast detail parent lookup")
         var podcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
@@ -67,31 +68,25 @@ actor PodcastEpisodeFilterActor {
         let podcast = try modelContext.fetch(podcastDescriptor).first
         parentCount = podcast == nil ? 0 : 1
         guard let podcast else { return PodcastEpisodeFilterResult(episodeIDs: [], episodeURLs: []) }
-        let episodesForFeed: [Episode]
-        let episodeFetchID = PodcastDetailFetchSignposts.begin("Podcast detail episode feed fetch")
+        let episodesForPodcast: [Episode]
+        let episodeFetchID = PodcastDetailFetchSignposts.begin("Podcast detail episode relationship fetch")
         var episodeCount = -1
         defer {
             PodcastDetailFetchSignposts.end(
-                "Podcast detail episode feed fetch",
+                "Podcast detail episode relationship fetch",
                 id: episodeFetchID,
                 count: episodeCount
             )
         }
-        if let feed = podcast.feed {
-            let descriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
-            )
-            episodesForFeed = try modelContext.fetch(descriptor)
-        } else {
-            let descriptor = FetchDescriptor<Episode>(
-                predicate: #Predicate<Episode> { $0.podcast != nil }
-            )
-            episodesForFeed = try modelContext.fetch(descriptor)
-        }
-        episodeCount = episodesForFeed.count
-        var episodes = episodesForFeed.filter {
-            $0.podcast?.persistentModelID == podcastID
-        }
+        // The build-560 report has no app frame and does not identify this
+        // fetch as its trigger. Still, avoid compiling the previous optional
+        // relationship traversal (`episode.podcast?.feed == feed`) here: use
+        // the resolved parent's relationship in this actor-owned context and
+        // retain exact podcast scoping without scanning episodes from other
+        // feeds.
+        episodesForPodcast = podcast.episodes ?? []
+        episodeCount = episodesForPodcast.count
+        var episodes = episodesForPodcast
 
         if request.hidePlayedAndArchived {
             episodes.removeAll { $0.maxPlayProgress >= 0.95 }
@@ -152,14 +147,10 @@ actor PodcastEpisodeFilterActor {
             predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
         )
         podcastDescriptor.fetchLimit = 1
-        guard let feed = try modelContext.fetch(podcastDescriptor).first?.feed else {
+        guard let podcast = try modelContext.fetch(podcastDescriptor).first else {
             return false
         }
-        var descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { $0.podcast?.feed == feed }
-        )
-        descriptor.fetchLimit = 1
-        return try modelContext.fetch(descriptor).isEmpty == false
+        return podcast.episodes?.isEmpty == false
     }
 
     /// Queries transcript rows directly rather than faulting
