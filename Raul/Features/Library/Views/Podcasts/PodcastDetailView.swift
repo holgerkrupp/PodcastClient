@@ -759,9 +759,17 @@ struct PodcastDetailView: View {
         let newLimit = min(oldLimit + Self.episodePageSize, filteredEpisodeIDs.count)
         guard oldLimit < newLimit else { return }
 
-        let page = resolveVisiblePage(from: oldLimit..<newLimit, urls: filteredEpisodeURLs)
-        filteredEpisodes.append(contentsOf: page)
-        filteredEpisodeDisplayLimit = newLimit
+        do {
+            let page = try resolveVisiblePage(
+                from: oldLimit..<newLimit,
+                ids: filteredEpisodeIDs,
+                urls: filteredEpisodeURLs
+            )
+            filteredEpisodes.append(contentsOf: page)
+            filteredEpisodeDisplayLimit = newLimit
+        } catch {
+            errorMessage = "Failed to load more episodes: \(error.localizedDescription)"
+        }
     }
 
     private func applyEpisodeFilters() {
@@ -785,10 +793,6 @@ struct PodcastDetailView: View {
         let actor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
 
         episodeFilterTask?.cancel()
-        filteredEpisodeIDs = []
-        filteredEpisodeURLs = []
-        filteredEpisodes = []
-        filteredEpisodeDisplayLimit = Self.episodePageSize
         isFilteringEpisodes = true
         episodeFilterTask = Task {
             defer {
@@ -802,33 +806,33 @@ struct PodcastDetailView: View {
                     request: request
                 )
                 guard Task.isCancelled == false else { return }
-                filteredEpisodeIDs = result.episodeIDs
-                filteredEpisodeURLs = result.episodeURLs
-                filteredEpisodes = resolveVisiblePage(
+                let visibleEpisodes = try resolveVisiblePage(
                     from: 0..<min(result.episodeIDs.count, Self.episodePageSize),
+                    ids: result.episodeIDs,
                     urls: result.episodeURLs
                 )
+                guard Task.isCancelled == false else { return }
+                filteredEpisodeIDs = result.episodeIDs
+                filteredEpisodeURLs = result.episodeURLs
+                filteredEpisodes = visibleEpisodes
+                filteredEpisodeDisplayLimit = Self.episodePageSize
             } catch {
                 guard Task.isCancelled == false else { return }
-                filteredEpisodeIDs = []
-                filteredEpisodeURLs = []
-                filteredEpisodes = []
+                errorMessage = "Failed to load episodes: \(error.localizedDescription)"
             }
         }
     }
 
     private func resolveVisiblePage(
         from range: Range<Int>,
+        ids: [PersistentIdentifier],
         urls: [URL?]
-    ) -> [Episode] {
+    ) throws -> [Episode] {
         guard range.isEmpty == false else { return [] }
-        let pageURLs = Array(urls[range].compactMap { $0 })
+        let pageIDs = Array(ids[range])
+        let pageURLs = Array(urls[range])
         let signpostID = PodcastDetailFetchSignposts.begin("Podcast detail visible page fetch")
-        let fetched = modelContext.episodes(forURLs: pageURLs)
-        let byURL = Dictionary(fetched.compactMap { episode in
-            episode.url.map { ($0, episode) }
-        }, uniquingKeysWith: { first, _ in first })
-        let result = pageURLs.compactMap { byURL[$0] }
+        let result = try modelContext.episodes(forPageIDs: pageIDs, urls: pageURLs)
         PodcastDetailFetchSignposts.end("Podcast detail visible page fetch", id: signpostID, count: result.count)
         return result
     }

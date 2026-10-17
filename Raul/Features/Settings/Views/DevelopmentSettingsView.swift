@@ -1,6 +1,7 @@
 #if DEBUG
 import Foundation
 import SwiftUI
+import UIKit
 
 struct DevelopmentSettingsView: View {
     @ObservedObject private var modelContainerManager = ModelContainerManager.shared
@@ -28,6 +29,7 @@ struct DevelopmentSettingsView: View {
     @State private var remoteConfigRefreshToken = 0
     @State private var reattachApprovalToken = 0
     @State private var playlistDiagnostics: String?
+    @State private var breadcrumbsCopied = false
     @State private var showTombstoneRecoverySheet = false
     @State private var storeSizes: [DevelopmentStoreSize] = []
     @State private var storeObjectCounts: [StoreSplitDevelopmentDatabaseCounts] = []
@@ -115,6 +117,17 @@ struct DevelopmentSettingsView: View {
 
     var body: some View {
         Form {
+            Section("Crash Diagnostics") {
+                Button(breadcrumbsCopied ? "Breadcrumbs Copied" : "Copy Persisted Breadcrumbs") {
+                    UIPasteboard.general.string = CrashBreadcrumbs.shared.recentSummary(limit: 80)
+                    breadcrumbsCopied = true
+                }
+
+                Text("Includes recent operations and any operation without a matching completion event. Entries contain operation IDs, predicate labels, counts, and timing; no feed URLs or content.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section {
                 Picker("Data architecture", selection: $storeMode) {
                     ForEach(DevelopmentStoreMode.allCases) { mode in

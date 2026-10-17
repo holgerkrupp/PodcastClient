@@ -106,18 +106,61 @@ extension ModelContext{
         return resolved
     }
 
-    /// Resolve a visible episode page with one bounded SwiftData fetch. URL
-    /// membership predicates are supported by the SQLite store and avoid the
-    /// per-ID synchronous fetches required by `PersistentIdentifier` lookups.
-    func episodes(forURLs urls: [URL]) -> [Episode] {
+    /// Resolve a visible episode page with one bounded SwiftData URL-membership
+    /// fetch, avoiding per-ID lookups for rows with a URL.
+    func episodes(forURLs urls: [URL]) throws -> [Episode] {
         let uniqueURLs = Array(Set(urls))
         guard uniqueURLs.isEmpty == false else { return [] }
+        let operationID = UUID().uuidString
+        let startedAt = ContinuousClock.now
+        CrashBreadcrumbs.shared.record(
+            "podcast_detail_visible_page_started",
+            details: "operation=\(operationID) predicate=episode_optional_url_membership requested=\(urls.count) unique=\(uniqueURLs.count)"
+        )
+        defer {
+            let elapsed = startedAt.duration(to: .now).components
+            let elapsedMilliseconds = elapsed.seconds * 1_000
+                + elapsed.attoseconds / 1_000_000_000_000_000
+            CrashBreadcrumbs.shared.record(
+                "podcast_detail_visible_page_finished",
+                details: "operation=\(operationID) predicate=episode_optional_url_membership elapsed_ms=\(elapsedMilliseconds)"
+            )
+        }
         let optionalURLs = uniqueURLs.map(Optional.some)
         let descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
                 optionalURLs.contains(episode.url)
             }
         )
-        return (try? fetch(descriptor)) ?? []
+        return try fetch(descriptor)
+    }
+
+    /// Resolve one UI page in the filter actor's original order. The URL query
+    /// is a bounded batch; model identity is used to discard duplicate-URL
+    /// siblings and preserve the right row. Nil-URL rows use their stable ID
+    /// and are capped by the caller's page size (80), rather than expanding a
+    /// library-wide ID predicate.
+    func episodes(
+        forPageIDs ids: [PersistentIdentifier],
+        urls: [URL?]
+    ) throws -> [Episode] {
+        precondition(ids.count == urls.count)
+        let fetched = try episodes(forURLs: urls.compactMap { $0 })
+        var byID = Dictionary(
+            fetched.map { ($0.persistentModelID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        for (id, url) in zip(ids, urls) where url == nil {
+            var descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.persistentModelID == id }
+            )
+            descriptor.fetchLimit = 1
+            if let episode = try fetch(descriptor).first {
+                byID[id] = episode
+            }
+        }
+
+        return ids.compactMap { byID[$0] }
     }
 }
