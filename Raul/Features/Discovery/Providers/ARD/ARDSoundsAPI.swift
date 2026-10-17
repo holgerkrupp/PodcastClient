@@ -52,6 +52,50 @@ struct ARDSoundsAPI: Sendable {
         return response.programSets
     }
 
+    /// Looks up resolution-only metadata after the user opens a programme.
+    /// The catalogue remains a single request while browsing. GraphQL accepts
+    /// the `urn:ard:show:…` ID and exposes `feedUrl`; the REST detail route is a
+    /// compatibility fallback for catalogue responses with no sharing URN.
+    func programSet(id: String, fallbackNumericID: String? = nil) async throws -> ARDProgramSet? {
+        if id.hasPrefix("urn:ard:show:") {
+            do {
+                guard let url = URL(string: "\(Self.base)/graphql") else {
+                    throw PodcastDiscoveryError.invalidResponse
+                }
+                let query = """
+                query($id: ID!) {
+                  programSet(id: $id) {
+                    id title synopsis numberOfElements sharingUrl feedUrl
+                    publicationService { title organizationName homepageUrl }
+                  }
+                }
+                """
+                let body = try JSONSerialization.data(withJSONObject: [
+                    "query": query,
+                    "variables": ["id": id]
+                ])
+                var request = URLRequest(url: url)
+                request.httpMethod = "POST"
+                request.httpBody = body
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                if let result = try await client.json(ARDSoundsProgramSetResponse.self, request: request).programSetValue {
+                    return result
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // An optional GraphQL field or endpoint can change independently
+                // of REST. Fall back to the catalogue's numeric ID when present.
+            }
+        }
+
+        let restID = id.allSatisfy(\.isNumber) ? id : fallbackNumericID
+        guard let restID, restID.allSatisfy(\.isNumber),
+              let encodedID = restID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(Self.base)/programsets/\(encodedID)") else { return nil }
+        return try await client.json(ARDSoundsProgramSetResponse.self, from: url).programSetValue
+    }
+
     func item(id: String) async throws -> ARDSoundsItem {
         guard let url = URL(string: "\(Self.base)/graphql") else {
             throw PodcastDiscoveryError.invalidResponse
@@ -91,7 +135,7 @@ struct ARDSoundsAPI: Sendable {
             return nil
         }
         let path = url.path.removingPercentEncoding ?? url.path
-        let pattern = #"(?i)urn:ard:(?:episode|section|extra):[a-z0-9]+"#
+        let pattern = #"(?i)urn:ard:(?:show|episode|section|extra):[a-z0-9]+"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(
                 in: path,

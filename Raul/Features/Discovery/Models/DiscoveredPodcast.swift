@@ -21,6 +21,8 @@ struct DiscoveredPodcast: Identifiable, Sendable, Hashable {
     let feedURL: URL?
     /// Public webpage for the show, offered to the user when feed resolution fails.
     let webpageURL: URL?
+    /// Publisher's official website, when the discovery source provides one.
+    let publisherWebsiteURL: URL?
     /// BCP-47 / ISO 639 language code as reported by the provider.
     let language: String?
     let providerID: String
@@ -37,6 +39,7 @@ struct DiscoveredPodcast: Identifiable, Sendable, Hashable {
         artworkURL: URL? = nil,
         feedURL: URL? = nil,
         webpageURL: URL? = nil,
+        publisherWebsiteURL: URL? = nil,
         language: String? = nil,
         providerID: String,
         broadcasterID: String,
@@ -50,6 +53,7 @@ struct DiscoveredPodcast: Identifiable, Sendable, Hashable {
         self.artworkURL = artworkURL
         self.feedURL = feedURL
         self.webpageURL = webpageURL
+        self.publisherWebsiteURL = publisherWebsiteURL
         self.language = language
         self.providerID = providerID
         self.broadcasterID = broadcasterID

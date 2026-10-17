@@ -62,3 +62,23 @@ or:
 
 Temporary build directories created by an agent must be removed after the
 validation run unless they are deliberately being retained for debugging.
+
+## Public broadcaster discovery
+
+- Resolve broadcaster catalogue entries to a validated RSS/Atom feed before
+  handing them to the ordinary `PodcastFeed` and subscription flow. Keep
+  provider APIs and response models behind the discovery provider.
+- Treat publisher and Apple title matches as candidates, not proof. Confirm the
+  publisher and complete programme identity, then validate the feed with
+  `PodcastFeedResolver`; never substitute a partial or stale feed on title
+  similarity alone.
+- Keep discovery network work off catalogue browsing paths. Bound resolution
+  requests, propagate cancellation, cache successful results for a limited
+  time, and keep diagnostics free of private feed URLs and user identifiers.
+- A non-RSS source needs a separate architecture review of podcast/episode
+  identity, split SwiftData stores, authoritative CloudKit synchronization,
+  restoration, history/bookmarks, playlists, queue, downloads, refresh, and
+  OPML before any persisted source change. Never store a fabricated RSS URL.
+- When changing discovery UI, update its user-guide topic if one exists in the
+  current source tree. If the guide module is absent, record that limitation in
+  the feature documentation for follow-up.

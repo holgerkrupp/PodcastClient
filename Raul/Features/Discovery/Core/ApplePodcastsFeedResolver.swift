@@ -16,42 +16,96 @@
 import Foundation
 
 struct ApplePodcastsFeedResolver: Sendable {
+    struct Candidate: Sendable {
+        let feedURL: URL
+        let title: String?
+        let publisher: String?
+    }
+
     /// Storefront used for lookups, e.g. "pt" or "de".
     let storefront: String
+    private let searchCandidates: @Sendable (String) async -> [Candidate]
+    private let collectionLookup: @Sendable (String) async -> URL?
 
-    init(storefront: String) {
+    init(
+        storefront: String,
+        searchCandidates: (@Sendable (String) async -> [Candidate])? = nil,
+        collectionLookup: (@Sendable (String) async -> URL?)? = nil
+    ) {
         self.storefront = storefront.lowercased()
+        self.searchCandidates = searchCandidates ?? { term in
+            let results = await ITunesSearchActor(country: storefront).search(for: term) ?? []
+            return results.compactMap { feed in
+                guard let feedURL = feed.url else { return nil }
+                return Candidate(feedURL: feedURL, title: feed.title, publisher: feed.artist)
+            }
+        }
+        self.collectionLookup = collectionLookup ?? { id in
+            await ITunesSearchActor(country: storefront).feedURL(forCollectionID: id)
+        }
     }
 
     func feedURL(forAppleCollectionID collectionID: String) async -> URL? {
-        await ITunesSearchActor(country: storefront).feedURL(forCollectionID: collectionID)
+        await collectionLookup(collectionID)
     }
 
-    /// Resolves a feed only when exactly one Apple result carries the same title.
-    /// Generic titles ("Wissen", "News") deliberately fail to resolve.
+    /// Resolves only an unambiguous Apple result published by the expected
+    /// broadcaster and whose title preserves the complete programme title.
+    /// A suffix such as "- Deutschlandfunk Nova" is allowed; dropping a
+    /// meaningful title component (for example "-Speicher") is not.
     func feedURL(matchingTitle title: String, author: String? = nil) async -> URL? {
-        let wanted = title.discoveryComparisonKey
+        let wanted = Self.normalized(title)
         guard wanted.count >= 4 else { return nil }
 
-        let results = await ITunesSearchActor(country: storefront).search(for: title) ?? []
-        let exactMatches = results.filter { $0.title?.discoveryComparisonKey == wanted }
-
-        guard exactMatches.isEmpty == false else { return nil }
-
-        if exactMatches.count == 1 {
-            return exactMatches.first?.url
+        var queries = [title]
+        if let author, author.isEmpty == false {
+            queries.append("\(title) \(author)")
         }
-
-        // Several shows share the title: only an author match can break the tie.
-        guard let author, author.isEmpty == false else { return nil }
-        let wantedAuthor = author.discoveryComparisonKey
-
-        let authorMatches = exactMatches.filter { candidate in
-            guard let artist = candidate.artist?.discoveryComparisonKey, artist.isEmpty == false else { return false }
-            return artist == wantedAuthor || artist.contains(wantedAuthor) || wantedAuthor.contains(artist)
+        var candidates: [Candidate] = []
+        var seen = Set<String>()
+        for query in queries {
+            for candidate in await searchCandidates(query) {
+                guard Self.publisherMatches(candidate.publisher, expected: author),
+                      Self.title(candidate.title, preserves: title) else { continue }
+                let key = candidate.feedURL.absoluteString
+                if seen.insert(key).inserted { candidates.append(candidate) }
+            }
+            if candidates.count > 1 { return nil }
+            if candidates.count == 1 { return candidates[0].feedURL }
         }
+        return nil
+    }
 
-        return authorMatches.count == 1 ? authorMatches.first?.url : nil
+    static func title(_ candidateTitle: String?, preserves requestedTitle: String) -> Bool {
+        guard let candidateTitle else { return false }
+        let candidate = titleWords(candidateTitle)
+        let requested = titleWords(requestedTitle)
+        guard requested.joined().count >= 4, candidate.count >= requested.count else { return false }
+        return Array(candidate.prefix(requested.count)) == requested
+    }
+
+    static func publisherMatches(_ candidatePublisher: String?, expected: String?) -> Bool {
+        guard let expected, let candidatePublisher else {
+            return false
+        }
+        let expectedWords = titleWords(expected)
+        let publisherWords = titleWords(candidatePublisher)
+        guard expectedWords.joined().count >= 4, publisherWords.joined().count >= 4 else { return false }
+        return publisherWords == expectedWords
+            || (publisherWords.count > expectedWords.count
+                && Array(publisherWords.prefix(expectedWords.count)) == expectedWords)
+            || (expectedWords.count > publisherWords.count
+                && Array(expectedWords.prefix(publisherWords.count)) == publisherWords)
+    }
+
+    private static func normalized(_ value: String) -> String {
+        value.discoveryComparisonKey
+    }
+
+    private static func titleWords(_ value: String) -> [String] {
+        value.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil)
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.isEmpty == false }
     }
 
     /// Extracts an Apple Podcasts collection id from a broadcaster webpage.

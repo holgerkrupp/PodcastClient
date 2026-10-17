@@ -6,6 +6,56 @@ import XCTest
 /// browsing, and the Apple-catalogue-backed broadcasters.
 final class PodcastDiscoveryNewProviderTests: XCTestCase {
 
+    private struct PodcastFeedFixtureTransport: PodcastHTTPTransport {
+        let responses: [String: (Data, String)]
+
+        func data(
+            for request: URLRequest,
+            profile: PodcastAccessProfile?,
+            resolver: PodcastAccessResolver
+        ) async throws -> (Data, URLResponse) {
+            let url = try XCTUnwrap(request.url)
+            guard let (data, contentType) = responses[url.absoluteString] else {
+                throw PodcastHTTPError.invalidResponse(url)
+            }
+            return (
+                data,
+                HTTPURLResponse(
+                    url: url,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": contentType]
+                )!
+            )
+        }
+    }
+
+    private final class RetryAttemptCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+
+        func next() -> Int {
+            lock.withLock {
+                count += 1
+                return count
+            }
+        }
+    }
+
+    private struct RetryDiscoveryProvider: PodcastDiscoveryProvider {
+        let broadcaster: PublicBroadcaster
+        let attempts: RetryAttemptCounter
+        let feedURL: URL
+
+        var id: String { broadcaster.id }
+        var capabilities: PodcastDiscoveryCapabilities { [.feedURL] }
+
+        func resolveFeed(for podcast: DiscoveredPodcast) async throws -> URL {
+            guard attempts.next() > 1 else { throw PodcastDiscoveryError.unavailable }
+            return feedURL
+        }
+    }
+
     // MARK: - CBC
 
     func testCBCDirectoryExtractsTitleArtworkDescriptionCategoryAndFeed() throws {
@@ -189,6 +239,265 @@ final class PodcastDiscoveryNewProviderTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? PodcastDiscoveryError, .unavailable)
         }
+    }
+
+    func testAchtsamResolvesOfficialDeutschlandfunkNovaFeedWithTitleVariation() async throws {
+        // Recorded from ARD's live search API: the catalogue title is simply
+        // "Achtsam" and identifies Deutschlandfunk Nova as the publisher.
+        let searchFixture = """
+        { "data": { "search": { "programSets": { "nodes": [
+          { "id": "79305508", "title": "Achtsam", "numberOfElements": 169,
+            "synopsis": "So kommen wir achtsamer und stressfreier durchs Leben.",
+            "sharingUrl": "https://www.ardsounds.de/sendung/achtsam/urn:ard:show:7a9143c8d615db00/",
+            "publicationService": { "title": "Deutschlandfunk Nova", "organizationName": "Deutschlandradio",
+              "homepageUrl": "https://www.deutschlandfunknova.de/" } }
+        ] } } } }
+        """
+        let detailFixture = """
+        { "data": { "programSet": { "id": "79305508", "title": "Achtsam",
+          "numberOfElements": 169, "sharingUrl": "https://www.ardsounds.de/sendung/achtsam/urn:ard:show:7a9143c8d615db00/",
+          "feedUrl": null } } }
+        """
+        let transport = StubTransport()
+        transport.stub("https://api.ardaudiothek.de/search/programsets", json: searchFixture)
+        transport.stub("https://api.ardaudiothek.de/graphql", json: detailFixture)
+        transport.stub("https://www.ardsounds.de/sendung/achtsam/", markup: "<html><head></head></html>")
+
+        let officialFeed = URL(string: "https://www.deutschlandfunknova.de/podcast/achtsam-mit-main-huong-und-diane")!
+        let apple = ApplePodcastsFeedResolver(
+            storefront: "de",
+            searchCandidates: { _ in
+                [
+                    .init(
+                        feedURL: officialFeed,
+                        title: "Achtsam - Deutschlandfunk Nova",
+                        publisher: "Deutschlandfunk Nova"
+                    )
+                ]
+            }
+        )
+        let rss = """
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel><title>Achtsam</title><itunes:author>Deutschlandfunk Nova</itunes:author>
+            <item><guid>achtsam-2026-10-14</guid><title>Aphantasie: Ohne innere Bilder leben</title></item>
+          </channel>
+        </rss>
+        """
+        let feedClient = PodcastHTTPClient(transport: PodcastFeedFixtureTransport(responses: [
+            officialFeed.absoluteString: (Data(rss.utf8), "application/rss+xml")
+        ]))
+        let provider = ARDSoundsDiscoveryProvider(
+            broadcaster: PublicBroadcasterCatalog.ardSounds,
+            client: transport.client,
+            cache: PodcastDiscoveryCache(),
+            appleResolver: apple,
+            feedClient: feedClient
+        )
+
+        let results = try await provider.search("Achtsam")
+        let show = try XCTUnwrap(results.first)
+        let resolved = try await provider.resolveFeed(for: show)
+
+        XCTAssertEqual(resolved, officialFeed)
+        XCTAssertTrue(transport.requestedURLs.contains { $0.path == "/graphql" })
+    }
+
+    func testAchtsamUsesOptionalARDGraphQLFeedMetadataBeforeAppleSearch() async throws {
+        let officialFeed = URL(string: "https://www.deutschlandfunknova.de/podcast/achtsam-mit-main-huong-und-diane")!
+        let transport = StubTransport()
+        transport.stub("https://api.ardaudiothek.de/graphql", json: """
+        { "data": { "programSet": { "id": "79305508", "title": "Achtsam",
+          "numberOfElements": 169,
+          "sharingUrl": "https://www.ardsounds.de/sendung/achtsam/urn:ard:show:7a9143c8d615db00/",
+          "feedUrl": "\(officialFeed.absoluteString)" } } }
+        """)
+        let apple = ApplePodcastsFeedResolver(storefront: "de", searchCandidates: { _ in [] })
+        let rss = """
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel><title>Achtsam - Deutschlandfunk Nova</title><itunes:author>Deutschlandfunk Nova</itunes:author>
+            <item><guid>achtsam-2026-10-14</guid><title>Aphantasie: Ohne innere Bilder leben</title></item>
+          </channel>
+        </rss>
+        """
+        let feedClient = PodcastHTTPClient(transport: PodcastFeedFixtureTransport(responses: [
+            officialFeed.absoluteString: (Data(rss.utf8), "application/rss+xml")
+        ]))
+        let provider = ARDSoundsDiscoveryProvider(
+            broadcaster: PublicBroadcasterCatalog.ardSounds,
+            client: transport.client,
+            cache: PodcastDiscoveryCache(),
+            appleResolver: apple,
+            feedClient: feedClient
+        )
+        let show = DiscoveredPodcast(
+            id: "79305508",
+            title: "Achtsam",
+            author: "Deutschlandfunk Nova",
+            webpageURL: URL(string: "https://www.ardsounds.de/sendung/achtsam/urn:ard:show:7a9143c8d615db00/"),
+            providerID: "ardsounds",
+            broadcasterID: "ardsounds",
+            providerReference: "urn:ard:show:7a9143c8d615db00"
+        )
+
+        let resolved = try await provider.resolveFeed(for: show)
+
+        XCTAssertEqual(resolved, officialFeed)
+        XCTAssertEqual(transport.requestedURLs.map(\.path), ["/graphql"])
+    }
+
+    func testARDResolvesPublisherWebsiteRSSWithExistingHTMLDiscovery() async throws {
+        let publisherHome = URL(string: "https://www.deutschlandfunknova.de/")!
+        let officialFeed = URL(string: "https://www.deutschlandfunknova.de/podcast/achtsam-mit-main-huong-und-diane")!
+        let transport = StubTransport()
+        transport.stub("https://api.ardaudiothek.de/graphql", json: """
+        { "data": { "programSet": { "id": "79305508", "title": "Achtsam", "feedUrl": null } } }
+        """)
+        transport.stub("https://www.deutschlandfunknova.de/", markup: """
+        <html><head><link rel="alternate" type="application/rss+xml" href="/podcast/achtsam-mit-main-huong-und-diane"></head></html>
+        """)
+        let rss = """
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel><title>Achtsam - Deutschlandfunk Nova</title><itunes:author>Deutschlandfunk Nova</itunes:author>
+            <item><guid>achtsam-2026-10-14</guid><title>Aphantasie: Ohne innere Bilder leben</title></item>
+          </channel>
+        </rss>
+        """
+        let feedClient = PodcastHTTPClient(transport: PodcastFeedFixtureTransport(responses: [
+            officialFeed.absoluteString: (Data(rss.utf8), "application/rss+xml")
+        ]))
+        let apple = ApplePodcastsFeedResolver(storefront: "de", searchCandidates: { _ in [] })
+        let provider = ARDSoundsDiscoveryProvider(
+            broadcaster: PublicBroadcasterCatalog.ardSounds,
+            client: transport.client,
+            cache: PodcastDiscoveryCache(),
+            appleResolver: apple,
+            feedClient: feedClient
+        )
+        let show = DiscoveredPodcast(
+            id: "79305508",
+            title: "Achtsam",
+            author: "Deutschlandfunk Nova",
+            webpageURL: URL(string: "https://www.ardsounds.de/sendung/achtsam/urn:ard:show:7a9143c8d615db00/"),
+            publisherWebsiteURL: publisherHome,
+            providerID: "ardsounds",
+            broadcasterID: "ardsounds",
+            providerReference: "urn:ard:show:7a9143c8d615db00"
+        )
+
+        let resolved = try await provider.resolveFeed(for: show)
+
+        XCTAssertEqual(resolved, officialFeed)
+        XCTAssertEqual(transport.requestedURLs.map(\.host), ["api.ardaudiothek.de", "www.deutschlandfunknova.de"])
+    }
+
+    func testARDHorspielSpeicherRejectsOpaqueFeedAndIncompleteTitleMatch() async throws {
+        // Recorded REST response: ARD's `feedUrl` is a CRID, not an RSS URL.
+        let detailFixture = """
+        { "data": { "programSet": { "id": "31649612", "title": "ARD Hörspiel-Speicher",
+          "numberOfElements": 567, "feedUrl": "crid://wdr.de/mdb/111/hörspiel" } } }
+        """
+        let transport = StubTransport()
+        transport.stub("https://api.ardaudiothek.de/programsets/31649612", json: detailFixture)
+        transport.stub("https://www.ardsounds.de/sendung/ard-hoerspiel-speicher/", markup: "<html><head></head></html>")
+
+        let apple = ApplePodcastsFeedResolver(
+            storefront: "de",
+            searchCandidates: { _ in
+                [
+                    .init(
+                        feedURL: URL(string: "https://www1.wdr.de/mediathek/audio/hoerspiel-speicher/wdr_hoerspielspeicher150.podcast")!,
+                        title: "ARD Hörspiel",
+                        publisher: "ARD"
+                    )
+                ]
+            }
+        )
+        let provider = ARDSoundsDiscoveryProvider(
+            broadcaster: PublicBroadcasterCatalog.ardSounds,
+            client: transport.client,
+            cache: PodcastDiscoveryCache(),
+            appleResolver: apple
+        )
+        let show = DiscoveredPodcast(
+            id: "31649612",
+            title: "ARD Hörspiel-Speicher",
+            author: "ARD",
+            webpageURL: URL(string: "https://www.ardsounds.de/sendung/ard-hoerspiel-speicher/urn:ard:show:282098536a9f177e/"),
+            providerID: "ardsounds",
+            broadcasterID: "ardsounds",
+            providerReference: "31649612"
+        )
+
+        do {
+            _ = try await provider.resolveFeed(for: show)
+            XCTFail("An opaque CRID and incomplete legacy feed must not be accepted")
+        } catch {
+            XCTAssertEqual(error as? PodcastDiscoveryError, .feedNotFound)
+        }
+    }
+
+    func testAppleARDResolutionRequiresPublisherAndCompleteTitle() {
+        XCTAssertTrue(ApplePodcastsFeedResolver.title("Achtsam - Deutschlandfunk Nova", preserves: "Achtsam"))
+        XCTAssertFalse(ApplePodcastsFeedResolver.title("ARD Hörspiel", preserves: "ARD Hörspiel-Speicher"))
+        XCTAssertTrue(ApplePodcastsFeedResolver.publisherMatches("Deutschlandfunk Nova", expected: "Deutschlandfunk Nova"))
+        XCTAssertFalse(ApplePodcastsFeedResolver.publisherMatches("ARD", expected: "Deutschlandfunk Nova"))
+    }
+
+    func testARDFeedCandidatesRejectPrivateAndNonHTTPDestinations() {
+        XCTAssertNotNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://feeds.example.org/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("file:///etc/passwd"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://localhost/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://127.0.0.1/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://10.0.0.8/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://192.0.2.10/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://[::1]/show.xml"))
+        XCTAssertNil(ARDSoundsDiscoveryProvider.publicHTTPURL("https://feeds.example.org/show.xml?token=private"))
+    }
+
+    func testDiscoveryHTTPClientRejectsOversizedMetadataResponses() async {
+        let url = URL(string: "https://feeds.example.org/large")!
+        let client = PodcastDiscoveryHTTPClient(maximumResponseBytes: 8, transport: { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "text/html"]
+            )!
+            return (Data(repeating: 65, count: 9), response)
+        })
+
+        do {
+            _ = try await client.markup(from: url)
+            XCTFail("Oversized discovery metadata must be rejected")
+        } catch {
+            XCTAssertEqual(error as? PodcastDiscoveryError, .invalidResponse)
+        }
+    }
+
+    @MainActor
+    func testUnavailableARDFeedLookupCanBeRetriedSuccessfully() async {
+        let broadcaster = PublicBroadcaster.testBroadcaster(id: "ardsounds", name: "ARD Sounds")
+        let feedURL = URL(string: "https://example.org/show.xml")!
+        let provider = RetryDiscoveryProvider(
+            broadcaster: broadcaster,
+            attempts: RetryAttemptCounter(),
+            feedURL: feedURL
+        )
+        let registry = PodcastDiscoveryRegistry(broadcasters: [broadcaster], providers: [provider])
+        let podcast = DiscoveredPodcast(
+            id: "show-id",
+            title: "Test programme",
+            author: "Test broadcaster",
+            providerID: "ardsounds",
+            broadcasterID: "ardsounds"
+        )
+        let resolution = DiscoveredPodcastFeedResolution(podcast: podcast, registry: registry)
+
+        await resolution.resolveFeedIfNeeded()
+        XCTAssertEqual(resolution.state, .unavailable(.unavailable))
+
+        await resolution.retryFeedLookup()
+        XCTAssertEqual(resolution.state, .resolved(feedURL))
     }
 
     // MARK: - Apple-catalogue-backed broadcasters

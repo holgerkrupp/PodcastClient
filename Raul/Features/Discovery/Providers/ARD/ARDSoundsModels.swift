@@ -39,6 +39,16 @@ struct ARDSoundsItemResponse: Decodable, Sendable {
     var itemValue: ARDSoundsItem? { data?.item }
 }
 
+struct ARDSoundsProgramSetResponse: Decodable, Sendable {
+    struct DataContainer: Decodable, Sendable {
+        let programSet: ARDProgramSet?
+    }
+
+    let data: DataContainer?
+
+    var programSetValue: ARDProgramSet? { data?.programSet }
+}
+
 struct ARDSoundsItem: Decodable, Sendable {
     struct Audio: Decodable, Sendable {
         let href: String?
@@ -108,6 +118,11 @@ struct ARDProgramSet: Decodable, Sendable {
     struct PublicationService: Decodable, Sendable {
         let title: String?
         let organizationName: String?
+        let homepageUrl: String?
+
+        var websiteURL: URL? {
+            homepageUrl.flatMap(URL.init(string:))
+        }
     }
 
     let id: String
@@ -115,6 +130,9 @@ struct ARDProgramSet: Decodable, Sendable {
     let synopsis: String?
     let numberOfElements: Int?
     let sharingUrl: String?
+    /// ARD currently returns both real feed URLs and opaque identifiers such as
+    /// `crid://…` here. Keep this optional and let the resolver validate schemes.
+    let feedUrl: String?
     let image: Image?
     let publicationService: PublicationService?
 
