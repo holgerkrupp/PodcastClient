@@ -6735,6 +6735,42 @@
         }
       }
     },
+    "Couldn’t verify a current RSS feed" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kein aktueller RSS-Feed verifiziert" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de vérifier un flux RSS actuel" } }
+      }
+    },
+    "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Für diese Sendung wurde kein aktueller RSS-Feed gefunden. Versuche eine neue Suche oder öffne die Programmwebsite." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun flux RSS actuel n’a pu être vérifié pour cette émission. Réessayez ou consultez le site de l’émission." } }
+      }
+    },
+    "The broadcaster could not be reached. Check your connection and try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Sender ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le diffuseur est inaccessible. Vérifiez votre connexion et réessayez." } }
+      }
+    },
+    "This programme cannot be opened from its current source. Try again or visit the programme website." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diese Sendung kann über die aktuelle Quelle nicht geöffnet werden. Versuche es erneut oder öffne die Programmwebsite." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Cette émission ne peut pas être ouverte depuis sa source actuelle. Réessayez ou consultez son site." } }
+      }
+    },
+    "Open Programme Website" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Programmwebsite öffnen" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ouvrir le site de l’émission" } }
+      }
+    },
+    "Retry Feed Lookup" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Feed erneut suchen" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher le flux" } }
+      }
+    },
     "Feed unavailable" : {
       "localizations" : {
         "de" : {

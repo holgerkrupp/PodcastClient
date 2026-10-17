@@ -52,15 +52,22 @@ struct DiscoveredPodcastBrowseView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .navigationTitle(podcast.title)
 
-            case .unavailable:
+            case .unavailable(let error):
                 ContentUnavailableView {
-                    Label("Feed unavailable", systemImage: "exclamationmark.triangle")
+                    Label("Couldn’t verify a current RSS feed", systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text("This podcast cannot be opened right now.")
+                    Text(viewModel.failureMessage(for: error))
                 } actions: {
-                    if let website = podcast.webpageURL ?? broadcaster?.website {
+                    Button {
+                        Task { await viewModel.retryFeedLookup() }
+                    } label: {
+                        Label("Retry Feed Lookup", systemImage: "arrow.clockwise")
+                    }
+                    .disabled(viewModel.state == .resolving)
+
+                    if let website = podcast.webpageURL ?? podcast.publisherWebsiteURL ?? broadcaster?.website {
                         Link(destination: website) {
-                            Label("Open Broadcaster Website", systemImage: "safari")
+                            Label("Open Programme Website", systemImage: "safari")
                         }
                     }
                 }
@@ -81,7 +88,7 @@ final class DiscoveredPodcastFeedResolution: ObservableObject {
     enum State: Equatable {
         case resolving
         case resolved(URL)
-        case unavailable
+        case unavailable(PodcastDiscoveryError)
     }
 
     @Published private(set) var state: State = .resolving
@@ -111,10 +118,27 @@ final class DiscoveredPodcastFeedResolution: ObservableObject {
             state = .resolved(try await service.resolveFeed(for: podcast))
         } catch is CancellationError {
             didResolve = false
+        } catch let error as PodcastDiscoveryError {
+            state = .unavailable(error)
         } catch {
-            // Provider errors stay internal: the user is offered the
-            // broadcaster's own site instead.
-            state = .unavailable
+            state = .unavailable(.unavailable)
+        }
+    }
+
+    func retryFeedLookup() async {
+        guard state != .resolving else { return }
+        didResolve = false
+        await resolveFeedIfNeeded()
+    }
+
+    func failureMessage(for error: PodcastDiscoveryError) -> String {
+        switch error {
+        case .feedNotFound:
+            return String(localized: "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website.")
+        case .unavailable, .invalidResponse, .parsingFailed:
+            return String(localized: "The broadcaster could not be reached. Check your connection and try again.")
+        case .unsupportedOperation, .configurationMissing:
+            return String(localized: "This programme cannot be opened from its current source. Try again or visit the programme website.")
         }
     }
 

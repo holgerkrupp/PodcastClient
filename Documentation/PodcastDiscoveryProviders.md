@@ -13,9 +13,12 @@ Subscribe button. There is no discovery-specific detail screen.
 `DiscoveredPodcastBrowseView` is only a resolver: providers that publish feeds
 directly resolve on the first render and it is never seen, while the providers
 that must look a feed up (ARD, RTP, SRG search results) show a progress view
-first and a "Feed unavailable" state with the broadcaster's website on failure. A podcast subscribed
+first and a retryable recovery state with the broadcaster's website on failure. A podcast subscribed
 through SRF or RNZ is an entirely ordinary Up Next podcast afterwards — there is
 no broadcaster-specific playback, storage or subscription behaviour anywhere.
+The current main branch has no in-app guide module, so this recovery behavior is
+explained inline and here; add the corresponding guide topic when that module is
+present in the branch.
 
 Discovery results are never written to SwiftData. `DiscoveredPodcast` is a plain
 value type; SwiftData objects are created only when the user actually subscribes.
@@ -171,12 +174,86 @@ stations and ~1400 shows (measured Sep 2026). Organizations become the
 categories, so the axis is ARD's own. The catalogue response carries no
 synopsis, so browsed shows have no description until the user searches for them.
 
-ARD exposes no RSS feed of its own. `resolveFeed(for:)` therefore looks for the
-conventional feed the originating ARD broadcaster publishes, via an **exact**
-normalized title match on Apple Podcasts. The match is deliberately strict: a
-generic title such as "Wissen" resolves to nothing rather than to the wrong
-podcast, and the user is offered the broadcaster's website instead. Expect
-roughly half of ARD shows to resolve.
+ARD does not offer general-purpose RSS feeds from ARD Sounds. Its public help
+page says individual broadcaster websites sometimes publish RSS feeds. The
+resolver runs only after a user opens a programme; normal catalogue browsing
+does not fetch per-show details or publisher pages. Resolution order is:
+
+1. Use the ARD show URN from its sharing URL for the GraphQL
+   `programSet(id:)` detail query. If a sharing URN is unavailable or GraphQL
+   fails, use the numeric ID with `/programsets/{id}`. The optional `feedUrl` is
+   a candidate only: Achtsam currently returns its official Deutschlandfunk Nova
+   RSS URL, while ARD Hörspiel-Speicher returns
+   `crid://wdr.de/mdb/111/hörspiel`, which is rejected as an opaque programme
+   identifier.
+2. Check the publisher's official homepage, then the ARD programme page, for
+   an advertised RSS/Atom alternate link and an explicitly linked Apple
+   Podcasts collection. Any feed candidate is passed through the ordinary
+   `PodcastFeedResolver` parser and must preserve the full programme title.
+3. Search the German Apple Podcasts catalogue. A title suffix variation is
+   accepted only when the full ARD title is retained and the Apple publisher
+   matches the ARD publication service. The parsed feed is checked again. For
+   example, Achtsam resolves to the current Deutschlandfunk Nova feed despite
+   Apple spelling its title `Achtsam - Deutschlandfunk Nova`.
+
+Successful resolutions are cached in memory for 30 minutes. Failed lookups are
+not cached, so Retry reruns resolution (subject to normal HTTP cache headers).
+Requests use the discovery client's bounded timeout and propagate cancellation;
+diagnostics record only the public programme ID, resolution stage, outcome, and
+duration. They do not include feed URLs, search text, or user/library identifiers.
+
+Live API checks on 2026-10-17 confirmed `programSet(id:)` and its optional
+GraphQL `feedUrl` field. Achtsam returns its official Deutschlandfunk Nova RSS
+URL and publisher homepage; ARD Hörspiel-Speicher returns a `crid://` value.
+The catalogue returns a
+numeric ID, while the sharing URL contains `urn:ard:show:…`; the resolver keeps
+the numeric library identity and derives the URN only for the detail request.
+The REST response was also checked: its optional `feedUrl` was null for both
+shows. Missing fields, null data, or a changed GraphQL shape fall through to
+REST/page/Apple lookup rather than failing catalogue browsing.
+
+Apple's `ARD Hörspiel` result is intentionally not used for ARD Hörspiel-Speicher:
+its title drops the meaningful `-Speicher` component, and ARD's active programme
+page includes current episodes that the separate feed does not establish as an
+equivalent. Similar titles alone are not enough to subscribe.
+
+#### Native ARD source feasibility (not implemented)
+
+Live schema inspection confirmed paginated `programSet.items` with cursors,
+`lastItemAdded` / `lastItemModified`, publication timestamps, numeric item IDs,
+stable-looking `assetId` episode URNs, artwork, media URLs, and per-audio
+`allowDownload` / `downloadUrl`. The observed Hörspiel-Speicher response had
+current items, but some had no audio variants and some had `allowDownload: false`.
+The Item schema exposes no explicit expiry date; ARD says availability is
+limited by statutory and rights windows and removes expired items. Pagination
+and IDs work in the current undocumented API, but there is no stability or
+backward-compatibility contract.
+
+The legal blocker is specific: ARD's current [online terms](https://www.ard.de/die-ard/footer/nutzungsbedingungen-ard-online-100.html)
+say content reproduction, modification, republication, distribution, or storage
+requires prior written consent. The terms separately allow use of the provided
+ARD player embed for selected content. ARD also says offline downloads are
+available only for many items, subject to rights, and that it does not offer
+RSS feeds from ARD Sounds; individual broadcaster websites are responsible for
+any RSS feeds ([RSS help](https://hilfe.ard.de/artikel/keine-rss-feeds-in-ard-sounds/),
+[availability](https://hilfe.ard.de/artikel/verfuegbarkeit-in-ard-sounds/),
+[downloads](https://hilfe.ard.de/ard-sounds/podcasts-und-nachhoeren-at/podcasts-herunterladen/)).
+Without written authorization, native stream/download integration is not
+permitted by the available terms. No provider-specific playback or media caching
+is enabled, and `allowDownload == false` is always treated as a prohibition.
+
+Even with authorization, native subscriptions need an additive source identity
+and coordinated changes to the feed-keyed `Podcast` model, episode identity,
+cache projection, authoritative subscription writes, SwiftData/CloudKit
+user-state records, OPML export/import, history/bookmarks, playlist and queue
+restoration, and background refresh. Existing `PodcastFeedIdentity` and
+`EpisodeStableIdentity` combine a normalized feed URL with episode identifiers;
+`SubscriptionSync` / manifests are keyed by feed URL; and OPML exports only a
+real `xmlUrl`. The current split-store migration makes a source field or
+identifier change unsafe without a separately reviewed compatibility and
+recovery design. No fake RSS URL or media URL is persisted. Reconsider native
+support only after publisher authorization and API stability are established
+and a non-destructive multi-device migration is proven.
 
 
 ### CBC — public directory
