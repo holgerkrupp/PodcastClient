@@ -1192,7 +1192,8 @@ enum StoreSplitFeedCacheWriter {
         let isCancelled = withUnsafeCurrentTask { task in
             task?.isCancelled ?? false
         }
-        guard isCancelled == false else { return false }
+        guard isCancelled == false,
+              StoreSplitCachePlaybackGate.shared.canRun else { return false }
         guard let deadline else { return true }
         return Date() < deadline
     }
