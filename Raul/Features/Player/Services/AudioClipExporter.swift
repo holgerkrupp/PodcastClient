@@ -224,7 +224,13 @@ enum AudioClipExporter {
     ) async throws -> URL {
         progress(0.05)
 
-        let asset = AVURLAsset(url: videoURL)
+        let protectedVideoURL = videoURL.isFileURL
+            ? videoURL
+            : try PodcastNetworkPrivacyPolicy.wireURL(for: videoURL, purpose: .audio)
+        let asset = AVURLAsset(
+            url: protectedVideoURL,
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+        )
         let composition = AVMutableComposition()
         let sanitizedPlaybackRate = max(Double(playbackRate), 0.1)
         let start = CMTime(seconds: max(0, startTime), preferredTimescale: 600)
@@ -494,8 +500,15 @@ enum AudioClipExporter {
         outputURL: URL
     ) async throws {
         let composition = AVMutableComposition()
-        let videoAsset = AVURLAsset(url: videoURL)
-        let audioAsset = AVURLAsset(url: audioURL)
+        let protectedVideoURL = videoURL.isFileURL
+            ? videoURL
+            : try PodcastNetworkPrivacyPolicy.wireURL(for: videoURL, purpose: .audio)
+        let protectedAudioURL = audioURL.isFileURL
+            ? audioURL
+            : try PodcastNetworkPrivacyPolicy.wireURL(for: audioURL, purpose: .audio)
+        let options = ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+        let videoAsset = AVURLAsset(url: protectedVideoURL, options: options)
+        let audioAsset = AVURLAsset(url: protectedAudioURL, options: options)
 
         guard let videoTrack = try? await videoAsset.loadTracks(withMediaType: .video).first,
               let videoCompTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {

@@ -25,6 +25,14 @@ asynchronous and out of the launch-critical path. Reserve a launch error or
 retry view for genuine initialization failures, not normal readiness or
 background setup.
 
+## User Guide and feature documentation
+
+- Treat the in-app guide as part of every user-visible feature. For any addition, removal, rename, placement, gesture, option/default, platform gate, refresh/sync behavior, Siri/App Intent, widget, or error-state change, review the matching topics in `Raul/Features/Help/UserGuideView.swift` in the same change. Update the steps, examples, search aliases, related topics, availability notes, and safe actions, or record why no guide change is needed. Add a topic for each major new feature.
+- Keep guide actions aligned with real app navigation and guard actions that need a selected episode, podcast, downloaded file, transcript, or supported OS. Opening help must not perform a destructive or bulk action. Never create arbitrary `upnext://` URLs for guide navigation.
+- Use current app terminology and verify behavior in source and the current UI. Mark platform and OS limits plainly; do not describe DEBUG-only, experimental, or planned functionality as generally available.
+- Keep examples anonymized and offline. Use screenshots only from reproducible preview/UI-test fixtures with sample titles and transcripts; never capture account state, credentials, private feed URLs, or listening history. Record the source screen, platform/OS, locale, and last-verified app version alongside each screenshot. Do not invent a screenshot of UI that is not present in the app.
+- Review `Documentation/UpNextViewHierarchy.md` for hierarchy changes. The guide registry and article content are currently maintained with the SwiftUI guide module. Update the registry, searchable aliases, related-topic IDs, and guide actions together when topics change. Validate that IDs and related links resolve, search covers titles/aliases/article copy, and routes point to supported destinations; run applicable guide and screenshot checks when present.
+
 ## Xcode build artifacts
 
 Never create DerivedData, build products, test results, or other generated

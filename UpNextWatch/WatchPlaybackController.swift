@@ -423,8 +423,29 @@ final class WatchPlaybackController: ObservableObject {
 
     private func replaceCurrentItem(with sourceURL: URL, episode: WatchSyncEpisode) {
         player.pause()
-        let item = AVPlayerItem(url: sourceURL)
+        if sourceURL.isFileURL {
+            let item = AVPlayerItem(url: sourceURL)
+            player.replaceCurrentItem(with: item)
+            finishReplacingCurrentItem(item, sourceURL: sourceURL, episode: episode)
+            return
+        }
+        guard let protectedURL = WatchNetworkURLPolicy.resolve(
+            sourceURL,
+            enabled: store?.snapshot.networkTrackingProtectionEnabled ?? true
+        ) else {
+            store?.errorMessage = "This tracking link cannot be opened safely. Use the original episode link."
+            return
+        }
+        let asset = AVURLAsset(
+            url: protectedURL,
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+        )
+        let item = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: item)
+        finishReplacingCurrentItem(item, sourceURL: sourceURL, episode: episode)
+    }
+
+    private func finishReplacingCurrentItem(_ item: AVPlayerItem, sourceURL: URL, episode: WatchSyncEpisode) {
         fallbackEpisode = episode
         currentEpisodeID = episode.episodeURL
         currentSourceURL = sourceURL

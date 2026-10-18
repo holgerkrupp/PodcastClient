@@ -239,7 +239,7 @@ struct EpisodeDetailView: View {
                 break
             }
 
-            let (data, _) = try await PodcastHTTPClient.shared.data(for: resolvedURL, profile: accessProfile)
+            let (data, _) = try await PodcastHTTPClient.shared.data(for: resolvedURL, profile: accessProfile, purpose: .transcript)
             return String(decoding: data, as: UTF8.self)
         } catch {
             return nil

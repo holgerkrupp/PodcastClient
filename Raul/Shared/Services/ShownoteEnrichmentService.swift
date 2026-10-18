@@ -98,7 +98,15 @@ private final class ShownoteRedirectDelegate: NSObject, @unchecked Sendable, URL
             return
         }
         redirectCounts[task.taskIdentifier] = count + 1
-        completionHandler(request)
+        var protectedRequest = request
+        if let url = request.url {
+            guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .shownote) else {
+                completionHandler(nil)
+                return
+            }
+            protectedRequest.url = protectedURL
+        }
+        completionHandler(protectedRequest)
     }
 
     func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
@@ -145,7 +153,7 @@ private final class URLSessionShownoteResourceLoader: ShownoteResourceLoader, @u
     }
 
     func load(_ url: URL) async throws -> ShownoteHTTPResource {
-        var request = URLRequest(url: url)
+        var request = try PodcastNetworkPrivacyPolicy.prepare(URLRequest(url: url), purpose: .shownote)
         request.httpMethod = "GET"
         request.timeoutInterval = timeout
         request.cachePolicy = .reloadIgnoringLocalCacheData

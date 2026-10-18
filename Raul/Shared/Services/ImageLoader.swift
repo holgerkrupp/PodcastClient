@@ -437,7 +437,8 @@ class ImageLoaderAndCache: ObservableObject {
             return nil
         }
 
-        let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+        guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .artwork) else { return nil }
+        let request = URLRequest(url: wireURL, cachePolicy: .returnCacheDataElseLoad)
         let cache = URLCache.shared
         cache.memoryCapacity = 1024 * 1024 * 16
         cache.diskCapacity = 1024 * 1024 * 200
@@ -452,11 +453,7 @@ class ImageLoaderAndCache: ObservableObject {
         do {
             let data: Data
             let response: URLResponse
-            if profile != nil {
-                (data, response) = try await PodcastHTTPClient.shared.data(for: url, profile: profile)
-            } else {
-                (data, response) = try await podcastURLSessionData(for: request, using: .shared)
-            }
+            (data, response) = try await PodcastHTTPClient.shared.data(for: request, profile: profile, purpose: .artwork)
             if profile == nil {
                 let cachedResponse = CachedURLResponse(response: response, data: data)
                 cache.storeCachedResponse(cachedResponse, for: request)
@@ -547,6 +544,24 @@ class ImageLoaderAndCache: ObservableObject {
             radius: radius,
             maxPixelSize: maxPixelSize
         )
+    }
+}
+
+struct ProtectedAsyncImage<Content: View>: View {
+    let url: URL?
+    @ViewBuilder let content: (Image?) -> Content
+    @State private var loadedImage: UIImage?
+
+    var body: some View {
+        content(loadedImage.map(Image.init(uiImage:)))
+            .task(id: url) {
+                guard let url else {
+                    loadedImage = nil
+                    return
+                }
+                let data = await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil)
+                loadedImage = data.flatMap { ImageLoaderAndCache.makeUIImage(from: $0) }
+            }
     }
 }
 

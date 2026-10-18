@@ -563,6 +563,7 @@ class Player {
             guard isPlaying != oldValue else { return }
             let playbackStarted = isPlaying
             Self.hasActivePlaybackInProcess = playbackStarted
+            StoreSplitPlaybackGate.shared.setActive(playbackStarted)
             Task {
                 await StoreSplitWorkCoordinator.shared.notePlaybackActivityChanged(
                     isPlaying: playbackStarted
@@ -2066,16 +2067,21 @@ class Player {
     }
 
     private func authorizedPlayerItem(for url: URL, profile: PodcastAccessProfile?) -> AVPlayerItem {
-        guard let profile,
-              let request = try? PodcastAccessResolver().request(for: url, profile: profile),
-              let requestURL = request.url else {
-            return AVPlayerItem(url: url)
-        }
-
         var options: [String: Any] = [:]
-        if let authorization = request.value(forHTTPHeaderField: "Authorization") {
-            options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
+        var requestURL = url
+        if let profile,
+           let request = try? PodcastAccessResolver().request(for: url, profile: profile),
+           let authorizedURL = request.url {
+            requestURL = authorizedURL
+            if let authorization = request.value(forHTTPHeaderField: "Authorization") {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
+            }
         }
+        guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else {
+            return AVPlayerItem(asset: AVURLAsset(url: URL(fileURLWithPath: "/dev/null")))
+        }
+        requestURL = protectedURL
+        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
         let asset = AVURLAsset(url: requestURL, options: options)
         return AVPlayerItem(asset: asset)
     }
@@ -2773,13 +2779,17 @@ class Player {
             await tryNextLiveStreamSource(after: index, error: "Unsupported live stream URL")
             return
         }
+        guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: source.url, purpose: .audio) else {
+            await tryNextLiveStreamSource(after: index, error: "This tracking link cannot be opened safely. Use the original stream link.")
+            return
+        }
 
         liveStreamStatusObservation?.invalidate()
         liveStreamStatusObservation = nil
         currentEpisodeURL = source.url
         currentPlaybackSource = .liveRemote
         livePlaybackState = .connecting
-        let item = AVPlayerItem(url: source.url)
+        let item = authorizedPlayerItem(for: protectedURL, profile: nil)
         liveStreamStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self, self.currentPlaybackSource == .liveRemote else { return }
@@ -3939,6 +3949,9 @@ class Player {
             nowPlayingInfoActor.setArtwork(image)
         } else {
             nowPlayingInfoActor.setArtwork(nil)
+        }
+        Task { @MainActor in
+            await PlayNextWidgetSync.publishPlaybackState()
         }
     }
 

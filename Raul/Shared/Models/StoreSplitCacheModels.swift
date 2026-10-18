@@ -51,6 +51,37 @@ final class StoreSplitMigrationCheckpoint: Identifiable {
     }
 }
 
+/// Durable, local-only per-feed partials for the legacy listening baseline.
+/// These rows are committed with the migration cursor and are discarded only
+/// after the baseline phase has completed successfully.
+@Model
+final class CachedListeningBaselineAggregate: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var podcastName: String?
+    var totalSeconds: Double = 0
+    var silenceGapTimeSavedSeconds: Double = 0
+    var playbackRateTimeSavedSeconds: Double = 0
+
+    init(id: String, feedURL: String, podcastName: String?) {
+        self.id = id
+        self.feedURL = feedURL
+        self.podcastName = podcastName
+    }
+}
+
+/// Deduplication ledger for summary rows contributing to an incremental
+/// listening baseline. It makes a rescan safe if the legacy boundary row moves
+/// or disappears between pages.
+@Model
+final class CachedListeningBaselineSource: Identifiable {
+    var id: String = ""
+
+    init(id: String) {
+        self.id = id
+    }
+}
+
 /// Durable proof from the latest full verification pass. This record is local
 /// only. A successful row is necessary but not sufficient for cleanup: the
 /// supported-version grace period and convergence telemetry must also pass.

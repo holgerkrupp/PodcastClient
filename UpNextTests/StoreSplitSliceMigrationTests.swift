@@ -23,6 +23,86 @@ private final class SliceGate: @unchecked Sendable {
 
 final class StoreSplitSliceMigrationTests: XCTestCase {
 
+    func testBackgroundMigrationScheduleUsesLocalNightAndDSTSafeNextWindow() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+        let beforeNight = calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 18))!
+        let duringNight = calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 23))!
+        XCTAssertFalse(StoreSplitMigrationSchedulePolicy.isEligibleNight(beforeNight, calendar: calendar))
+        XCTAssertTrue(StoreSplitMigrationSchedulePolicy.isEligibleNight(duringNight, calendar: calendar))
+        XCTAssertEqual(
+            StoreSplitMigrationSchedulePolicy.nextEligibleNightStart(after: beforeNight, calendar: calendar),
+            calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 22))
+        )
+        XCTAssertEqual(
+            StoreSplitMigrationSchedulePolicy.nextEligibleNightStart(after: duringNight, calendar: calendar),
+            duringNight
+        )
+        let sizer = StoreSplitAdaptiveBatchSizer.shared
+        XCTAssertEqual(sizer.pageSize(for: "adaptive-policy-test", base: 100, footprint: 100), 100)
+        XCTAssertEqual(sizer.pageSize(for: "adaptive-policy-test", base: 100, footprint: 800 * 1_024 * 1_024), 50)
+        sizer.recordPage("adaptive-policy-test", duration: 0.5)
+        XCTAssertEqual(sizer.pageSize(for: "adaptive-policy-test", base: 100, footprint: 100), 150)
+        XCTAssertLessThanOrEqual(StoreSplitMigrationRunPolicy.background.maximumActiveWorkTime, 30)
+        XCTAssertGreaterThan(StoreSplitMigrationRunPolicy.background.maximumSlices, 3)
+    }
+
+    func testListeningStagesAreDispatchedBeforeHistoricalEpisodeSweep() {
+        let phases = StoreSplitMigrationService.slicePhaseOrder
+        XCTAssertLessThan(
+            phases.firstIndex(of: "listening_summaries")!,
+            phases.firstIndex(of: "episode_states")!
+        )
+        XCTAssertLessThan(
+            phases.firstIndex(of: "listening_history")!,
+            phases.firstIndex(of: "episode_states")!
+        )
+    }
+
+    @MainActor
+    func testLargeEpisodeFixtureAdvancesThousandsOfRowsWithinOneBackgroundWindow() async throws {
+        let containers = try makeContainers()
+        let source = containers.legacy.mainContext
+        let podcast = Podcast(feed: URL(string: "https://example.com/performance.xml")!)
+        podcast.title = "Performance fixture"
+        source.insert(podcast)
+        for index in 0..<14_000 {
+            source.insert(Episode(
+                guid: "performance-\(index)",
+                title: "Episode \(index)",
+                publishDate: Date(timeIntervalSince1970: Double(index)),
+                url: URL(string: "https://example.com/performance/\(index).mp3")!,
+                podcast: podcast,
+                duration: 600
+            ))
+        }
+        try source.save()
+
+        let cache = containers.cache.mainContext
+        for phase in ["subscriptions", "playlists", "playlist_entries", "bookmarks", "preferences", "listening_summaries", "listening_history"] {
+            cache.insert(StoreSplitMigrationCheckpoint(
+                id: StoreSplitMigrationService.checkpointID(for: phase),
+                migrationVersion: StoreSplitMigrationService.migrationVersion,
+                phase: phase,
+                cursor: "0",
+                completedAt: .now
+            ))
+        }
+        try cache.save()
+
+        var scanned = 0
+        for _ in 0..<StoreSplitMigrationRunPolicy.background.maximumSlices {
+            let report = await StoreSplitMigrationService.runSlice(
+                legacyContainer: containers.legacy,
+                userStateContainer: containers.userState,
+                cacheContainer: containers.cache
+            )
+            XCTAssertNotEqual(report.status, .failed, report.error ?? "")
+            scanned += report.processed
+        }
+        XCTAssertGreaterThanOrEqual(scanned, 2_000)
+    }
+
     // MARK: - Helpers
 
     private struct Containers {
@@ -710,6 +790,58 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         // including it would double-count.
         XCTAssertEqual(baselines.map(\.totalSeconds).sorted(), [600, 5_400])
         XCTAssertEqual(baselines.reduce(0) { $0 + $1.totalSeconds }, 6_000)
+    }
+
+    @MainActor
+    func testLargeListeningSummaryAggregationIsPagedAndPublishesOnlyFinalTotals() async throws {
+        let containers = try makeContainers()
+        let context = containers.legacy.mainContext
+        let feed = URL(string: "https://example.com/large.xml")!
+        for index in 0..<2_679 {
+            context.insert(PlaySessionSummary(
+                id: UUID(),
+                periodKind: PlaySessionSummaryPeriod.year.rawValue,
+                periodStart: Date(timeIntervalSince1970: Double(index)),
+                podcastFeed: feed,
+                podcastName: "Large fixture",
+                totalSeconds: 10,
+                silenceGapTimeSavedSeconds: 2,
+                playbackRateTimeSavedSeconds: 1,
+                activeHourCount: 1
+            ))
+        }
+        try context.save()
+
+        var reachedSummary = false
+        var firstSummaryPage: StoreSplitSliceReport?
+        for _ in 0..<20 {
+            let report = await StoreSplitMigrationService.runSlice(
+                legacyContainer: containers.legacy,
+                userStateContainer: containers.userState,
+                cacheContainer: containers.cache
+            )
+            if report.phase == "listening_summaries" {
+                reachedSummary = true
+                firstSummaryPage = report
+                break
+            }
+        }
+        XCTAssertTrue(reachedSummary)
+        XCTAssertEqual(firstSummaryPage?.status, .advanced)
+        XCTAssertGreaterThan(firstSummaryPage?.processed ?? 0, 0)
+        XCTAssertLessThanOrEqual(firstSummaryPage?.processed ?? Int.max, 300)
+        XCTAssertEqual(try destinationCounts(containers.userState)["listeningBaselines"], 0)
+
+        let reports = await drainSlices(containers, shouldContinue: { true })
+        XCTAssertFalse(reports.contains { $0.status == .failed })
+        let baseline = try XCTUnwrap(
+            ModelContext(containers.userState)
+                .fetch(FetchDescriptor<ListeningBaselineSync>())
+                .first
+        )
+        XCTAssertEqual(baseline.totalSeconds, 26_790, accuracy: 0.001)
+        XCTAssertEqual(baseline.silenceGapTimeSavedSeconds, 5_358, accuracy: 0.001)
+        XCTAssertEqual(baseline.playbackRateTimeSavedSeconds, 2_679, accuracy: 0.001)
     }
 
     /// The legacy store stays live while slices run, so a row deleted between

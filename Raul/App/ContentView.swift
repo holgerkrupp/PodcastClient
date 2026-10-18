@@ -85,6 +85,7 @@ struct ContentView: View {
             }
         }
         .environment(\.episodeControlPlaylists, episodeControlPlaylists)
+        .environment(\.userGuideNavigation, navigation)
         .hostsPlayerPresentation(navigation: navigation)
 #if os(macOS) || targetEnvironment(macCatalyst)
         .focusedSceneValue(\.appNavigationModel, navigation)

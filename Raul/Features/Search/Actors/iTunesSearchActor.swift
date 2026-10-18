@@ -390,7 +390,10 @@ actor ITunesSearchActor {
 
     private func fetchJSON(from url: URL) async -> Any? {
         do {
-            let (data, _) = try await podcastURLSessionData(for: URLRequest(url: url), using: .shared)
+            let request = try PodcastNetworkPrivacyPolicy.prepare(URLRequest(url: url), purpose: .discovery)
+            let session = PodcastNetworkPrivacyPolicy.session(purpose: .discovery)
+            defer { session.finishTasksAndInvalidate() }
+            let (data, _) = try await podcastURLSessionData(for: request, using: session)
             return try JSONSerialization.jsonObject(with: data, options: [])
         } catch {
             return nil

@@ -502,7 +502,18 @@ extension WaveformView {
     /// Extract normalized samples for the specified time range of the audio file.
     static func extractSamples(from url: URL, in range: ClosedRange<Double>, sampleCount: Int = 120) async -> [Float] {
         let fallback = Array(repeating: Float(0.05), count: sampleCount)
-        let asset = AVURLAsset(url: url)
+        let assetURL: URL
+        if url.isFileURL {
+            assetURL = url
+        } else if let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .audio) {
+            assetURL = protectedURL
+        } else {
+            return fallback
+        }
+        let asset = AVURLAsset(
+            url: assetURL,
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+        )
         guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return fallback }
         guard let assetReader = try? AVAssetReader(asset: asset) else { return fallback }
         let timeRange = CMTimeRange(start: .init(seconds: range.lowerBound, preferredTimescale: 600), duration: .init(seconds: range.upperBound-range.lowerBound, preferredTimescale: 600))

@@ -202,16 +202,22 @@ enum PlayNextWidgetSync {
         reloadWidgets()
     }
 
-    /// Publishes only values already held by Player. Artwork is referenced
-    /// from the app-group thumbnail cache when present; this path never fetches
-    /// network artwork or touches the model graph.
+    /// Publishes only values already held by Player. Resolved player artwork
+    /// may be chapter-specific, so persist it into the app-group thumbnail cache
+    /// before falling back to a previously cached episode cover.
     @MainActor
     static func publishPlaybackState() async {
         lastPositionOnlyPublicationAt = .now
         let player = Player.shared
         let episode = player.currentEpisode
-        let artworkURL = episode?.imageURL
-        let coverFileName = artworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
+        let artworkURL = episode?.imageURL ?? episode?.podcast?.imageURL ?? episode?.url
+        let coverFileName: String?
+        if let artwork = player.currentArtworkImage, let artworkURL {
+            coverFileName = persistCurrentArtworkThumbnail(artwork, for: artworkURL)
+                ?? cachedCoverThumbnailName(for: artworkURL)
+        } else {
+            coverFileName = artworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
+        }
         let snapshot = WidgetPlaybackSnapshot(
             updatedAt: .now,
             episodeID: player.currentEpisodeURL.flatMap(publicWidgetEpisodeID),
@@ -252,6 +258,31 @@ enum PlayNextWidgetSync {
         }
         return relativePath
     }
+
+    #if canImport(UIKit)
+    @MainActor
+    private static func persistCurrentArtworkThumbnail(_ image: UIImage, for artworkURL: URL) -> String? {
+        guard let directoryURL = coverThumbnailDirectoryURL(),
+              let data = coverThumbnailData(from: image) else { return nil }
+
+        // Include the image contents so a chapter-art change gets a new path.
+        // The snapshot writer can then detect the change and reload the widget
+        // even when the episode URL stays the same.
+        let imageDigest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        let fileName = "\(coverThumbnailCacheKey(for: artworkURL))-\(imageDigest).jpg"
+        let fileURL = directoryURL.appendingPathComponent(fileName)
+        do {
+            try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            return "play-next-widget-covers/\(fileName)"
+        } catch {
+            #if DEBUG
+            print("Failed to persist resolved widget artwork: \(error)")
+            #endif
+            return nil
+        }
+    }
+    #endif
 
     private static func finiteNonnegative(_ value: Double) -> Double? {
         value.isFinite ? max(value, 0) : nil

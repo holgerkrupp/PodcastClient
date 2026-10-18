@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 extension Color {
     static let upNextAccent = Color("AccentColor")
@@ -316,8 +317,10 @@ struct WatchPanel<Content: View>: View {
 }
 
 struct WatchArtworkView: View {
+    @EnvironmentObject private var store: WatchSyncStore
     let url: URL?
     let title: String
+    @State private var artworkImage: UIImage?
    
 
     var body: some View {
@@ -335,20 +338,14 @@ struct WatchArtworkView: View {
                         )
                     )
 
-                if let url {
-                    AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
-                        switch phase {
-                        case .empty:
-                            WatchArtworkPlaceholder(title: title)
-                        case .success(let image):
-                            image
-                                .resizable()
-                                .scaledToFill()
-                        case .failure:
-                            WatchArtworkPlaceholder(title: title)
-                        @unknown default:
-                            WatchArtworkPlaceholder(title: title)
-                        }
+                if url != nil {
+                    if let artworkImage {
+                        Image(uiImage: artworkImage)
+                            .resizable()
+                            .scaledToFill()
+                            .transition(.opacity)
+                    } else {
+                        WatchArtworkPlaceholder(title: title)
                     }
                 } else {
                     WatchArtworkPlaceholder(title: title)
@@ -358,6 +355,22 @@ struct WatchArtworkView: View {
         }
         .aspectRatio(1, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .task(id: url) {
+            guard let url else {
+                artworkImage = nil
+                return
+            }
+            do {
+                let (data, _) = try await WatchNetworkURLPolicy.data(
+                    from: url,
+                    enabled: store.snapshot.networkTrackingProtectionEnabled
+                )
+                guard Task.isCancelled == false else { return }
+                artworkImage = UIImage(data: data)
+            } catch {
+                artworkImage = nil
+            }
+        }
         .overlay(
             RoundedRectangle(cornerRadius: 28, style: .continuous)
                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
@@ -544,6 +557,7 @@ func watchPlaybackTime(_ seconds: Double) -> String {
 }
 
 #Preview("Watch Components") {
+    let store = WatchSyncStore.preview()
     VStack(spacing: 12) {
         WatchArtworkView(url: nil, title: "Designing a Tiny Podcast App")
             .frame(width: 120, height: 120)
@@ -557,6 +571,7 @@ func watchPlaybackTime(_ seconds: Double) -> String {
             }
         }
     }
+    .environmentObject(store)
     .padding()
     .background(WatchAppBackground())
 }

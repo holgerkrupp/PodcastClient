@@ -181,16 +181,13 @@ private struct ShownoteHTMLFragment: View {
                         .tint(linkColor)
                         .textSelection(.enabled)
                 case .image(let url, let alt):
-                    AsyncImage(url: url) { phase in
-                        if let image = phase.image {
+                    ProtectedAsyncImage(url: url) { image in
+                        if let image {
                             image.resizable().scaledToFit().frame(maxWidth: .infinity, maxHeight: 320)
-                        } else if phase.error != nil {
-                            Text(alt.isEmpty ? url.absoluteString : alt)
+                        } else {
+                            Text(alt.isEmpty ? "Image unavailable" : alt)
                                 .font(.caption)
                                 .esaForeground(.secondary)
-                        } else {
-                            ProgressView()
-                                .frame(maxWidth: .infinity, minHeight: 44)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -420,15 +417,38 @@ private struct ShownoteHTMLWebView: UIViewRepresentable {
             let revision = Self.revision(html: html, foreground: foregroundHex, link: linkHex)
             guard loadedRevision != revision else { return }
             loadedRevision = revision
+            let safeHTML = Self.withoutActiveContent(html)
+            let scriptNonce = UUID().uuidString
             let source = """
             <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1">
+            <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src 'none'; frame-src 'none'; child-src 'none'; connect-src 'none'; font-src data:; style-src 'unsafe-inline'; script-src 'nonce-\(scriptNonce)'; base-uri 'none'; form-action 'none'">
             <style>html,body{margin:0;padding:0;background:transparent;color:\(foregroundHex);font: -apple-system-body;line-height:1.35;overflow-wrap:anywhere} img,video{max-width:100%;height:auto} a{color:\(linkHex);text-decoration:underline}</style>
-            </head><body>\(html)<script>
+            </head><body>\(safeHTML)<script nonce="\(scriptNonce)">
             const sendHeight=()=>window.webkit.messageHandlers.shownoteHeight.postMessage(Math.ceil(document.documentElement.scrollHeight));
             new ResizeObserver(sendHeight).observe(document.body);window.addEventListener('load',sendHeight);document.querySelectorAll('img').forEach(i=>i.addEventListener('load',sendHeight));sendHeight();
             </script></body></html>
             """
             webView.loadHTMLString(source, baseURL: nil)
+        }
+
+        private static func withoutActiveContent(_ html: String) -> String {
+            var result = html
+            for tag in ["script", "iframe", "frame", "object", "embed", "form"] {
+                guard let expression = try? NSRegularExpression(
+                    pattern: "(?is)<\\s*\(tag)\\b[^>]*>.*?<\\s*/\\s*\(tag)\\s*>",
+                    options: []
+                ) else { continue }
+                result = expression.stringByReplacingMatches(
+                    in: result,
+                    range: NSRange(result.startIndex..., in: result),
+                    withTemplate: ""
+                )
+            }
+            for pattern in ["(?is)\\s+on[a-z0-9_-]+\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)", "(?is)\\s+(?:href|src)\\s*=\\s*(?:\"\\s*javascript:[^\"]*\"|'\\s*javascript:[^']*')"] {
+                guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
+                result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
+            }
+            return result
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -504,11 +524,33 @@ private struct ShownoteHTMLWebView: NSViewRepresentable {
             let revision = Self.revision(html: html, foreground: foregroundHex, link: linkHex)
             guard loadedRevision != revision else { return }
             loadedRevision = revision
+            let safeHTML = Self.withoutActiveContent(html)
+            let scriptNonce = UUID().uuidString
             let css = "body{margin:0;padding:0;background:transparent;color:\(foregroundHex);font: -apple-system-body;line-height:1.35;overflow-wrap:anywhere}img,video{max-width:100%;height:auto}a{color:\(linkHex);text-decoration:underline}"
             let source = """
-            <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><style>\(css)</style></head><body>\(html)<script>const sendHeight=()=>window.webkit.messageHandlers.shownoteHeight.postMessage(Math.ceil(document.documentElement.scrollHeight));new ResizeObserver(sendHeight).observe(document.body);window.addEventListener('load',sendHeight);document.querySelectorAll('img').forEach(i=>i.addEventListener('load',sendHeight));sendHeight();</script></body></html>
+            <!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; media-src 'none'; frame-src 'none'; child-src 'none'; connect-src 'none'; font-src data:; style-src 'unsafe-inline'; script-src 'nonce-\(scriptNonce)'; base-uri 'none'; form-action 'none'"><style>\(css)</style></head><body>\(safeHTML)<script nonce="\(scriptNonce)">const sendHeight=()=>window.webkit.messageHandlers.shownoteHeight.postMessage(Math.ceil(document.documentElement.scrollHeight));new ResizeObserver(sendHeight).observe(document.body);window.addEventListener('load',sendHeight);document.querySelectorAll('img').forEach(i=>i.addEventListener('load',sendHeight));sendHeight();</script></body></html>
             """
             webView.loadHTMLString(source, baseURL: nil)
+        }
+
+        private static func withoutActiveContent(_ html: String) -> String {
+            var result = html
+            for tag in ["script", "iframe", "frame", "object", "embed", "form"] {
+                guard let expression = try? NSRegularExpression(
+                    pattern: "(?is)<\\s*\(tag)\\b[^>]*>.*?<\\s*/\\s*\(tag)\\s*>",
+                    options: []
+                ) else { continue }
+                result = expression.stringByReplacingMatches(
+                    in: result,
+                    range: NSRange(result.startIndex..., in: result),
+                    withTemplate: ""
+                )
+            }
+            for pattern in ["(?is)\\s+on[a-z0-9_-]+\\s*=\\s*(?:\"[^\"]*\"|'[^']*'|[^\\s>]+)", "(?is)\\s+(?:href|src)\\s*=\\s*(?:\"\\s*javascript:[^\"]*\"|'\\s*javascript:[^']*')"] {
+                guard let expression = try? NSRegularExpression(pattern: pattern) else { continue }
+                result = expression.stringByReplacingMatches(in: result, range: NSRange(result.startIndex..., in: result), withTemplate: "")
+            }
+            return result
         }
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -652,11 +694,10 @@ private struct PreviewArtwork: View {
     var body: some View {
         Group {
             if let url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
+                ProtectedAsyncImage(url: url) { image in
+                    if let image {
                         image.resizable().scaledToFill()
-                    default:
+                    } else {
                         placeholder
                     }
                 }

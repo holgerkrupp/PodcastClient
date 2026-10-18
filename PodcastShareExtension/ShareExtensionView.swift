@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct ShareExtensionView: View {
     @ObservedObject var viewModel: ShareExtensionViewModel
@@ -239,11 +240,7 @@ struct ShareExtensionView: View {
     @ViewBuilder
     private func artwork(_ url: URL?) -> some View {
         if let url {
-            AsyncImage(url: url) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                artworkPlaceholder
-            }
+            ShareProtectedArtwork(url: url) { artworkPlaceholder }
             .frame(width: 104, height: 104)
             .clipShape(RoundedRectangle(cornerRadius: 10))
         } else {
@@ -274,5 +271,35 @@ struct ShareExtensionView: View {
         guard let id = viewModel.selectedPlaylistID,
               let playlist = viewModel.playlists.first(where: { $0.id == id }) else { return "Inbox" }
         return playlist.title
+    }
+}
+
+private struct ShareProtectedArtwork: View {
+    let url: URL
+    let placeholder: AnyView
+    @State private var image: UIImage?
+
+    init(url: URL, @ViewBuilder placeholder: () -> some View) {
+        self.url = url
+        self.placeholder = AnyView(placeholder())
+    }
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                placeholder
+            }
+        }
+        .task(id: url) {
+            do {
+                let (data, _) = try await ShareNetworkPrivacy.data(for: URLRequest(url: url))
+                guard Task.isCancelled == false else { return }
+                image = UIImage(data: data)
+            } catch {
+                image = nil
+            }
+        }
     }
 }

@@ -138,16 +138,21 @@ extension URL{
             components.password = sourceComponents.password
         }
 
-        let sourceQueryItems = sourceComponents.queryItems ?? []
-        if sourceQueryItems.isEmpty == false {
-            var queryItems = components.queryItems ?? []
-            for sourceItem in sourceQueryItems {
-                let alreadyPresent = queryItems.contains { $0.name == sourceItem.name }
-                if alreadyPresent == false {
-                    queryItems.append(sourceItem)
+        let sourcePairs = sourceComponents.percentEncodedQuery?
+            .split(separator: "&", omittingEmptySubsequences: false)
+            .map(String.init) ?? []
+        if sourcePairs.isEmpty == false {
+            var retainedPairs = components.percentEncodedQuery?
+                .split(separator: "&", omittingEmptySubsequences: false)
+                .map(String.init) ?? []
+            var existingNames = Set(retainedPairs.map(Self.queryName(for:)))
+            for pair in sourcePairs {
+                let name = Self.queryName(for: pair)
+                if existingNames.insert(name).inserted {
+                    retainedPairs.append(pair)
                 }
             }
-            components.queryItems = queryItems
+            components.percentEncodedQuery = retainedPairs.isEmpty ? nil : retainedPairs.joined(separator: "&")
         }
 
         return components.url ?? self
@@ -181,6 +186,11 @@ extension URL{
         }
 
         return effectivePort(self) == effectivePort(otherURL)
+    }
+
+    private static func queryName(for pair: String) -> String {
+        let rawName = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        return rawName.replacingOccurrences(of: "+", with: " ").removingPercentEncoding?.lowercased() ?? rawName.lowercased()
     }
 
     var podcastFeedComparisonKeys: Set<String> {

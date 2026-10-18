@@ -67,7 +67,7 @@ struct PodcastDiscoveryHTTPClient: Sendable {
         configuration.waitsForConnectivity = false
         // Accept-Encoding is deliberately left to URLSession: setting it here
         // would hand back still-compressed bytes.
-        return URLSession(configuration: configuration)
+        return PodcastNetworkPrivacyPolicy.session(configuration: configuration, purpose: .discovery)
     }()
 
     private static let sharedSessionTransport: Transport = { request in
@@ -83,6 +83,11 @@ struct PodcastDiscoveryHTTPClient: Sendable {
         request.timeoutInterval = timeout
         request.httpMethod = "GET"
         request.setValue(expectedContent.headerValue, forHTTPHeaderField: "Accept")
+        do {
+            request = try PodcastNetworkPrivacyPolicy.prepare(request, purpose: .discovery)
+        } catch {
+            throw PodcastDiscoveryError.unavailable
+        }
         // Nothing about the user's library, subscriptions or listening history is
         // ever sent: a plain GET for a public catalogue is all a provider needs.
         request.cachePolicy = refresh ? .reloadIgnoringLocalCacheData : .useProtocolCachePolicy

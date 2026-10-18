@@ -1564,6 +1564,7 @@ class ModelContainerManager: ObservableObject {
               StoreSplitMaintenancePolicy.allowsHeavyMaintenance(
                   in: maintenanceExecutionContext
               ), isRunningBackgroundProcessingTask,
+              StoreSplitMigrationSchedulePolicy.isEligibleNight(.now),
               Player.hasActivePlaybackInProcess == false,
               Task.isCancelled == false else {
 #if DEBUG
@@ -1697,11 +1698,13 @@ class ModelContainerManager: ObservableObject {
     /// exercised on a debug device.
     func runStoreSplitMigrationBackgroundPass() async {
         await withBackgroundProcessingWindow {
-            guard Self.hasPendingStoreSplitBackgroundWork,
+            guard self.isRunningBackgroundProcessingTask,
+                  StoreSplitMigrationSchedulePolicy.isEligibleNight(.now),
+                  Self.hasPendingStoreSplitBackgroundWork,
                   Player.hasActivePlaybackInProcess == false else {
                 CrashBreadcrumbs.shared.record(
                     "store_split_background_pass_skipped",
-                    details: "pending=\(Self.hasPendingMigrationWork),playing=\(Player.hasActivePlaybackInProcess)"
+                    details: "pending=\(Self.hasPendingMigrationWork),playing=\(Player.hasActivePlaybackInProcess),night=\(StoreSplitMigrationSchedulePolicy.isEligibleNight(.now)),background=\(self.isRunningBackgroundProcessingTask)"
                 )
                 return
             }
@@ -2274,7 +2277,8 @@ class ModelContainerManager: ObservableObject {
     func runOneMigrationSliceForDevelopment() async -> StoreSplitMigrationSliceResult {
         guard StoreSplitMaintenancePolicy.allowsHeavyMaintenance(
             in: maintenanceExecutionContext
-        ), isRunningBackgroundProcessingTask else {
+        ), isRunningBackgroundProcessingTask,
+              StoreSplitMigrationSchedulePolicy.isEligibleNight(.now) else {
             pendingSplitStoreWorkReason = "migration scheduled for background processing"
 #if canImport(UIKit)
             AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
@@ -2826,8 +2830,11 @@ class ModelContainerManager: ObservableObject {
     private func runMigrationSliceLoop() async -> StoreSplitMigrationExecutionResult {
         guard StoreSplitMaintenancePolicy.allowsHeavyMaintenance(
             in: maintenanceExecutionContext
-        ), isRunningBackgroundProcessingTask else {
-            return .deferred("Migration requires a system background-processing grant")
+        ), isRunningBackgroundProcessingTask,
+              StoreSplitMigrationSchedulePolicy.isEligibleNight(.now) else {
+            pendingSplitStoreWorkReason = "waiting for a charging overnight background-processing grant"
+            AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+            return .deferred("Migration requires the charging overnight background-processing window")
         }
         if let migrationTask {
             _ = await migrationTask.value
@@ -2950,7 +2957,11 @@ class ModelContainerManager: ObservableObject {
                     legacyContainer: legacyContainer,
                     userStateContainer: userStateContainer,
                     cacheContainer: cacheContainer,
-                    shouldContinue: { Task.isCancelled == false }
+                    shouldContinue: {
+                        Task.isCancelled == false
+                            && StoreSplitPlaybackGate.shared.isActive == false
+                            && StoreSplitMigrationSchedulePolicy.isEligibleNight(.now)
+                    }
                 )
                 applyMigrationSliceTelemetry(
                     report,
@@ -3806,6 +3817,8 @@ class ModelContainerManager: ObservableObject {
     ) throws -> ModelContainer {
         let schema = Schema([
             StoreSplitMigrationCheckpoint.self,
+            CachedListeningBaselineAggregate.self,
+            CachedListeningBaselineSource.self,
             StoreSplitMigrationVerification.self,
             StoreSplitFeedCacheCheckpoint.self,
             CachedFeedExtensionElement.self,

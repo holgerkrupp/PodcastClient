@@ -538,7 +538,7 @@ struct DevelopmentSettingsView: View {
                 } header: {
                     Text("Slice Migration")
                 } footer: {
-                    Text("Migration runs automatically: at launch, on returning to the foreground, and overnight while charging. Each slice is limited to 2 seconds. Runs are capped at 15 seconds foreground or 20 seconds in the background task, with separate active-work and memory limits plus proportional idle time between slices. SharedDatabase.sqlite is only ever read by the migrator.")
+                    Text("Heavy migration runs only in a system background-processing grant during the local 22:00–07:00 window while charging and playback is inactive. iOS chooses whether and when to grant the task. Each page is bounded; a run yields to playback, CloudKit export pressure, memory limits, cancellation, or its active and wall-time budgets. SharedDatabase.sqlite is only ever read by the migrator.")
                 }
 
                 Section {

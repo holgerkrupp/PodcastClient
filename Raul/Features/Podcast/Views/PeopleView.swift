@@ -57,19 +57,14 @@ private struct PersonChip: View {
     var body: some View {
         HStack(spacing: 6) {
             if let img = person.img {
-                AsyncImage(url: img) { phase in
-                    switch phase {
-                    case .empty:
-                        ProgressView().scaleEffect(0.7)
-                    case .success(let image):
+                ProtectedAsyncImage(url: img) { image in
+                    if let image {
                         image.resizable().scaledToFill()
-                    case .failure:
+                    } else {
                         Image(systemName: "person.crop.circle")
                             .resizable()
                             .scaledToFit()
                             .foregroundStyle(.secondary)
-                    @unknown default:
-                        EmptyView()
                     }
                 }
                 .frame(width: 20, height: 20)

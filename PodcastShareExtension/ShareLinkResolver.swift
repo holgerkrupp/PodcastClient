@@ -153,7 +153,7 @@ struct ShareLinkResolver: Sendable {
         request.httpBody = body
         request.timeoutInterval = 12
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await ShareNetworkPrivacy.data(for: request),
               (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true,
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let item = ((root["data"] as? [String: Any])?["item"] as? [String: Any]),
@@ -192,7 +192,7 @@ struct ShareLinkResolver: Sendable {
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-        guard let (data, response) = try? await URLSession.shared.data(for: request),
+        guard let (data, response) = try? await ShareNetworkPrivacy.data(for: request),
               (response as? HTTPURLResponse).map({ (200..<300).contains($0.statusCode) }) ?? true else { return nil }
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
     }

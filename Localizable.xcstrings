@@ -1082,6 +1082,7 @@
       }
     },
     "Accessibility" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1314,6 +1315,9 @@
           }
         }
       }
+    },
+    "Add episodes to Up Next" : {
+
     },
     "Add Episodes to Up Next" : {
       "localizations" : {
@@ -3682,6 +3686,7 @@
       }
     },
     "Chapter rules let you skip recurring segments like intro, ads, or outro." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3698,6 +3703,7 @@
       }
     },
     "Chapter Skip Keywords" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3866,6 +3872,9 @@
           }
         }
       }
+    },
+    "Choose the background color used by the Uniform design and its widgets." : {
+
     },
     "Choose where audio plays" : {
       "localizations" : {
@@ -6261,9 +6270,6 @@
         }
       }
     },
-    "Episode progress" : {
-
-    },
     "Episode Progress" : {
       "localizations" : {
         "de" : {
@@ -6485,6 +6491,9 @@
           }
         }
       }
+    },
+    "Example" : {
+
     },
     "Examples" : {
       "localizations" : {
@@ -7124,6 +7133,7 @@
       }
     },
     "For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7684,6 +7694,9 @@
         }
       }
     },
+    "Getting started" : {
+
+    },
     "Getting Started" : {
       "localizations" : {
         "de" : {
@@ -8176,6 +8189,9 @@
         }
       }
     },
+    "How Up Next checks for new episodes" : {
+
+    },
     "https://example.com/feed.xml" : {
       "localizations" : {
         "de" : {
@@ -8271,6 +8287,9 @@
           }
         }
       }
+    },
+    "If an episode is missing, refresh the show directly and check its latest published item and any visible feed or sign-in error. Scheduled work has no guaranteed interval." : {
+
     },
     "Import / Export" : {
       "localizations" : {
@@ -8454,6 +8473,7 @@
       }
     },
     "Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9856,9 +9876,6 @@
         }
       }
     },
-    "Loading podcast…" : {
-
-    },
     "Loading podcasts..." : {
       "localizations" : {
         "de" : {
@@ -11076,6 +11093,7 @@
       }
     },
     "New episodes can be placed at the front, end, or not added automatically, depending on your settings." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12880,6 +12898,7 @@
       }
     },
     "Open Settings > Integrations > Siri & Shortcuts for the current list of voice commands and automation actions." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12926,6 +12945,9 @@
           }
         }
       }
+    },
+    "Open Siri & Shortcuts guide" : {
+
     },
     "Open the iPhone app once so the watch can control playback." : {
       "localizations" : {
@@ -13410,6 +13432,9 @@
           }
         }
       }
+    },
+    "Options and availability" : {
+
     },
     "Overview" : {
       "localizations" : {
@@ -16096,6 +16121,7 @@
       }
     },
     "Queue Behavior" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16436,6 +16462,7 @@
       }
     },
     "Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16581,6 +16608,9 @@
           }
         }
       }
+    },
+    "Refresh paths work differently" : {
+
     },
     "Refresh podcast" : {
       "localizations" : {
@@ -16821,6 +16851,9 @@
           }
         }
       }
+    },
+    "Related topics" : {
+
     },
     "Release schedule    : %@" : {
       "extractionState" : "stale",
@@ -17296,6 +17329,9 @@
           }
         }
       }
+    },
+    "Reset to default" : {
+
     },
     "Reset to Default" : {
       "localizations" : {
@@ -17779,6 +17815,7 @@
       }
     },
     "Rules are checked against chapter titles and can use operators like contains, starts with, or ends with." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18218,6 +18255,9 @@
         }
       }
     },
+    "Search the guide" : {
+
+    },
     "Search transcripts" : {
       "localizations" : {
         "de" : {
@@ -18376,6 +18416,9 @@
           }
         }
       }
+    },
+    "Selected Uniform color" : {
+
     },
     "Selection" : {
       "localizations" : {
@@ -19479,6 +19522,9 @@
         }
       }
     },
+    "Skip Back" : {
+
+    },
     "Skip back %lld seconds" : {
       "localizations" : {
         "de" : {
@@ -19558,6 +19604,9 @@
           }
         }
       }
+    },
+    "Skip backward in the current episode." : {
+
     },
     "Skip chapter" : {
       "localizations" : {
@@ -19641,6 +19690,9 @@
           }
         }
       }
+    },
+    "Skip forward in the current episode." : {
+
     },
     "Skip forward in Up Next" : {
       "localizations" : {
@@ -20152,6 +20204,9 @@
         }
       }
     },
+    "Start here" : {
+
+    },
     "Start Listening" : {
       "localizations" : {
         "de" : {
@@ -20407,6 +20462,9 @@
           }
         }
       }
+    },
+    "Steps" : {
+
     },
     "Stop after a duration or after the current episode." : {
       "localizations" : {
@@ -21325,6 +21383,7 @@
       }
     },
     "The currently playing episode is kept pinned at the top while playback is active." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22829,6 +22888,9 @@
         }
       }
     },
+    "Try it" : {
+
+    },
     "Turn off to skip this chapter" : {
       "localizations" : {
         "de" : {
@@ -23075,6 +23137,9 @@
         }
       }
     },
+    "Uniform color" : {
+
+    },
     "Unknown duration, publication date, or episode type passes that check. Manual downloads always work. Playlist auto-downloads inherit these rules; matching rules never change queue membership or remove files already downloaded." : {
       "localizations" : {
         "de" : {
@@ -23150,6 +23215,7 @@
       }
     },
     "Up Next Basics" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23230,6 +23296,7 @@
       }
     },
     "Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23496,6 +23563,7 @@
       }
     },
     "Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23933,6 +24001,7 @@
       }
     },
     "VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24140,6 +24209,9 @@
         }
       }
     },
+    "What it does" : {
+
+    },
     "What podcasts are live in Up Next?" : {
       "localizations" : {
         "de" : {
@@ -24200,6 +24272,7 @@
       }
     },
     "When an episode finishes, continuous playback can automatically start the next item from Up Next." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24342,6 +24415,9 @@
           }
         }
       }
+    },
+    "Where to find it" : {
+
     },
     "Which podcast and episode?" : {
       "localizations" : {
@@ -24502,6 +24578,7 @@
       }
     },
     "You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24623,9 +24700,6 @@
           }
         }
       }
-    },
-    "Your next episode is ready" : {
-
     },
     "Your Sideloading Folder is empty" : {
       "localizations" : {

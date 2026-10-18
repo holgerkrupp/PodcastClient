@@ -122,6 +122,7 @@ actor PhoneWatchSnapshotBuilder {
                 skipBackSeconds: settings.skipBack.rawValue,
                 skipForwardSeconds: settings.skipForward.rawValue,
                 playbackSettings: globalPlaybackSettings,
+                networkTrackingProtectionEnabled: PodcastNetworkPrivacyPolicy.isEnabled,
                 phoneTransferEpisodeIDs: input.phoneTransferEpisodeIDs,
                 phoneTransferProgressByEpisodeID: input.phoneTransferProgressByEpisodeID,
                 phonePlaybackState: input.phonePlaybackState

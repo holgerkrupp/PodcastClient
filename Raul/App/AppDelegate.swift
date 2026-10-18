@@ -104,8 +104,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     /// Schedules the overnight store-split migration pass. Requires external
-    /// power so it runs while charging and idle, and network so CloudKit can
-    /// export the migrated user-state. Only scheduled while migration could still
+    /// power and becomes eligible during the local 22:00–07:00 window. Only scheduled while migration could still
     /// have migration, cache-bootstrap, or reconciliation work left to do.
     static func scheduleStoreSplitMigrationProcessingIfNeeded() {
         // Gate on real remaining work, not on the rollout marker. A device can
@@ -113,9 +112,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // the current version every phase — that combination silently stopped the
         // overnight pass from ever being scheduled.
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              ModelContainerManager.hasPendingStoreSplitBackgroundWork,
-              !(StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-                && LegacyCloudExportRecovery.hasUnfinishedLegacyExport) else {
+              ModelContainerManager.hasPendingStoreSplitBackgroundWork else {
             BGTaskScheduler.shared.cancel(
                 taskRequestWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
             )
@@ -157,11 +154,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 identifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
             )
             request.requiresExternalPower = true
-            request.requiresNetworkConnectivity =
-                ModelContainerManager.hasPendingMigrationWork
-            let earliestBeginDate = Date(
-                timeIntervalSinceNow: BackgroundTaskConfiguration.storeSplitMigrationInterval
-            )
+            request.requiresNetworkConnectivity = false
+            guard let earliestBeginDate = StoreSplitMigrationSchedulePolicy
+                .nextEligibleNightStart(after: .now) else { return }
             request.earliestBeginDate = earliestBeginDate
 
             do {
@@ -170,7 +165,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 #if DEBUG
                 StoreSplitMigrationDebugLog.record(
                     "background task scheduled",
-                    details: "not before \(earliestBeginDate.formatted(date: .omitted, time: .shortened)), needs power + network"
+                    details: "not before \(earliestBeginDate.formatted(date: .omitted, time: .shortened)), needs power + local night window"
                 )
 #endif
             } catch {

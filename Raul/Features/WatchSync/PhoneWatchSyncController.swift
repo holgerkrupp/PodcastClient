@@ -477,6 +477,7 @@ final class PhoneWatchSyncController: NSObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: Array(pendingTransferEpisodeIDs).sorted(),
             phoneTransferProgressByEpisodeID: filteredTransferProgress(),
             phonePlaybackState: makePhonePlaybackState()

@@ -2,6 +2,16 @@
 
 This is the shared presentation guide for UX epic #312 and hierarchy work #313. It maps existing actions to their intended location; the surface-specific child issues implement the layouts.
 
+## In-app User Guide
+
+The bundled, searchable help entry point is `Raul/Features/Help/UserGuideView.swift` and is linked from Settings → Help & About → Using Up Next. The guide is offline and uses native SwiftUI navigation. Its topic registry is the canonical source for article copy, search aliases, related-topic links, and safe in-app actions. The existing Siri & Shortcuts guide remains the source for the live App Intents catalog; link to it rather than duplicating its capability list.
+
+Every user-visible behavior change must review and maintain the corresponding guide topic in the same change. Keep the topic's actual entry point, steps, example, settings/availability limits, related links, and action in sync with the shipped UI. Do not claim DEBUG-only or planned behavior as available. See `AGENTS.md` for the full maintenance rule.
+
+Screenshot examples must come from repeatable preview or UI-test fixtures using sample podcast titles and transcripts. Never capture account state, private feed URLs, credentials, personal history, or other sensitive data. Keep capture metadata with each image: source screen, platform/OS, locale, and last verified app version. Do not use fabricated mockups as current UI examples. When adding a screenshot pipeline, document how to regenerate it and validate compact iPhone, regular-width/iPad, and macOS variants where behavior differs.
+
+Guide validation should check stable topic ID uniqueness, related-topic resolution, search across title/aliases/keywords/article text, action destination availability, accessibility text for images, and packaged resources. Add platform UI smoke coverage for Settings → guide → topic → action → back when a fixture-based harness is available. Avoid screenshot recapture for unrelated changes.
+
 ## Shared rules
 
 - Keep one primary action prominent in each context. Use a short secondary-action group for frequent actions and native menus or disclosures for occasional utilities.
@@ -30,6 +40,7 @@ This is the shared presentation guide for UX epic #312 and hierarchy work #313. 
 | Podcast Detail | Subscribe/Subscribed, transcript search when indexed, refresh/retry, episode list, search, and sort. | Podcast settings, alternative feeds, feed repair, unsubscribe, archive all, debug diagnostics, funding, podroll, trailers, release information, and extended metadata are in Manage Podcast or About & Podcast Details. Feed errors and active refresh remain visible. |
 | Add Podcast / Search | Native podcast search for names, websites, public RSS/XML, and private feeds; recent searches and discovery destinations appear when search is empty. | Private-feed authentication stays in its secure flow. Import/Export is in the secondary Library group. Alternative feeds and trailers stay with an individual preview. |
 | Podcast Browse | Subscribe state, episode list, play, and queue work without subscribing. | Feed details and update diagnostics are in the disclosure; alternative feeds stay in their menu; refresh and page retry stay visible. |
+| Global Settings | Privacy contains the default-on network tracking protection control and a short explanation of its limits. | Local request counts are shown only when available; feed credentials, URLs, and request identifiers are never included. |
 
 ## Responsive review
 

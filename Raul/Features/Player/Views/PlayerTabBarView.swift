@@ -108,6 +108,7 @@ struct PlayerTabBarView: View {
                             .font(.headline)
                     }
                     .buttonStyle(.borderless)
+                    .tint(.primary)
                     .frame(width: 32, height: 32)
                     .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
                     .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playback of the current episode")

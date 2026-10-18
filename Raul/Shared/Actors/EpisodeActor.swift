@@ -3118,7 +3118,7 @@ actor EpisodeActor {
                break
             }
             do{
-                let (data, _) = try await PodcastHTTPClient.shared.data(for: stringURL, profile: profile)
+                let (data, _) = try await PodcastHTTPClient.shared.data(for: stringURL, profile: profile, purpose: .transcript)
                 return String(decoding: data, as: UTF8.self)
             }catch{
                 return nil
@@ -3331,7 +3331,7 @@ enum ChapterExtractionHooks {
 
     nonisolated(unsafe) static var loadRemoteMP3Chapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
         if let profile {
-            guard let (data, _) = try? await PodcastHTTPClient.shared.data(for: url, profile: profile) else {
+            guard let (data, _) = try? await PodcastHTTPClient.shared.data(for: url, profile: profile, purpose: .chapter) else {
                 return []
             }
             let temporaryURL = FileManager.default.temporaryDirectory
@@ -3436,13 +3436,16 @@ private struct MetadataLoader {
         for url: URL,
         profile: PodcastAccessProfile?
     ) throws -> AVURLAsset {
-        guard let profile else { return AVURLAsset(url: url) }
-        let request = try PodcastAccessResolver().request(for: url, profile: profile)
+        guard url.isFileURL == false else { return AVURLAsset(url: url) }
+        let protectedURL = try PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .chapter)
+        guard let profile else { return AVURLAsset(url: protectedURL) }
+        let request = try PodcastAccessResolver().request(for: protectedURL, profile: profile)
         var options: [String: Any] = [:]
         if let authorization = request.value(forHTTPHeaderField: "Authorization") {
             options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
         }
-        return AVURLAsset(url: request.url ?? url, options: options)
+        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
+        return AVURLAsset(url: request.url ?? protectedURL, options: options)
     }
 }
 

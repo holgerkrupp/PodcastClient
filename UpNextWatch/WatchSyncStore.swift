@@ -289,9 +289,21 @@ final class WatchSyncStore: NSObject, ObservableObject {
         let configuration = URLSessionConfiguration.default
         configuration.allowsCellularAccess = WatchCellularSupport.canUseCellularDownloads && storageSettings.allowCellularDownloads
         configuration.waitsForConnectivity = true
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
 
         let downloadSession = URLSession(configuration: configuration, delegate: self, delegateQueue: nil)
-        let task = downloadSession.downloadTask(with: remoteURL)
+        guard let protectedURL = WatchNetworkURLPolicy.resolve(
+            remoteURL,
+            enabled: snapshot.networkTrackingProtectionEnabled
+        ) else {
+            errorMessage = "This tracking link cannot be opened safely. Use the original episode link."
+            return
+        }
+        var request = URLRequest(url: protectedURL)
+        request.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+        let task = downloadSession.downloadTask(with: request)
         let key = Self.directDownloadKey(for: downloadSession, task: task)
         directDownloadSessions[key] = downloadSession
         directDownloadEpisodesByTask[key] = episode
@@ -650,6 +662,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -676,6 +689,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -711,6 +725,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: updatedGlobalSettings.skipBackSeconds,
             skipForwardSeconds: updatedGlobalSettings.skipForwardSeconds,
             playbackSettings: updatedGlobalSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -834,6 +849,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -863,6 +879,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -882,6 +899,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -913,6 +931,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             skipBackSeconds: snapshot.skipBackSeconds,
             skipForwardSeconds: snapshot.skipForwardSeconds,
             playbackSettings: snapshot.playbackSettings,
+            networkTrackingProtectionEnabled: snapshot.networkTrackingProtectionEnabled,
             phoneTransferEpisodeIDs: snapshot.phoneTransferEpisodeIDs,
             phoneTransferProgressByEpisodeID: snapshot.phoneTransferProgressByEpisodeID,
             phonePlaybackState: snapshot.phonePlaybackState
@@ -1446,6 +1465,28 @@ extension WatchSyncStore: WCSessionDelegate {
 }
 
 extension WatchSyncStore: URLSessionDownloadDelegate {
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        guard let url = request.url else {
+            completionHandler(nil)
+            return
+        }
+        let defaults = UserDefaults(suiteName: "group.de.holgerkrupp.PodcastClient") ?? .standard
+        let enabled = defaults.object(forKey: "networkTrackingProtection.enabled.v1") as? Bool ?? true
+        guard let protectedURL = WatchNetworkURLPolicy.resolve(url, enabled: enabled) else {
+            completionHandler(nil)
+            return
+        }
+        var protected = request
+        protected.url = protectedURL
+        completionHandler(protected)
+    }
+
     nonisolated func urlSession(
         _ session: URLSession,
         downloadTask: URLSessionDownloadTask,

@@ -479,9 +479,11 @@ struct PodcastEpisodeShareImporter {
     }
 
     private func fetchText(from url: URL) async throws -> String {
-        var request = URLRequest(url: url)
+        var request = try PodcastNetworkPrivacyPolicy.prepare(URLRequest(url: url), purpose: .shareImport)
         request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
-        let (data, _) = try await podcastURLSessionData(for: request, using: .shared)
+        let session = PodcastNetworkPrivacyPolicy.session(purpose: .shareImport)
+        defer { session.finishTasksAndInvalidate() }
+        let (data, _) = try await podcastURLSessionData(for: request, using: session)
         return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1) ?? ""
     }
 

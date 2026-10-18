@@ -14,6 +14,10 @@ The dual-sync backfill must be exercised with release-equivalent stores before a
 - Launch and CloudKit import callbacks persist a pending reconcile and arm BGProcessing without invoking the whole-library importer on the foreground runner.
 - Queue and playlist projection retains stable identity and order when UserState rows arrive before matching cache metadata.
 - Timestamp and tombstone conflict cases preserve newer synchronized state after a resumed migration.
+- A 2,679-row listening-summary fixture aggregates in bounded pages, publishes no partial baseline, and preserves total and saved-time components.
+- Listening summaries and history are dispatched before the historical episode-state sweep; the overnight policy is local-time and charging gated.
+- Unchanged cached history sessions retain their child rows, and source/destination fetch errors leave the phase pending rather than treating it as empty.
+- A 14k-episode performance fixture must report scanned rows, pages, saves, active time, idle time, memory, and yield reason per successful system grant; tune production targets from device measurements without weakening watchdog limits.
 
 ## Device-history matrix
 
@@ -27,7 +31,7 @@ Run the following cases on physical devices or release-equivalent CloudKit accou
 | Dormant device | Keep a second device offline through newer queue, bookmark, and playback updates; reconnect it during migration | Delayed legacy state does not replace newer UserState records or reorder the queue. |
 | Concurrent second device | Add a device while the primary is backfilling; then repeat after cutover | Both devices converge after CloudKit settles; post-cutover bootstrap does not depend on legacy reads. |
 | Feed recovery | Exercise queue-first metadata arrival, temporary/permanent feed failure, private credentials, and redirect aliases | UserState references remain intact; recoverable feed failures are reported separately from blocking user-state gaps. |
-| Resource interruption | Expire the processing task, reboot, update the app, drop network/power, begin playback, and hold a CloudKit export open | Work yields promptly, stores remain consistent, and the next eligible window resumes from durable state. |
+| Resource interruption | Expire the processing task, reboot, update the app, drop network/power, begin playback, and hold a CloudKit export open | Work yields promptly, stores remain consistent, and the next charging night resumes from durable state. No bulk migration runs during daytime or playback. |
 | Large library | Run typical, long-time, and high-row-count history fixtures | Every successful window advances measurable progress within the opportunity targets from issue #198. |
 
 ## TestFlight checklist

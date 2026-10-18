@@ -1016,6 +1016,24 @@ protocol PodcastHTTPTransport: Sendable {
         profile: PodcastAccessProfile?,
         resolver: PodcastAccessResolver
     ) async throws -> (Data, URLResponse)
+
+    func data(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose
+    ) async throws -> (Data, URLResponse)
+}
+
+extension PodcastHTTPTransport {
+    func data(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose
+    ) async throws -> (Data, URLResponse) {
+        try await data(for: request, profile: profile, resolver: resolver)
+    }
 }
 
 enum PodcastURLSessionTransportError: Error, Sendable {
@@ -1270,12 +1288,25 @@ struct URLSessionPodcastHTTPTransport: PodcastHTTPTransport {
         profile: PodcastAccessProfile?,
         resolver: PodcastAccessResolver
     ) async throws -> (Data, URLResponse) {
+        try await data(for: request, profile: profile, resolver: resolver, purpose: .feed)
+    }
+
+    func data(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose
+    ) async throws -> (Data, URLResponse) {
         // Use the same redirect policy for public and private feeds. For a
         // same-origin redirect, this preserves access query items such as a
         // personal-feed token when the Location value omits them. The policy
         // never forwards them to another origin.
-        let delegate = PodcastRedirectDelegate(resolver: resolver, profile: profile)
-        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        let delegate = PodcastRedirectDelegate(resolver: resolver, profile: profile, purpose: purpose)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
         return try await podcastURLSessionData(for: request, using: session)
     }
@@ -1307,20 +1338,23 @@ final class PodcastHTTPClient: @unchecked Sendable {
 
     func data(
         for url: URL,
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose = .feed
     ) async throws -> (Data, HTTPURLResponse) {
         let activeResolver = resolver
         let request = conditionalRequest(try activeResolver.request(for: url, profile: profile))
         return try await perform(
             request: request,
             profile: profile,
-            resolver: activeResolver
+            resolver: activeResolver,
+            purpose: purpose
         )
     }
 
     func data(
         for request: URLRequest,
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose = .feed
     ) async throws -> (Data, HTTPURLResponse) {
         let activeResolver = resolver
         let authorizedRequest = conditionalRequest(try requestUsingCurrentCredential(
@@ -1331,7 +1365,8 @@ final class PodcastHTTPClient: @unchecked Sendable {
         return try await perform(
             request: authorizedRequest,
             profile: profile,
-            resolver: activeResolver
+            resolver: activeResolver,
+            purpose: purpose
         )
     }
 
@@ -1380,14 +1415,17 @@ final class PodcastHTTPClient: @unchecked Sendable {
     private func perform(
         request: URLRequest,
         profile: PodcastAccessProfile?,
-        resolver: PodcastAccessResolver
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose
     ) async throws -> (Data, HTTPURLResponse) {
-        let requestedURL = request.url ?? URL(string: "about:blank")!
+        let preparedRequest = try PodcastNetworkPrivacyPolicy.prepare(request, purpose: purpose)
+        let requestedURL = preparedRequest.url ?? URL(string: "about:blank")!
         let (data, response) = try await PodcastHostRequestLimiter.shared.withPermit(for: requestedURL) {
             let result = try await self.transport.data(
-                for: request,
+                for: preparedRequest,
                 profile: profile,
-                resolver: resolver
+                resolver: resolver,
+                purpose: purpose
             )
             if let http = result.1 as? HTTPURLResponse, http.statusCode == 429 {
                 await PodcastHostRequestLimiter.shared.pause(
@@ -1416,7 +1454,7 @@ final class PodcastHTTPClient: @unchecked Sendable {
                 retryAfter: retryAfter
             )
         }
-        if request.httpMethod?.uppercased() == "GET" && httpResponse.statusCode == 200 {
+        if preparedRequest.httpMethod?.uppercased() == "GET" && httpResponse.statusCode == 200 {
             await PodcastHTTPValidatorStore.shared.stage(httpResponse, for: requestedURL, profile: profile)
         }
         return (data, httpResponse)
@@ -1435,10 +1473,16 @@ final class PodcastHTTPClient: @unchecked Sendable {
 private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
     private let resolver: PodcastAccessResolver
     private let profile: PodcastAccessProfile?
+    private let purpose: PodcastNetworkPrivacyPolicy.Purpose
 
-    init(resolver: PodcastAccessResolver, profile: PodcastAccessProfile?) {
+    init(
+        resolver: PodcastAccessResolver,
+        profile: PodcastAccessProfile?,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose
+    ) {
         self.resolver = resolver
         self.profile = profile
+        self.purpose = purpose
     }
 
     func urlSession(
@@ -1456,19 +1500,39 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
         let previousURL = task.currentRequest?.url ?? response.url ?? url
         do {
             if let profile {
-                completionHandler(
-                    try resolver.request(
+                var redirected = try resolver.request(
                         for: url,
                         profile: profile,
                         redirectingFrom: previousURL
                     )
-                )
+                if let redirectedURL = redirected.url {
+                    guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: redirectedURL, purpose: purpose) else {
+                        completionHandler(nil)
+                        return
+                    }
+                    redirected.url = protectedURL
+                }
+                redirected.setValue(nil, forHTTPHeaderField: "Referer")
+                if redirected.value(forHTTPHeaderField: "User-Agent") == nil {
+                    redirected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                }
+                completionHandler(redirected)
             } else {
-                let redirectedURL = url
-                    .preservingFeedAccessComponents(from: previousURL)
-                var redirectedRequest = URLRequest(podcastFeedURL: redirectedURL)
-                redirectedRequest.httpMethod = request.httpMethod
-                redirectedRequest.timeoutInterval = request.timeoutInterval
+                let redirectedURL = url.preservingFeedAccessComponents(from: previousURL)
+                guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: redirectedURL, purpose: purpose) else {
+                    completionHandler(nil)
+                    return
+                }
+                var redirectedRequest = request
+                redirectedRequest.url = wireURL
+                redirectedRequest.setValue(nil, forHTTPHeaderField: "Referer")
+                if redirectedRequest.value(forHTTPHeaderField: "User-Agent") == nil {
+                    redirectedRequest.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                }
+                if previousURL.host?.lowercased() != url.host?.lowercased() {
+                    redirectedRequest.setValue(nil, forHTTPHeaderField: "Authorization")
+                    redirectedRequest.setValue(nil, forHTTPHeaderField: "Cookie")
+                }
                 completionHandler(redirectedRequest)
             }
         } catch {

@@ -264,6 +264,7 @@ struct WatchSyncSnapshot: Codable, Sendable {
     let skipBackSeconds: Int
     let skipForwardSeconds: Int
     let playbackSettings: WatchPlaybackSettings
+    let networkTrackingProtectionEnabled: Bool
     let phoneTransferEpisodeIDs: [String]
     let phoneTransferProgressByEpisodeID: [String: Double]
     let phonePlaybackState: WatchPhonePlaybackState?
@@ -293,6 +294,7 @@ struct WatchSyncSnapshot: Codable, Sendable {
         skipBackSeconds: Int = 15,
         skipForwardSeconds: Int = 30,
         playbackSettings: WatchPlaybackSettings = .default,
+        networkTrackingProtectionEnabled: Bool = true,
         phoneTransferEpisodeIDs: [String] = [],
         phoneTransferProgressByEpisodeID: [String: Double] = [:],
         phonePlaybackState: WatchPhonePlaybackState? = nil
@@ -306,6 +308,7 @@ struct WatchSyncSnapshot: Codable, Sendable {
         self.skipBackSeconds = skipBackSeconds
         self.skipForwardSeconds = skipForwardSeconds
         self.playbackSettings = playbackSettings
+        self.networkTrackingProtectionEnabled = networkTrackingProtectionEnabled
         self.phoneTransferEpisodeIDs = phoneTransferEpisodeIDs
         self.phoneTransferProgressByEpisodeID = phoneTransferProgressByEpisodeID
         self.phonePlaybackState = phonePlaybackState
@@ -321,6 +324,7 @@ struct WatchSyncSnapshot: Codable, Sendable {
         case skipBackSeconds
         case skipForwardSeconds
         case playbackSettings
+        case networkTrackingProtectionEnabled
         case phoneTransferEpisodeIDs
         case phoneTransferProgressByEpisodeID
         case phonePlaybackState
@@ -338,6 +342,7 @@ struct WatchSyncSnapshot: Codable, Sendable {
         skipForwardSeconds = try container.decodeIfPresent(Int.self, forKey: .skipForwardSeconds) ?? 30
         playbackSettings = try container.decodeIfPresent(WatchPlaybackSettings.self, forKey: .playbackSettings)
             ?? WatchPlaybackSettings(skipBackSeconds: skipBackSeconds, skipForwardSeconds: skipForwardSeconds)
+        networkTrackingProtectionEnabled = try container.decodeIfPresent(Bool.self, forKey: .networkTrackingProtectionEnabled) ?? true
         phoneTransferEpisodeIDs = try container.decodeIfPresent([String].self, forKey: .phoneTransferEpisodeIDs) ?? []
         phoneTransferProgressByEpisodeID = try container.decodeIfPresent([String: Double].self, forKey: .phoneTransferProgressByEpisodeID) ?? [:]
         phonePlaybackState = try container.decodeIfPresent(WatchPhonePlaybackState.self, forKey: .phonePlaybackState)

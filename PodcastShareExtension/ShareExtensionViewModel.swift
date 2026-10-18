@@ -217,7 +217,7 @@ private struct SharePodcastSearchService: Sendable {
 
         var request = URLRequest(url: url)
         request.timeoutInterval = 12
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await ShareNetworkPrivacy.data(for: request)
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
             throw URLError(.badServerResponse)
         }

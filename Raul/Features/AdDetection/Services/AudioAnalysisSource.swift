@@ -235,10 +235,13 @@ private enum AnalysisAssetCache {
     static func localURL(for url: URL) async throws -> URL {
         guard url.isFileURL == false else { return url }
 
+        let wireURL = try PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .audio)
+
         let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("AdDetection/Assets", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let name = String(url.absoluteString.utf8.reduce(into: UInt64(1469598103934665603)) { hash, byte in
+        let cacheIdentity = "\(wireURL.absoluteString)|privacy-rules-\(PodcastNetworkPrivacyPolicy.ruleVersion)"
+        let name = String(cacheIdentity.utf8.reduce(into: UInt64(1469598103934665603)) { hash, byte in
             hash ^= UInt64(byte)
             hash &*= 1099511628211
         })
@@ -247,7 +250,9 @@ private enum AnalysisAssetCache {
             return destination
         }
 
-        let (temporaryURL, _) = try await URLSession.shared.download(from: url)
+        let session = PodcastNetworkPrivacyPolicy.session(purpose: .audio)
+        defer { session.finishTasksAndInvalidate() }
+        let (temporaryURL, _) = try await session.download(from: wireURL)
         try FileManager.default.moveItem(at: temporaryURL, to: destination)
         return destination
     }

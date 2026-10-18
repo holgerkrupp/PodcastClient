@@ -86,6 +86,9 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         let config = URLSessionConfiguration.background(withIdentifier: "com.yourapp.downloads")
         config.sessionSendsLaunchEvents = true
         config.isDiscretionary = false
+        config.httpCookieStorage = nil
+        config.httpShouldSetCookies = false
+        config.httpCookieAcceptPolicy = .never
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
     
@@ -160,7 +163,17 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             destinations[url] = finalDestination
             persistProfiles()
         }
-        let task = session.downloadTask(with: request)
+        var protectedRequest = request
+        if let requestURL = request.url {
+            guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else {
+                downloads[url] = nil
+                destinations[url] = nil
+                await MainActor.run { item.isDownloading = false }
+                return nil
+            }
+            protectedRequest.url = protectedURL
+        }
+        let task = session.downloadTask(with: protectedRequest)
         urlToTask[url] = task
         activeTaskIdentifiers[url] = task.taskIdentifier
         await MainActor.run { item.isDownloading = true }
@@ -229,16 +242,23 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
 
         let task: URLSessionDownloadTask
         if let profile,
-           let request = try? accessResolver.request(for: url, profile: profile) {
+           var request = try? accessResolver.request(for: url, profile: profile) {
             // Resume data contains the old request headers. Rebuild the task
             // with the current Keychain credential after a re-authentication
             // so a rotated token/password is used safely.
+            guard let requestURL = request.url,
+                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else { return }
+            request.url = protectedURL
             task = session.downloadTask(with: request)
-        } else if let data = resumeData.removeValue(forKey: url) {
+        } else if PodcastNetworkPrivacyPolicy.isEnabled == false,
+                  let data = resumeData.removeValue(forKey: url) {
             task = session.downloadTask(withResumeData: data)
-        } else if let request = try? accessResolver.request(for: url, profile: nil) {
+        } else if var request = try? accessResolver.request(for: url, profile: nil) {
             // Some servers do not provide resume data. Continue with a fresh
             // request while retaining the existing observable progress item.
+            guard let requestURL = request.url,
+                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else { return }
+            request.url = protectedURL
             task = session.downloadTask(with: request)
         } else {
             return

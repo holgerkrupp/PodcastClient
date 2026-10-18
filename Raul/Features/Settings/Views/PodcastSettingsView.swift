@@ -12,6 +12,7 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
     case transcriptions
     case appearance
     case integrations
+    case privacy
     case dataAndStorage
 #if DEBUG
     case refreshHistory
@@ -28,6 +29,7 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .transcriptions: "Transcriptions"
         case .appearance: "Appearance"
         case .integrations: "Integrations"
+        case .privacy: "Privacy"
         case .dataAndStorage: "Data & Storage"
 #if DEBUG
         case .refreshHistory: "Refresh History"
@@ -50,6 +52,8 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
             "Choose how Up Next looks on this device"
         case .integrations:
             "Notifications, Shortcuts, and automations"
+        case .privacy:
+            "Control tracking protection for network requests"
         case .dataAndStorage:
             "iCloud sync, sideloading, downloads, and maintenance"
 #if DEBUG
@@ -69,6 +73,7 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .transcriptions: "captions.bubble.fill"
         case .appearance: "paintbrush.fill"
         case .integrations: "puzzlepiece.extension.fill"
+        case .privacy: "hand.raised.fill"
         case .dataAndStorage: "internaldrive.fill"
 #if DEBUG
         case .refreshHistory: "clock.arrow.trianglehead.counterclockwise.rotate.90"
@@ -85,6 +90,7 @@ private enum GlobalSettingsCategory: String, CaseIterable, Hashable, Identifiabl
         case .transcriptions: .blue
         case .appearance: .pink
         case .integrations: .indigo
+        case .privacy: .teal
         case .dataAndStorage: .green
 #if DEBUG
         case .refreshHistory: .teal
@@ -101,6 +107,8 @@ struct PodcastSettingsView: View {
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
+    @AppStorage(PodcastNetworkPrivacyPolicy.settingKey, store: UserDefaults(suiteName: PodcastNetworkPrivacyPolicy.appGroupID) ?? .standard)
+    private var networkTrackingProtectionEnabled = true
     @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
 #if os(macOS)
@@ -596,6 +604,8 @@ struct PodcastSettingsView: View {
             appearanceSection
         case .integrations:
             integrationsSection
+        case .privacy:
+            networkPrivacySection
         case .dataAndStorage:
             sideloadingSection
             maintenanceSection
@@ -612,6 +622,33 @@ struct PodcastSettingsView: View {
             debugSection
 #endif
             aboutSection
+        }
+    }
+
+    private var networkPrivacySection: some View {
+        Section("Network Tracking Protection") {
+            Toggle(
+                "Reduce tracking in network requests",
+                isOn: Binding(
+                    get: { networkTrackingProtectionEnabled },
+                    set: { enabled in
+                        networkTrackingProtectionEnabled = enabled
+                        WatchSyncCoordinator.refreshSoon(force: true)
+                    }
+                )
+            )
+            Text("Removes recognized tracking parameters before connecting. Some servers can still identify requests. A few podcasts may need the original link.")
+                .font(.caption)
+            Text("Changing this setting affects newly created requests. Active playback and downloads may continue using their current request.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            let counts = PodcastNetworkPrivacyPolicy.diagnosticCounts().filter { $0.value > 0 }
+            if counts.isEmpty == false {
+                Text(counts.sorted { $0.key < $1.key }.map { "\($0.key): \($0.value)" }.joined(separator: " · "))
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.tertiary)
+                    .accessibilityLabel("Local network privacy request counts")
+            }
         }
     }
 
@@ -1783,8 +1820,8 @@ struct PodcastSettingsView: View {
             } label: {
                 SettingsNavigationRow(
                     title: "Using Up Next",
-                    summary: "Queue model, inbox workflow, chapter skip keywords, and Siri/Shortcuts intents",
-                    detail: "Open a complete guide for how playback flow works and how to automate it.",
+                    summary: "Search practical guides to playback, podcasts, transcripts, and more",
+                    detail: "Browse the offline guide to app workflows, controls, settings, and troubleshooting.",
                     systemImage: "questionmark.circle"
                 )
             }
@@ -2841,43 +2878,6 @@ private struct GlobalSettingsCategoryRow: View {
             }
         }
         .padding(.vertical, 3)
-    }
-}
-
-struct SettingsHelpView: View {
-    var body: some View {
-        List {
-            Section("Up Next Basics") {
-                Text("Up Next is your single playback queue. Episodes in this list are what the player uses for \"what comes next.\"")
-                Text("Inbox is your triage area for fresh episodes. Adding an episode to a playlist removes it from Inbox; removing it from a playlist does not return it.")
-                Text("When an episode finishes, continuous playback can automatically start the next item from Up Next.")
-            }
-
-            Section("Queue Behavior") {
-                Text("New episodes can be placed at the front, end, or not added automatically, depending on your settings.")
-                Text("The currently playing episode is kept pinned at the top while playback is active.")
-                Text("You can reorder Up Next manually, move an episode to the end, or remove episodes from the queue.")
-            }
-
-            Section("Chapter Skip Keywords") {
-                Text("Chapter rules let you skip recurring segments like intro, ads, or outro.")
-                Text("Rules are checked against chapter titles and can use operators like contains, starts with, or ends with.")
-                Text("Use global rules for all podcasts, or enable custom settings for one podcast when it needs its own behavior.")
-            }
-
-            Section("Siri & Shortcuts") {
-                Text("Open Settings > Integrations > Siri & Shortcuts for the current list of voice commands and automation actions.")
-            }
-
-            Section("Accessibility") {
-                Text("VoiceOver and Voice Control use the same control names you see in the player, queue, and transcript views.")
-                Text("For captions, open Transcript from an episode or the player. When a feed has no transcript, you can generate one on-device.")
-                Text("Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces.")
-            }
-        }
-        .listStyle(.inset)
-        .navigationTitle("Using Up Next")
-        .platformInlineNavigationTitle()
     }
 }
 
