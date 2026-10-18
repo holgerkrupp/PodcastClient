@@ -1756,6 +1756,8 @@ class ModelContainerManager: ObservableObject {
         deadline: Date
     ) async -> CachePrewarmBurstResult {
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        var priorityProcessed = 0
+        var priorityFailed = 0
         if defaults.integer(forKey: Self.cachePriorityCompletedVersionKey)
             < StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
            let userStateContainer = preparedUserStateContainer {
@@ -1786,6 +1788,8 @@ class ModelContainerManager: ObservableObject {
                 priorityResult = .init()
             }
 
+            priorityProcessed = priorityResult.processed
+            priorityFailed = priorityResult.failed
             let priorityReachedEnd = batch.reachedEnd
                 && priorityResult.completed
                 && priorityResult.failed == 0
@@ -1853,8 +1857,8 @@ class ModelContainerManager: ObservableObject {
             defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
         }
         return CachePrewarmBurstResult(
-            processed: result.processed,
-            failed: result.failed,
+            processed: priorityProcessed + result.processed,
+            failed: priorityFailed + result.failed,
             completed: result.completed && result.failed == 0
         )
     }
