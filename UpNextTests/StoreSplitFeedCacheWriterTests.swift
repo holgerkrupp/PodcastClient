@@ -161,6 +161,39 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testPodcastCacheBackfillPausesWhenPlaybackStarts() throws {
+        let (legacy, cache) = try makeContainers()
+        try makePodcast(
+            in: legacy,
+            feed: "https://example.com/paused-during-playback",
+            episodeGUIDs: ["episode-1"]
+        )
+
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(true)
+        defer { StoreSplitCachePlaybackGate.shared.setPlaybackActive(false) }
+
+        let blocked = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 20,
+            deadline: Date().addingTimeInterval(30)
+        )
+        XCTAssertFalse(blocked.completed)
+        XCTAssertEqual(blocked.processed, 0)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 0)
+
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(false)
+        let resumed = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 20
+        )
+        XCTAssertTrue(resumed.completed)
+        XCTAssertEqual(resumed.processed, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
