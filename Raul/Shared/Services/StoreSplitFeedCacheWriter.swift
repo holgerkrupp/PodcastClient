@@ -104,19 +104,42 @@ enum StoreSplitFeedCacheWriter {
                     feeds.append(candidate)
                 }
             }
-        let podcast = candidateFeeds.lazy.compactMap { candidate -> Podcast? in
-            guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return nil }
+        var podcast: Podcast?
+        for candidate in candidateFeeds {
+            guard shouldContinue(
+                deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+            ) else {
+                result.completed = false
+                result.failureReason = "cancelled_or_deadline"
+                return result
+            }
             let optionalFeedURL: URL? = candidate
             var descriptor = FetchDescriptor<Podcast>(
                 predicate: #Predicate { $0.feed == optionalFeedURL }
             )
             descriptor.fetchLimit = 1
             result.fetchCount += 1
-            return try? legacyContext.fetch(descriptor).first
-        }.first
-        guard let podcast,
-              shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
+            do {
+                if let found = try legacyContext.fetch(descriptor).first {
+                    podcast = found
+                    break
+                }
+            } catch {
+                result.completed = false
+                result.failureReason = "source_fetch_failed"
+                return result
+            }
+        }
+        guard let podcast else {
             result.completed = false
+            result.failureReason = "source_feed_not_found"
+            return result
+        }
+        guard shouldContinue(
+            deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+        ) else {
+            result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
 
