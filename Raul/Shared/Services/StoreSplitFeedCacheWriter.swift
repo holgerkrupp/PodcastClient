@@ -153,6 +153,32 @@ enum StoreSplitFeedCacheWriter {
         }
     }
 
+    /// Cheap indexed readiness probe for a HEAD/304 response. An unchanged
+    /// server feed can still have an absent/outdated local PodcastCache. In that
+    /// case, populate from the committed library data without refetching RSS.
+    static func needsFeedProjection(
+        feedURL: URL,
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let context = ModelContext(cacheContainer)
+        var descriptor = FetchDescriptor<CachedPodcast>(
+            predicate: #Predicate { $0.id == feedKey }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            let cached = try context.fetch(descriptor).first
+            return (cached?.cacheSchemaVersion ?? 0) < currentCacheSchemaVersion
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "store_split_cache_readiness_fetch_failed",
+                details: error.localizedDescription
+            )
+            // Fail closed: don't assume the cache is current on read errors.
+            return true
+        }
+    }
+
     /// Mark only this feed's local cache projection outdated after a successful
     /// durable-library refresh. Actual episode/chapter copying is deferred to
     /// the charging BGProcessing worker, never done during playback/refresh.
