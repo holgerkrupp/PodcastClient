@@ -2201,6 +2201,19 @@ actor PodcastModelActor {
                 deadline: deadline
             )
             : StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
+        // The durable library is authoritative in the public backfill phase.
+        // A refresh must invalidate just this feed's local projection and arm
+        // overnight maintenance; doing a full feed-graph copy synchronously
+        // would slow scrolling and could compete with audio playback.
+        if projectsFromCache == false,
+           StoreDevelopmentConfiguration.feedCachePrewarmingEnabled {
+            if StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
+                feedURL: feedURL,
+                cacheContainer: cacheContainer
+            ) {
+                ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            }
+        }
         // Namespaced extension subtrees have no equivalent in the model graph, so
         // they are captured in every mode.
         let extensionCount = StoreSplitFeedCacheWriter.replaceParsedExtensionElements(
