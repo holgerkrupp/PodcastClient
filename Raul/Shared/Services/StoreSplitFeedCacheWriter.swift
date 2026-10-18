@@ -141,6 +141,38 @@ enum StoreSplitFeedCacheWriter {
         }
     }
 
+    /// Mark only this feed's local cache projection outdated after a successful
+    /// durable-library refresh. Actual episode/chapter copying is deferred to
+    /// the charging BGProcessing worker, never done during playback/refresh.
+    /// New feeds have no CachedPodcast row yet and are picked up by the scan.
+    @discardableResult
+    static func invalidateFeedForBackgroundBootstrap(
+        feedURL: URL,
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let context = ModelContext(cacheContainer)
+        var descriptor = FetchDescriptor<CachedPodcast>(
+            predicate: #Predicate { $0.id == feedKey }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            if let cached = try context.fetch(descriptor).first,
+               cached.cacheSchemaVersion >= currentCacheSchemaVersion {
+                cached.cacheSchemaVersion = 0
+                try context.save()
+            }
+            return true
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_cache_invalidation_failed",
+                details: "source=feed_refresh,error=\(error.localizedDescription)"
+            )
+            return false
+        }
+    }
+
     /// Bounded bootstrap: copies new feeds and upgrades older cache projections,
     /// up to `limit` feeds per call. `CachedPodcast.cacheSchemaVersion` is the
     /// checkpoint, so feeds with no chapters/transcripts are still marked done.
