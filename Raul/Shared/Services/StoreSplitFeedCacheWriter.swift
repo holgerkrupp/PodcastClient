@@ -129,6 +129,10 @@ enum StoreSplitFeedCacheWriter {
             result.completed = false
             return result
         }
+        guard shouldContinue(deadline: deadline) else {
+            result.completed = false
+            return result
+        }
         do {
             if cacheContext.hasChanges {
                 try cacheContext.save()
@@ -272,6 +276,10 @@ enum StoreSplitFeedCacheWriter {
                     )
                     bootstrapResult.failed += 1
                     continue
+                }
+                guard shouldContinue(deadline: deadline) else {
+                    bootstrapResult.completed = false
+                    return bootstrapResult
                 }
                 do {
                     if cacheContext.hasChanges { try cacheContext.save() }
