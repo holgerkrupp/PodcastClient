@@ -29,7 +29,7 @@ This is the shared presentation guide for UX epic #312 and hierarchy work #313. 
 | Episode Detail | Play/Resume, queue positions, download, available transcript/chapter controls, or transcript generation when supported. | Sharing, website, media switch, debug utilities, bookmarks, funding, related podcast, and technical metadata remain grouped in More or expandable sections. |
 | Podcast Detail | Subscribe/Subscribed, transcript search when indexed, refresh/retry, episode list, search, and sort. | Podcast settings, alternative feeds, feed repair, unsubscribe, archive all, debug diagnostics, funding, podroll, trailers, release information, and extended metadata are in Manage Podcast or About & Podcast Details. Feed errors and active refresh remain visible. |
 | Add Podcast / Search | Native podcast search for names, websites, public RSS/XML, and private feeds; recent searches and discovery destinations appear when search is empty. | Private-feed authentication stays in its secure flow. Import/Export is in the secondary Library group. Alternative feeds and trailers stay with an individual preview. |
-| Podcast Browse | Subscribe state, episode list, play, and queue work without subscribing. | Feed details and update diagnostics are in the disclosure; alternative feeds stay in their menu; refresh and page retry stay visible. |
+| Podcast Browse | Subscribe state, episode list, play, and queue work without subscribing. | Feed details and update diagnostics are in the disclosure; alternative feeds stay in their menu; refresh and page retry stay visible. Broadcaster feed-resolution failures keep Retry Feed Lookup and Open Programme Website visible until a validated RSS feed opens this same preview. |
 
 ## Responsive review
 

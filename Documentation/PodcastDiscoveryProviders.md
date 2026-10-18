@@ -16,9 +16,11 @@ that must look a feed up (ARD, RTP, SRG search results) show a progress view
 first and a retryable recovery state with the broadcaster's website on failure. A podcast subscribed
 through SRF or RNZ is an entirely ordinary Up Next podcast afterwards — there is
 no broadcaster-specific playback, storage or subscription behaviour anywhere.
-The current main branch has no in-app guide module, so this recovery behavior is
-explained inline and here; add the corresponding guide topic when that module is
-present in the branch.
+The current branch has Settings help and a Siri guide, but no canonical
+`Documentation/UserGuide/` or discovery topic. The guide content change for this
+resolver UI (feed lookup, retry, official programme website, and the difference
+between unreachable and no verified RSS) is tracked in [issue #347](https://github.com/holgerkrupp/PodcastClient/issues/347)
+until its guide structure lands. Do not create a second help location here.
 
 Discovery results are never written to SwiftData. `DiscoveredPodcast` is a plain
 value type; SwiftData objects are created only when the user actually subscribes.
