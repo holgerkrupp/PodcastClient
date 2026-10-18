@@ -194,6 +194,73 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testNormalFeedRefreshFillsMissingCacheWithoutNewEpisodes() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-normal-refresh",
+            episodeGUIDs: ["old-1", "old-2"]
+        )
+        // The RSS refresh can have no new episodes while this installation
+        // has not yet built any PodcastCache rows.
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+    }
+
+    @MainActor
+    func testIncrementalFeedRefreshDoesNotRescanOrDeleteUnseenEpisodes() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-incremental-refresh",
+            episodeGUIDs: ["old-1", "new-2", "old-3"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+
+        let legacyEpisodes = try legacy.mainContext.fetch(FetchDescriptor<Episode>())
+        let changed = try XCTUnwrap(legacyEpisodes.first { $0.guid == "new-2" })
+        let untouched = try XCTUnwrap(legacyEpisodes.first { $0.guid == "old-1" })
+        changed.title = "New title from RSS refresh"
+        untouched.title = "Not present in partial RSS refresh"
+        podcast.title = "Updated podcast metadata"
+        try legacy.mainContext.save()
+
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: ["new-2"],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.deleted, 0)
+        XCTAssertEqual(result.episodesProcessed, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 3)
+
+        let context = ModelContext(cache)
+        let episodes = try context.fetch(FetchDescriptor<CachedEpisode>())
+        XCTAssertEqual(episodes.first { $0.guid == "new-2" }?.title, "New title from RSS refresh")
+        XCTAssertEqual(episodes.first { $0.guid == "old-1" }?.title, "Title old-1")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<CachedPodcast>()).first?.title,
+            "Updated podcast metadata"
+        )
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
