@@ -36,6 +36,7 @@ enum StoreSplitFeedCacheWriter {
         var fetchCount = 0
         var saveCount = 0
         var completed = true
+        var failureReason: String?
     }
 
     struct FeedCacheBootstrapResult: Sendable {
