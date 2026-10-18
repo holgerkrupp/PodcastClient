@@ -120,18 +120,31 @@ enum StoreSplitFeedCacheWriter {
         }
 
         let cacheContext = ModelContext(cacheContainer)
-        guard upsert(
-            podcast: podcast,
-            transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(
+        let isIncremental = refreshedEpisodeGUIDs != nil
+            && refreshedEpisodeURLs != nil
+            && fetchCachedPodcast(
+                id: PodcastFeedIdentity.normalizedFeedURLString(feedURL),
+                in: cacheContext
+            ).map { $0.cacheSchemaVersion >= currentCacheSchemaVersion } == true
+        // Feed refreshes cannot create historical AI transcription records.
+        // Avoid scanning the global transcription table for every ordinary GET;
+        // leave existing cached AI records untouched during an incremental pass.
+        let records = isIncremental
+            ? [URL: [TranscriptionRecord]]()
+            : transcriptionRecordsByEpisodeURL(
                 for: podcast,
                 in: legacyContext,
                 result: &result
-            ),
+            )
+        guard upsert(
+            podcast: podcast,
+            transcriptionRecordsByEpisodeURL: records,
             into: cacheContext,
             deadline: deadline,
             refreshedEpisodeGUIDs: refreshedEpisodeGUIDs,
             refreshedEpisodeURLs: refreshedEpisodeURLs,
             requiresIdlePlayback: requiresIdlePlayback,
+            preserveExistingAIRecords: isIncremental,
             result: &result
         ) else {
             result.completed = false
@@ -597,6 +610,7 @@ enum StoreSplitFeedCacheWriter {
         refreshedEpisodeGUIDs: Set<String>? = nil,
         refreshedEpisodeURLs: Set<URL>? = nil,
         requiresIdlePlayback: Bool = false,
+        preserveExistingAIRecords: Bool = false,
         result: inout FeedCacheProjectionResult
     ) -> Bool {
         guard let feed = podcast.feed,
@@ -653,32 +667,56 @@ enum StoreSplitFeedCacheWriter {
         podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
         if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
 
-        // Fetch each related table once per feed. The old implementation fetched
-        // chapters, transcript lines, downloads, and transcription records in
-        // every episode loop (4N queries); dictionaries make the loop O(1).
-        // These feed-scoped fetches also avoid loading unrelated feeds.
-        let existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingChapters = fetchCachedChapters(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingTranscriptLines = fetchCachedTranscriptLines(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingDownloads = fetchCachedDownloadRecords(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingTranscriptions = fetchCachedTranscriptionRecords(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
-
-        // A current cache only needs the imported episode delta on a normal
-        // feed refresh. A missing/outdated cache still receives a full projection.
-        // Never interpret a partial paginated RSS feed as authority to prune
-        // older cached episodes.
+        // Normal GET refreshes generally import zero or a few episodes.
+        // Avoid fetching every cached chapter, transcript and download from
+        // historical back catalogue during these small deltas. Large deltas and
+        // first-time backfills keep the existing batch-read path.
         let isIncrementalRefresh =
             cached.cacheSchemaVersion >= currentCacheSchemaVersion
                 && refreshedEpisodeGUIDs != nil
                 && refreshedEpisodeURLs != nil
         let selectedGUIDs = refreshedEpisodeGUIDs ?? []
         let selectedURLs = refreshedEpisodeURLs ?? []
+        let sourceEpisodes = podcast.episodes ?? []
+        let episodesToProject = isIncrementalRefresh
+            ? sourceEpisodes.filter {
+                selectedGUIDs.contains($0.guid ?? "")
+                    || ($0.url.map { selectedURLs.contains($0) } == true)
+            }
+            : sourceEpisodes
+        let targetedLookup = isIncrementalRefresh && episodesToProject.count <= 25
+
+        let existingEpisodes: [CachedEpisode]
+        let existingChapters: [CachedChapter]
+        let existingTranscriptLines: [CachedTranscriptLine]
+        let existingDownloads: [CachedDownloadRecord]
+        let existingTranscriptions: [CachedTranscriptionRecord]
+        if targetedLookup {
+            let ids = episodesToProject.map { $0.stableEpisodeIdentity.key }
+            existingEpisodes = ids.compactMap { fetchCachedEpisode(id: $0, in: cacheContext) }
+            existingChapters = ids.flatMap {
+                fetchCachedChapters(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingTranscriptLines = ids.flatMap {
+                fetchCachedTranscriptLines(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingDownloads = ids.compactMap {
+                fetchCachedDownloadRecord(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingTranscriptions = preserveExistingAIRecords ? [] : ids.flatMap {
+                fetchCachedTranscriptionRecords(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            result.fetchCount += ids.count * (preserveExistingAIRecords ? 4 : 5)
+        } else {
+            existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
+            existingChapters = fetchCachedChapters(feedKey: feedKey, in: cacheContext)
+            existingTranscriptLines = fetchCachedTranscriptLines(feedKey: feedKey, in: cacheContext)
+            existingDownloads = fetchCachedDownloadRecords(feedKey: feedKey, in: cacheContext)
+            existingTranscriptions = preserveExistingAIRecords
+                ? [] : fetchCachedTranscriptionRecords(feedKey: feedKey, in: cacheContext)
+            result.fetchCount += preserveExistingAIRecords ? 4 : 5
+        }
+        guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
 
         var existingByID = Dictionary(
             existingEpisodes.map { ($0.id, $0) },
@@ -690,13 +728,8 @@ enum StoreSplitFeedCacheWriter {
         let downloadsByEpisodeID = Dictionary(existingDownloads.map { ($0.episodeID, $0) }, uniquingKeysWith: { first, _ in first })
         let transcriptionsByEpisodeID = Dictionary(grouping: existingTranscriptions) { $0.episodeID }
 
-        for episode in podcast.episodes ?? [] {
+        for episode in episodesToProject {
             guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
-            if isIncrementalRefresh,
-               selectedGUIDs.contains(episode.guid ?? "") == false,
-               episode.url.map({ selectedURLs.contains($0) }) != true {
-                continue
-            }
             let identity = episode.stableEpisodeIdentity
             let episodeID = identity.key
             seenIDs.insert(episodeID)
@@ -793,14 +826,16 @@ enum StoreSplitFeedCacheWriter {
                 into: cacheContext,
                 result: &result
             )
-            upsertTranscriptionRecords(
-                transcriptionRecords,
-                feedKey: feedKey,
-                episodeID: episodeID,
-                existing: transcriptionsByEpisodeID[episodeID] ?? [],
-                into: cacheContext,
-                result: &result
-            )
+            if preserveExistingAIRecords == false {
+                upsertTranscriptionRecords(
+                    transcriptionRecords,
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    existing: transcriptionsByEpisodeID[episodeID] ?? [],
+                    into: cacheContext,
+                    result: &result
+                )
+            }
         }
 
         // Only a full source projection may prune. A normal RSS update can
@@ -1109,6 +1144,17 @@ enum StoreSplitFeedCacheWriter {
         in context: ModelContext
     ) -> CachedPodcast? {
         var descriptor = FetchDescriptor<CachedPodcast>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
+    private static func fetchCachedEpisode(
+        id: String,
+        in context: ModelContext
+    ) -> CachedEpisode? {
+        var descriptor = FetchDescriptor<CachedEpisode>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1
