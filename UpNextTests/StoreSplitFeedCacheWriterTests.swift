@@ -72,6 +72,44 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testAutomaticBootstrapKeepsPendingFlagUntilEntireFeedSourceWasVisited() throws {
+        let (legacy, cache) = try makeContainers()
+        for index in 0..<3 {
+            try makePodcast(
+                in: legacy,
+                feed: "https://example.com/automatic-cache-\(index)",
+                episodeGUIDs: ["episode-\(index)"]
+            )
+        }
+
+        // The BG executor is allowed to project only a bounded number of feeds.
+        // A successful bounded slice must not be mistaken for a fully populated
+        // PodcastCache: the next overnight run must still be scheduled.
+        for expectedCachedFeeds in 1...3 {
+            let result = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+                legacyContainer: legacy,
+                cacheContainer: cache,
+                limit: 1
+            )
+            XCTAssertEqual(result.processed, 1)
+            XCTAssertEqual(result.failed, 0)
+            XCTAssertFalse(result.completed, "Cache backfill must keep running after a limited slice")
+            XCTAssertEqual(cacheCounts(cache).podcasts, expectedCachedFeeds)
+        }
+
+        // A follow-up pass confirms that no eligible source rows remain.
+        let finished = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 1
+        )
+        XCTAssertEqual(finished.processed, 0)
+        XCTAssertEqual(finished.failed, 0)
+        XCTAssertTrue(finished.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 3)
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
