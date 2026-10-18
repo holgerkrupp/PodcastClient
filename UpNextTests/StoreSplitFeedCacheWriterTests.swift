@@ -110,6 +110,57 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testRefreshedFeedIsRequeuedWithoutSynchronousGraphCopy() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-refresh",
+            episodeGUIDs: ["first"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+        let fresh = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(
+            fresh.cacheSchemaVersion,
+            StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+        )
+
+        // RSS refresh should only invalidate the one feed. Heavy projection is
+        // performed by the subsequent charging maintenance grant.
+        XCTAssertTrue(StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
+            feedURL: feed,
+            cacheContainer: cache
+        ))
+        let stale = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(stale.cacheSchemaVersion, 0)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+
+        let result = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 10
+        )
+        XCTAssertEqual(result.processed, 1)
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+        let restored = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(
+            restored.cacheSchemaVersion,
+            StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+        )
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
