@@ -78,7 +78,7 @@ results, and the Add Podcast screen never depends on discovery at all.
 | ORF Sound | AT | Public audio API (`audioapi.orf.at`) | Yes, direct | High |
 | RNZ | NZ | Public directory page | Yes, from the directory | Medium |
 | RTP | PT | Public directory page | Via the Apple Podcasts link RTP publishes | Medium |
-| ARD Sounds | DE | Undocumented web API | Best effort only | Low |
+| ARD Sounds | DE | Undocumented web API + community hosted RSS fallback | Direct feeds first; hosted fallback for supported show URNs | Low |
 | CBC | CA | Public directory | Yes, direct | Medium |
 | BBC | GB | Apple Podcasts catalogue, by publisher | Yes, direct | Medium |
 | NPR | US | Apple Podcasts catalogue, by publisher | Yes, direct | Medium |
@@ -195,6 +195,26 @@ does not fetch per-show details or publisher pages. Resolution order is:
    matches the ARD publication service. The parsed feed is checked again. For
    example, Achtsam resolves to the current Deutschlandfunk Nova feed despite
    Apple spelling its title `Achtsam - Deutschlandfunk Nova`.
+4. As a final fallback, request
+   `https://ardsounds.tisba.de/show/{show-urn}` from the community-hosted
+   [ARD Sounds RSS generator](https://codeberg.org/tisba/ardsounds). The app
+   constructs this URL only from an ARD `urn:ard:show:…` identifier, never a
+   numeric programme ID or episode URN. The returned document is parsed and
+   checked for the complete programme title and publisher before it can be
+   subscribed to. It then enters the ordinary RSS path; there is no separate
+   ARD subscription or user-visible service branding. Achtsam continues to
+   use its official Deutschlandfunk Nova feed when that is discoverable.
+
+The hosted generator is a third-party dependency, not an ARD service. Its
+availability, output, and compatibility with ARD's undocumented API can change
+independently of Up Next. Resolving a show sends its public ARD show URN and the
+request's normal network metadata to that host. The app caches successful
+resolutions for 30 minutes and does not call it while browsing or scrolling.
+The generator supplies direct ARD audio enclosures; it does not grant download
+rights. Up Next's existing RSS download behavior and publisher restrictions
+still apply, so a feed being available does not establish that every item is
+downloadable or available indefinitely. Invalid, mismatched, or unavailable
+generated feeds are rejected like any other candidate.
 
 Successful resolutions are cached in memory for 30 minutes. Failed lookups are
 not cached, so Retry reruns resolution (subject to normal HTTP cache headers).

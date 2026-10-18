@@ -6,8 +6,9 @@
 //
 //  ARD does not promise a general-purpose RSS feed. Resolution therefore checks
 //  optional publisher metadata and official programme links before falling back
-//  to a publisher-verified Apple result. Every candidate must parse as a feed
-//  and retain the programme's full identity.
+//  to a publisher-verified Apple result and, as a final RSS source, the hosted
+//  ARD Sounds feed generator. Every candidate must parse as a feed and retain
+//  the programme's full identity.
 //
 //  Browsing reads `/organizations`, which returns the whole catalogue in one
 //  request: every organization (BR, WDR, NDR, …), its stations and their shows.
@@ -220,6 +221,21 @@ struct ARDSoundsDiscoveryProvider: PodcastDiscoveryProvider {
         }
 
         try Task.checkCancellation()
+
+        // Some current ARD programmes have no publisher RSS feed. The
+        // community-hosted generator exposes ARD programme sets as ordinary
+        // RSS. Keep it last so publisher feeds remain authoritative, and only
+        // construct a URL from a verified ARD show URN (never a numeric ID or
+        // an episode URN). Its output goes through the same parser and identity
+        // checks as every other candidate and is otherwise invisible to users.
+        if let candidate = Self.generatedRSSURL(for: podcast),
+           let feedURL = try? await validated(candidate, for: podcast) {
+            await cache.store(CachedFeedResolution(url: feedURL), for: cacheKey, lifetime: 30 * 60)
+            Self.logResolution(podcast, stage: "generated-rss", result: "resolved", startedAt: startedAt)
+            return feedURL
+        }
+
+        try Task.checkCancellation()
         let failure: PodcastDiscoveryError = sourceWasReachable ? .feedNotFound : .unavailable
         Self.logResolution(
             podcast,
@@ -293,6 +309,28 @@ struct ARDSoundsDiscoveryProvider: PodcastDiscoveryProvider {
             return nil
         }
         return url
+    }
+
+    static func generatedRSSURL(for podcast: DiscoveredPodcast) -> URL? {
+        let referenceURN = podcast.providerReference.flatMap(Self.validShowURN)
+        let webpageURN = podcast.webpageURL
+            .flatMap(ARDSoundsAPI.itemURN(in:))
+            .flatMap(Self.validShowURN)
+        guard let showURN = referenceURN ?? webpageURN else { return nil }
+        var components = URLComponents(string: "https://ardsounds.tisba.de/show/\(showURN)")
+        components?.scheme = "https"
+        components?.host = "ardsounds.tisba.de"
+        guard let url = components?.url,
+              url.path == "/show/\(showURN)" else { return nil }
+        return url
+    }
+
+    private static func validShowURN(_ value: String) -> String? {
+        let pattern = #"^urn:ard:show:[a-f0-9]+$"#
+        guard value.range(of: pattern, options: [.regularExpression, .caseInsensitive]) != nil else {
+            return nil
+        }
+        return value
     }
 
     private static func logResolution(

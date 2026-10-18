@@ -80,6 +80,13 @@ validation run unless they are deliberately being retained for debugging.
   publisher and complete programme identity, then validate the feed with
   `PodcastFeedResolver`; never substitute a partial or stale feed on title
   similarity alone.
+- For ARD Sounds, keep official ARD metadata and publisher-advertised feeds
+  ahead of Apple lookups. Only after those sources fail may a verified
+  `urn:ard:show:…` be sent to `https://ardsounds.tisba.de/show/{urn}` as a
+  silent ordinary-RSS fallback. Parse and validate that response through
+  `PodcastFeedResolver`, cache successful resolution briefly, and never make
+  this request while browsing. Treat the hosted generator as an external
+  dependency and keep its URL and user/library data out of diagnostics.
 - Keep discovery network work off catalogue browsing paths. Bound resolution
   requests, propagate cancellation, cache successful results for a limited
   time, and keep diagnostics free of private feed URLs and user identifiers.

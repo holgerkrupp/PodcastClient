@@ -300,6 +300,7 @@ final class PodcastDiscoveryNewProviderTests: XCTestCase {
 
         XCTAssertEqual(resolved, officialFeed)
         XCTAssertTrue(transport.requestedURLs.contains { $0.path == "/graphql" })
+        XCTAssertFalse(transport.requestedURLs.contains { $0.host == "ardsounds.tisba.de" })
     }
 
     func testAchtsamUsesOptionalARDGraphQLFeedMetadataBeforeAppleSearch() async throws {
@@ -390,50 +391,53 @@ final class PodcastDiscoveryNewProviderTests: XCTestCase {
         XCTAssertEqual(transport.requestedURLs.map(\.host), ["api.ardaudiothek.de", "www.deutschlandfunknova.de"])
     }
 
-    func testARDHorspielSpeicherRejectsOpaqueFeedAndIncompleteTitleMatch() async throws {
-        // Recorded REST response: ARD's `feedUrl` is a CRID, not an RSS URL.
-        let detailFixture = """
-        { "data": { "programSet": { "id": "31649612", "title": "ARD Hörspiel-Speicher",
-          "numberOfElements": 567, "feedUrl": "crid://wdr.de/mdb/111/hörspiel" } } }
-        """
-        let transport = StubTransport()
-        transport.stub("https://api.ardaudiothek.de/programsets/31649612", json: detailFixture)
-        transport.stub("https://www.ardsounds.de/sendung/ard-hoerspiel-speicher/", markup: "<html><head></head></html>")
-
-        let apple = ApplePodcastsFeedResolver(
-            storefront: "de",
-            searchCandidates: { _ in
-                [
-                    .init(
-                        feedURL: URL(string: "https://www1.wdr.de/mediathek/audio/hoerspiel-speicher/wdr_hoerspielspeicher150.podcast")!,
-                        title: "ARD Hörspiel",
-                        publisher: "ARD"
-                    )
-                ]
-            }
-        )
-        let provider = ARDSoundsDiscoveryProvider(
-            broadcaster: PublicBroadcasterCatalog.ardSounds,
-            client: transport.client,
-            cache: PodcastDiscoveryCache(),
-            appleResolver: apple
-        )
-        let show = DiscoveredPodcast(
+    func testARDHostedRSSFallbackRequiresAValidShowURN() {
+        let base = DiscoveredPodcast(
             id: "31649612",
             title: "ARD Hörspiel-Speicher",
-            author: "ARD",
             webpageURL: URL(string: "https://www.ardsounds.de/sendung/ard-hoerspiel-speicher/urn:ard:show:282098536a9f177e/"),
             providerID: "ardsounds",
-            broadcasterID: "ardsounds",
-            providerReference: "31649612"
+            broadcasterID: "ardsounds"
+        )
+        XCTAssertEqual(
+            ARDSoundsDiscoveryProvider.generatedRSSURL(for: base)?.absoluteString,
+            "https://ardsounds.tisba.de/show/urn:ard:show:282098536a9f177e"
         )
 
-        do {
-            _ = try await provider.resolveFeed(for: show)
-            XCTFail("An opaque CRID and incomplete legacy feed must not be accepted")
-        } catch {
-            XCTAssertEqual(error as? PodcastDiscoveryError, .feedNotFound)
-        }
+        let episodeURL = URL(string: "https://www.ardsounds.de/episode/urn:ard:episode:282098536a9f177e/")
+        XCTAssertNil(ARDSoundsDiscoveryProvider.generatedRSSURL(for: DiscoveredPodcast(
+            id: base.id,
+            title: base.title,
+            webpageURL: episodeURL,
+            providerID: base.providerID,
+            broadcasterID: base.broadcasterID
+        )))
+    }
+
+    func testHostedARDGeneratorRSSShapeUsesTheOrdinaryFeedParser() async throws {
+        let endpoint = URL(string: "https://ardsounds.tisba.de/show/urn:ard:show:282098536a9f177e")!
+        let rss = """
+        <rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd">
+          <channel><title>ARD Hörspiel-Speicher</title>
+            <item><guid>urn:ard:episode:91693773c7471595</guid>
+              <title>Hyperbolische Körper</title>
+              <enclosure url="https://download.example/episode.mp3" type="audio/mp3" length="" />
+            </item>
+          </channel>
+        </rss>
+        """
+        let client = PodcastHTTPClient(
+            resolver: PodcastAccessResolver(credentialStore: InMemoryPodcastCredentialStore()),
+            transport: PodcastFeedFixtureTransport(responses: [
+                endpoint.absoluteString: (Data(rss.utf8), "application/rss+xml")
+            ])
+        )
+
+        let parsed = try await PodcastFeedResolver.resolveExistingEndpoint(from: endpoint, client: client)
+
+        XCTAssertEqual(parsed.title, "ARD Hörspiel-Speicher")
+        XCTAssertEqual(parsed.initialImportSeed?.episodes.first?.id, "urn:ard:episode:91693773c7471595")
+        XCTAssertEqual(parsed.initialImportSeed?.episodes.first?.episodeURL.absoluteString, "https://download.example/episode.mp3")
     }
 
     func testAppleARDResolutionRequiresPublisherAndCompleteTitle() {
