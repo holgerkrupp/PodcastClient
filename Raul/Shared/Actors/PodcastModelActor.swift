@@ -1748,12 +1748,17 @@ actor PodcastModelActor {
                     NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
                 }
             }
-            // The cache projection reads the just-committed graph and writes a
-            // shared cache store. Keep it behind the same writer gate so only
-            // one large materialized feed and cache projection are active.
-            if newEpisodeCount > 0 {
-                await updateFeedCache(feedURL: feedURL, parsedFeed: fullPodcast, deadline: deadline)
-            }
+            // Each validated GET refresh also updates PodcastCache, even when
+            // no new episodes were imported (changed metadata, first cache fill,
+            // or unchanged content). A current cache only visits the episodes
+            // imported by this refresh; a missing/outdated cache gets a full
+            // projection. This remains serialized with the feed writer.
+            await updateFeedCache(
+                feedURL: feedURL,
+                parsedFeed: fullPodcast,
+                deadline: deadline,
+                importedEpisodes: importPodcast["episodes"] as? [[String: Any]] ?? []
+            )
             writerHeld = false
             await commitCoordinator.release()
             await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
@@ -2164,7 +2169,8 @@ actor PodcastModelActor {
     private func updateFeedCache(
         feedURL: URL,
         parsedFeed: [String: Any],
-        deadline: Date?
+        deadline: Date?,
+        importedEpisodes: [[String: Any]]? = nil
     ) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
@@ -2176,43 +2182,50 @@ actor PodcastModelActor {
         defer {
             os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh cache projection", signpostID: cacheSignpostID)
         }
-        guard deadline.map({ Date() < $0 }) ?? true else { return }
+        // If this refresh is out of time, the fallback cache-maintenance task
+        // still has to fill the gap. Never block the successful RSS commit.
+        guard deadline.map({ Date() < $0 }) ?? true else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
         await ModelContainerManager.shared.prepareSplitStores()
         guard Task.isCancelled == false,
               deadline.map({ Date() < $0 }) ?? true else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         guard let cacheContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedCacheContainer
         }) else { return }
 
-        // Mirroring the whole feed graph into PodcastCache is only worth its disk
-        // writes when the cache is the durable source for the runtime graph. With
-        // the on-disk library store authoritative, the mirror would duplicate
-        // every episode on every refresh for nothing.
-        let projectsFromCache = await MainActor.run {
-            ModelContainerManager.shared.runtimeProjectsFromCache
+        // PodcastCache is a normal local projection of the committed RSS data
+        // in every split-store mode. Background processing only repairs feeds
+        // not yet refreshed, plus interrupted cache commits.
+        let importedGUIDs = importedEpisodes.map { rows in
+            Set(rows.compactMap { $0["guid"] as? String })
         }
-        let projection = projectsFromCache
-            ? StoreSplitFeedCacheWriter.projectFeed(
-                feedURL: feedURL,
-                legacyContainer: modelContainer,
-                cacheContainer: cacheContainer,
-                deadline: deadline
-            )
-            : StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
-        // The durable library is authoritative in the public backfill phase.
-        // A refresh must invalidate just this feed's local projection and arm
-        // overnight maintenance; doing a full feed-graph copy synchronously
-        // would slow scrolling and could compete with audio playback.
-        if projectsFromCache == false,
-           StoreDevelopmentConfiguration.feedCachePrewarmingEnabled {
-            if StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
+        let importedURLs = importedEpisodes.map { rows in
+            Set(rows.compactMap { row -> URL? in
+                (row["url"] as? String).flatMap(URL.init(string:))
+            })
+        }
+        let projection = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feedURL,
+            legacyContainer: modelContainer,
+            cacheContainer: cacheContainer,
+            deadline: deadline,
+            refreshedEpisodeGUIDs: importedGUIDs,
+            refreshedEpisodeURLs: importedURLs
+        )
+        if projection.completed == false {
+            // If the GET import succeeded but its cache projection did not, do
+            // not downgrade or fail the podcast refresh; keep the missing work
+            // in the ordinary fallback queue for a later BG grant.
+            _ = StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
                 feedURL: feedURL,
                 cacheContainer: cacheContainer
-            ) {
-                ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
-            }
+            )
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
         }
         // Namespaced extension subtrees have no equivalent in the model graph, so
         // they are captured in every mode.
