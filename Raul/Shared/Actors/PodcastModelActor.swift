@@ -2187,6 +2187,10 @@ actor PodcastModelActor {
     ) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            StoreSplitFeedCacheWriter.recordRefreshProjection(
+                feedURL: feedURL, status: "skipped_disabled",
+                episodeCount: 0, cacheContainer: nil
+            )
             return
         }
         let cacheStartedAt = ContinuousClock.now
@@ -2198,18 +2202,30 @@ actor PodcastModelActor {
         // If this refresh is out of time, the fallback cache-maintenance task
         // still has to fill the gap. Never block the successful RSS commit.
         guard deadline.map({ Date() < $0 }) ?? true else {
+            StoreSplitFeedCacheWriter.recordRefreshProjection(
+                feedURL: feedURL, status: "deferred_deadline",
+                episodeCount: 0, cacheContainer: nil
+            )
             ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         await ModelContainerManager.shared.prepareSplitStores()
         guard Task.isCancelled == false,
               deadline.map({ Date() < $0 }) ?? true else {
+            StoreSplitFeedCacheWriter.recordRefreshProjection(
+                feedURL: feedURL, status: "deferred_cancelled_or_deadline",
+                episodeCount: 0, cacheContainer: nil
+            )
             ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         guard let cacheContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedCacheContainer
         }) else {
+            StoreSplitFeedCacheWriter.recordRefreshProjection(
+                feedURL: feedURL, status: "failed_cache_container_unavailable",
+                episodeCount: 0, cacheContainer: nil
+            )
             ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
@@ -2242,6 +2258,7 @@ actor PodcastModelActor {
             // incremental refresh write. Leave it to the charging BG worker
             // rather than performing bulk backfill during podcast playback.
             projection.completed = false
+            projection.failureReason = "deferred_playback"
         } else {
             projection = StoreSplitFeedCacheWriter.projectFeed(
                 feedURL: feedURL,
@@ -2252,6 +2269,17 @@ actor PodcastModelActor {
                 refreshedEpisodeURLs: importedURLs
             )
         }
+        let resultStatus = projection.completed
+            ? "completed"
+            : projection.failureReason == "deferred_playback"
+                ? "deferred_playback"
+                : "failed_\(projection.failureReason ?? "unknown")"
+        StoreSplitFeedCacheWriter.recordRefreshProjection(
+            feedURL: feedURL,
+            status: resultStatus,
+            episodeCount: projection.episodesProcessed,
+            cacheContainer: cacheContainer
+        )
         if projection.completed == false {
             // If the GET import succeeded but its cache projection did not, do
             // not downgrade or fail the podcast refresh; keep the missing work
@@ -2287,7 +2315,7 @@ actor PodcastModelActor {
         if projection.completed == false {
             CrashBreadcrumbs.shared.record(
                 "feed_cache_projection_deferred",
-                details: "reason=not_committed,feed=\(feedURL.redactedPodcastURLString)"
+                details: "reason=\(resultStatus),feed=\(feedURL.redactedPodcastURLString)"
             )
         }
     }
