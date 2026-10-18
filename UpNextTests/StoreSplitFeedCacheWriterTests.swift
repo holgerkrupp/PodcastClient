@@ -72,6 +72,202 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testAutomaticBootstrapKeepsPendingFlagUntilEntireFeedSourceWasVisited() throws {
+        let (legacy, cache) = try makeContainers()
+        for index in 0..<3 {
+            try makePodcast(
+                in: legacy,
+                feed: "https://example.com/automatic-cache-\(index)",
+                episodeGUIDs: ["episode-\(index)"]
+            )
+        }
+
+        // The BG executor is allowed to project only a bounded number of feeds.
+        // A successful bounded slice must not be mistaken for a fully populated
+        // PodcastCache: the next overnight run must still be scheduled.
+        for expectedCachedFeeds in 1...3 {
+            let result = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+                legacyContainer: legacy,
+                cacheContainer: cache,
+                limit: 1
+            )
+            XCTAssertEqual(result.processed, 1)
+            XCTAssertEqual(result.failed, 0)
+            XCTAssertFalse(result.completed, "Cache backfill must keep running after a limited slice")
+            XCTAssertEqual(cacheCounts(cache).podcasts, expectedCachedFeeds)
+        }
+
+        // A follow-up pass confirms that no eligible source rows remain.
+        let finished = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 1
+        )
+        XCTAssertEqual(finished.processed, 0)
+        XCTAssertEqual(finished.failed, 0)
+        XCTAssertTrue(finished.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 3)
+    }
+
+    @MainActor
+    func testInterruptedCacheProjectionCanBeRequeuedForBackgroundRepair() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-refresh",
+            episodeGUIDs: ["first"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+        let fresh = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(
+            fresh.cacheSchemaVersion,
+            StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+        )
+
+        // A successful refresh normally writes straight to the cache. Only
+        // an interrupted cache projection should invalidate its per-feed
+        // completion marker for the charging maintenance fallback.
+        XCTAssertTrue(StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
+            feedURL: feed,
+            cacheContainer: cache
+        ))
+        let stale = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(stale.cacheSchemaVersion, 0)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+
+        let result = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 10
+        )
+        XCTAssertEqual(result.processed, 1)
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+        let restored = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertEqual(
+            restored.cacheSchemaVersion,
+            StoreSplitFeedCacheWriter.currentCacheSchemaVersion
+        )
+    }
+
+    @MainActor
+    func testPodcastCacheBackfillPausesWhenPlaybackStarts() throws {
+        let (legacy, cache) = try makeContainers()
+        try makePodcast(
+            in: legacy,
+            feed: "https://example.com/paused-during-playback",
+            episodeGUIDs: ["episode-1"]
+        )
+
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(true)
+        defer { StoreSplitCachePlaybackGate.shared.setPlaybackActive(false) }
+
+        let blocked = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 20,
+            deadline: Date().addingTimeInterval(30)
+        )
+        XCTAssertFalse(blocked.completed)
+        XCTAssertEqual(blocked.processed, 0)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 0)
+
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(false)
+        let resumed = StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            limit: 20
+        )
+        XCTAssertTrue(resumed.completed)
+        XCTAssertEqual(resumed.processed, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 1)
+    }
+
+    @MainActor
+    func testNormalFeedRefreshFillsMissingCacheWithoutNewEpisodes() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-normal-refresh",
+            episodeGUIDs: ["old-1", "old-2"]
+        )
+        // An unchanged HEAD/304 still needs to fill an empty local cache
+        // from the already committed library, without another RSS download.
+        XCTAssertTrue(StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: try XCTUnwrap(podcast.feed), cacheContainer: cache
+        ))
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+        XCTAssertFalse(StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: try XCTUnwrap(podcast.feed), cacheContainer: cache
+        ))
+    }
+
+    @MainActor
+    func testIncrementalFeedRefreshDoesNotRescanOrDeleteUnseenEpisodes() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/cache-incremental-refresh",
+            episodeGUIDs: ["old-1", "new-2", "old-3"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        ))
+
+        let legacyEpisodes = try legacy.mainContext.fetch(FetchDescriptor<Episode>())
+        let changed = try XCTUnwrap(legacyEpisodes.first { $0.guid == "new-2" })
+        let untouched = try XCTUnwrap(legacyEpisodes.first { $0.guid == "old-1" })
+        changed.title = "New title from RSS refresh"
+        untouched.title = "Not present in partial RSS refresh"
+        podcast.title = "Updated podcast metadata"
+        try legacy.mainContext.save()
+
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: ["new-2"],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.deleted, 0)
+        XCTAssertEqual(result.episodesProcessed, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 3)
+
+        let context = ModelContext(cache)
+        let episodes = try context.fetch(FetchDescriptor<CachedEpisode>())
+        XCTAssertEqual(episodes.first { $0.guid == "new-2" }?.title, "New title from RSS refresh")
+        XCTAssertEqual(episodes.first { $0.guid == "old-1" }?.title, "Title old-1")
+        XCTAssertEqual(
+            try context.fetch(FetchDescriptor<CachedPodcast>()).first?.title,
+            "Updated podcast metadata"
+        )
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(

@@ -1383,6 +1383,9 @@ actor PodcastModelActor {
                 }
                 await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
                 await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
+                await populateMissingCacheDuringUnchangedFeedRefresh(
+                    feedURL: feedURL, deadline: deadline
+                )
                 logRefreshResult("not-modified")
                 return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
@@ -1451,6 +1454,9 @@ actor PodcastModelActor {
                     recordFeedRefreshSuccess(metadataID: metaIDRef)
                     modelContext.saveIfNeeded()
                     await reportProgress(SubscriptionProgressUpdate(1.0, "Feed already up to date"), using: progress)
+                    await populateMissingCacheDuringUnchangedFeedRefresh(
+                        feedURL: feedURL, deadline: deadline
+                    )
                     logRefreshResult("not-modified-304")
                     return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
                 }
@@ -1533,6 +1539,7 @@ actor PodcastModelActor {
 
         do {
             var initialPageNewEpisodeCount = 0
+            var seededEpisodeRows: [[String: Any]] = []
             refreshStage = "initial_page_import"
             if endpointChanged == false,
                let resolvedInitialPage, resolvedInitialPage.matches(resolvedEndpoint),
@@ -1554,11 +1561,13 @@ actor PodcastModelActor {
                 do {
                     try checkRefreshDeadline(deadline)
                     let seedFeed = try resolvedInitialPage.feed.importDictionary
+                    let seedImport = knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(
+                        in: seedFeed
+                    )
+                    seededEpisodeRows = seedImport["episodes"] as? [[String: Any]] ?? []
                     initialPageNewEpisodeCount = try await updateDetails(
                         seedPodcast,
-                        fullPodcast: knownEpisodeIdentifiers.stoppingAtFirstKnownEpisode(
-                            in: seedFeed
-                        ),
+                        fullPodcast: seedImport,
                         silent: true,
                         resolveExistingMissingDurations: false,
                         processNewEpisodesDuringSilentRefresh: false,
@@ -1748,12 +1757,18 @@ actor PodcastModelActor {
                     NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
                 }
             }
-            // The cache projection reads the just-committed graph and writes a
-            // shared cache store. Keep it behind the same writer gate so only
-            // one large materialized feed and cache projection are active.
-            if newEpisodeCount > 0 {
-                await updateFeedCache(feedURL: feedURL, parsedFeed: fullPodcast, deadline: deadline)
-            }
+            // Each validated GET refresh also updates PodcastCache, even when
+            // no new episodes were imported (changed metadata, first cache fill,
+            // or unchanged content). A current cache only visits the episodes
+            // imported by this refresh; a missing/outdated cache gets a full
+            // projection. This remains serialized with the feed writer.
+            await updateFeedCache(
+                feedURL: feedURL,
+                parsedFeed: fullPodcast,
+                deadline: deadline,
+                importedEpisodes: seededEpisodeRows
+                    + (importPodcast["episodes"] as? [[String: Any]] ?? [])
+            )
             writerHeld = false
             await commitCoordinator.release()
             await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
@@ -2146,11 +2161,14 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            if updateCache && feedDataChanged {
+            if updateCache {
+                // Direct imports, feed switches and continuation updates must
+                // populate PodcastCache even when no episode was added.
                 await updateFeedCache(
                     feedURL: podcastFeed,
                     parsedFeed: fullPodcast,
-                    deadline: deadline
+                    deadline: deadline,
+                    importedEpisodes: fullPodcast["episodes"] as? [[String: Any]] ?? []
                 )
             }
         }
@@ -2163,8 +2181,9 @@ actor PodcastModelActor {
     /// chapters, transcripts and device-local download metadata.
     private func updateFeedCache(
         feedURL: URL,
-        parsedFeed: [String: Any],
-        deadline: Date?
+        parsedFeed: [String: Any]?,
+        deadline: Date?,
+        importedEpisodes: [[String: Any]]? = nil
     ) async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
@@ -2176,38 +2195,82 @@ actor PodcastModelActor {
         defer {
             os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh cache projection", signpostID: cacheSignpostID)
         }
-        guard deadline.map({ Date() < $0 }) ?? true else { return }
+        // If this refresh is out of time, the fallback cache-maintenance task
+        // still has to fill the gap. Never block the successful RSS commit.
+        guard deadline.map({ Date() < $0 }) ?? true else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
         await ModelContainerManager.shared.prepareSplitStores()
         guard Task.isCancelled == false,
               deadline.map({ Date() < $0 }) ?? true else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         guard let cacheContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedCacheContainer
-        }) else { return }
-
-        // Mirroring the whole feed graph into PodcastCache is only worth its disk
-        // writes when the cache is the durable source for the runtime graph. With
-        // the on-disk library store authoritative, the mirror would duplicate
-        // every episode on every refresh for nothing.
-        let projectsFromCache = await MainActor.run {
-            ModelContainerManager.shared.runtimeProjectsFromCache
+        }) else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
         }
-        let projection = projectsFromCache
-            ? StoreSplitFeedCacheWriter.projectFeed(
+
+        // PodcastCache is a normal local projection of the committed RSS data
+        // in every split-store mode. Background processing only repairs feeds
+        // not yet refreshed, plus interrupted cache commits.
+        let importedGUIDs = importedEpisodes.map { rows in
+            Set(rows.compactMap {
+                ($0["guid"] as? String) ?? ($0["podcast:guid"] as? String)
+            })
+        }
+        let importedURLs = importedEpisodes.map { rows in
+            Set(rows.compactMap { row -> URL? in
+                let enclosure = EpisodeMedia.playableEnclosure(
+                    from: row["enclosure"] as? [[String: Any]]
+                )?["url"] as? String
+                return (enclosure ?? (row["url"] as? String)).flatMap(URL.init(string:))
+            })
+        }
+        let needsFullBackfill = StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: feedURL, cacheContainer: cacheContainer
+        )
+        let playbackActive = await MainActor.run {
+            Player.hasActivePlaybackInProcess
+        }
+        var projection = StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
+        if needsFullBackfill && playbackActive {
+            // Projecting an entire historical feed is migration, not the cheap
+            // incremental refresh write. Leave it to the charging BG worker
+            // rather than performing bulk backfill during podcast playback.
+            projection.completed = false
+        } else {
+            projection = StoreSplitFeedCacheWriter.projectFeed(
                 feedURL: feedURL,
                 legacyContainer: modelContainer,
                 cacheContainer: cacheContainer,
-                deadline: deadline
+                deadline: deadline,
+                refreshedEpisodeGUIDs: importedGUIDs,
+                refreshedEpisodeURLs: importedURLs
             )
-            : StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
+        }
+        if projection.completed == false {
+            // If the GET import succeeded but its cache projection did not, do
+            // not downgrade or fail the podcast refresh; keep the missing work
+            // in the ordinary fallback queue for a later BG grant.
+            _ = StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
+                feedURL: feedURL,
+                cacheContainer: cacheContainer
+            )
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+        }
         // Namespaced extension subtrees have no equivalent in the model graph, so
         // they are captured in every mode.
-        let extensionCount = StoreSplitFeedCacheWriter.replaceParsedExtensionElements(
-            feedURL: feedURL,
-            parsedFeed: parsedFeed,
-            cacheContainer: cacheContainer
-        )
+        let extensionCount = parsedFeed.map {
+            StoreSplitFeedCacheWriter.replaceParsedExtensionElements(
+                feedURL: feedURL,
+                parsedFeed: $0,
+                cacheContainer: cacheContainer
+            )
+        } ?? 0
         Self.logRefresh(
             "cache_projection feed=\(feedURL.redactedPodcastURLString) "
                 + "completed=\(projection.completed) "
@@ -2227,6 +2290,48 @@ actor PodcastModelActor {
                 details: "reason=not_committed,feed=\(feedURL.redactedPodcastURLString)"
             )
         }
+    }
+
+    /// HEAD or HTTP 304 can bypass parsing. Fill a missing/outdated local
+    /// PodcastCache from the already committed durable library only when needed,
+    /// so unchanged refreshes with healthy caches remain lightweight.
+    private func populateMissingCacheDuringUnchangedFeedRefresh(
+        feedURL: URL,
+        deadline: Date?
+    ) async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let cache = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedCacheContainer
+        }) else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
+        guard StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: feedURL, cacheContainer: cache
+        ) else { return }
+        guard await MainActor.run(body: {
+            Player.hasActivePlaybackInProcess == false
+        }) else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
+
+        let coordinator = PodcastFeedCommitCoordinator.shared
+        do {
+            try await coordinator.acquire()
+        } catch {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
+        await updateFeedCache(
+            feedURL: feedURL,
+            parsedFeed: nil,
+            deadline: deadline,
+            importedEpisodes: []
+        )
+        await coordinator.release()
     }
 
     private func recordFeedAlias(

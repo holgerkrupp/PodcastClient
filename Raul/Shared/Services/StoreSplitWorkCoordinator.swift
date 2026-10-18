@@ -6,6 +6,27 @@ enum StoreMaintenanceExecutionContext: Equatable, Sendable {
     case test
 }
 
+/// Allows detached PodcastCache writers to observe playback transitions
+/// synchronously, without touching MainActor-isolated Player from SwiftData.
+final class StoreSplitCachePlaybackGate: @unchecked Sendable {
+    static let shared = StoreSplitCachePlaybackGate()
+
+    private let lock = NSLock()
+    private var playbackActive = false
+
+    var canRun: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return playbackActive == false
+    }
+
+    func setPlaybackActive(_ active: Bool) {
+        lock.lock()
+        playbackActive = active
+        lock.unlock()
+    }
+}
+
 enum StoreSplitMaintenancePolicy {
     static func allowsHeavyMaintenance(
         in context: StoreMaintenanceExecutionContext
