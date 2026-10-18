@@ -110,7 +110,7 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
-    func testRefreshedFeedIsRequeuedWithoutSynchronousGraphCopy() throws {
+    func testInterruptedCacheProjectionCanBeRequeuedForBackgroundRepair() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
             in: legacy,
@@ -131,8 +131,9 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
             StoreSplitFeedCacheWriter.currentCacheSchemaVersion
         )
 
-        // RSS refresh should only invalidate the one feed. Heavy projection is
-        // performed by the subsequent charging maintenance grant.
+        // A successful refresh normally writes straight to the cache. Only
+        // an interrupted cache projection should invalidate its per-feed
+        // completion marker for the charging maintenance fallback.
         XCTAssertTrue(StoreSplitFeedCacheWriter.invalidateFeedForBackgroundBootstrap(
             feedURL: feed,
             cacheContainer: cache
@@ -201,8 +202,11 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
             feed: "https://example.com/cache-normal-refresh",
             episodeGUIDs: ["old-1", "old-2"]
         )
-        // The RSS refresh can have no new episodes while this installation
-        // has not yet built any PodcastCache rows.
+        // An unchanged HEAD/304 still needs to fill an empty local cache
+        // from the already committed library, without another RSS download.
+        XCTAssertTrue(StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: try XCTUnwrap(podcast.feed), cacheContainer: cache
+        ))
         let result = StoreSplitFeedCacheWriter.projectFeed(
             feedURL: try XCTUnwrap(podcast.feed),
             legacyContainer: legacy,
@@ -213,6 +217,9 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         XCTAssertTrue(result.completed)
         XCTAssertEqual(cacheCounts(cache).podcasts, 1)
         XCTAssertEqual(cacheCounts(cache).episodes, 2)
+        XCTAssertFalse(StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: try XCTUnwrap(podcast.feed), cacheContainer: cache
+        ))
     }
 
     @MainActor
