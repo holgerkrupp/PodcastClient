@@ -596,6 +596,10 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static let exportBackpressureRetryDelay: TimeInterval = 120
     nonisolated private static let cacheBootstrapPendingKey =
         "storeSplit.cacheBootstrapPending.v1"
+    // Forces one non-destructive rescan of older installs whose v4 bootstrap
+    // marker may have been written after reaching only the batch limit.
+    nonisolated private static let cacheBootstrapCompletionAuditKey =
+        "storeSplit.cacheBootstrapCompletionAudit.v1"
     nonisolated private static let userStateImportPendingKey =
         "storeSplit.userStateImportPending.v1"
     nonisolated private static let cacheBootstrapCompletedVersionKey =
@@ -1192,6 +1196,24 @@ class ModelContainerManager: ObservableObject {
             || hasPendingBackgroundUserStateImport
     }
 
+    /// A feed refresh may change data after the initial PodcastCache bootstrap.
+    /// Only record a durable background request here; never project a whole
+    /// feed graph synchronously from the refresh path.
+    nonisolated static func requestPodcastCacheBackgroundBootstrap() {
+        guard StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else { return }
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        let alreadyPending = defaults.bool(forKey: cacheBootstrapPendingKey)
+        defaults.set(true, forKey: cacheBootstrapPendingKey)
+        defaults.removeObject(forKey: cacheBootstrapCompletedVersionKey)
+#if canImport(UIKit)
+        if alreadyPending == false {
+            Task { @MainActor in
+                AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+            }
+        }
+#endif
+    }
+
     /// Persists cloud-import work and arms the metered maintenance executor.
     /// Callers may run during launch or a foreground CloudKit callback, but
     /// they must not start the whole-library projection themselves.
@@ -1490,6 +1512,16 @@ class ModelContainerManager: ObservableObject {
         if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
            Self.sharedStoreURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
             let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+            // Old releases could mark the entire v4 cache as complete after one
+            // 50-feed slice. The migration markers must be audited once, even
+            // on devices that already report the latest schema version.
+            if defaults.bool(forKey: Self.cacheBootstrapCompletionAuditKey) == false {
+                defaults.removeObject(forKey: Self.cacheBootstrapCompletedVersionKey)
+                defaults.removeObject(forKey: Self.cachePriorityCompletedVersionKey)
+                defaults.removeObject(forKey: Self.cachePriorityCursorKey)
+                defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
+                defaults.set(true, forKey: Self.cacheBootstrapCompletionAuditKey)
+            }
             if defaults.integer(forKey: Self.cacheBootstrapCompletedVersionKey)
                     < StoreSplitFeedCacheWriter.currentCacheSchemaVersion
                 || defaults.integer(forKey: Self.cachePriorityCompletedVersionKey)
@@ -1555,9 +1587,35 @@ class ModelContainerManager: ObservableObject {
         await performFeedCachePrewarmIfPossible(feedLimit: feedLimit)
     }
 
-    /// Runs one bounded local-only PodcastCache prewarm batch. Feed projection
-    /// can fault a large episode/chapter graph, so it runs only in the metered
-    /// maintenance window and yields to the persisted per-feed checkpoint.
+    /// Independent from the short CPU-watchdog-sensitive UserState migration
+    /// slices. A charging BGProcessing grant may last several minutes, but
+    /// PodcastCache projection works in bounded bursts and idles between them.
+    /// The OS may expire the grant sooner; cancellation is forwarded to the
+    /// detached SwiftData worker and checked between cached episodes.
+    private enum CachePrewarmRunPolicy {
+        static let maximumWallTime: TimeInterval = 180
+        static let exportDrainReserve: TimeInterval = 20
+        static let maximumActiveWorkTime: TimeInterval = 55
+        static let maximumBurstTime: TimeInterval = 30
+        static let minimumIdleTime: TimeInterval = 3
+        static let idleToWorkRatio = 2.0
+        static let maximumMemoryGrowth: UInt64 = 64 * 1024 * 1024
+        static let maximumFootprint: UInt64 = 900 * 1024 * 1024
+
+        static func idleDuration(after activeTime: TimeInterval) -> TimeInterval {
+            max(minimumIdleTime, activeTime * idleToWorkRatio)
+        }
+    }
+
+    private struct CachePrewarmBurstResult {
+        var processed = 0
+        var failed = 0
+        var completed = false
+    }
+
+    /// Run several short, checkpointed prewarm bursts during one iOS-granted
+    /// charging window. Do not extend the legacy/UserState migration budget,
+    /// perform heavy foreground work, or hold CPU continuously for minutes.
     func performFeedCachePrewarmIfPossible(feedLimit: Int) async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
@@ -1566,7 +1624,9 @@ class ModelContainerManager: ObservableObject {
               ), isRunningBackgroundProcessingTask,
               StoreSplitMigrationSchedulePolicy.isEligibleNight(.now),
               Player.hasActivePlaybackInProcess == false,
-              Task.isCancelled == false else {
+              StoreSplitCachePlaybackGate.shared.canRun,
+              Task.isCancelled == false,
+              feedLimit > 0 else {
 #if DEBUG
             if maintenanceExecutionContext == .foreground {
                 CrashBreadcrumbs.shared.record(
@@ -1577,26 +1637,128 @@ class ModelContainerManager: ObservableObject {
 #endif
             return
         }
+
         await prepareSplitStores()
         guard let legacyContainer = legacyMigrationSourceContainer,
               let cacheContainer = preparedCacheContainer else { return }
-        guard StoreSplitMaintenancePolicy.shouldYieldForCloudKitExport(
-            exportInProgress: cloudKitExportInProgress()
-        ) == false else {
-            (UserDefaults(suiteName: Self.appGroupID) ?? .standard)
-                .set(true, forKey: Self.cacheBootstrapPendingKey)
-            pendingSplitStoreWorkReason = "PodcastCache bootstrap yielded to CloudKit export"
-            CrashBreadcrumbs.shared.record(
-                "store_split_cache_bootstrap_yielded",
-                details: "reason=cloudkit_export_pressure"
+
+        let startedAt = Date()
+        let stopWorkAt = startedAt.addingTimeInterval(
+            CachePrewarmRunPolicy.maximumWallTime
+                - CachePrewarmRunPolicy.exportDrainReserve
+        )
+        let footprintAtStart = MemoryFootprint.current()
+        var activeTime: TimeInterval = 0
+        var totalProcessed = 0
+        var totalFailed = 0
+        var burstCount = 0
+        var stopReason = "budget exhausted"
+
+        while totalProcessed < feedLimit {
+            guard Task.isCancelled == false,
+                  Player.hasActivePlaybackInProcess == false,
+                  StoreSplitCachePlaybackGate.shared.canRun,
+                  StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+                stopReason = "cancelled, playback started or maintenance paused"
+                break
+            }
+            guard Date() < stopWorkAt,
+                  activeTime < CachePrewarmRunPolicy.maximumActiveWorkTime else {
+                break
+            }
+            if StoreSplitMaintenancePolicy.shouldYieldForCloudKitExport(
+                exportInProgress: cloudKitExportInProgress()
+            ) {
+                stopReason = "CloudKit exporter active"
+                pendingSplitStoreWorkReason = "PodcastCache bootstrap yielded to CloudKit export"
+                break
+            }
+
+            let burstStarted = Date()
+            let deadline = min(
+                stopWorkAt,
+                burstStarted.addingTimeInterval(
+                    min(
+                        CachePrewarmRunPolicy.maximumBurstTime,
+                        CachePrewarmRunPolicy.maximumActiveWorkTime - activeTime
+                    )
+                )
             )
-            return
+            let result = await performOneFeedCachePrewarmBurst(
+                legacyContainer: legacyContainer,
+                cacheContainer: cacheContainer,
+                feedLimit: min(50, feedLimit - totalProcessed),
+                deadline: deadline
+            )
+            let elapsed = Date().timeIntervalSince(burstStarted)
+            activeTime += elapsed
+            totalProcessed += result.processed
+            totalFailed += result.failed
+            burstCount += 1
+
+            if result.completed {
+                stopReason = "PodcastCache backfill completed"
+                break
+            }
+            if result.processed == 0 {
+                // No progress: a huge feed, I/O error or an expired deadline.
+                // Keep the durable pending marker and retry on a later grant
+                // rather than spinning until iOS terminates the process.
+                stopReason = "no feed completed in this burst"
+                break
+            }
+
+            let footprint = MemoryFootprint.current()
+            let memoryGrowth = footprint > footprintAtStart
+                ? footprint - footprintAtStart
+                : 0
+            if footprint >= CachePrewarmRunPolicy.maximumFootprint
+                || memoryGrowth >= CachePrewarmRunPolicy.maximumMemoryGrowth {
+                stopReason = "memory limit reached"
+                break
+            }
+
+            let idle = CachePrewarmRunPolicy.idleDuration(after: elapsed)
+            guard Date().addingTimeInterval(idle) < stopWorkAt,
+                  activeTime < CachePrewarmRunPolicy.maximumActiveWorkTime else {
+                stopReason = "work or idle budget reached"
+                break
+            }
+            do {
+                try await Task.sleep(for: .seconds(idle))
+            } catch {
+                stopReason = "background task cancelled during idle"
+                break
+            }
         }
-        // Queue and playlist feeds get the first cache budget. Their stable
-        // normalized feed-key cursor survives expiration; generic subscriptions
-        // begin only after the current priority set has been visited.
-        let deadline = Date().addingTimeInterval(2)
+
+        // The worker controls the durable completed/pending marker. A bounded
+        // run ending due to any limit must leave work pending, never complete.
+        let details = "bursts=\(burstCount),feeds=\(totalProcessed),failed=\(totalFailed),active_seconds=\(Int(activeTime)),wall_seconds=\(Int(Date().timeIntervalSince(startedAt))),reason=\(stopReason)"
+        CrashBreadcrumbs.shared.record(
+            "store_split_cache_background_run_summary",
+            details: details
+        )
+#if DEBUG
+        StoreSplitMigrationDebugLog.record(
+            "PodcastCache background run ended",
+            details: details
+        )
+#endif
+    }
+
+    /// Runs one priority-first or generic chunk without letting a large feed
+    /// page block the entire night. Every successful projection has its own
+    /// durable cache save and resumes cleanly after task expiration.
+    private func performOneFeedCachePrewarmBurst(
+        legacyContainer: ModelContainer,
+        cacheContainer: ModelContainer,
+        feedLimit: Int,
+        deadline: Date
+    ) async -> CachePrewarmBurstResult {
         let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        var priorityProcessed = 0
+        var priorityFailed = 0
         if defaults.integer(forKey: Self.cachePriorityCompletedVersionKey)
             < StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
            let userStateContainer = preparedUserStateContainer {
@@ -1604,11 +1766,12 @@ class ModelContainerManager: ObservableObject {
             let batch = priorityRecoveryFeedURLs(
                 userStateContainer,
                 after: previousCursor,
-                limit: 50
+                limit: feedLimit
             )
+
             let priorityResult: StoreSplitFeedCacheWriter.FeedPriorityBootstrapResult
             if batch.feeds.isEmpty == false {
-                priorityResult = await Task.detached(priority: .utility) {
+                let worker = Task.detached(priority: .utility) {
                     StoreSplitFeedCacheWriter.bootstrapPriorityFeedsWithStatus(
                         batch.feeds,
                         legacyContainer: legacyContainer,
@@ -1616,40 +1779,67 @@ class ModelContainerManager: ObservableObject {
                         limit: batch.feeds.count,
                         deadline: deadline
                     )
-                }.value
+                }
+                priorityResult = await withTaskCancellationHandler {
+                    await worker.value
+                } onCancel: {
+                    worker.cancel()
+                }
             } else {
                 priorityResult = .init()
             }
-            let priorityReachedEnd = batch.reachedEnd && priorityResult.completed
+
+            priorityProcessed = priorityResult.processed
+            priorityFailed = priorityResult.failed
+            let priorityReachedEnd = batch.reachedEnd
+                && priorityResult.completed
+                && priorityResult.failed == 0
             if priorityReachedEnd {
                 defaults.set(
                     StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
                     forKey: Self.cachePriorityCompletedVersionKey
                 )
                 defaults.removeObject(forKey: Self.cachePriorityCursorKey)
-            } else if priorityResult.completed,
-                      let cursor = batch.lastKey {
+            } else if priorityResult.completed, let cursor = batch.lastKey {
                 defaults.set(cursor, forKey: Self.cachePriorityCursorKey)
             } else if let cursor = priorityResult.lastCompletedFeedKey {
                 defaults.set(cursor, forKey: Self.cachePriorityCursorKey)
             } else if let previousCursor {
                 defaults.set(previousCursor, forKey: Self.cachePriorityCursorKey)
             }
-            guard priorityReachedEnd,
-                  Date() < deadline,
-                  Task.isCancelled == false else {
+
+            guard priorityReachedEnd, Date() < deadline,
+                  Task.isCancelled == false,
+                  Player.hasActivePlaybackInProcess == false else {
                 defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
-                return
+                return CachePrewarmBurstResult(
+                    processed: priorityResult.processed,
+                    failed: priorityResult.failed,
+                    completed: false
+                )
             }
         }
-        let result = await Task.detached(priority: .utility) {
+
+        guard Date() < deadline,
+              Task.isCancelled == false,
+              Player.hasActivePlaybackInProcess == false else {
+            defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
+            return CachePrewarmBurstResult()
+        }
+
+        let worker = Task.detached(priority: .utility) {
             StoreSplitFeedCacheWriter.bootstrapMissingFeedsWithStatus(
                 legacyContainer: legacyContainer,
                 cacheContainer: cacheContainer,
-                limit: min(feedLimit, 50),
+                limit: feedLimit,
                 deadline: deadline
             )
-        }.value
+        }
+        let result = await withTaskCancellationHandler {
+            await worker.value
+        } onCancel: {
+            worker.cancel()
+        }
         defaults.set(Date(), forKey: "storeSplit.cacheBootstrapLastAt")
         defaults.set(result.processed, forKey: "storeSplit.cacheBootstrapLastCopied")
         if result.processed > 0 || result.failed > 0 || result.completed == false {
@@ -1658,7 +1848,7 @@ class ModelContainerManager: ObservableObject {
                 details: "feeds=\(result.processed),failed=\(result.failed),completed=\(result.completed)"
             )
         }
-        if result.completed {
+        if result.completed, result.failed == 0 {
             defaults.set(
                 StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
                 forKey: Self.cacheBootstrapCompletedVersionKey
@@ -1667,6 +1857,11 @@ class ModelContainerManager: ObservableObject {
         } else {
             defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
         }
+        return CachePrewarmBurstResult(
+            processed: priorityProcessed + result.processed,
+            failed: priorityFailed + result.failed,
+            completed: result.completed && result.failed == 0
+        )
     }
 
 #if DEBUG

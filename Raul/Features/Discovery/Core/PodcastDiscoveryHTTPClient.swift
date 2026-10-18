@@ -48,9 +48,15 @@ struct PodcastDiscoveryHTTPClient: Sendable {
 
     private let transport: Transport
     private let timeout: TimeInterval
+    private let maximumResponseBytes: Int
 
-    init(timeout: TimeInterval = 20, transport: Transport? = nil) {
+    init(
+        timeout: TimeInterval = 20,
+        maximumResponseBytes: Int = 16 * 1024 * 1024,
+        transport: Transport? = nil
+    ) {
         self.timeout = timeout
+        self.maximumResponseBytes = maximumResponseBytes
         self.transport = transport ?? Self.sharedSessionTransport
     }
 
@@ -121,6 +127,9 @@ struct PodcastDiscoveryHTTPClient: Sendable {
         guard data.isEmpty == false else {
             throw PodcastDiscoveryError.invalidResponse
         }
+        guard data.count <= maximumResponseBytes else {
+            throw PodcastDiscoveryError.invalidResponse
+        }
 
         return data
     }
@@ -185,6 +194,7 @@ struct PodcastDiscoveryHTTPClient: Sendable {
             }
         }
         guard data.isEmpty == false else { throw PodcastDiscoveryError.invalidResponse }
+        guard data.count <= maximumResponseBytes else { throw PodcastDiscoveryError.invalidResponse }
         return data
     }
 

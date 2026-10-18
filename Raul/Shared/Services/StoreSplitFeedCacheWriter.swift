@@ -78,10 +78,15 @@ enum StoreSplitFeedCacheWriter {
         feedURL: URL,
         legacyContainer: ModelContainer,
         cacheContainer: ModelContainer,
-        deadline: Date? = nil
+        deadline: Date? = nil,
+        refreshedEpisodeGUIDs: Set<String>? = nil,
+        refreshedEpisodeURLs: Set<URL>? = nil,
+        requiresIdlePlayback: Bool = false
     ) -> FeedCacheProjectionResult {
         var result = FeedCacheProjectionResult()
-        guard shouldContinue(deadline: deadline) else {
+        guard shouldContinue(
+            deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+        ) else {
             result.completed = false
             return result
         }
@@ -99,7 +104,7 @@ enum StoreSplitFeedCacheWriter {
                 }
             }
         let podcast = candidateFeeds.lazy.compactMap { candidate -> Podcast? in
-            guard shouldContinue(deadline: deadline) else { return nil }
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return nil }
             let optionalFeedURL: URL? = candidate
             var descriptor = FetchDescriptor<Podcast>(
                 predicate: #Predicate { $0.feed == optionalFeedURL }
@@ -109,23 +114,43 @@ enum StoreSplitFeedCacheWriter {
             return try? legacyContext.fetch(descriptor).first
         }.first
         guard let podcast,
-              shouldContinue(deadline: deadline) else {
+              shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
             result.completed = false
             return result
         }
 
         let cacheContext = ModelContext(cacheContainer)
-        guard upsert(
-            podcast: podcast,
-            transcriptionRecordsByEpisodeURL: transcriptionRecordsByEpisodeURL(
+        let isIncremental = refreshedEpisodeGUIDs != nil
+            && refreshedEpisodeURLs != nil
+            && fetchCachedPodcast(
+                id: PodcastFeedIdentity.normalizedFeedURLString(feedURL),
+                in: cacheContext
+            ).map { $0.cacheSchemaVersion >= currentCacheSchemaVersion } == true
+        // Feed refreshes cannot create historical AI transcription records.
+        // Avoid scanning the global transcription table for every ordinary GET;
+        // leave existing cached AI records untouched during an incremental pass.
+        let records = isIncremental
+            ? [URL: [TranscriptionRecord]]()
+            : transcriptionRecordsByEpisodeURL(
                 for: podcast,
                 in: legacyContext,
                 result: &result
-            ),
+            )
+        guard upsert(
+            podcast: podcast,
+            transcriptionRecordsByEpisodeURL: records,
             into: cacheContext,
             deadline: deadline,
+            refreshedEpisodeGUIDs: refreshedEpisodeGUIDs,
+            refreshedEpisodeURLs: refreshedEpisodeURLs,
+            requiresIdlePlayback: requiresIdlePlayback,
+            preserveExistingAIRecords: isIncremental,
             result: &result
         ) else {
+            result.completed = false
+            return result
+        }
+        guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
             result.completed = false
             return result
         }
@@ -138,6 +163,64 @@ enum StoreSplitFeedCacheWriter {
         } catch {
             result.completed = false
             return result
+        }
+    }
+
+    /// Cheap indexed readiness probe for a HEAD/304 response. An unchanged
+    /// server feed can still have an absent/outdated local PodcastCache. In that
+    /// case, populate from the committed library data without refetching RSS.
+    static func needsFeedProjection(
+        feedURL: URL,
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let context = ModelContext(cacheContainer)
+        var descriptor = FetchDescriptor<CachedPodcast>(
+            predicate: #Predicate { $0.id == feedKey }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            let cached = try context.fetch(descriptor).first
+            return (cached?.cacheSchemaVersion ?? 0) < currentCacheSchemaVersion
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "store_split_cache_readiness_fetch_failed",
+                details: error.localizedDescription
+            )
+            // Fail closed: don't assume the cache is current on read errors.
+            return true
+        }
+    }
+
+    /// Mark only this feed's local cache projection outdated after a successful
+    /// durable-library refresh. Actual episode/chapter copying is deferred to
+    /// the charging BGProcessing worker, never done during playback/refresh.
+    /// New feeds have no CachedPodcast row yet and are picked up by the scan.
+    @discardableResult
+    static func invalidateFeedForBackgroundBootstrap(
+        feedURL: URL,
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let context = ModelContext(cacheContainer)
+        var descriptor = FetchDescriptor<CachedPodcast>(
+            predicate: #Predicate { $0.id == feedKey }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            if let cached = try context.fetch(descriptor).first,
+               cached.cacheSchemaVersion >= currentCacheSchemaVersion {
+                cached.cacheSchemaVersion = 0
+                try context.save()
+            }
+            return true
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_cache_invalidation_failed",
+                details: "source=feed_refresh,error=\(error.localizedDescription)"
+            )
+            return false
         }
     }
 
@@ -173,7 +256,7 @@ enum StoreSplitFeedCacheWriter {
         var offset = 0
         let pageSize = 25
         while attempted < limit {
-            guard shouldContinue(deadline: deadline) else {
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: true) else {
                 bootstrapResult.completed = false
                 return bootstrapResult
             }
@@ -184,11 +267,23 @@ enum StoreSplitFeedCacheWriter {
             )
             descriptor.fetchOffset = offset
             descriptor.fetchLimit = requestedLimit
-            guard let podcasts = try? legacyContext.fetch(descriptor),
-                  podcasts.isEmpty == false else { break }
+            let podcasts: [Podcast]
+            do {
+                podcasts = try legacyContext.fetch(descriptor)
+            } catch {
+                // An unreadable source is not an empty library. Keep the
+                // maintenance request pending so a future grant can retry.
+                bootstrapResult.failed += 1
+                bootstrapResult.completed = false
+                return bootstrapResult
+            }
+            guard podcasts.isEmpty == false else {
+                bootstrapResult.completed = bootstrapResult.failed == 0
+                return bootstrapResult
+            }
 
             for podcast in podcasts {
-                guard shouldContinue(deadline: deadline), attempted < limit else {
+                guard shouldContinue(deadline: deadline, requiresIdlePlayback: true), attempted < limit else {
                     bootstrapResult.completed = false
                     return bootstrapResult
                 }
@@ -214,9 +309,10 @@ enum StoreSplitFeedCacheWriter {
                     ),
                     into: cacheContext,
                     deadline: deadline,
+                    requiresIdlePlayback: true,
                     result: &projectionResult
                 ) else {
-                    if shouldContinue(deadline: deadline) == false {
+                    if shouldContinue(deadline: deadline, requiresIdlePlayback: true) == false {
                         bootstrapResult.completed = false
                         return bootstrapResult
                     }
@@ -228,6 +324,10 @@ enum StoreSplitFeedCacheWriter {
                     )
                     bootstrapResult.failed += 1
                     continue
+                }
+                guard shouldContinue(deadline: deadline, requiresIdlePlayback: true) else {
+                    bootstrapResult.completed = false
+                    return bootstrapResult
                 }
                 do {
                     if cacheContext.hasChanges { try cacheContext.save() }
@@ -249,8 +349,17 @@ enum StoreSplitFeedCacheWriter {
                 }
             }
             offset += podcasts.count
-            if podcasts.count < requestedLimit { break }
+            if podcasts.count < requestedLimit {
+                // The source was exhausted, but individual failed feeds still
+                // need another background attempt.
+                bootstrapResult.completed = bootstrapResult.failed == 0
+                return bootstrapResult
+            }
         }
+        // Hitting the feed budget is not proof that the rest of the source was
+        // visited. The previous code marked the whole bootstrap complete here,
+        // clearing the pending flag after just one bounded batch.
+        bootstrapResult.completed = false
         return bootstrapResult
     }
 
@@ -326,7 +435,7 @@ enum StoreSplitFeedCacheWriter {
         var processed = 0
         var seen = Set<String>()
         for requestedFeed in requestedFeeds where processed < limit {
-            guard shouldContinue(deadline: deadline) else {
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: true) else {
                 result.completed = false
                 return result
             }
@@ -336,7 +445,8 @@ enum StoreSplitFeedCacheWriter {
                 feedURL: requestedFeed,
                 legacyContainer: legacyContainer,
                 cacheContainer: cacheContainer,
-                deadline: deadline
+                deadline: deadline,
+                requiresIdlePlayback: true
             ).completed
             if succeeded {
                 processed += 1
@@ -344,7 +454,7 @@ enum StoreSplitFeedCacheWriter {
                 result.lastCompletedFeedKey = requestedKey
                 continue
             }
-            guard shouldContinue(deadline: deadline) else {
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: true) else {
                 result.completed = false
                 return result
             }
@@ -497,10 +607,16 @@ enum StoreSplitFeedCacheWriter {
         transcriptionRecordsByEpisodeURL: [URL: [TranscriptionRecord]],
         into cacheContext: ModelContext,
         deadline: Date?,
+        refreshedEpisodeGUIDs: Set<String>? = nil,
+        refreshedEpisodeURLs: Set<URL>? = nil,
+        requiresIdlePlayback: Bool = false,
+        preserveExistingAIRecords: Bool = false,
         result: inout FeedCacheProjectionResult
     ) -> Bool {
         guard let feed = podcast.feed,
-              shouldContinue(deadline: deadline) else {
+              shouldContinue(
+                deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+              ) else {
             return false
         }
         let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
@@ -551,21 +667,56 @@ enum StoreSplitFeedCacheWriter {
         podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
         if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
 
-        // Fetch each related table once per feed. The old implementation fetched
-        // chapters, transcript lines, downloads, and transcription records in
-        // every episode loop (4N queries); dictionaries make the loop O(1).
-        // These feed-scoped fetches also avoid loading unrelated feeds.
-        let existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingChapters = fetchCachedChapters(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingTranscriptLines = fetchCachedTranscriptLines(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingDownloads = fetchCachedDownloadRecords(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        let existingTranscriptions = fetchCachedTranscriptionRecords(feedKey: feedKey, in: cacheContext)
-        result.fetchCount += 1
-        guard shouldContinue(deadline: deadline) else { return false }
+        // Normal GET refreshes generally import zero or a few episodes.
+        // Avoid fetching every cached chapter, transcript and download from
+        // historical back catalogue during these small deltas. Large deltas and
+        // first-time backfills keep the existing batch-read path.
+        let isIncrementalRefresh =
+            cached.cacheSchemaVersion >= currentCacheSchemaVersion
+                && refreshedEpisodeGUIDs != nil
+                && refreshedEpisodeURLs != nil
+        let selectedGUIDs = refreshedEpisodeGUIDs ?? []
+        let selectedURLs = refreshedEpisodeURLs ?? []
+        let sourceEpisodes = podcast.episodes ?? []
+        let episodesToProject = isIncrementalRefresh
+            ? sourceEpisodes.filter {
+                selectedGUIDs.contains($0.guid ?? "")
+                    || ($0.url.map { selectedURLs.contains($0) } == true)
+            }
+            : sourceEpisodes
+        let targetedLookup = isIncrementalRefresh && episodesToProject.count <= 25
+
+        let existingEpisodes: [CachedEpisode]
+        let existingChapters: [CachedChapter]
+        let existingTranscriptLines: [CachedTranscriptLine]
+        let existingDownloads: [CachedDownloadRecord]
+        let existingTranscriptions: [CachedTranscriptionRecord]
+        if targetedLookup {
+            let ids = episodesToProject.map { $0.stableEpisodeIdentity.key }
+            existingEpisodes = ids.compactMap { fetchCachedEpisode(id: $0, in: cacheContext) }
+            existingChapters = ids.flatMap {
+                fetchCachedChapters(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingTranscriptLines = ids.flatMap {
+                fetchCachedTranscriptLines(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingDownloads = ids.compactMap {
+                fetchCachedDownloadRecord(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            existingTranscriptions = preserveExistingAIRecords ? [] : ids.flatMap {
+                fetchCachedTranscriptionRecords(feedKey: feedKey, episodeID: $0, in: cacheContext)
+            }
+            result.fetchCount += ids.count * (preserveExistingAIRecords ? 4 : 5)
+        } else {
+            existingEpisodes = fetchCachedEpisodes(feedKey: feedKey, in: cacheContext)
+            existingChapters = fetchCachedChapters(feedKey: feedKey, in: cacheContext)
+            existingTranscriptLines = fetchCachedTranscriptLines(feedKey: feedKey, in: cacheContext)
+            existingDownloads = fetchCachedDownloadRecords(feedKey: feedKey, in: cacheContext)
+            existingTranscriptions = preserveExistingAIRecords
+                ? [] : fetchCachedTranscriptionRecords(feedKey: feedKey, in: cacheContext)
+            result.fetchCount += preserveExistingAIRecords ? 4 : 5
+        }
+        guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
 
         var existingByID = Dictionary(
             existingEpisodes.map { ($0.id, $0) },
@@ -577,8 +728,8 @@ enum StoreSplitFeedCacheWriter {
         let downloadsByEpisodeID = Dictionary(existingDownloads.map { ($0.episodeID, $0) }, uniquingKeysWith: { first, _ in first })
         let transcriptionsByEpisodeID = Dictionary(grouping: existingTranscriptions) { $0.episodeID }
 
-        for episode in podcast.episodes ?? [] {
-            guard shouldContinue(deadline: deadline) else { return false }
+        for episode in episodesToProject {
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
             let identity = episode.stableEpisodeIdentity
             let episodeID = identity.key
             seenIDs.insert(episodeID)
@@ -675,18 +826,21 @@ enum StoreSplitFeedCacheWriter {
                 into: cacheContext,
                 result: &result
             )
-            upsertTranscriptionRecords(
-                transcriptionRecords,
-                feedKey: feedKey,
-                episodeID: episodeID,
-                existing: transcriptionsByEpisodeID[episodeID] ?? [],
-                into: cacheContext,
-                result: &result
-            )
+            if preserveExistingAIRecords == false {
+                upsertTranscriptionRecords(
+                    transcriptionRecords,
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    existing: transcriptionsByEpisodeID[episodeID] ?? [],
+                    into: cacheContext,
+                    result: &result
+                )
+            }
         }
 
-        // Prune cache episodes no longer present in the legacy feed so the cache
-        // stays a faithful projection.
+        // Only a full source projection may prune. A normal RSS update can
+        // contain a partial page or stop at the first already-known episode.
+        if isIncrementalRefresh == false {
         for (episodeID, staleEpisode) in existingByID where seenIDs.contains(episodeID) == false {
             for row in chaptersByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
             for row in transcriptLinesByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
@@ -694,10 +848,11 @@ enum StoreSplitFeedCacheWriter {
             if let row = downloadsByEpisodeID[episodeID] { cacheContext.delete(row); result.deleted += 1 }
             cacheContext.delete(staleEpisode)
             result.deleted += 1
-            guard shouldContinue(deadline: deadline) else { return false }
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
+        }
         }
         _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
-        return shouldContinue(deadline: deadline)
+        return shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback)
     }
 
     private static func upsertChapters(
@@ -995,6 +1150,17 @@ enum StoreSplitFeedCacheWriter {
         return try? context.fetch(descriptor).first
     }
 
+    private static func fetchCachedEpisode(
+        id: String,
+        in context: ModelContext
+    ) -> CachedEpisode? {
+        var descriptor = FetchDescriptor<CachedEpisode>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        return try? context.fetch(descriptor).first
+    }
+
     private static func fetchCachedEpisodes(
         feedKey: String,
         in context: ModelContext
@@ -1135,11 +1301,17 @@ enum StoreSplitFeedCacheWriter {
         return true
     }
 
-    private static func shouldContinue(deadline: Date?) -> Bool {
+    private static func shouldContinue(
+        deadline: Date?,
+        requiresIdlePlayback: Bool = false
+    ) -> Bool {
         let isCancelled = withUnsafeCurrentTask { task in
             task?.isCancelled ?? false
         }
         guard isCancelled == false else { return false }
+        if requiresIdlePlayback && StoreSplitCachePlaybackGate.shared.canRun == false {
+            return false
+        }
         guard let deadline else { return true }
         return Date() < deadline
     }

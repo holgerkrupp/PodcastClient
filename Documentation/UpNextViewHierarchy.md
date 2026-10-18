@@ -20,6 +20,14 @@ Guide validation should check stable topic ID uniqueness, related-topic resoluti
 - Avoid per-row model queries, episode-relationship access, repeated HTML parsing, or additional image decoding. Pass small presentation values into shared row content.
 - Keep critical errors, active work, and retry states visible. Put low-frequency management and diagnostic actions in native menus or disclosures.
 
+## User Guide ↔ design contract
+
+The public in-app **Settings → Help & About → Using Up Next** manual must reflect the action location and behavior described here. The [User Guide epic #347](https://github.com/holgerkrupp/PodcastClient/issues/347) establishes the searchable, illustrated guide and its proposed canonical topic/screenshot sources under `Documentation/UserGuide/` (the current short `SettingsHelpView` is in `Raul/Features/Settings/Views/PodcastSettingsView.swift`).
+
+When changing an action's **placement, grouping, visual control, gesture, name, default, availability, effect, or interaction flow**, update its matching user-facing guide topic in the **same PR**, alongside this document. Include correct step-by-step paths, current control labels, real/sanitized UI screenshots, and safe contextual “Open …” destinations. Check compact/short iPhone layouts, regular-width/macOS differences, localization, accessibility, and OS gating. If a topic does not yet exist, add it once the guide system lands and track interim omissions in #347; do not let stale copy or screenshots become the released documentation.
+
+This applies to all frequently used and More-menu actions listed in the tables, plus subscription, refresh, chapter, transcript, queue, playlist, Siri/App Intent, widget, bookmark, export, sync and Settings behavior. Follow the repository-wide [AGENTS.md](../AGENTS.md) User Guide maintenance rule.
+
 ## Before / after inventory
 
 | Surface | Current grouping | iPhone target | Regular-width target |
