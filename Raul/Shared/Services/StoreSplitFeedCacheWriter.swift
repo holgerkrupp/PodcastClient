@@ -89,6 +89,7 @@ enum StoreSplitFeedCacheWriter {
             deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
         ) else {
             result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
         let legacyContext = ModelContext(legacyContainer)
@@ -172,10 +173,12 @@ enum StoreSplitFeedCacheWriter {
             result: &result
         ) else {
             result.completed = false
+            result.failureReason = "projection_interrupted"
             return result
         }
         guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
             result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
         do {
@@ -186,6 +189,7 @@ enum StoreSplitFeedCacheWriter {
             return result
         } catch {
             result.completed = false
+            result.failureReason = "cache_save_failed"
             return result
         }
     }
