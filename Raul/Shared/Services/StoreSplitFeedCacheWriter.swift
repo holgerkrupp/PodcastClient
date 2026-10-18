@@ -194,6 +194,34 @@ enum StoreSplitFeedCacheWriter {
         }
     }
 
+    /// Record the outcome of a normal RSS-refresh cache write, independent
+    /// of the charging-only bootstrap counter. No private feed identity is
+    /// included in exported diagnostics.
+    static func recordRefreshProjection(
+        feedURL: URL,
+        status: String,
+        episodeCount: Int,
+        cacheContainer: ModelContainer?
+    ) {
+        let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+        defaults.set(Date(), forKey: "storeSplit.cacheRefreshLastAttemptAt")
+        defaults.set(status, forKey: "storeSplit.cacheRefreshLastStatus")
+        defaults.set(episodeCount, forKey: "storeSplit.cacheRefreshLastEpisodeCount")
+        CrashBreadcrumbs.shared.record(
+            "podcast_cache_refresh_result",
+            details: "status=\(status),episodes=\(episodeCount)"
+        )
+        guard let cacheContainer else { return }
+        if status == "completed" || status.hasPrefix("failed_") {
+            recordCheckpoint(
+                feedKey: PodcastFeedIdentity.normalizedFeedURLString(feedURL),
+                succeeded: status == "completed",
+                error: status == "completed" ? nil : status,
+                in: cacheContainer
+            )
+        }
+    }
+
     /// Cheap indexed readiness probe for a HEAD/304 response. An unchanged
     /// server feed can still have an absent/outdated local PodcastCache. In that
     /// case, populate from the committed library data without refetching RSS.
