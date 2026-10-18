@@ -2246,29 +2246,20 @@ actor PodcastModelActor {
                 return (enclosure ?? (row["url"] as? String)).flatMap(URL.init(string:))
             })
         }
-        let needsFullBackfill = StoreSplitFeedCacheWriter.needsFeedProjection(
-            feedURL: feedURL, cacheContainer: cacheContainer
+        // Filling the cache from the RSS data just committed by a normal
+        // manual/automatic feed refresh is part of that refresh, not a separate
+        // historical migration. In particular, playback must not suppress the
+        // initial feed projection or leave the cache at 0/53 indefinitely.
+        // The independently scheduled bulk legacy backfill remains gated off
+        // during playback by StoreSplitCachePlaybackGate.
+        let projection = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feedURL,
+            legacyContainer: modelContainer,
+            cacheContainer: cacheContainer,
+            deadline: deadline,
+            refreshedEpisodeGUIDs: importedGUIDs,
+            refreshedEpisodeURLs: importedURLs
         )
-        let playbackActive = await MainActor.run {
-            Player.hasActivePlaybackInProcess
-        }
-        var projection = StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
-        if needsFullBackfill && playbackActive {
-            // Projecting an entire historical feed is migration, not the cheap
-            // incremental refresh write. Leave it to the charging BG worker
-            // rather than performing bulk backfill during podcast playback.
-            projection.completed = false
-            projection.failureReason = "deferred_playback"
-        } else {
-            projection = StoreSplitFeedCacheWriter.projectFeed(
-                feedURL: feedURL,
-                legacyContainer: modelContainer,
-                cacheContainer: cacheContainer,
-                deadline: deadline,
-                refreshedEpisodeGUIDs: importedGUIDs,
-                refreshedEpisodeURLs: importedURLs
-            )
-        }
         let resultStatus = projection.completed
             ? "completed"
             : projection.failureReason == "deferred_playback"
@@ -2339,13 +2330,9 @@ actor PodcastModelActor {
         guard StoreSplitFeedCacheWriter.needsFeedProjection(
             feedURL: feedURL, cacheContainer: cache
         ) else { return }
-        guard await MainActor.run(body: {
-            Player.hasActivePlaybackInProcess == false
-        }) else {
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
-            return
-        }
-
+        // This is still an ordinary single-feed refresh; it must populate a
+        // missing cache even if audio playback is active. Only independent
+        // historical maintenance is postponed during playback.
         let coordinator = PodcastFeedCommitCoordinator.shared
         do {
             try await coordinator.acquire()
