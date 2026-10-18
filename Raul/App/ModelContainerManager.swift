@@ -596,6 +596,10 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static let exportBackpressureRetryDelay: TimeInterval = 120
     nonisolated private static let cacheBootstrapPendingKey =
         "storeSplit.cacheBootstrapPending.v1"
+    // Forces one non-destructive rescan of older installs whose v4 bootstrap
+    // marker may have been written after reaching only the batch limit.
+    nonisolated private static let cacheBootstrapCompletionAuditKey =
+        "storeSplit.cacheBootstrapCompletionAudit.v1"
     nonisolated private static let userStateImportPendingKey =
         "storeSplit.userStateImportPending.v1"
     nonisolated private static let cacheBootstrapCompletedVersionKey =
@@ -1192,6 +1196,24 @@ class ModelContainerManager: ObservableObject {
             || hasPendingBackgroundUserStateImport
     }
 
+    /// A feed refresh may change data after the initial PodcastCache bootstrap.
+    /// Only record a durable background request here; never project a whole
+    /// feed graph synchronously from the refresh path.
+    nonisolated static func requestPodcastCacheBackgroundBootstrap() {
+        guard StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else { return }
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        let alreadyPending = defaults.bool(forKey: cacheBootstrapPendingKey)
+        defaults.set(true, forKey: cacheBootstrapPendingKey)
+        defaults.removeObject(forKey: cacheBootstrapCompletedVersionKey)
+#if canImport(UIKit)
+        if alreadyPending == false {
+            Task { @MainActor in
+                AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+            }
+        }
+#endif
+    }
+
     /// Persists cloud-import work and arms the metered maintenance executor.
     /// Callers may run during launch or a foreground CloudKit callback, but
     /// they must not start the whole-library projection themselves.
@@ -1490,6 +1512,16 @@ class ModelContainerManager: ObservableObject {
         if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
            Self.sharedStoreURL.map({ FileManager.default.fileExists(atPath: $0.path) }) == true {
             let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+            // Old releases could mark the entire v4 cache as complete after one
+            // 50-feed slice. The migration markers must be audited once, even
+            // on devices that already report the latest schema version.
+            if defaults.bool(forKey: Self.cacheBootstrapCompletionAuditKey) == false {
+                defaults.removeObject(forKey: Self.cacheBootstrapCompletedVersionKey)
+                defaults.removeObject(forKey: Self.cachePriorityCompletedVersionKey)
+                defaults.removeObject(forKey: Self.cachePriorityCursorKey)
+                defaults.set(true, forKey: Self.cacheBootstrapPendingKey)
+                defaults.set(true, forKey: Self.cacheBootstrapCompletionAuditKey)
+            }
             if defaults.integer(forKey: Self.cacheBootstrapCompletedVersionKey)
                     < StoreSplitFeedCacheWriter.currentCacheSchemaVersion
                 || defaults.integer(forKey: Self.cachePriorityCompletedVersionKey)
