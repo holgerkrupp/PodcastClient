@@ -299,6 +299,33 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testNormalFeedRefreshPopulatesEmptyCacheEvenWhilePlaying() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/refresh-during-playback",
+            episodeGUIDs: ["episode-1", "episode-2"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(true)
+        defer { StoreSplitCachePlaybackGate.shared.setPlaybackActive(false) }
+
+        // Background legacy migration is not allowed during playback, but a
+        // user-initiated RSS refresh still fills its own PodcastCache records.
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.episodesProcessed, 2)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+    }
+
+    @MainActor
     func testMissingLegacyFeedReportsFailureRatherThanSilentEmptyCache() throws {
         let (legacy, cache) = try makeContainers()
         let feed = try XCTUnwrap(URL(string: "https://example.com/missing-cache-source"))
