@@ -2227,14 +2227,28 @@ actor PodcastModelActor {
                 return (enclosure ?? (row["url"] as? String)).flatMap(URL.init(string:))
             })
         }
-        let projection = StoreSplitFeedCacheWriter.projectFeed(
-            feedURL: feedURL,
-            legacyContainer: modelContainer,
-            cacheContainer: cacheContainer,
-            deadline: deadline,
-            refreshedEpisodeGUIDs: importedGUIDs,
-            refreshedEpisodeURLs: importedURLs
+        let needsFullBackfill = StoreSplitFeedCacheWriter.needsFeedProjection(
+            feedURL: feedURL, cacheContainer: cacheContainer
         )
+        let playbackActive = await MainActor.run {
+            Player.hasActivePlaybackInProcess
+        }
+        var projection = StoreSplitFeedCacheWriter.FeedCacheProjectionResult()
+        if needsFullBackfill && playbackActive {
+            // Projecting an entire historical feed is migration, not the cheap
+            // incremental refresh write. Leave it to the charging BG worker
+            // rather than performing bulk backfill during podcast playback.
+            projection.completed = false
+        } else {
+            projection = StoreSplitFeedCacheWriter.projectFeed(
+                feedURL: feedURL,
+                legacyContainer: modelContainer,
+                cacheContainer: cacheContainer,
+                deadline: deadline,
+                refreshedEpisodeGUIDs: importedGUIDs,
+                refreshedEpisodeURLs: importedURLs
+            )
+        }
         if projection.completed == false {
             // If the GET import succeeded but its cache projection did not, do
             // not downgrade or fail the podcast refresh; keep the missing work
@@ -2294,6 +2308,12 @@ actor PodcastModelActor {
         guard StoreSplitFeedCacheWriter.needsFeedProjection(
             feedURL: feedURL, cacheContainer: cache
         ) else { return }
+        guard await MainActor.run(body: {
+            Player.hasActivePlaybackInProcess == false
+        }) else {
+            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
+            return
+        }
 
         let coordinator = PodcastFeedCommitCoordinator.shared
         do {
