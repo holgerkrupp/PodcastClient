@@ -184,8 +184,20 @@ enum StoreSplitFeedCacheWriter {
             )
             descriptor.fetchOffset = offset
             descriptor.fetchLimit = requestedLimit
-            guard let podcasts = try? legacyContext.fetch(descriptor),
-                  podcasts.isEmpty == false else { break }
+            let podcasts: [Podcast]
+            do {
+                podcasts = try legacyContext.fetch(descriptor)
+            } catch {
+                // An unreadable source is not an empty library. Keep the
+                // maintenance request pending so a future grant can retry.
+                bootstrapResult.failed += 1
+                bootstrapResult.completed = false
+                return bootstrapResult
+            }
+            guard podcasts.isEmpty == false else {
+                bootstrapResult.completed = bootstrapResult.failed == 0
+                return bootstrapResult
+            }
 
             for podcast in podcasts {
                 guard shouldContinue(deadline: deadline), attempted < limit else {
@@ -249,8 +261,17 @@ enum StoreSplitFeedCacheWriter {
                 }
             }
             offset += podcasts.count
-            if podcasts.count < requestedLimit { break }
+            if podcasts.count < requestedLimit {
+                // The source was exhausted, but individual failed feeds still
+                // need another background attempt.
+                bootstrapResult.completed = bootstrapResult.failed == 0
+                return bootstrapResult
+            }
         }
+        // Hitting the feed budget is not proof that the rest of the source was
+        // visited. The previous code marked the whole bootstrap complete here,
+        // clearing the pending flag after just one bounded batch.
+        bootstrapResult.completed = false
         return bootstrapResult
     }
 
