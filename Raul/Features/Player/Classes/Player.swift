@@ -563,6 +563,9 @@ class Player {
             guard isPlaying != oldValue else { return }
             let playbackStarted = isPlaying
             Self.hasActivePlaybackInProcess = playbackStarted
+            // Detached local-cache workers check this between episodes and
+            // before saving, so playback preempts long charging backfills.
+            StoreSplitCachePlaybackGate.shared.setPlaybackActive(playbackStarted)
             Task {
                 await StoreSplitWorkCoordinator.shared.notePlaybackActivityChanged(
                     isPlaying: playbackStarted
