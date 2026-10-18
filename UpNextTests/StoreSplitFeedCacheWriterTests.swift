@@ -268,6 +268,61 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testManualRefreshProjectionRecordsReadyCheckpoint() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/manual-cache-checkpoint",
+            episodeGUIDs: ["one", "two"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        let projected = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(projected.completed)
+        StoreSplitFeedCacheWriter.recordRefreshProjection(
+            feedURL: feed, status: "completed",
+            episodeCount: projected.episodesProcessed, cacheContainer: cache
+        )
+
+        let checkpoints = try ModelContext(cache).fetch(
+            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+        )
+        XCTAssertEqual(checkpoints.count, 1)
+        XCTAssertEqual(checkpoints.first?.stateRawValue, "ready")
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+    }
+
+    @MainActor
+    func testMissingLegacyFeedReportsFailureRatherThanSilentEmptyCache() throws {
+        let (legacy, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/missing-cache-source"))
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+        XCTAssertFalse(result.completed)
+        XCTAssertEqual(result.failureReason, "source_feed_not_found")
+        StoreSplitFeedCacheWriter.recordRefreshProjection(
+            feedURL: feed,
+            status: "failed_\(result.failureReason ?? "unknown")",
+            episodeCount: result.episodesProcessed,
+            cacheContainer: cache
+        )
+        let checkpoints = try ModelContext(cache).fetch(
+            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+        )
+        XCTAssertEqual(checkpoints.first?.stateRawValue, "failed")
+        XCTAssertEqual(cacheCounts(cache).podcasts, 0)
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
