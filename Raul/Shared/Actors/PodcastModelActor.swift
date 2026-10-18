@@ -2161,11 +2161,14 @@ actor PodcastModelActor {
         if let podcastFeed = podcast.feed {
             // The cache writer reads a fresh legacy context, so flush first.
             modelContext.saveIfNeeded()
-            if updateCache && feedDataChanged {
+            if updateCache {
+                // Direct imports, feed switches and continuation updates must
+                // populate PodcastCache even when no episode was added.
                 await updateFeedCache(
                     feedURL: podcastFeed,
                     parsedFeed: fullPodcast,
-                    deadline: deadline
+                    deadline: deadline,
+                    importedEpisodes: fullPodcast["episodes"] as? [[String: Any]] ?? []
                 )
             }
         }
