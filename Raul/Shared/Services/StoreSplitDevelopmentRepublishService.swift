@@ -452,6 +452,9 @@ struct StoreSplitCacheDevelopmentStatus: Sendable {
     let lastSuccessfulProgressAt: Date?
     let lastBootstrapAt: Date?
     let lastBootstrapCopied: Int?
+    let lastRefreshProjectionAt: Date?
+    let lastRefreshProjectionStatus: String?
+    let lastRefreshProjectionEpisodes: Int?
 
     var isComplete: Bool {
         pendingFeedCount == 0
@@ -483,7 +486,10 @@ struct StoreSplitCacheDevelopmentStatus: Sendable {
             cacheSchemaVersion: readiness.cacheSchemaVersion,
             lastSuccessfulProgressAt: readiness.lastSuccessfulProgressAt,
             lastBootstrapAt: defaults.object(forKey: "storeSplit.cacheBootstrapLastAt") as? Date,
-            lastBootstrapCopied: defaults.object(forKey: "storeSplit.cacheBootstrapLastCopied") as? Int
+            lastBootstrapCopied: defaults.object(forKey: "storeSplit.cacheBootstrapLastCopied") as? Int,
+            lastRefreshProjectionAt: defaults.object(forKey: "storeSplit.cacheRefreshLastAttemptAt") as? Date,
+            lastRefreshProjectionStatus: defaults.string(forKey: "storeSplit.cacheRefreshLastStatus"),
+            lastRefreshProjectionEpisodes: defaults.object(forKey: "storeSplit.cacheRefreshLastEpisodeCount") as? Int
         )
     }
 

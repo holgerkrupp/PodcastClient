@@ -508,7 +508,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     @MainActor
     func testSliceNeverProcessesEntireDatasetAtOnce() async throws {
         let containers = try makeContainers()
-        try populate(containers.legacy, episodeCount: 130)
+        try populate(containers.legacy, episodeCount: 300)
 
         let reports = await drainSlices(containers, shouldContinue: { true })
 
@@ -527,13 +527,13 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                 StoreWorkBudget.migrationSlice.maximumMutations
             )
         }
-        XCTAssertEqual(episodeSlices.reduce(0) { $0 + $1.processed }, 130)
+        XCTAssertEqual(episodeSlices.reduce(0) { $0 + $1.processed }, 300)
 
         // Footprint telemetry is populated for every slice that did work.
         XCTAssertTrue(reports.allSatisfy { $0.footprintAfter > 0 })
 
         let counts = try destinationCounts(containers.userState)
-        XCTAssertEqual(counts["episodeStates"], 130)
+        XCTAssertEqual(counts["episodeStates"], 300)
         XCTAssertEqual(counts["subscriptions"], 1)
         XCTAssertEqual(counts["playlists"], 2)
         XCTAssertEqual(counts["queueEntries"], 2)

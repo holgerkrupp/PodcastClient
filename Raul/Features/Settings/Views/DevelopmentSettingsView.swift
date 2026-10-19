@@ -393,7 +393,24 @@ struct DevelopmentSettingsView: View {
                         ) ?? "Not recorded"
                     )
                     LabeledContent(
-                        "Last cache pass",
+                        "Last feed refresh cache attempt",
+                        value: cacheStatus.lastRefreshProjectionAt?.formatted(
+                            date: .abbreviated,
+                            time: .shortened
+                        ) ?? "Not recorded"
+                    )
+                    LabeledContent(
+                        "Last feed refresh cache result",
+                        value: cacheStatus.lastRefreshProjectionStatus ?? "Not recorded"
+                    )
+                    if let projected = cacheStatus.lastRefreshProjectionEpisodes {
+                        LabeledContent(
+                            "Episodes processed by last refresh",
+                            value: "\(projected)"
+                        )
+                    }
+                    LabeledContent(
+                        "Last background cache pass",
                         value: cacheStatus.lastBootstrapAt?.formatted(
                             date: .abbreviated,
                             time: .shortened
@@ -414,7 +431,7 @@ struct DevelopmentSettingsView: View {
             } header: {
                 Text("Podcast Cache Filling")
             } footer: {
-                Text("The cache is filled automatically only in the Cache Projection architecture. It prioritizes feeds needed by playlists, then processes up to 15 feeds after launch/foreground and up to 200 during the overnight background pass. Each feed is complete when it reaches the current cache schema version; transcripts and chapters are included in that feed pass.")
+                Text("Every successful normal podcast refresh attempts to update PodcastCache. The cache result above distinguishes a completed write from playback, cancellation, deadline and database errors. Background processing repairs older or interrupted feeds; its timestamp does not change during an ordinary single-podcast refresh.")
             }
 
             Section {

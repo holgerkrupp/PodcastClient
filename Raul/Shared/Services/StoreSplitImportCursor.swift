@@ -67,6 +67,19 @@ enum StoreSplitImportCursorStore {
         })
     }
 
+    /// Keep playlist membership streams eligible for another import while a
+    /// synchronized entry still points at an episode this device cannot
+    /// resolve. The membership record remains authoritative in UserState, so
+    /// leaving its cursor behind is a durable retry marker without copying the
+    /// record into a second local ledger.
+    static func streamsEligibleForCommit(
+        changedStreams: Set<StoreSplitUserStateStream>,
+        hasUnresolvedPlaylistEpisodes: Bool
+    ) -> Set<StoreSplitUserStateStream> {
+        guard hasUnresolvedPlaylistEpisodes else { return changedStreams }
+        return changedStreams.subtracting([.playlistEntries, .queueEntries])
+    }
+
     static func commit(
         _ current: [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot],
         streams: Set<StoreSplitUserStateStream>

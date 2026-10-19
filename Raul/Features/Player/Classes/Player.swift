@@ -154,8 +154,10 @@ private enum PlaybackProgressDefaultsStore {
         guard let data = try? JSONEncoder().encode(cached) else { return }
         defaults.set(data, forKey: entryKey(for: episodeURL))
         var index = defaults.stringArray(forKey: indexKey) ?? []
-        if index.contains(key) == false { index.append(key) }
-        defaults.set(index, forKey: indexKey)
+        if index.contains(key) == false {
+            index.append(key)
+            defaults.set(index, forKey: indexKey)
+        }
     }
 
     static func removeProgress(for episodeURL: URL) {

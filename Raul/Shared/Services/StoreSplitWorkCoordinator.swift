@@ -229,6 +229,29 @@ actor StoreSplitWorkCoordinator {
                 }
                 guard Task.isCancelled == false else { return }
             }
+            let maintenancePermit: StoreMaintenancePermit?
+            if nextJob == .migration {
+                // Migration acquires its permit around the checkpointed slice
+                // loop, where it can inspect CPU and playback between pages.
+                maintenancePermit = nil
+            } else {
+                let runtimeState = await MainActor.run {
+                    (
+                        playbackActive: Player.shared.isPlaying,
+                        exportActive: ModelContainerManager.shared.isCloudKitExportInProgress
+                    )
+                }
+                guard let permit = StoreMaintenanceResourceBudget.shared.acquire(
+                    operation: nextJob.rawValue,
+                    playbackActive: runtimeState.playbackActive,
+                    cloudKitExportActive: runtimeState.exportActive
+                ) else {
+                    await publishPendingState()
+                    nextHeavyWorkAllowedAt = Date().addingTimeInterval(30)
+                    continue
+                }
+                maintenancePermit = permit
+            }
             let startedAt = Date()
             await publishCurrentJob(nextJob)
 
@@ -277,6 +300,7 @@ actor StoreSplitWorkCoordinator {
                 )
             }
 
+            maintenancePermit?.release()
             await clearCurrentJob()
             let duration = Date().timeIntervalSince(startedAt)
             if duration > 1 {

@@ -268,6 +268,189 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testManualRefreshProjectionRecordsReadyCheckpoint() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/manual-cache-checkpoint",
+            episodeGUIDs: ["one", "two"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        let projected = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(projected.completed)
+        StoreSplitFeedCacheWriter.recordRefreshProjection(
+            feedURL: feed, status: "completed",
+            episodeCount: projected.episodesProcessed, cacheContainer: cache
+        )
+
+        let checkpoints = try ModelContext(cache).fetch(
+            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+        )
+        XCTAssertEqual(checkpoints.count, 1)
+        XCTAssertEqual(checkpoints.first?.stateRawValue, "ready")
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+    }
+
+    @MainActor
+    func testNormalFeedRefreshPopulatesEmptyCacheEvenWhilePlaying() throws {
+        let (legacy, cache) = try makeContainers()
+        let podcast = try makePodcast(
+            in: legacy,
+            feed: "https://example.com/refresh-during-playback",
+            episodeGUIDs: ["episode-1", "episode-2"]
+        )
+        let feed = try XCTUnwrap(podcast.feed)
+        StoreSplitCachePlaybackGate.shared.setPlaybackActive(true)
+        defer { StoreSplitCachePlaybackGate.shared.setPlaybackActive(false) }
+
+        // Background legacy migration is not allowed during playback, but a
+        // user-initiated RSS refresh still fills its own PodcastCache records.
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache,
+            refreshedEpisodeGUIDs: [],
+            refreshedEpisodeURLs: []
+        )
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.episodesProcessed, 2)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+    }
+
+    @MainActor
+    func testValidatedParsedFeedWritesPodcastCacheWithoutLegacyPodcast() throws {
+        let (_, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/direct-cache"))
+        let rows: [[String: Any]] = [
+            [
+                "guid": "episode-1",
+                "title": "Episode one",
+                "enclosure": [["url": "https://cdn.example.com/one.mp3", "type": "audio/mpeg"]]
+            ],
+            [
+                "guid": "episode-2",
+                "title": "Episode two",
+                "enclosure": [["url": "https://cdn.example.com/two.mp3", "type": "audio/mpeg"]]
+            ]
+        ]
+        let result = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed,
+            parsedFeed: ["title": "Direct cache podcast", "description": "Parsed RSS"],
+            episodeRows: rows,
+            isCompleteFeed: true,
+            cacheContainer: cache
+        )
+
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(cacheCounts(cache).podcasts, 1)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+        let context = ModelContext(cache)
+        let podcast = try XCTUnwrap(context.fetch(FetchDescriptor<CachedPodcast>()).first)
+        XCTAssertEqual(podcast.title, "Direct cache podcast")
+        XCTAssertEqual(podcast.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+    }
+
+    @MainActor
+    func testParsedFeedUsesBoundedEpisodeWriteBatches() throws {
+        let (_, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/batched-direct-cache"))
+        let rows: [[String: Any]] = (0..<205).map { index in
+            [
+                "guid": "episode-\(index)",
+                "title": "Episode \(index)",
+                "enclosure": [[
+                    "url": "https://cdn.example.com/\(index).mp3",
+                    "type": "audio/mpeg"
+                ]]
+            ]
+        }
+        let result = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed,
+            parsedFeed: ["title": "Batched podcast"],
+            episodeRows: rows,
+            isCompleteFeed: true,
+            cacheContainer: cache
+        )
+
+        XCTAssertTrue(result.completed)
+        XCTAssertEqual(result.saveCount, 3)
+        XCTAssertEqual(cacheCounts(cache).episodes, 205)
+    }
+
+    @MainActor
+    func testPartialParsedFeedNeverPrunesOlderCacheEpisodesOrMarksFeedComplete() throws {
+        let (_, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/partial-direct-cache"))
+        let initial = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed,
+            parsedFeed: ["title": "Paged podcast"],
+            episodeRows: [[
+                "guid": "older",
+                "title": "Older episode",
+                "enclosure": [["url": "https://cdn.example.com/older.mp3", "type": "audio/mpeg"]]
+            ]],
+            isCompleteFeed: false,
+            cacheContainer: cache
+        )
+        XCTAssertTrue(initial.completed)
+        let partialCheckpoint = try XCTUnwrap(
+            ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first
+        )
+        XCTAssertLessThan(partialCheckpoint.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+
+        let partial = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed,
+            parsedFeed: ["title": "Paged podcast"],
+            episodeRows: [[
+                "guid": "newer",
+                "title": "Newer episode",
+                "enclosure": [["url": "https://cdn.example.com/newer.mp3", "type": "audio/mpeg"]]
+            ]],
+            isCompleteFeed: false,
+            cacheContainer: cache
+        )
+
+        XCTAssertTrue(partial.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 2)
+        let context = ModelContext(cache)
+        let podcast = try XCTUnwrap(context.fetch(FetchDescriptor<CachedPodcast>()).first)
+        XCTAssertLessThan(podcast.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+        XCTAssertTrue(try context.fetch(FetchDescriptor<CachedEpisode>()).contains { $0.guid == "older" })
+    }
+
+    @MainActor
+    func testMissingLegacyFeedReportsFailureRatherThanSilentEmptyCache() throws {
+        let (legacy, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/missing-cache-source"))
+        let result = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: feed,
+            legacyContainer: legacy,
+            cacheContainer: cache
+        )
+        XCTAssertFalse(result.completed)
+        XCTAssertEqual(result.failureReason, "source_feed_not_found")
+        StoreSplitFeedCacheWriter.recordRefreshProjection(
+            feedURL: feed,
+            status: "failed_\(result.failureReason ?? "unknown")",
+            episodeCount: result.episodesProcessed,
+            cacheContainer: cache
+        )
+        let checkpoints = try ModelContext(cache).fetch(
+            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+        )
+        XCTAssertEqual(checkpoints.first?.stateRawValue, "failed")
+        XCTAssertEqual(cacheCounts(cache).podcasts, 0)
+    }
+
+    @MainActor
     func testCompatibilityProjectionPreservesDeviceLocalInboxMembership() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
