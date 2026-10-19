@@ -94,6 +94,19 @@ validation run unless they are deliberately being retained for debugging.
   identity, split SwiftData stores, authoritative CloudKit synchronization,
   restoration, history/bookmarks, playlists, queue, downloads, refresh, and
   OPML before any persisted source change. Never store a fabricated RSS URL.
-- When changing discovery UI, update its user-guide topic if one exists in the
-  current source tree. If the guide module is absent, record that limitation in
-  the feature documentation for follow-up.
+
+## User Guide maintenance
+
+- Treat accurate user help as part of every user-visible feature change. Check
+  the relevant guide topics, Settings help, and Siri guide in the same change;
+  update steps, control labels/locations, outcomes, requirements, aliases,
+  cross-links, actions, availability, and fixture-based screenshots where they
+  exist. Keep `Documentation/UpNextViewHierarchy.md` aligned when actions move.
+- Until the canonical searchable guide under `Documentation/UserGuide/` and its
+  app module land, do not create an alternate guide location. Record missing
+  topics and content changes in GitHub issue #347, and explain the guide gap in
+  the feature PR.
+- Guide routes must target real UI and safely handle missing context or
+  unsupported platforms. Opening help must never trigger destructive or bulk
+  actions. Keep examples offline and anonymized; do not invent screenshots or
+  describe experimental or DEBUG-only behavior as generally available.
