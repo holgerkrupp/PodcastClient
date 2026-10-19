@@ -158,6 +158,37 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         ))
     }
 
+    func testActiveCloudKitExportInterruptsAnAlreadyAdmittedMaintenanceBatch() {
+        let source = MutableProcessCPUTimeSource()
+        let budget = StoreMaintenanceResourceBudget(source: source)
+        let permit = budget.acquire(
+            operation: "migration",
+            playbackActive: false,
+            cloudKitExportActive: false
+        )
+        XCTAssertNotNil(permit)
+
+        let exportID = UUID()
+        budget.setCloudKitExport(eventID: exportID, active: true)
+        XCTAssertEqual(
+            permit?.yieldReason(playbackActive: false, cloudKitExportActive: false),
+            "export_busy"
+        )
+
+        source.advance(wall: 6, cpu: 6)
+        budget.setCloudKitExport(eventID: exportID, active: false)
+        XCTAssertEqual(
+            permit?.yieldReason(playbackActive: false, cloudKitExportActive: false),
+            "cpu_budget"
+        )
+        permit?.release()
+        XCTAssertNil(budget.acquire(
+            operation: "reconcile",
+            playbackActive: false,
+            cloudKitExportActive: false
+        ))
+    }
+
     func testBackgroundMigrationStopsForMemoryGrowthOrAbsoluteFootprint() {
         let policy = StoreSplitMigrationRunPolicy.background
         let megabyte: UInt64 = 1024 * 1024

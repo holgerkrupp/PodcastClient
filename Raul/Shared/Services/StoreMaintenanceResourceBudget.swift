@@ -57,6 +57,7 @@ final class StoreMaintenanceResourceBudget: @unchecked Sendable {
     private var samples: [ProcessCPUSample] = []
     private var activeLeaseID: UUID?
     private var activeOperation: String?
+    private var activeCloudKitExportIDs: Set<UUID> = []
     private var cooldownUntil: TimeInterval = 0
 
     init(
@@ -93,6 +94,23 @@ final class StoreMaintenanceResourceBudget: @unchecked Sendable {
         return StoreMaintenancePermit(id: id, operation: operation, owner: self)
     }
 
+    /// Makes exporter state available to synchronous batch/save gates without
+    /// crossing the MainActor boundary of the UI-facing activity monitor.
+    func setCloudKitExport(eventID: UUID, active: Bool) {
+        lock.lock()
+        defer { lock.unlock() }
+        // The exporter can keep Core Data busy after an app batch yields. Take
+        // samples at both event boundaries so that CPU consumed while no
+        // maintenance callback is running still contributes to the rolling
+        // process budget.
+        append(source.sample())
+        if active {
+            activeCloudKitExportIDs.insert(eventID)
+        } else {
+            activeCloudKitExportIDs.remove(eventID)
+        }
+    }
+
     fileprivate func yieldReason(
         leaseID: UUID,
         playbackActive: Bool,
@@ -124,7 +142,9 @@ final class StoreMaintenanceResourceBudget: @unchecked Sendable {
         cloudKitExportActive: Bool
     ) -> String? {
         if playbackActive { return "playback" }
-        if cloudKitExportActive { return "export_busy" }
+        if cloudKitExportActive || activeCloudKitExportIDs.isEmpty == false {
+            return "export_busy"
+        }
         let sample = source.sample()
         append(sample)
         if sample.uptime < cooldownUntil { return "cpu_cooldown" }

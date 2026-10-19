@@ -281,6 +281,12 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
     private func handle(_ event: EventPayload) {
 
         let eventKind = event.type
+        if eventKind == .export {
+            StoreMaintenanceResourceBudget.shared.setCloudKitExport(
+                eventID: event.id,
+                active: event.endDate == nil
+            )
+        }
         let storeKind = storeKind(for: event.storeIdentifier)
         let id = event.id
         if let endedAt = event.endDate {
