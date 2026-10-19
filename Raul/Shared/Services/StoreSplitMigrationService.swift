@@ -195,7 +195,7 @@ struct StoreSplitMigrationRunPolicy: Sendable, Equatable {
         maximumActiveWorkTime: 25,
         maximumSlices: 20,
         minimumIdleTime: 2,
-        idleToWorkRatio: 0.2,
+        idleToWorkRatio: 2.0,
         maximumMemoryGrowth: 64 * 1024 * 1024,
         maximumFootprint: 900 * 1024 * 1024
     )
@@ -1124,8 +1124,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1221,8 +1221,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1317,8 +1317,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1485,8 +1485,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1618,8 +1618,8 @@ actor StoreSplitMigrationService {
                 outcome.delta.inserted += 1
             }
         }
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1773,8 +1773,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -1987,8 +1987,8 @@ actor StoreSplitMigrationService {
             return outcome
         }
 
-        guard save(destinationContext, result: &outcome.delta) else {
-            outcome.error = "destination_save_failed"
+        guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "destination_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -2409,8 +2409,8 @@ actor StoreSplitMigrationService {
                 ))
                 outcome.delta.inserted += 1
             }
-            guard save(destinationContext, result: &outcome.delta) else {
-                outcome.error = "destination_save_failed"
+            guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+                outcome.error = shouldContinue() ? "destination_save_failed" : nil
                 outcome.processed = 0
                 outcome.reachedEnd = false
                 cacheContext.rollback()
@@ -2559,8 +2559,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(cacheContext, result: &outcome.delta) else {
-            outcome.error = "ai_transcript_cache_save_failed"
+        guard save(cacheContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "ai_transcript_cache_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -2659,8 +2659,8 @@ actor StoreSplitMigrationService {
             }
         }
 
-        guard save(cacheContext, result: &outcome.delta) else {
-            outcome.error = "ai_chapter_cache_save_failed"
+        guard save(cacheContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
+            outcome.error = shouldContinue() ? "ai_chapter_cache_save_failed" : nil
             outcome.processed = 0
             outcome.reachedEnd = false
             return outcome
@@ -2965,9 +2965,14 @@ actor StoreSplitMigrationService {
     @discardableResult
     private static func save(
         _ context: ModelContext,
-        result: inout StoreSplitMigrationPhaseResult
+        result: inout StoreSplitMigrationPhaseResult,
+        shouldContinue: @Sendable () -> Bool
     ) -> Bool {
         guard context.hasChanges else { return true }
+        guard shouldContinue() else {
+            context.rollback()
+            return false
+        }
         do {
             try context.save()
             return true

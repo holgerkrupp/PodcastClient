@@ -46,6 +46,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
+        // Begin whole-process CPU accounting before any optional background
+        // maintenance is admitted later in this process lifetime.
+        _ = StoreMaintenanceResourceBudget.shared
         // A background launch reaches the container through whichever
         // BGTask asked for it, and must not do store work it was not
         // granted budget for.

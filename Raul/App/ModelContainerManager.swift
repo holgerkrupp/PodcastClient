@@ -1938,26 +1938,37 @@ class ModelContainerManager: ObservableObject {
             await resolveStoreSplitRolloutIfNeeded()
             if Self.hasPendingMigrationWork == false,
                Self.hasPendingLegacyAuthoritativeReconciliationWork {
-                _ = await runLegacyAuthoritativeReconciliationIfNeeded()
+                if let permit = acquireMaintenancePermit(
+                    operation: "legacy_authoritative_reconciliation"
+                ) {
+                    _ = await runLegacyAuthoritativeReconciliationIfNeeded()
+                    permit.release()
+                }
             }
             if Self.hasPendingBackgroundUserStateImport,
                Player.hasActivePlaybackInProcess == false,
                Task.isCancelled == false {
-                let result = await performSplitStoreReconcile(
-                    authoritativePlaylists: false,
-                    force: true,
-                    refreshMissingFeeds: true,
-                    reason: "cloud_import_background"
-                )
-                if result == .completed {
-                    Self.clearPendingBackgroundUserStateImport()
+                if let permit = acquireMaintenancePermit(operation: "user_state_reconciliation") {
+                    let result = await performSplitStoreReconcile(
+                        authoritativePlaylists: false,
+                        force: true,
+                        refreshMissingFeeds: true,
+                        reason: "cloud_import_background"
+                    )
+                    permit.release()
+                    if result == .completed {
+                        Self.clearPendingBackgroundUserStateImport()
+                    }
                 }
             }
             if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
                Self.hasPendingStoreSplitBackgroundWork,
                Player.hasActivePlaybackInProcess == false,
                Task.isCancelled == false {
-                await performFeedCachePrewarmIfPossible(feedLimit: 200)
+                if let permit = acquireMaintenancePermit(operation: "podcast_cache_prewarm") {
+                    await performFeedCachePrewarmIfPossible(feedLimit: 200)
+                    permit.release()
+                }
             }
             // All full-store maintenance enters through this system-granted
             // execution context. Each worker must checkpoint before yielding;
@@ -3044,6 +3055,15 @@ class ModelContainerManager: ObservableObject {
             return .blocked(reason)
         }
 
+        guard let maintenancePermit = StoreMaintenanceResourceBudget.shared.acquire(
+            operation: "store_split_migration",
+            playbackActive: Player.shared.isPlaying,
+            cloudKitExportActive: cloudKitExportInProgress()
+        ) else {
+            pendingSplitStoreWorkReason = "waiting for shared maintenance resource budget"
+            return .deferred(pendingSplitStoreWorkReason ?? "Resource budget unavailable")
+        }
+
         migrationError = nil
         migrationReadiness = .running
         migrationBlocker = nil
@@ -3071,6 +3091,7 @@ class ModelContainerManager: ObservableObject {
             var saveDuration: TimeInterval = 0
             var peakFootprint = runFootprintBefore
             var stopReason = "loop exited"
+            defer { maintenancePermit.release() }
             var executionResult: StoreSplitMigrationExecutionResult =
                 .deferred("Migration yielded before completion")
             var sliceCount = 0
@@ -3128,6 +3149,18 @@ class ModelContainerManager: ObservableObject {
                     stopReason = "playback started"
                     break
                 }
+                if let yieldReason = maintenancePermit.yieldReason(
+                    playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                    cloudKitExportActive: cloudKitExportInProgress()
+                ) {
+                    pendingSplitStoreWorkReason = "maintenance yielded: \(yieldReason)"
+                    executionResult = .deferred("Maintenance yielded: \(yieldReason)")
+                    stopReason = "resource budget: \(yieldReason)"
+                    if yieldReason.hasPrefix("cpu_") {
+                        scheduleMigrationRetry(after: Self.budgetExhaustedRetryDelay)
+                    }
+                    break
+                }
                 if migrationMayContinueInCurrentAppState() == false {
                     pendingSplitStoreWorkReason = "paused while app is in background"
                     executionResult = .deferred("Waiting for the app to return to the foreground")
@@ -3156,6 +3189,10 @@ class ModelContainerManager: ObservableObject {
                         Task.isCancelled == false
                             && StoreSplitPlaybackGate.shared.isActive == false
                             && StoreSplitMigrationSchedulePolicy.isEligibleNight(.now)
+                            && maintenancePermit.yieldReason(
+                                playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                                cloudKitExportActive: false
+                            ) == nil
                     }
                 )
                 applyMigrationSliceTelemetry(
@@ -3334,6 +3371,15 @@ class ModelContainerManager: ObservableObject {
         }
         exportWasInProgress = inProgress
         return inProgress
+    }
+
+    private func acquireMaintenancePermit(operation: String) -> StoreMaintenancePermit? {
+        StoreMaintenanceResourceBudget.shared.acquire(
+            operation: operation,
+            playbackActive: Player.hasActivePlaybackInProcess
+                || StoreSplitPlaybackGate.shared.isActive,
+            cloudKitExportActive: cloudKitExportInProgress()
+        )
     }
 
     private func applyMigrationSliceTelemetry(

@@ -86,21 +86,76 @@ final class StoreSplitDurableStoreTests: XCTestCase {
 
     func testMigrationSliceBudgetBoundsMutationsAndWallTime() {
         let budget = StoreWorkBudget.migrationSlice
-        XCTAssertLessThanOrEqual(budget.maximumMutations, 40)
+        XCTAssertEqual(budget.maximumMutations, 160)
         XCTAssertLessThanOrEqual(budget.maximumSaves, 2)
-        XCTAssertEqual(budget.maximumWallTime, .seconds(2))
+        XCTAssertEqual(budget.maximumWallTime, .seconds(4))
     }
 
     func testBackgroundMigrationUsesAnActiveWorkAndIdleBudget() {
         let policy = StoreSplitMigrationRunPolicy.background
 
-        XCTAssertEqual(policy.maximumWallTime, 20)
-        XCTAssertEqual(policy.maximumActiveWorkTime, 6)
-        XCTAssertEqual(policy.maximumSlices, 3)
-        XCTAssertEqual(policy.idleDuration(after: 2), 4)
+        XCTAssertEqual(policy.maximumWallTime, 120)
+        XCTAssertEqual(policy.maximumActiveWorkTime, 25)
+        XCTAssertEqual(policy.maximumSlices, 20)
+        XCTAssertEqual(policy.idleDuration(after: 10), 20)
         XCTAssertGreaterThan(policy.maximumWallTime, policy.maximumActiveWorkTime)
         XCTAssertGreaterThan(policy.minimumIdleTime, 0)
         XCTAssertGreaterThanOrEqual(policy.idleToWorkRatio, 2)
+    }
+
+    func testProcessCPUResourceBudgetSerializesWorkAndYieldsToPlaybackAndExport() {
+        let source = MutableProcessCPUTimeSource()
+        let budget = StoreMaintenanceResourceBudget(source: source)
+
+        let migration = budget.acquire(
+            operation: "migration",
+            playbackActive: false,
+            cloudKitExportActive: false
+        )
+        XCTAssertNotNil(migration)
+        XCTAssertNil(budget.acquire(
+            operation: "reconcile",
+            playbackActive: false,
+            cloudKitExportActive: false
+        ))
+        XCTAssertEqual(migration?.yieldReason(
+            playbackActive: true,
+            cloudKitExportActive: false
+        ), "playback")
+        XCTAssertEqual(migration?.yieldReason(
+            playbackActive: false,
+            cloudKitExportActive: true
+        ), "export_busy")
+        migration?.release()
+        XCTAssertNil(budget.acquire(
+            operation: "prewarm",
+            playbackActive: true,
+            cloudKitExportActive: false
+        ))
+    }
+
+    func testProcessCPUResourceBudgetAppliesCooldownAfterHighDutyCycle() {
+        let source = MutableProcessCPUTimeSource()
+        let budget = StoreMaintenanceResourceBudget(source: source)
+        let permit = budget.acquire(
+            operation: "migration",
+            playbackActive: false,
+            cloudKitExportActive: false
+        )
+        XCTAssertNotNil(permit)
+
+        source.advance(wall: 6, cpu: 6)
+        XCTAssertEqual(permit?.yieldReason(
+            playbackActive: false,
+            cloudKitExportActive: false
+        ), "cpu_budget")
+        permit?.release()
+
+        XCTAssertNil(budget.acquire(
+            operation: "reconcile",
+            playbackActive: false,
+            cloudKitExportActive: false
+        ))
     }
 
     func testBackgroundMigrationStopsForMemoryGrowthOrAbsoluteFootprint() {
@@ -438,6 +493,26 @@ final class StoreSplitDurableStoreTests: XCTestCase {
                 cacheContainer: cache
             ))
         }
+    }
+}
+
+private final class MutableProcessCPUTimeSource: ProcessCPUTimeSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current = ProcessCPUSample(uptime: 1_000, cpuTime: 100)
+
+    func sample() -> ProcessCPUSample {
+        lock.lock()
+        defer { lock.unlock() }
+        return current
+    }
+
+    func advance(wall: TimeInterval, cpu: TimeInterval) {
+        lock.lock()
+        current = ProcessCPUSample(
+            uptime: current.uptime + wall,
+            cpuTime: current.cpuTime + cpu
+        )
+        lock.unlock()
     }
 }
 
