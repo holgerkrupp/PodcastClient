@@ -263,9 +263,9 @@ final class BookmarkSync: Identifiable {
     }
 }
 
-/// Portable playback and presentation preferences. Device policy such as
-/// downloads, network selection, transcription capability, voices, diagnostics,
-/// and the currently selected playlist deliberately stay out of this record.
+/// Portable playback and presentation preferences plus per-feed download
+/// policy. Downloaded files, diagnostics, voices, transcription capability,
+/// and the currently selected playlist remain device-local.
 /// A row is either global (`feedURL == nil`) or scoped to one normalized feed.
 @Model
 final class PodcastPreferenceSync: Identifiable {
@@ -273,7 +273,16 @@ final class PodcastPreferenceSync: Identifiable {
     var feedURL: String?
     var isEnabled: Bool = true
     var playNextPositionRawValue: String = ""
+    /// PlaylistSync identity; import maps it back to this device's local UUID.
     var defaultPlaylistID: String?
+    // Optional so records written by older app versions preserve the local value
+    // when imported instead of resetting it to a model default.
+    var autoDownload: Bool?
+    var autoDownloadEpisodeCount: Int?
+    var autoDownloadSelectionRawValue: String?
+    var autoDownloadNetworkModeRawValue: String?
+    var autoDownloadIncludesArchivedEpisodes: Bool?
+    var archiveFileRetentionDays: Int?
     var playbackSpeed: Double?
     var reduceSilenceGapsEnabled: Bool = false
     var silenceGapReductionLevelRawValue: String?
@@ -305,6 +314,12 @@ final class PodcastPreferenceSync: Identifiable {
         isEnabled: Bool = true,
         playNextPositionRawValue: String = "",
         defaultPlaylistID: String? = nil,
+        autoDownload: Bool? = nil,
+        autoDownloadEpisodeCount: Int? = nil,
+        autoDownloadSelectionRawValue: String? = nil,
+        autoDownloadNetworkModeRawValue: String? = nil,
+        autoDownloadIncludesArchivedEpisodes: Bool? = nil,
+        archiveFileRetentionDays: Int? = nil,
         playbackSpeed: Double? = nil,
         reduceSilenceGapsEnabled: Bool = false,
         silenceGapReductionLevelRawValue: String? = nil,
@@ -337,6 +352,12 @@ final class PodcastPreferenceSync: Identifiable {
         self.isEnabled = isEnabled
         self.playNextPositionRawValue = playNextPositionRawValue
         self.defaultPlaylistID = defaultPlaylistID
+        self.autoDownload = autoDownload
+        self.autoDownloadEpisodeCount = autoDownloadEpisodeCount
+        self.autoDownloadSelectionRawValue = autoDownloadSelectionRawValue
+        self.autoDownloadNetworkModeRawValue = autoDownloadNetworkModeRawValue
+        self.autoDownloadIncludesArchivedEpisodes = autoDownloadIncludesArchivedEpisodes
+        self.archiveFileRetentionDays = archiveFileRetentionDays
         self.playbackSpeed = playbackSpeed
         self.reduceSilenceGapsEnabled = reduceSilenceGapsEnabled
         self.silenceGapReductionLevelRawValue = silenceGapReductionLevelRawValue

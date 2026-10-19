@@ -1279,7 +1279,10 @@ actor EpisodeActor {
         
     }
     
-    func processAfterCreation(episodeURL: URL) async {
+    func processAfterCreation(
+        episodeURL: URL,
+        sendNotification: Bool = true
+    ) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
             return }
         
@@ -1293,20 +1296,59 @@ actor EpisodeActor {
      */
         
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
-        let playnext = await settingsActor.getPlaynextposition(for: episode.podcast?.feed)
-        let playlistID = await settingsActor.getDefaultPlaylistID(for: episode.podcast?.feed)
+        let routing = await settingsActor.automaticEpisodeRouting(for: episode.podcast?.feed)
+        let playnext = routing.position
         print("Processing episode: \(episode.title) - playnext Status is \(playnext)")
 
         if playnext != .none {
-            let playlistActor = playlistActor(for: playlistID)
-            try? await playlistActor?.add(
-                episodeURL: episodeURL,
-                to: playnext,
-                origin: .automatic
-            )
+            var playlistActor = routing.playlistID.flatMap { playlistID in
+                try? PlaylistModelActor(modelContainer: modelContainer, playlistID: playlistID)
+            }
+            if playlistActor == nil {
+                playlistActor = try? PlaylistModelActor(
+                    modelContainer: modelContainer,
+                    playlistTitle: Playlist.defaultQueueTitle
+                )
+            }
+
+            var insertionError: Error?
+            if let playlistActor {
+                // Playlist insertion is idempotent, so retrying a transient
+                // store failure cannot create a second queue entry.
+                for attempt in 0..<3 {
+                    do {
+                        try await playlistActor.add(
+                            episodeURL: episodeURL,
+                            to: playnext,
+                            origin: .automatic
+                        )
+                        insertionError = nil
+                        break
+                    } catch {
+                        insertionError = error
+                        if attempt < 2 {
+                            try? await Task.sleep(for: .milliseconds(150 * (attempt + 1)))
+                        }
+                    }
+                }
+            } else {
+                insertionError = NSError(
+                    domain: "EpisodeActor",
+                    code: 503,
+                    userInfo: [NSLocalizedDescriptionKey: "Could not resolve the target playlist"]
+                )
+            }
+            if let error = insertionError {
+                CrashBreadcrumbs.shared.record(
+                    "episode_automatic_playlist_insert_failed",
+                    details: "code=\((error as NSError).code)"
+                )
+            }
         }
 
-        await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)
+        if sendNotification {
+            await NotificationManager().sendNotification(title: episode.displayPodcastTitle ?? "New Episode", body: episode.title)
+        }
         Self.scheduleRemoteChapterFetch(episodeURL: episodeURL, modelContainer: modelContainer)
     }
     

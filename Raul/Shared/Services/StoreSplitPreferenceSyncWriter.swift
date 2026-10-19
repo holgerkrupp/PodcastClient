@@ -6,6 +6,12 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
     var isEnabled: Bool
     var playNextPositionRawValue: String
     var defaultPlaylistID: String?
+    var autoDownload: Bool?
+    var autoDownloadEpisodeCount: Int?
+    var autoDownloadSelectionRawValue: String?
+    var autoDownloadNetworkModeRawValue: String?
+    var autoDownloadIncludesArchivedEpisodes: Bool?
+    var archiveFileRetentionDays: Int?
     var playbackSpeed: Double?
     var reduceSilenceGapsEnabled: Bool
     var silenceGapReductionLevelRawValue: String?
@@ -32,7 +38,8 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
 
     static func make(
         settings: PodcastSettings,
-        feedURL: URL?
+        feedURL: URL?,
+        defaultPlaylistSyncID: String? = nil
     ) -> PortablePodcastPreferenceSnapshot {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -45,7 +52,15 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             feedURL: feedURL,
             isEnabled: settings.isEnabled,
             playNextPositionRawValue: position,
-            defaultPlaylistID: settings.defaultPlaylistID?.uuidString,
+            defaultPlaylistID: settings.defaultPlaylistID.map {
+                defaultPlaylistSyncID ?? $0.uuidString
+            },
+            autoDownload: settings.autoDownload,
+            autoDownloadEpisodeCount: settings.autoDownloadEpisodeCount,
+            autoDownloadSelectionRawValue: settings.autoDownloadSelectionRawValue,
+            autoDownloadNetworkModeRawValue: settings.autoDownloadNetworkModeRawValue,
+            autoDownloadIncludesArchivedEpisodes: settings.autoDownloadIncludesArchivedEpisodes,
+            archiveFileRetentionDays: settings.archiveFileRetentionDays,
             playbackSpeed: settings.playbackSpeed.map(Double.init),
             reduceSilenceGapsEnabled: settings.reduceSilenceGapsEnabled,
             silenceGapReductionLevelRawValue: settings.silenceGapReductionLevelRawValue,
@@ -83,6 +98,12 @@ actor StoreSplitPreferenceSyncWriter {
             isEnabled: value.isEnabled,
             playNextPositionRawValue: value.playNextPositionRawValue,
             defaultPlaylistID: value.defaultPlaylistID,
+            autoDownload: value.autoDownload,
+            autoDownloadEpisodeCount: value.autoDownloadEpisodeCount,
+            autoDownloadSelectionRawValue: value.autoDownloadSelectionRawValue,
+            autoDownloadNetworkModeRawValue: value.autoDownloadNetworkModeRawValue,
+            autoDownloadIncludesArchivedEpisodes: value.autoDownloadIncludesArchivedEpisodes,
+            archiveFileRetentionDays: value.archiveFileRetentionDays,
             playbackSpeed: value.playbackSpeed,
             reduceSilenceGapsEnabled: value.reduceSilenceGapsEnabled,
             silenceGapReductionLevelRawValue: value.silenceGapReductionLevelRawValue,
@@ -123,6 +144,12 @@ actor StoreSplitPreferenceSyncWriter {
                 current.isEnabled = candidate.isEnabled
                 current.playNextPositionRawValue = candidate.playNextPositionRawValue
                 current.defaultPlaylistID = candidate.defaultPlaylistID
+                current.autoDownload = candidate.autoDownload
+                current.autoDownloadEpisodeCount = candidate.autoDownloadEpisodeCount
+                current.autoDownloadSelectionRawValue = candidate.autoDownloadSelectionRawValue
+                current.autoDownloadNetworkModeRawValue = candidate.autoDownloadNetworkModeRawValue
+                current.autoDownloadIncludesArchivedEpisodes = candidate.autoDownloadIncludesArchivedEpisodes
+                current.archiveFileRetentionDays = candidate.archiveFileRetentionDays
                 current.playbackSpeed = candidate.playbackSpeed
                 current.reduceSilenceGapsEnabled = candidate.reduceSilenceGapsEnabled
                 current.silenceGapReductionLevelRawValue = candidate.silenceGapReductionLevelRawValue

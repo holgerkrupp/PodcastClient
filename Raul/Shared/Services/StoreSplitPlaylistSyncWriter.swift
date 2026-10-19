@@ -105,6 +105,14 @@ extension Playlist {
 /// Entry order comes from SQLite; no `Playlist.items` relationship sorting or
 /// model access occurs after this function returns.
 enum StoreSplitPlaylistSnapshotBuilder {
+    static func syncID(for playlistID: UUID?, in context: ModelContext) -> String? {
+        guard let playlistID else { return nil }
+        let descriptor = FetchDescriptor<Playlist>(
+            predicate: #Predicate<Playlist> { $0.id == playlistID }
+        )
+        return (try? context.fetch(descriptor).first)?.storeSplitSyncID ?? playlistID.uuidString
+    }
+
     static func build(playlistID: UUID, in context: ModelContext) throws -> StoreSplitPlaylistSnapshot? {
         let playlistDescriptor = FetchDescriptor<Playlist>(
             predicate: #Predicate<Playlist> { $0.id == playlistID }

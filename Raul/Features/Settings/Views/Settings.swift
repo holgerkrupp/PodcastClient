@@ -115,6 +115,36 @@ class PodcastSettings {
         }
     }
 
+    /// Creates enabled podcast settings using the current global values for
+    /// every preference that can be customized per podcast. Global-only
+    /// controls deliberately remain global.
+    static func makeCustomSettings(for podcast: Podcast, inheriting global: PodcastSettings) -> PodcastSettings {
+        let settings = PodcastSettings(podcast: podcast)
+        settings.isEnabled = true
+        settings.playbackSpeed = global.playbackSpeed
+        settings.reduceSilenceGapsEnabled = global.reduceSilenceGapsEnabled
+        settings.silenceGapReductionLevel = global.silenceGapReductionLevel
+        settings.voiceEnhancementEnabled = global.voiceEnhancementEnabled
+        settings.cutFront = global.cutFront ?? 0
+        settings.cutEnd = global.cutEnd ?? 0
+        settings.skipForward = global.skipForward
+        settings.skipBack = global.skipBack
+        settings.skipForwardBehavior = global.skipForwardBehavior
+        settings.skipBackBehavior = global.skipBackBehavior
+        settings.playnextPosition = global.playnextPosition
+        settings.autoSkipKeywords = global.autoSkipKeywords
+        settings.autoDownload = global.autoDownload
+        settings.autoDownloadEpisodeCount = global.autoDownloadEpisodeCount
+        settings.autoDownloadSelection = global.autoDownloadSelection
+        settings.autoDownloadNetworkMode = global.autoDownloadNetworkMode
+        settings.autoDownloadIncludesArchivedEpisodes = global.autoDownloadIncludesArchivedEpisodes
+        settings.autoDownloadFilterJSON = global.autoDownloadFilterJSON
+        settings.defaultPlaylistID = global.defaultPlaylistID
+        settings.archiveFileRetentionDays = global.archiveFileRetentionDays
+        settings.enableLiveItemNotifications = global.enableLiveItemNotifications
+        return settings
+    }
+
     var autoDownloadSelection: AutoDownloadSelection {
         get {
             AutoDownloadSelection(rawValue: autoDownloadSelectionRawValue ?? "") ?? .newestUnplayed

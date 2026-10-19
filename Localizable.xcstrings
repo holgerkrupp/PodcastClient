@@ -23582,6 +23582,38 @@
         }
       }
     },
+    "Restore Custom" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individuelle Einstellungen wiederherstellen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurer les paramètres personnalisés"
+          }
+        }
+      }
+    },
+    "Saved custom settings are inactive" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte individuelle Einstellungen sind inaktiv"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les paramètres personnalisés enregistrés sont inactifs"
+          }
+        }
+      }
+    },
     "Use Custom" : {
       "localizations" : {
         "de" : {

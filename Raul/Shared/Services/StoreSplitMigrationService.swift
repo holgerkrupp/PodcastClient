@@ -1565,13 +1565,24 @@ actor StoreSplitMigrationService {
                 isEnabled: setting.isEnabled,
                 playNextPositionRawValue: (try? encoder.encode(setting.playnextPosition))
                     .map { String(decoding: $0, as: UTF8.self) } ?? "",
-                defaultPlaylistID: setting.defaultPlaylistID?.uuidString,
+                defaultPlaylistID: setting.defaultPlaylistID.flatMap { playlistID in
+                    (try? legacyContext.fetch(FetchDescriptor<Playlist>(
+                        predicate: #Predicate { $0.id == playlistID }
+                    )))?.first?.storeSplitSyncID
+                },
+                autoDownload: setting.autoDownload,
+                autoDownloadEpisodeCount: setting.autoDownloadEpisodeCount,
+                autoDownloadSelectionRawValue: setting.autoDownloadSelectionRawValue,
+                autoDownloadNetworkModeRawValue: setting.autoDownloadNetworkModeRawValue,
+                autoDownloadIncludesArchivedEpisodes: setting.autoDownloadIncludesArchivedEpisodes,
+                archiveFileRetentionDays: setting.archiveFileRetentionDays,
                 playbackSpeed: setting.playbackSpeed.map(Double.init),
                 reduceSilenceGapsEnabled: setting.reduceSilenceGapsEnabled,
                 silenceGapReductionLevelRawValue: setting.silenceGapReductionLevelRawValue,
                 voiceEnhancementEnabled: setting.voiceEnhancementEnabled,
                 autoSkipKeywordsJSON: (try? encoder.encode(setting.autoSkipKeywords))
                     .map { String(decoding: $0, as: UTF8.self) } ?? "[]",
+                autoDownloadFilterJSON: setting.autoDownloadFilterJSON,
                 cutFront: setting.cutFront.map(Double.init),
                 cutEnd: setting.cutEnd.map(Double.init),
                 skipForwardSeconds: setting.skipForward.rawValue,
@@ -1628,6 +1639,13 @@ actor StoreSplitMigrationService {
         destination.isEnabled = source.isEnabled
         destination.playNextPositionRawValue = source.playNextPositionRawValue
         destination.defaultPlaylistID = source.defaultPlaylistID
+        destination.autoDownload = source.autoDownload
+        destination.autoDownloadEpisodeCount = source.autoDownloadEpisodeCount
+        destination.autoDownloadSelectionRawValue = source.autoDownloadSelectionRawValue
+        destination.autoDownloadNetworkModeRawValue = source.autoDownloadNetworkModeRawValue
+        destination.autoDownloadIncludesArchivedEpisodes = source.autoDownloadIncludesArchivedEpisodes
+        destination.archiveFileRetentionDays = source.archiveFileRetentionDays
+        destination.autoDownloadFilterJSON = source.autoDownloadFilterJSON
         destination.playbackSpeed = source.playbackSpeed
         destination.reduceSilenceGapsEnabled = source.reduceSilenceGapsEnabled
         destination.silenceGapReductionLevelRawValue = source.silenceGapReductionLevelRawValue

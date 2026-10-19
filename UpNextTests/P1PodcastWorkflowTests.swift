@@ -183,10 +183,29 @@ final class P1PodcastWorkflowTests: XCTestCase {
 
     func testPortableSettingsSnapshotIncludesAutomaticDownloadRules() {
         let settings = PodcastSettings(defaultSettings: true)
+        settings.autoDownload = true
+        settings.autoDownloadEpisodeCount = 8
+        settings.autoDownloadSelection = .oldestUnplayed
+        settings.autoDownloadNetworkMode = .wifiOnly
+        settings.autoDownloadIncludesArchivedEpisodes = false
+        settings.archiveFileRetentionDays = 23
         settings.autoDownloadFilter = AutoDownloadEpisodeFilter(excludedKeywords: ["spoiler"])
+        settings.defaultPlaylistID = UUID()
 
-        let snapshot = PortablePodcastPreferenceSnapshot.make(settings: settings, feedURL: nil)
+        let stablePlaylistID = "shared-playlist-identity"
+        let snapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: nil,
+            defaultPlaylistSyncID: stablePlaylistID
+        )
 
+        XCTAssertEqual(snapshot.autoDownload, true)
+        XCTAssertEqual(snapshot.autoDownloadEpisodeCount, 8)
+        XCTAssertEqual(snapshot.autoDownloadSelectionRawValue, AutoDownloadSelection.oldestUnplayed.rawValue)
+        XCTAssertEqual(snapshot.autoDownloadNetworkModeRawValue, AutoDownloadNetworkMode.wifiOnly.rawValue)
+        XCTAssertEqual(snapshot.autoDownloadIncludesArchivedEpisodes, false)
+        XCTAssertEqual(snapshot.archiveFileRetentionDays, 23)
+        XCTAssertEqual(snapshot.defaultPlaylistID, stablePlaylistID)
         XCTAssertEqual(
             snapshot.autoDownloadFilterJSON.flatMap { $0.data(using: .utf8) }
                 .flatMap { try? JSONDecoder().decode(AutoDownloadEpisodeFilter.self, from: $0) },

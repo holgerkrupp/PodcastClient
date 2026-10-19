@@ -30,6 +30,11 @@ struct AutoDownloadPolicySnapshot: Sendable {
     let episodeFilter: AutoDownloadEpisodeFilter
 }
 
+struct AutomaticEpisodeRoutingSnapshot: Sendable {
+    let position: Playlist.Position
+    let playlistID: UUID?
+}
+
 @ModelActor
 actor PodcastSettingsModelActor {
     private static let includeArchivedEpisodesMigrationKey = "PodcastSettings.autoDownloadIncludesArchivedEpisodes.v1"
@@ -341,30 +346,8 @@ actor PodcastSettingsModelActor {
             }
             settings.podcast = podcast
         } else {
-            let newSettings = PodcastSettings(podcast: podcast)
             let standardSettings = await standardSettings()
-            newSettings.isEnabled = true
-            newSettings.playbackSpeed = standardSettings.playbackSpeed
-            newSettings.reduceSilenceGapsEnabled = standardSettings.reduceSilenceGapsEnabled
-            newSettings.silenceGapReductionLevel = standardSettings.silenceGapReductionLevel
-            newSettings.voiceEnhancementEnabled = standardSettings.voiceEnhancementEnabled
-            newSettings.cutFront = standardSettings.cutFront ?? 0
-            newSettings.cutEnd = standardSettings.cutEnd ?? 0
-            newSettings.skipForward = standardSettings.skipForward
-            newSettings.skipBack = standardSettings.skipBack
-            newSettings.skipForwardBehavior = standardSettings.skipForwardBehavior
-            newSettings.skipBackBehavior = standardSettings.skipBackBehavior
-            newSettings.playnextPosition = standardSettings.playnextPosition
-            newSettings.autoSkipKeywords = standardSettings.autoSkipKeywords
-            newSettings.autoDownload = standardSettings.autoDownload
-            newSettings.autoDownloadEpisodeCount = standardSettings.autoDownloadEpisodeCount
-            newSettings.autoDownloadSelection = standardSettings.autoDownloadSelection
-            newSettings.autoDownloadNetworkMode = standardSettings.autoDownloadNetworkMode
-            newSettings.autoDownloadIncludesArchivedEpisodes = standardSettings.autoDownloadIncludesArchivedEpisodes
-            newSettings.defaultPlaylistID = standardSettings.defaultPlaylistID
-            newSettings.archiveFileRetentionDays = standardSettings.archiveFileRetentionDays
-            newSettings.showLivePodcasts = standardSettings.showLivePodcasts
-            newSettings.enableLiveItemNotifications = standardSettings.enableLiveItemNotifications
+            let newSettings = PodcastSettings.makeCustomSettings(for: podcast, inheriting: standardSettings)
             modelContext.insert(newSettings)
             podcast.settings = newSettings
         }
@@ -565,6 +548,45 @@ actor PodcastSettingsModelActor {
 
         return await standardSettings().defaultPlaylistID
     }
+
+    /// Resolves automatic episode routing in one actor turn so a settings
+    /// change cannot pair a position from one preference read with a playlist
+    /// from another. Invalid, deleted, and smart playlist targets fall back to
+    /// the built-in manual queue. `.none` deliberately has no target.
+    func automaticEpisodeRouting(for podcastFeed: URL?) async -> AutomaticEpisodeRoutingSnapshot {
+        do {
+            let globalSettings = try fetchOrCreateStandardSettings()
+            let defaultQueueID = try defaultQueueID()
+            let customSettings = try podcastFeed.flatMap { try fetchPodcastSettingsSync(for: $0) }
+            let position = customSettings?.playnextPosition ?? globalSettings.playnextPosition
+            guard position != .none else {
+                return AutomaticEpisodeRoutingSnapshot(position: .none, playlistID: nil)
+            }
+
+            var targetID = customSettings?.defaultPlaylistID
+                ?? globalSettings.defaultPlaylistID
+                ?? defaultQueueID
+            if (try? manualPlaylistExists(id: targetID)) != true {
+                targetID = defaultQueueID
+            }
+            return AutomaticEpisodeRoutingSnapshot(position: position, playlistID: targetID)
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "episode_automatic_routing_settings_failed",
+                details: "code=\((error as NSError).code)"
+            )
+            return AutomaticEpisodeRoutingSnapshot(position: .none, playlistID: nil)
+        }
+    }
+
+    private func fetchPodcastSettingsSync(for podcastFeed: URL) throws -> PodcastSettings? {
+        let predicate = #Predicate<PodcastSettings> { setting in
+            setting.podcast?.feed == podcastFeed && setting.isEnabled == true
+        }
+        var descriptor = FetchDescriptor<PodcastSettings>(predicate: predicate)
+        descriptor.fetchLimit = 1
+        return try modelContext.fetch(descriptor).first
+    }
     
     func getContiniousPlay() async -> Bool{
         return await standardSettings().getContinuousPlay
@@ -757,7 +779,11 @@ actor PodcastSettingsModelActor {
         let publicationDate = Date.now
         let snapshot = PortablePodcastPreferenceSnapshot.make(
             settings: settings,
-            feedURL: feedURL
+            feedURL: feedURL,
+            defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                for: settings.defaultPlaylistID,
+                in: modelContext
+            )
         )
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {

@@ -139,6 +139,43 @@ struct PodcastUpdateSummary: Sendable {
     }
 }
 
+/// Value-only work collected while a feed graph is being committed. URLs are
+/// resolved again by `EpisodeActor` after the feed writer has been released.
+struct PodcastEpisodeImportResult: Sendable {
+    var newEpisodeCount = 0
+    var postCreationEpisodeURLs: [URL] = []
+}
+
+enum PodcastEpisodeImportClassification: Sendable, Equatable {
+    case newlyPublished
+    case backCatalog
+
+    static func isEstablishedSubscription(
+        lastSuccessfulRefresh: Date?,
+        knownEpisodeCount: Int
+    ) -> Bool {
+        lastSuccessfulRefresh != nil && knownEpisodeCount > 0
+    }
+
+    static func classify(
+        publishDate: Date?,
+        subscriptionDate: Date?,
+        lastSuccessfulRefresh: Date?,
+        knownEpisodeCount: Int
+    ) -> PodcastEpisodeImportClassification {
+        guard isEstablishedSubscription(
+            lastSuccessfulRefresh: lastSuccessfulRefresh,
+            knownEpisodeCount: knownEpisodeCount
+        ) else {
+            return .backCatalog
+        }
+
+        let subscriptionBaseline = subscriptionDate
+            ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7)
+        return (publishDate ?? Date()) < subscriptionBaseline ? .backCatalog : .newlyPublished
+    }
+}
+
 enum PodcastSubscriptionMutationError: LocalizedError {
     case missingPodcast
     case authoritativeStoreUnavailable
@@ -1565,7 +1602,7 @@ actor PodcastModelActor {
                         in: seedFeed
                     )
                     seededEpisodeRows = seedImport["episodes"] as? [[String: Any]] ?? []
-                    initialPageNewEpisodeCount = try await updateDetails(
+                    let seedImportResult = try await updateDetails(
                         seedPodcast,
                         fullPodcast: seedImport,
                         silent: true,
@@ -1575,12 +1612,18 @@ actor PodcastModelActor {
                         writerAlreadyHeld: true,
                         updateCache: false
                     )
+                    initialPageNewEpisodeCount = seedImportResult.newEpisodeCount
+                    let seedPostCreationURLs = seedImportResult.postCreationEpisodeURLs
                     modelContext.saveIfNeeded()
+                    await commitCoordinator.release()
+                    await processCommittedNewEpisodes(
+                        seedPostCreationURLs,
+                        sendNotifications: silent != true || processNewEpisodesDuringSilentRefresh
+                    )
                 } catch {
                     await commitCoordinator.release()
                     throw error
                 }
-                await commitCoordinator.release()
                 if let checkpoint = resolvedInitialPage.nextPageURL {
                     await PodcastEpisodeImportRetryQueue.shared.checkpoint(
                         feedURL: feedURL,
@@ -1677,9 +1720,9 @@ actor PodcastModelActor {
             let databaseStartedAt = ContinuousClock.now
             let writeSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
             os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
-            let newEpisodeCount: Int
+            let importResult: PodcastEpisodeImportResult
             do {
-                newEpisodeCount = try await updateDetails(
+                importResult = try await updateDetails(
                     finalPodcast,
                     fullPodcast: importPodcast,
                     silent: silent,
@@ -1695,6 +1738,7 @@ actor PodcastModelActor {
                 os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
                 throw error
             }
+            let newEpisodeCount = importResult.newEpisodeCount
             let totalNewEpisodeCount = initialPageNewEpisodeCount + newEpisodeCount
 
             var enrichmentSources: [String] = []
@@ -1771,6 +1815,10 @@ actor PodcastModelActor {
             )
             writerHeld = false
             await commitCoordinator.release()
+            await processCommittedNewEpisodes(
+                importResult.postCreationEpisodeURLs,
+                sendNotifications: silent != true || processNewEpisodesDuringSilentRefresh
+            )
             await ShownoteEnrichmentService.shared.enqueue(htmlSources: enrichmentSources)
             if importIsPartial {
                 await PodcastHTTPValidatorStore.shared.invalidate(for: feedURL, profile: accessProfile)
@@ -1842,6 +1890,32 @@ actor PodcastModelActor {
         }
     }
 
+    /// Run queueing and other post-creation work only after the feed graph is
+    /// durable and its global writer is free. The task captures stable URLs,
+    /// never SwiftData models, and is detached so refresh cancellation or a
+    /// background expiration after commit cannot discard already committed work.
+    private func processCommittedNewEpisodes(
+        _ episodeURLs: [URL],
+        sendNotifications: Bool
+    ) async {
+        guard episodeURLs.isEmpty == false else { return }
+        let container = modelContainer
+        let batches = stride(from: 0, to: episodeURLs.count, by: 100).map { start in
+            Array(episodeURLs[start..<min(start + 100, episodeURLs.count)])
+        }
+        await Task.detached(priority: .utility) {
+            let actor = EpisodeActor(modelContainer: container)
+            for batch in batches {
+                for url in batch {
+                    await actor.processAfterCreation(
+                        episodeURL: url,
+                        sendNotification: sendNotifications
+                    )
+                }
+            }
+        }.value
+    }
+
     private func reconcileLiveNotifications(for podcast: Podcast) async {
         guard let feed = podcast.feed else { return }
         let descriptor = FetchDescriptor<PodcastSettings>(
@@ -1867,7 +1941,7 @@ actor PodcastModelActor {
         progress: SubscriptionProgressHandler? = nil,
         writerAlreadyHeld: Bool = false,
         updateCache: Bool = true
-    ) async throws -> Int {
+    ) async throws -> PodcastEpisodeImportResult {
         let commitCoordinator = PodcastFeedCommitCoordinator.shared
         if writerAlreadyHeld == false {
             let writerWaitStartedAt = ContinuousClock.now
@@ -1894,7 +1968,7 @@ actor PodcastModelActor {
             os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast updateDetails", signpostID: detailsSignpostID)
         }
         print("updateDetails for \(podcast.title)")
-        var newEpisodeCount = 0
+        var importResult = PodcastEpisodeImportResult()
         var feedDataChanged = false
 
         podcast.title = fullPodcast["title"] as? String ?? ""
@@ -1993,10 +2067,14 @@ actor PodcastModelActor {
             let podcastTitle = podcast.title.trimmingCharacters(in: .whitespacesAndNewlines)
             let progressPodcastTitle = podcastTitle.isEmpty ? "podcast" : podcastTitle
             var unsavedSilentEpisodeChanges = 0
-            let shouldProcessNewEpisodes = (silent != true || processNewEpisodesDuringSilentRefresh)
-                && podcast.metaData?.lastRefresh != nil
-                && (podcast.episodes?.isEmpty == false)
+            // Silence controls UI and notification behavior. It must not
+            // change whether a newly published episode on an established
+            // subscription is classified as new or as back catalog.
             let existingEpisodes = podcast.episodes ?? []
+            let shouldProcessNewEpisodes = PodcastEpisodeImportClassification.isEstablishedSubscription(
+                lastSuccessfulRefresh: podcast.metaData?.lastRefresh,
+                knownEpisodeCount: existingEpisodes.count
+            )
             var existingEpisodesByGUID: [String: Episode] = [:]
             var existingEpisodesByURL: [URL: Episode] = [:]
             for episode in existingEpisodes {
@@ -2103,13 +2181,19 @@ actor PodcastModelActor {
                 print("newly created")
                 modelContext.insert(episode)
                 feedDataChanged = true
-                newEpisodeCount += 1
+                importResult.newEpisodeCount += 1
                 if let guid = episode.guid, guid.isEmpty == false {
                     existingEpisodesByGUID[guid] = episode
                 }
                 if let url = episode.url {
                     existingEpisodesByURL[url] = episode
                 }
+                let classification = PodcastEpisodeImportClassification.classify(
+                    publishDate: episode.publishDate,
+                    subscriptionDate: episode.podcast?.metaData?.subscriptionDate,
+                    lastSuccessfulRefresh: podcast.metaData?.lastRefresh,
+                    knownEpisodeCount: existingEpisodes.count
+                )
                 if shouldProcessNewEpisodes {
                     await fillMissingRemoteMP3DurationIfNeeded(
                         episodeID: episode.persistentModelID,
@@ -2119,22 +2203,18 @@ actor PodcastModelActor {
                 }
 
                 if shouldProcessNewEpisodes {
-                    print("NOT SILENT")
-                    if episode.publishDate ?? Date() < episode.podcast?.metaData?.subscriptionDate ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7) {
+                    if classification == .backCatalog {
                         print("episode is old")
                         suppressFromInbox(episode, reason: .backCatalogImport)
                         modelContext.saveIfNeeded()
                     } else {
                         print("episode is new")
                         if let episodeURL = episode.url {
+                            importResult.postCreationEpisodeURLs.append(episodeURL)
                             modelContext.saveIfNeeded()
-                            // Defer playlist, notification, and chapter work
-                            // until the graph writer is released. Inbox changes
-                            // are broadcast once after this feed is committed.
                         }
                     }
                 } else {
-                    print("SILENT")
                     suppressFromInbox(episode, reason: .backCatalogImport)
                     unsavedSilentEpisodeChanges += 1
 
@@ -2173,7 +2253,7 @@ actor PodcastModelActor {
             }
         }
 
-        return newEpisodeCount
+        return importResult
     }
 
     /// Mirror this feed's feed-derivable data into the local-only cache store

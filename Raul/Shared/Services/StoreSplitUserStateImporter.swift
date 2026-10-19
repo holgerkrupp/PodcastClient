@@ -258,17 +258,6 @@ actor StoreSplitUserStateImporter {
             }
         }
 
-        if changedStreams.contains(.preferences) {
-            await awaitIdleWindow()
-            await applyPreferences(result: &result)
-            saveLegacyChanges(phase: "preferences", result: &result)
-            refreshContexts()
-            if await shouldStop() {
-                result.interruptedByPlayback = true
-                return result
-            }
-        }
-
         if changedStreams.contains(.episodeState) {
             await awaitIdleWindow()
             await applyEpisodeStates(
@@ -282,6 +271,18 @@ actor StoreSplitUserStateImporter {
                 authoritative: authoritativePlaylists,
                 result: &result
             )
+        }
+        // Preferences store playlist sync identities. Project playlists first
+        // so newly received targets can be resolved to this device's local UUID.
+        if changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
+            await awaitIdleWindow()
+            await applyPreferences(result: &result)
+            saveLegacyChanges(phase: "preferences", result: &result)
+            refreshContexts()
+            if await shouldStop() {
+                result.interruptedByPlayback = true
+                return result
+            }
         }
         if changedStreams.contains(.bookmarks) {
             await awaitIdleWindow()
@@ -393,6 +394,11 @@ actor StoreSplitUserStateImporter {
         var offset = 0
         var seenIDs = Set<String>()
         let decoder = JSONDecoder()
+        let playlists = (try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        let playlistsBySyncID = Dictionary(
+            playlists.map { ($0.storeSplitSyncID, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
 
         while true {
             let page = fetchPage(
@@ -432,7 +438,31 @@ actor StoreSplitUserStateImporter {
                    let position = try? decoder.decode(Playlist.Position.self, from: data) {
                     setIfChanged(settings, \.playnextPosition, position)
                 }
-                setIfChanged(settings, \.defaultPlaylistID, record.defaultPlaylistID.flatMap(UUID.init(uuidString:)))
+                if let storedPlaylistID = record.defaultPlaylistID {
+                    let localPlaylistID = playlistsBySyncID[storedPlaylistID]?.id
+                        ?? UUID(uuidString: storedPlaylistID)
+                    if let localPlaylistID {
+                        setIfChanged(settings, \.defaultPlaylistID, localPlaylistID)
+                    }
+                }
+                if let value = record.autoDownload {
+                    setIfChanged(settings, \.autoDownload, value)
+                }
+                if let value = record.autoDownloadEpisodeCount {
+                    setIfChanged(settings, \.autoDownloadEpisodeCount, value)
+                }
+                if let value = record.autoDownloadSelectionRawValue {
+                    setIfChanged(settings, \.autoDownloadSelectionRawValue, value)
+                }
+                if let value = record.autoDownloadNetworkModeRawValue {
+                    setIfChanged(settings, \.autoDownloadNetworkModeRawValue, value)
+                }
+                if let value = record.autoDownloadIncludesArchivedEpisodes {
+                    setIfChanged(settings, \.autoDownloadIncludesArchivedEpisodes, value)
+                }
+                if let value = record.archiveFileRetentionDays {
+                    setIfChanged(settings, \.archiveFileRetentionDays, value)
+                }
                 setIfChanged(settings, \.playbackSpeed, record.playbackSpeed.map(Float.init))
                 setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
                 setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)

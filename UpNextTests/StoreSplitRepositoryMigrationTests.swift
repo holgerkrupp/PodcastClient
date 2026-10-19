@@ -223,7 +223,9 @@ final class StoreSplitRepositoryMigrationTests: XCTestCase {
         XCTAssertEqual(records.count, 1)
         XCTAssertEqual(try XCTUnwrap(records.first?.playbackSpeed), 1.7, accuracy: 0.001)
         XCTAssertEqual(records.first?.reduceSilenceGapsEnabled, true)
-        // Auto-download/network/transcription capability have no synced fields.
+        XCTAssertEqual(records.first?.autoDownload, true)
+        XCTAssertEqual(records.first?.autoDownloadNetworkModeRawValue, AutoDownloadNetworkMode.wifiOnly.rawValue)
+        // Downloaded files and transcription capability remain device-local.
         XCTAssertFalse(UserStateCloudSchemaAudit.containsFeedDerivedData)
     }
 

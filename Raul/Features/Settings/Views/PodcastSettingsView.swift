@@ -2018,7 +2018,11 @@ struct PodcastSettingsView: View {
         }
         let snapshot = PortablePodcastPreferenceSnapshot.make(
             settings: settings,
-            feedURL: podcast?.feed
+            feedURL: podcast?.feed,
+            defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                for: settings.defaultPlaylistID,
+                in: context
+            )
         )
         let publicationDate = Date.now
         Task {
@@ -3502,12 +3506,14 @@ private struct PodcastOverridesManagementView: View {
                         HStack(spacing: 12) {
                             PodcastSettingsPodcastRow(
                                 podcast: podcast,
-                                detail: "Currently following global defaults"
+                                detail: podcast.settings == nil
+                                    ? "Currently following global defaults"
+                                    : "Saved custom settings are inactive"
                             )
 
                             Spacer()
 
-                            Button("Use Custom") {
+                            Button(podcast.settings == nil ? "Use Custom" : "Restore Custom") {
                                 enableCustomSettingsFromList(for: podcast)
                             }
                             .buttonStyle(.borderedProminent)
@@ -3539,7 +3545,14 @@ private struct PodcastOverridesManagementView: View {
             NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
             if let settings = podcast.settings, let feed = podcast.feed,
                let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
-                let snapshot = PortablePodcastPreferenceSnapshot.make(settings: settings, feedURL: feed)
+                let snapshot = PortablePodcastPreferenceSnapshot.make(
+                    settings: settings,
+                    feedURL: feed,
+                    defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                        for: settings.defaultPlaylistID,
+                        in: context
+                    )
+                )
                 let publicationDate = Date.now
                 Task {
                     let saved = await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
@@ -3570,7 +3583,14 @@ private struct PodcastOverridesManagementView: View {
             NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
             if let settings = podcast.settings, let feed = podcast.feed,
                let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
-                let snapshot = PortablePodcastPreferenceSnapshot.make(settings: settings, feedURL: feed)
+                let snapshot = PortablePodcastPreferenceSnapshot.make(
+                    settings: settings,
+                    feedURL: feed,
+                    defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                        for: settings.defaultPlaylistID,
+                        in: context
+                    )
+                )
                 let publicationDate = Date.now
                 Task {
                     _ = await StoreSplitPreferenceSyncWriter(modelContainer: userStateContainer)
@@ -3627,28 +3647,7 @@ private func enableCustomSettings(for podcast: Podcast, in context: ModelContext
             settings.title = podcast.title
         }
     } else {
-        let settings = PodcastSettings(podcast: podcast)
-        settings.isEnabled = true
-        settings.playbackSpeed = globalSettings.playbackSpeed
-        settings.reduceSilenceGapsEnabled = globalSettings.reduceSilenceGapsEnabled
-        settings.silenceGapReductionLevel = globalSettings.silenceGapReductionLevel
-        settings.voiceEnhancementEnabled = globalSettings.voiceEnhancementEnabled
-        settings.cutFront = globalSettings.cutFront ?? 0
-        settings.cutEnd = globalSettings.cutEnd ?? 0
-        settings.skipForward = globalSettings.skipForward
-        settings.skipBack = globalSettings.skipBack
-        settings.skipForwardBehavior = globalSettings.skipForwardBehavior
-        settings.skipBackBehavior = globalSettings.skipBackBehavior
-        settings.playnextPosition = globalSettings.playnextPosition
-        settings.autoSkipKeywords = globalSettings.autoSkipKeywords
-        settings.autoDownload = globalSettings.autoDownload
-        settings.autoDownloadEpisodeCount = globalSettings.autoDownloadEpisodeCount
-        settings.autoDownloadSelection = globalSettings.autoDownloadSelection
-        settings.autoDownloadNetworkMode = globalSettings.autoDownloadNetworkMode
-        settings.autoDownloadIncludesArchivedEpisodes = globalSettings.autoDownloadIncludesArchivedEpisodes
-        settings.defaultPlaylistID = globalSettings.defaultPlaylistID
-        settings.archiveFileRetentionDays = globalSettings.archiveFileRetentionDays
-        settings.enableLiveItemNotifications = globalSettings.enableLiveItemNotifications
+        let settings = PodcastSettings.makeCustomSettings(for: podcast, inheriting: globalSettings)
         context.insert(settings)
         podcast.settings = settings
     }
