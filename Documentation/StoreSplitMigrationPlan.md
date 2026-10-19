@@ -95,8 +95,18 @@ work therefore proves direct RSS-to-cache persistence, but does **not** make
 the whole application independent of `SharedDatabase.sqlite` or authorize
 disabling legacy CloudKit synchronization.
 
-- [ ] Durable playlist hydration without a legacy graph, including unresolved
-  placeholders and retry after later cache commits.
+An unresolved synchronized playlist or queue episode now triggers a refresh of
+its referenced feed, even on reconcile paths that skip general missing-feed
+bootstrap. The importer retries membership projection after that refresh. If
+the episode is still unavailable, the playlist-entry and queue-entry import
+cursors stay behind; because the membership remains in `UserState.sqlite`, a
+later eligible reconcile retries the feed and projection. This provides a
+durable eventual-retry path, but rendering still depends on the transitional
+legacy graph and hydration can still be delayed by unavailable credentials,
+network access, or a feed that has not published the referenced episode.
+
+- [ ] Playlist rendering and retry directly from `PodcastCache.sqlite`, without
+  depending on a legacy graph or a full UserState stream re-import.
 - [ ] Complete source-independent subscription, display, playback, and mutation
   paths on a new device.
 - [ ] Feed/cache transaction interruption recovery and complete-feed retention

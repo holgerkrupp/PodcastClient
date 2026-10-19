@@ -3554,7 +3554,12 @@ class ModelContainerManager: ObservableObject {
 
             // Only bootstrap missing feeds over the network while foreground and
             // not cancelled; otherwise defer to the next foreground reconcile.
-            guard refreshMissingFeeds,
+            // An unresolved playlist/queue reference is stronger evidence than
+            // the general missing-feed bootstrap preference: fetch that exact
+            // feed so the referenced episode can be projected before the user
+            // sees the membership as hydrated.
+            let hasPlaylistEpisodeMisses = result.playlistFeedsToBootstrap.isEmpty == false
+            guard (refreshMissingFeeds || hasPlaylistEpisodeMisses),
                   result.feedsToBootstrap.isEmpty == false,
                   Task.isCancelled == false else {
                 return result
@@ -3617,9 +3622,13 @@ class ModelContainerManager: ObservableObject {
             modelContainer: userStateContainer
         )
         if result.failed == 0, result.interruptedByPlayback == false {
+            let streamsToCommit = StoreSplitImportCursorStore.streamsEligibleForCommit(
+                changedStreams: changedStreams,
+                hasUnresolvedPlaylistEpisodes: result.playlistFeedsToBootstrap.isEmpty == false
+            )
             StoreSplitImportCursorStore.commit(
                 latestUserStateChangeStamps(userStateContainer),
-                streams: changedStreams
+                streams: streamsToCommit
             )
         }
 #if DEBUG
