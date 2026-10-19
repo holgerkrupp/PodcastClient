@@ -2,6 +2,12 @@ import Foundation
 import CarPlay
 import SwiftData
 
+private final class CarPlayInboxNotificationObserver: @unchecked Sendable {
+    private let token: NSObjectProtocol
+    init(token: NSObjectProtocol) { self.token = token }
+    deinit { NotificationCenter.default.removeObserver(token) }
+}
+
 @MainActor
 class CarPlayInbox {
     let interfaceController: CPInterfaceController
@@ -9,7 +15,10 @@ class CarPlayInbox {
     private let episodeActor: EpisodeActor
     private let modelContext: ModelContext
     var template: CPListTemplate
-    private var notificationToken: NSObjectProtocol?
+    private var notificationObserver: CarPlayInboxNotificationObserver?
+    private var refreshTask: Task<Void, Never>?
+    private var artworkTask: Task<Void, Never>?
+    private var generation = 0
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
         self.playlistActor = playlistActor
@@ -21,106 +30,142 @@ class CarPlayInbox {
         self.template.emptyViewTitleVariants = ["Your Inbox is empty"]
         self.template.emptyViewSubtitleVariants = ["New episodes will appear here."]
         observeChanges()
-        Task {
-            await self.setupTemplate()
-        }
+        scheduleRefresh()
+    }
+
+    deinit { refreshTask?.cancel(); artworkTask?.cancel() }
+
+    func invalidate() {
+        generation &+= 1
+        refreshTask?.cancel()
+        refreshTask = nil
+        artworkTask?.cancel()
+        artworkTask = nil
+        notificationObserver = nil
     }
 
     private func observeChanges() {
-        notificationToken = NotificationCenter.default.addObserver(
+        let token = NotificationCenter.default.addObserver(
             forName: .inboxDidChange,
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            guard let self else { return }
-            Task { await self.setupTemplate() }
+            Task { @MainActor [weak self] in self?.scheduleRefresh() }
         }
+        notificationObserver = CarPlayInboxNotificationObserver(token: token)
+    }
+
+    private func scheduleRefresh() {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in await self?.setupTemplate() }
     }
 
     private func setupTemplate() async {
-        let episodes = loadInboxEpisodes()
-        let presentActions = self.presentActions
+        artworkTask?.cancel()
+        generation &+= 1
+        let requestGeneration = generation
+        let itemLimit = max(1, CPListTemplate.maximumItemCount)
+        let fetchedEpisodes = loadInboxEpisodes(limit: itemLimit + 1)
+        let needsMoreRow = fetchedEpisodes.count > itemLimit
+        let visibleLimit = max(0, itemLimit - (needsMoreRow ? 1 : 0))
+        let episodes = Array(fetchedEpisodes.prefix(visibleLimit))
+        guard Task.isCancelled == false else { return }
 
-        var images: [UIImage?] = []
-        images.reserveCapacity(episodes.count)
-        for episode in episodes {
-            images.append(await loadImage(for: episode.summary))
-        }
-
-        let items = episodes.enumerated().map { index, episode in
+        var imageTargets: [(item: CPListItem, url: URL)] = []
+        let items = episodes.map { episode in
             let item = CPListItem(
                 text: carPlayText(episode.title),
                 detailText: carPlayText(episode.subtitle ?? episode.desc ?? episode.displayPodcastTitle),
-                image: images[index] ?? UIImage()
+                image: nil
             )
             item.userInfo = episode.summary
             item.accessoryType = .disclosureIndicator
-            item.handler = { _, completion in
-                presentActions(episode)
+            item.handler = { [weak self] _, completion in
                 completion()
+                self?.presentActions(episode)
+            }
+            if let url = episode.summary.cover ?? episode.summary.podcastCover {
+                imageTargets.append((item, url))
             }
             return item
         }
+        var visibleItems = items
+        if needsMoreRow {
+            visibleItems.append(CPListItem(
+                text: "Open Inbox on iPhone to see more",
+                detailText: nil,
+                image: nil
+            ))
+        }
+        template.updateSections(visibleItems.isEmpty ? [] : [CPListSection(items: visibleItems)])
 
-        template.updateSections([CPListSection(items: items)])
+        let targets = imageTargets
+        let activeTemplate = template
+        let maxPixelSize = CarPlayArtworkProvider.pixelBudget(
+            displayScale: interfaceController.carTraitCollection.displayScale
+        )
+        artworkTask = Task { [weak self] in
+            await CarPlayArtworkProvider.loadBounded(
+                requests: targets.enumerated().map { (index: $0.offset, url: $0.element.url) },
+                maxPixelSize: maxPixelSize
+            ) { index, image in
+                guard let self,
+                      self.generation == requestGeneration,
+                      self.template === activeTemplate,
+                      Task.isCancelled == false else { return }
+                targets[index].item.setImage(image)
+            }
+        }
     }
 
-    private func loadInboxEpisodes() -> [Episode] {
+    private func loadInboxEpisodes(limit: Int) -> [Episode] {
         let predicate = #Predicate<Episode> { $0.metaData?.isInbox == true }
         let sortDescriptor = SortDescriptor<Episode>(\.publishDate, order: .reverse)
-        let descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])
+        var descriptor = FetchDescriptor<Episode>(predicate: predicate, sortBy: [sortDescriptor])
+        descriptor.fetchLimit = limit
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 
-    private func presentActions(for episode: Episode) {
+    private func presentActions(_ episode: Episode) {
         let playlistActor = self.playlistActor
         let episodeActor = self.episodeActor
         let interfaceController = self.interfaceController
-        let refreshTemplate = self.setupTemplate
+        let refreshTemplate = self.scheduleRefresh
 
         let playNext = CPAlertAction(title: "Play Next", style: .default) { _ in
             Task {
                 if let url = episode.url {
                     try? await playlistActor.insert(episodeURL: url, after: Player.shared.currentEpisodeURL)
-                    await refreshTemplate()
+                    refreshTemplate()
                 }
                 interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
-
         let playLast = CPAlertAction(title: "Play Last", style: .default) { _ in
             Task {
                 if let url = episode.url {
                     try? await playlistActor.add(episodeURL: url, to: .end)
-                    await refreshTemplate()
+                    refreshTemplate()
                 }
                 interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
-
         let removeFromInbox = CPAlertAction(title: "Remove from Inbox", style: .destructive) { _ in
             Task {
                 await episodeActor.removeFromInbox(episode.url)
-                await refreshTemplate()
+                refreshTemplate()
                 interfaceController.dismissTemplate(animated: true, completion: nil)
             }
         }
-
         let cancel = CPAlertAction(title: "Cancel", style: .cancel) { _ in
             interfaceController.dismissTemplate(animated: true, completion: nil)
         }
-
         let sheet = CPActionSheetTemplate(
             title: episode.title,
             message: episode.displayPodcastTitle,
             actions: [playNext, playLast, removeFromInbox, cancel]
         )
         interfaceController.presentTemplate(sheet, animated: true, completion: nil)
-    }
-
-    private func loadImage(for episode: EpisodeSummary) async -> UIImage? {
-        guard let imageURL = episode.cover ?? episode.podcastCover else { return nil }
-        return await ImageLoaderAndCache.loadUIImage(from: imageURL)
     }
 
     private func carPlayText(_ text: String?) -> String {

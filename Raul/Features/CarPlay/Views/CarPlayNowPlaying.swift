@@ -30,6 +30,7 @@ class CarPlayNowPlaying {
     
     var template: CPNowPlayingTemplate = CPNowPlayingTemplate.shared
     private var chapterDataObserver: CarPlayNotificationObserver?
+    private var chapterList: CarPlayChapterMarkList?
     
     init(interfaceController: CPInterfaceController) {
         self.interfaceController = interfaceController
@@ -47,6 +48,12 @@ class CarPlayNowPlaying {
         }
         chapterDataObserver = CarPlayNotificationObserver(token: observer)
     }
+
+    func invalidate() {
+        chapterDataObserver = nil
+        chapterList?.invalidate()
+        chapterList = nil
+    }
     
     func setupTempate(interfaceController: CPInterfaceController) {
         // print("setupTempate")
@@ -60,31 +67,30 @@ class CarPlayNowPlaying {
     
         let preferredChapters = player.currentEpisode?.preferredChapters ?? []
         if preferredChapters.isEmpty == false {
-            let listButton = CPNowPlayingImageButton(
-                image: UIImage(systemName: "list.bullet") ?? UIImage()
-            ) { _ in
-                let chapterList = CarPlayChapterMarkList(interfaceController: interfaceController).template
+            if let image = UIImage(systemName: "list.bullet") {
+                let listButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
+                    guard let self else { return }
+                    let chapterList = CarPlayChapterMarkList(interfaceController: interfaceController)
+                    self.chapterList?.invalidate()
+                    self.chapterList = chapterList
+                    interfaceController.pushTemplate(chapterList.template, animated: false, completion: nil)
+                }
+                buttons.append(listButton)
+            }
 
-                interfaceController.pushTemplate(chapterList, animated: false, completion: nil)
-            }
-            
-            let previousChapterButton = CPNowPlayingImageButton(
-                image: UIImage(systemName: "backward.end.alt") ?? UIImage()
-            ) { _ in
-                Task {
-                    await self.skipToCurrentPreferredChapterStart()
+            if let image = UIImage(systemName: "backward.end.alt") {
+                let previousChapterButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
+                    Task { await self?.skipToCurrentPreferredChapterStart() }
                 }
+                buttons.append(previousChapterButton)
             }
-            
-            let nextChapterButton = CPNowPlayingImageButton(
-                image: UIImage(systemName: "forward.end.alt") ?? UIImage()
-            ) { _ in
-                Task {
-                    await self.skipToNextPreferredChapter()
+
+            if let image = UIImage(systemName: "forward.end.alt") {
+                let nextChapterButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
+                    Task { await self?.skipToNextPreferredChapter() }
                 }
+                buttons.append(nextChapterButton)
             }
-            
-            buttons.append(contentsOf: [previousChapterButton, listButton, nextChapterButton])
         }
         
         
@@ -95,14 +101,12 @@ class CarPlayNowPlaying {
         
         buttons.append(rateButton)
         
-        let bookmarkButton = CPNowPlayingImageButton(
-            image: UIImage(systemName: "bookmark") ?? UIImage()
-        ) { _ in
-            Task {
-                player.createBookmark()
+        if let image = UIImage(systemName: "bookmark") {
+            let bookmarkButton = CPNowPlayingImageButton(image: image) { _ in
+                Task { player.createBookmark() }
             }
+            buttons.append(bookmarkButton)
         }
-        buttons.append(bookmarkButton)
 
         
         template.updateNowPlayingButtons(buttons)

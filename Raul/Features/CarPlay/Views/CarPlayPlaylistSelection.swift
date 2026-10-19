@@ -66,8 +66,10 @@ final class CarPlayPlaylistSelection {
 
     private func loadPlaylistOptions() -> [PlaylistOption] {
         let context = ModelContext(modelContainer)
-        let allPlaylists = (try? context.fetch(FetchDescriptor<Playlist>())) ?? []
-        return Playlist.manualVisibleSorted(allPlaylists).map { playlist in
+        var descriptor = FetchDescriptor<Playlist>()
+        descriptor.fetchLimit = max(1, CPListTemplate.maximumItemCount)
+        let allPlaylists = (try? context.fetch(descriptor)) ?? []
+        return Array(Playlist.manualVisibleSorted(allPlaylists).prefix(max(1, CPListTemplate.maximumItemCount))).map { playlist in
             PlaylistOption(id: playlist.id, title: playlist.displayTitle)
         }
     }
