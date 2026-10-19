@@ -78,6 +78,31 @@ on the supported-version grace period and production convergence telemetry.
 
 ## Implementation status (2026-08-16)
 
+### Release 2026.34 work in progress (2026-10-19)
+
+Validated RSS parsed during a normal refresh is now written directly into
+`PodcastCache.sqlite` in batches of at most 100 episode models. This writer uses
+the parsed feed payload and does not fetch a source `Podcast` from
+`SharedDatabase.sqlite`. Partial or paginated input only adds/updates rows; it
+does not prune episodes or advance a first-time cache to the complete schema
+checkpoint. Existing cache rows remain available when a page omits them.
+
+The compatibility `Podcast`/`Episode` graph is still written to the legacy
+runtime store during the transitional release, because the shipped UI and
+several mutation paths still depend on that graph. Background bootstrap and
+unchanged-response repair also retain a legacy-source path for upgrades. This
+work therefore proves direct RSS-to-cache persistence, but does **not** make
+the whole application independent of `SharedDatabase.sqlite` or authorize
+disabling legacy CloudKit synchronization.
+
+- [ ] Durable playlist hydration without a legacy graph, including unresolved
+  placeholders and retry after later cache commits.
+- [ ] Complete source-independent subscription, display, playback, and mutation
+  paths on a new device.
+- [ ] Feed/cache transaction interruption recovery and complete-feed retention
+  policy tests at large-feed scale.
+- [ ] UserState migration, CloudKit convergence, and cutover readiness gates.
+
 Changed by the architecture revision:
 
 - legacy upgrades keep their durable on-disk library graph, while fresh and

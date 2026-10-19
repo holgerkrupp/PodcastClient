@@ -36,6 +36,7 @@ enum StoreSplitFeedCacheWriter {
         var fetchCount = 0
         var saveCount = 0
         var completed = true
+        var failureReason: String?
     }
 
     struct FeedCacheBootstrapResult: Sendable {
@@ -88,6 +89,7 @@ enum StoreSplitFeedCacheWriter {
             deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
         ) else {
             result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
         let legacyContext = ModelContext(legacyContainer)
@@ -103,19 +105,42 @@ enum StoreSplitFeedCacheWriter {
                     feeds.append(candidate)
                 }
             }
-        let podcast = candidateFeeds.lazy.compactMap { candidate -> Podcast? in
-            guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return nil }
+        var podcast: Podcast?
+        for candidate in candidateFeeds {
+            guard shouldContinue(
+                deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+            ) else {
+                result.completed = false
+                result.failureReason = "cancelled_or_deadline"
+                return result
+            }
             let optionalFeedURL: URL? = candidate
             var descriptor = FetchDescriptor<Podcast>(
                 predicate: #Predicate { $0.feed == optionalFeedURL }
             )
             descriptor.fetchLimit = 1
             result.fetchCount += 1
-            return try? legacyContext.fetch(descriptor).first
-        }.first
-        guard let podcast,
-              shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
+            do {
+                if let found = try legacyContext.fetch(descriptor).first {
+                    podcast = found
+                    break
+                }
+            } catch {
+                result.completed = false
+                result.failureReason = "source_fetch_failed"
+                return result
+            }
+        }
+        guard let podcast else {
             result.completed = false
+            result.failureReason = "source_feed_not_found"
+            return result
+        }
+        guard shouldContinue(
+            deadline: deadline, requiresIdlePlayback: requiresIdlePlayback
+        ) else {
+            result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
 
@@ -148,10 +173,12 @@ enum StoreSplitFeedCacheWriter {
             result: &result
         ) else {
             result.completed = false
+            result.failureReason = "projection_interrupted"
             return result
         }
         guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else {
             result.completed = false
+            result.failureReason = "cancelled_or_deadline"
             return result
         }
         do {
@@ -162,7 +189,190 @@ enum StoreSplitFeedCacheWriter {
             return result
         } catch {
             result.completed = false
+            result.failureReason = "cache_save_failed"
             return result
+        }
+    }
+
+    /// Writes validated parser output directly to PodcastCache. This is the
+    /// normal refresh path for the split-store architecture: it does not fetch
+    /// or require a Podcast/Episode graph in SharedDatabase. Episode models are
+    /// created in bounded batches only as adapters for the existing cache
+    /// field/chapter/transcript mapping, then discarded after each save.
+    ///
+    /// Incomplete/paginated input is additive. It never prunes cached episodes
+    /// and does not advance the feed's complete-projection schema checkpoint.
+    @discardableResult
+    static func projectParsedFeed(
+        feedURL: URL,
+        parsedFeed: [String: Any],
+        episodeRows: [[String: Any]],
+        isCompleteFeed: Bool,
+        cacheContainer: ModelContainer,
+        deadline: Date? = nil
+    ) -> FeedCacheProjectionResult {
+        var result = FeedCacheProjectionResult()
+        guard shouldContinue(deadline: deadline, requiresIdlePlayback: false) else {
+            result.completed = false
+            result.failureReason = "cancelled_or_deadline"
+            return result
+        }
+
+        let batches: [[ [String: Any] ]]
+        if episodeRows.isEmpty {
+            batches = [[]]
+        } else {
+            batches = stride(from: 0, to: episodeRows.count, by: 100).map { start in
+                Array(episodeRows[start..<min(start + 100, episodeRows.count)])
+            }
+        }
+
+        for (batchIndex, rows) in batches.enumerated() {
+            guard shouldContinue(deadline: deadline, requiresIdlePlayback: false) else {
+                result.completed = false
+                result.failureReason = "cancelled_or_deadline"
+                return result
+            }
+
+            let draft = Podcast(feed: feedURL)
+            applyParsedPodcastFields(parsedFeed, to: draft)
+            let context = ModelContext(cacheContainer)
+            var episodes: [Episode] = []
+            episodes.reserveCapacity(rows.count)
+            for row in rows {
+                guard let episode = Episode(from: row, podcast: draft) else { continue }
+                episodes.append(episode)
+            }
+            draft.episodes = episodes
+            let selectedGUIDs = Set(episodes.compactMap { $0.guid })
+            let selectedURLs = Set(episodes.compactMap { $0.url })
+            let isFinalBatch = batchIndex == batches.count - 1
+
+            guard upsert(
+                podcast: draft,
+                transcriptionRecordsByEpisodeURL: [:],
+                into: context,
+                deadline: deadline,
+                refreshedEpisodeGUIDs: selectedGUIDs,
+                refreshedEpisodeURLs: selectedURLs,
+                requiresIdlePlayback: false,
+                preserveExistingAIRecords: true,
+                forceIncrementalRefresh: true,
+                allowPruning: false,
+                preserveExistingRefreshMetadata: true,
+                markSchemaCurrent: isFinalBatch && isCompleteFeed,
+                result: &result
+            ) else {
+                result.completed = false
+                result.failureReason = "projection_interrupted"
+                context.rollback()
+                return result
+            }
+
+            do {
+                if context.hasChanges {
+                    try context.save()
+                    result.saveCount += 1
+                }
+            } catch {
+                context.rollback()
+                result.completed = false
+                result.failureReason = "cache_save_failed"
+                return result
+            }
+        }
+
+        return result
+    }
+
+    private static func applyParsedPodcastFields(_ values: [String: Any], to podcast: Podcast) {
+        podcast.title = values["title"] as? String ?? podcast.title
+        podcast.desc = values["description"] as? String
+        podcast.author = values["author"] as? String ?? values["artist"] as? String
+        podcast.link = (values["link"] as? String).flatMap(URL.init(string:))
+        podcast.language = values["language"] as? String
+        podcast.copyright = values["copyright"] as? String
+        podcast.imageURL = (values["coverImage"] as? String).flatMap(URL.init(string:))
+        podcast.lastBuildDate = Date.dateFromRFC1123(dateString: values["lastBuildDate"] as? String ?? "")
+        if let tags = values["optionalTags"] as? PodcastNamespaceOptionalTags, tags.isEmpty == false {
+            podcast.optionalTags = tags
+        }
+        if let funds = values["funding"] as? [FundingInfo] {
+            podcast.funding = funds
+        } else if let funds = values["funding"] as? [[String: String]] {
+            podcast.funding = funds.compactMap { item in
+                guard let rawURL = item["url"], let url = URL(string: rawURL),
+                      let label = item["label"] else { return nil }
+                return FundingInfo(url: url, label: label)
+            }
+        }
+        if let values = values["socialInteract"] as? [SocialInfo] {
+            podcast.social = values
+        } else if let values = values["socialInteract"] as? [[String: Any]] {
+            podcast.social = values.compactMap { item in
+                guard let proto = item["protocol"] as? String,
+                      let rawURI = item["uri"] as? String,
+                      let uri = URL(string: rawURI) else { return nil }
+                return SocialInfo(
+                    url: uri,
+                    socialprotocol: proto,
+                    accountId: item["accountId"] as? String,
+                    accountURL: (item["accountUrl"] as? String).flatMap(URL.init(string:)),
+                    priority: item["priority"] as? Int
+                )
+            }
+        }
+        if let values = values["people"] as? [PersonInfo] {
+            podcast.people = values
+        } else if let values = values["people"] as? [[String: Any]] {
+            podcast.people = values.compactMap { item in
+                guard let name = item["name"] as? String, name.isEmpty == false else { return nil }
+                return PersonInfo(
+                    name: name,
+                    role: item["role"] as? String,
+                    href: (item["href"] as? String).flatMap(URL.init(string:)),
+                    img: (item["img"] as? String).flatMap(URL.init(string:))
+                )
+            }
+        }
+        if let values = values["alternativeFeeds"] as? [PodcastAlternativeFeed] {
+            podcast.alternativeFeeds = values
+        } else if let values = values["alternativeFeeds"] as? [[String: String]] {
+            var seen = Set<URL>()
+            podcast.alternativeFeeds = values.compactMap { item in
+                guard let rawURL = item["url"],
+                      let url = URL(string: rawURL, relativeTo: podcast.feed)?.absoluteURL,
+                      seen.insert(url).inserted else { return nil }
+                return PodcastAlternativeFeed(url: url, title: item["title"], type: item["type"])
+            }
+        }
+    }
+
+    /// Record the outcome of a normal RSS-refresh cache write, independent
+    /// of the charging-only bootstrap counter. No private feed identity is
+    /// included in exported diagnostics.
+    static func recordRefreshProjection(
+        feedURL: URL,
+        status: String,
+        episodeCount: Int,
+        cacheContainer: ModelContainer?
+    ) {
+        let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+        defaults.set(Date(), forKey: "storeSplit.cacheRefreshLastAttemptAt")
+        defaults.set(status, forKey: "storeSplit.cacheRefreshLastStatus")
+        defaults.set(episodeCount, forKey: "storeSplit.cacheRefreshLastEpisodeCount")
+        CrashBreadcrumbs.shared.record(
+            "podcast_cache_refresh_result",
+            details: "status=\(status),episodes=\(episodeCount)"
+        )
+        guard let cacheContainer else { return }
+        if status == "completed" || status == "partial" || status.hasPrefix("failed_") {
+            recordCheckpoint(
+                feedKey: PodcastFeedIdentity.normalizedFeedURLString(feedURL),
+                succeeded: status == "completed",
+                error: status == "completed" ? nil : status,
+                in: cacheContainer
+            )
         }
     }
 
@@ -611,6 +821,10 @@ enum StoreSplitFeedCacheWriter {
         refreshedEpisodeURLs: Set<URL>? = nil,
         requiresIdlePlayback: Bool = false,
         preserveExistingAIRecords: Bool = false,
+        forceIncrementalRefresh: Bool = false,
+        allowPruning: Bool = true,
+        preserveExistingRefreshMetadata: Bool = false,
+        markSchemaCurrent: Bool = true,
         result: inout FeedCacheProjectionResult
     ) -> Bool {
         guard let feed = podcast.feed,
@@ -658,23 +872,26 @@ enum StoreSplitFeedCacheWriter {
         )
 
         let meta = podcast.metaData
-        podcastChanged |= assignIfChanged(cached, \.lastRefresh, meta?.lastRefresh)
-        podcastChanged |= assignIfChanged(cached, \.feedUpdated, meta?.feedUpdated)
-        podcastChanged |= assignIfChanged(cached, \.feedUpdateCheckDate, meta?.feedUpdateCheckDate)
-        podcastChanged |= assignIfChanged(cached, \.consecutiveFeedFailureCount, meta?.consecutiveFeedFailureCount ?? 0)
-        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureDate, meta?.lastFeedFailureDate)
-        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureStatusCode, meta?.lastFeedFailureStatusCode)
-        podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
+        if preserveExistingRefreshMetadata == false {
+            podcastChanged |= assignIfChanged(cached, \.lastRefresh, meta?.lastRefresh)
+            podcastChanged |= assignIfChanged(cached, \.feedUpdated, meta?.feedUpdated)
+            podcastChanged |= assignIfChanged(cached, \.feedUpdateCheckDate, meta?.feedUpdateCheckDate)
+            podcastChanged |= assignIfChanged(cached, \.consecutiveFeedFailureCount, meta?.consecutiveFeedFailureCount ?? 0)
+            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureDate, meta?.lastFeedFailureDate)
+            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureStatusCode, meta?.lastFeedFailureStatusCode)
+            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
+        }
         if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
 
         // Normal GET refreshes generally import zero or a few episodes.
         // Avoid fetching every cached chapter, transcript and download from
         // historical back catalogue during these small deltas. Large deltas and
         // first-time backfills keep the existing batch-read path.
-        let isIncrementalRefresh =
+        let isIncrementalRefresh = forceIncrementalRefresh || (
             cached.cacheSchemaVersion >= currentCacheSchemaVersion
                 && refreshedEpisodeGUIDs != nil
                 && refreshedEpisodeURLs != nil
+        )
         let selectedGUIDs = refreshedEpisodeGUIDs ?? []
         let selectedURLs = refreshedEpisodeURLs ?? []
         let sourceEpisodes = podcast.episodes ?? []
@@ -840,7 +1057,7 @@ enum StoreSplitFeedCacheWriter {
 
         // Only a full source projection may prune. A normal RSS update can
         // contain a partial page or stop at the first already-known episode.
-        if isIncrementalRefresh == false {
+        if isIncrementalRefresh == false && allowPruning {
         for (episodeID, staleEpisode) in existingByID where seenIDs.contains(episodeID) == false {
             for row in chaptersByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
             for row in transcriptLinesByEpisodeID[episodeID] ?? [] { cacheContext.delete(row); result.deleted += 1 }
@@ -851,7 +1068,9 @@ enum StoreSplitFeedCacheWriter {
             guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
         }
         }
-        _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
+        if markSchemaCurrent {
+            _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
+        }
         return shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback)
     }
 
