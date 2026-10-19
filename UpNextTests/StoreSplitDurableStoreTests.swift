@@ -175,8 +175,18 @@ final class StoreSplitDurableStoreTests: XCTestCase {
             "export_busy"
         )
 
+        source.advance(wall: 6, cpu: 6)
         budget.setCloudKitExport(eventID: exportID, active: false)
-        XCTAssertNil(permit?.yieldReason(playbackActive: false, cloudKitExportActive: false))
+        XCTAssertEqual(
+            permit?.yieldReason(playbackActive: false, cloudKitExportActive: false),
+            "cpu_budget"
+        )
+        permit?.release()
+        XCTAssertNil(budget.acquire(
+            operation: "reconcile",
+            playbackActive: false,
+            cloudKitExportActive: false
+        ))
     }
 
     func testBackgroundMigrationStopsForMemoryGrowthOrAbsoluteFootprint() {

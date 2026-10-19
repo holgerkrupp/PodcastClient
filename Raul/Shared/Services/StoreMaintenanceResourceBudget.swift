@@ -99,6 +99,11 @@ final class StoreMaintenanceResourceBudget: @unchecked Sendable {
     func setCloudKitExport(eventID: UUID, active: Bool) {
         lock.lock()
         defer { lock.unlock() }
+        // The exporter can keep Core Data busy after an app batch yields. Take
+        // samples at both event boundaries so that CPU consumed while no
+        // maintenance callback is running still contributes to the rolling
+        // process budget.
+        append(source.sample())
         if active {
             activeCloudKitExportIDs.insert(eventID)
         } else {
