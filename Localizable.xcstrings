@@ -3573,6 +3573,9 @@
         }
       }
     },
+    "Changing this setting affects newly created requests. Active playback and downloads may continue using their current request." : {
+
+    },
     "Chapter link" : {
       "localizations" : {
         "de" : {
@@ -4373,6 +4376,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Impossible de s'abonner"
+          }
+        }
+      }
+    },
+    "Couldn’t verify a current RSS feed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein aktueller RSS-Feed verifiziert"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de vérifier un flux RSS actuel"
           }
         }
       }
@@ -6742,42 +6761,6 @@
             "value" : "Février"
           }
         }
-      }
-    },
-    "Couldn’t verify a current RSS feed" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kein aktueller RSS-Feed verifiziert" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de vérifier un flux RSS actuel" } }
-      }
-    },
-    "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Für diese Sendung wurde kein aktueller RSS-Feed gefunden. Versuche eine neue Suche oder öffne die Programmwebsite." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun flux RSS actuel n’a pu être vérifié pour cette émission. Réessayez ou consultez le site de l’émission." } }
-      }
-    },
-    "The broadcaster could not be reached. Check your connection and try again." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Sender ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le diffuseur est inaccessible. Vérifiez votre connexion et réessayez." } }
-      }
-    },
-    "This programme cannot be opened from its current source. Try again or visit the programme website." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diese Sendung kann über die aktuelle Quelle nicht geöffnet werden. Versuche es erneut oder öffne die Programmwebsite." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Cette émission ne peut pas être ouverte depuis sa source actuelle. Réessayez ou consultez son site." } }
-      }
-    },
-    "Open Programme Website" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Programmwebsite öffnen" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ouvrir le site de l’émission" } }
-      }
-    },
-    "Retry Feed Lookup" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Feed erneut suchen" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Rechercher le flux" } }
       }
     },
     "Feed unavailable" : {
@@ -10003,6 +9986,9 @@
         }
       }
     },
+    "Local network privacy request counts" : {
+
+    },
     "Lock screen slider" : {
       "localizations" : {
         "de" : {
@@ -11112,6 +11098,9 @@
         }
       }
     },
+    "Network Tracking Protection" : {
+
+    },
     "New episodes appear here as soon as their podcast has been checked." : {
       "localizations" : {
         "de" : {
@@ -11390,9 +11379,6 @@
         }
       }
     },
-    "Next predicted release: Unavailable" : {
-
-    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -11504,6 +11490,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aucun chapitre ne pourrait être généré à partir de ce transcript."
+          }
+        }
+      }
+    },
+    "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für diese Sendung wurde kein aktueller RSS-Feed gefunden. Versuche eine neue Suche oder öffne die Programmwebsite."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun flux RSS actuel n’a pu être vérifié pour cette émission. Réessayez ou consultez le site de l’émission."
           }
         }
       }
@@ -12913,6 +12915,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podroll öffnen"
+          }
+        }
+      }
+    },
+    "Open Programme Website" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Programmwebsite öffnen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir le site de l’émission"
           }
         }
       }
@@ -16497,6 +16515,9 @@
         }
       }
     },
+    "Reduce tracking in network requests" : {
+
+    },
     "Reduced Motion, Larger Text, and Differentiate Without Color are supported. If you use high contrast settings, the app increases secondary text contrast in now-playing interfaces." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -17222,6 +17243,9 @@
         }
       }
     },
+    "Removes recognized tracking parameters before connecting. Some servers can still identify requests. A few podcasts may need the original link." : {
+
+    },
     "Removes the transcript panel below the artwork" : {
       "localizations" : {
         "de" : {
@@ -17497,6 +17521,22 @@
         }
       }
     },
+    "Restore Custom" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Individuelle Einstellungen wiederherstellen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Restaurer les paramètres personnalisés"
+          }
+        }
+      }
+    },
     "Resume" : {
       "localizations" : {
         "de" : {
@@ -17580,6 +17620,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Réessayer l'importation de l'ép"
+          }
+        }
+      }
+    },
+    "Retry Feed Lookup" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feed erneut suchen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rechercher le flux"
           }
         }
       }
@@ -17975,6 +18031,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Enregistrez ce moment dans vos favoris"
+          }
+        }
+      }
+    },
+    "Saved custom settings are inactive" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte individuelle Einstellungen sind inaktiv"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les paramètres personnalisés enregistrés sont inactifs"
           }
         }
       }
@@ -21402,6 +21474,22 @@
         }
       }
     },
+    "The broadcaster could not be reached. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Sender ist nicht erreichbar. Prüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le diffuseur est inaccessible. Vérifiez votre connexion et réessayez."
+          }
+        }
+      }
+    },
     "The current episode has no chapters." : {
       "localizations" : {
         "de" : {
@@ -22018,6 +22106,7 @@
       }
     },
     "This podcast cannot be opened right now." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22141,6 +22230,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce podcast prend en charge les informations sur les événements en direct. Activez les paramètres spécifiques au podcast pour remplacer le paramètre de notification en direct global."
+          }
+        }
+      }
+    },
+    "This programme cannot be opened from its current source. Try again or visit the programme website." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Sendung kann über die aktuelle Quelle nicht geöffnet werden. Versuche es erneut oder öffne die Programmwebsite."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette émission ne peut pas être ouverte depuis sa source actuelle. Réessayez ou consultez son site."
           }
         }
       }
@@ -23578,38 +23683,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Verwende mindestens %lld Zeichen, um Transkripte zu durchsuchen."
-          }
-        }
-      }
-    },
-    "Restore Custom" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Individuelle Einstellungen wiederherstellen"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Restaurer les paramètres personnalisés"
-          }
-        }
-      }
-    },
-    "Saved custom settings are inactive" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gespeicherte individuelle Einstellungen sind inaktiv"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les paramètres personnalisés enregistrés sont inactifs"
           }
         }
       }
