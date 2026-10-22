@@ -49,13 +49,18 @@ enum PodcastNetworkPrivacyPolicy {
         if enabled,
            ["podtrac.com", "www.podtrac.com", "dts.podtrac.com"].contains(host),
            path.hasPrefix("/redirect.mp3/") || path.hasPrefix("/pts/redirect.mp3/") {
-            return Decision(
-                url: url,
-                outcome: .blocked,
-                purpose: purpose,
-                ruleVersion: ruleVersion,
-                failureMessage: "This Podtrac tracking link hides the original scheme, so Up Next cannot safely open it. Replace it with the publisher's original episode link."
-            )
+            guard let publisherURL = unwrapPodtrac(components) else {
+                return Decision(
+                    url: url,
+                    outcome: .blocked,
+                    purpose: purpose,
+                    ruleVersion: ruleVersion,
+                    failureMessage: "This Podtrac link has no safely identifiable HTTPS publisher address. Use the publisher's original episode link or turn off network tracking protection."
+                )
+            }
+            let publisherDecision = prepare(publisherURL, purpose: purpose, enabled: enabled)
+            guard publisherDecision.outcome != .blocked else { return publisherDecision }
+            return Decision(url: publisherDecision.url, outcome: .bypassedKnownPrefix, purpose: purpose, ruleVersion: ruleVersion, failureMessage: nil)
         }
 
         guard enabled, let query = components.percentEncodedQuery else {
@@ -95,6 +100,44 @@ enum PodcastNetworkPrivacyPolicy {
             return unwrapOP3(target, depth: depth + 1)
         }
         return target
+    }
+
+    /// Podtrac's documented redirect.mp3 form embeds a hostname and path but
+    /// omits the scheme. Only infer HTTPS for a validated public DNS hostname;
+    /// never contact Podtrac to discover the destination.
+    private static func unwrapPodtrac(_ components: URLComponents) -> URL? {
+        let path = components.percentEncodedPath
+        let prefix = path.hasPrefix("/redirect.mp3/") ? "/redirect.mp3/" : "/pts/redirect.mp3/"
+        guard path.hasPrefix(prefix) else { return nil }
+        let remainder = path.dropFirst(prefix.count)
+        guard let separator = remainder.firstIndex(of: "/") else { return nil }
+        let host = String(remainder[..<separator]).lowercased()
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2,
+              host.count <= 253,
+              host != "localhost", !host.hasSuffix(".local"), !host.hasSuffix(".internal"),
+              labels.allSatisfy({ label in
+                  label.count >= 1 && label.count <= 63 &&
+                  label.first?.isASCII == true && label.last?.isASCII == true &&
+                  (label.first?.isLetter == true || label.first?.isNumber == true) &&
+                  (label.last?.isLetter == true || label.last?.isNumber == true) &&
+                  label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+              }), labels.last?.contains(where: { $0.isLetter }) == true else { return nil }
+        var target = URLComponents()
+        target.scheme = "https"
+        target.host = host
+        target.percentEncodedPath = String(remainder[separator...])
+        // Podtrac's ptm_* values describe its tracking redirect, not the audio
+        // resource. Preserve unknown publisher parameters byte-for-byte.
+        if let query = components.percentEncodedQuery {
+            let retained = query.split(separator: "&", omittingEmptySubsequences: false).filter { pair in
+                let rawName = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false).first.map(String.init) ?? ""
+                let name = rawName.removingPercentEncoding?.lowercased() ?? rawName.lowercased()
+                return !name.hasPrefix("ptm_")
+            }
+            target.percentEncodedQuery = retained.isEmpty ? nil : retained.joined(separator: "&")
+        }
+        return target.url
     }
 
     static func record(_ decision: Decision) {
