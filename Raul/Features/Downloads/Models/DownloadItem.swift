@@ -22,6 +22,8 @@ final class DownloadItem: ObservableObject, Identifiable {
     @Published var progress: Double = 0.0
     @Published var totalBytes: Int64?
     @Published var downloadedBytes: Int64 = 0
+    @Published var errorMessage: String?
+    @Published var isStalled = false
 
     init(url: URL) {
         // print("create DownloadItem \(url)")
@@ -29,10 +31,9 @@ final class DownloadItem: ObservableObject, Identifiable {
     }
 
     func update(bytesWritten: Int64, totalBytes: Int64) {
-        
-        self.downloadedBytes = bytesWritten
-        self.totalBytes = totalBytes
-        self.progress = totalBytes > 0 ? Double(bytesWritten) / Double(totalBytes) : 0
+        self.downloadedBytes = max(downloadedBytes, bytesWritten)
+        self.totalBytes = totalBytes > 0 ? totalBytes : nil
+        self.progress = totalBytes > 0 ? min(1, Double(downloadedBytes) / Double(totalBytes)) : 0
     }
     
     func setDownloading(_ downloading: Bool) {

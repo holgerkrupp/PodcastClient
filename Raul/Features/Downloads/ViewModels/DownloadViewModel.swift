@@ -26,12 +26,22 @@ final class DownloadViewModel: ObservableObject {
     func startDownload(for episode: Episode) {
         guard episode.source != .sideLoaded else { return }
         Task {
-            if let url = episode.url {
-                let item = await DownloadManager.shared.download(from: url, saveTo: episode.localFile)
-                self.setItem(item)
-            }
-           
+            await beginDownload(for: episode)
         }
+    }
+
+    func retryDownload(for episode: Episode) {
+        guard let url = episode.url, episode.source != .sideLoaded else { return }
+        Task {
+            await DownloadManager.shared.cancelDownload(for: url)
+            await beginDownload(for: episode)
+        }
+    }
+
+    private func beginDownload(for episode: Episode) async {
+        guard let url = episode.url else { return }
+        let result = await DownloadManager.shared.download(from: url, saveTo: episode.localFile)
+        setItem(result)
     }
 
     func setItem(_ item: DownloadItem?) {

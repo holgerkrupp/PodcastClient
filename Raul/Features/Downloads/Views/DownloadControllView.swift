@@ -39,8 +39,8 @@ struct DownloadControllView: View {
                     } else {
                         EmptyView()
                     }
-                } else if let item = viewModel.item, item.isDownloading || item.isPaused {
-                    DownloadProgressView(item: item, viewModel: viewModel)
+                } else if let item = viewModel.item, item.isDownloading || item.isPaused || item.errorMessage != nil {
+                    DownloadProgressView(item: item, viewModel: viewModel, episode: episode)
                         .progressViewStyle(CircularProgressViewStyle())
                 } else if episode.url != nil {
                     Button {
@@ -122,46 +122,62 @@ private struct AnyEpisodeDownloadLabelStyle: LabelStyle {
 struct DownloadProgressView: View {
     @ObservedObject var item: DownloadItem
     var viewModel: DownloadViewModel
+    var episode: Episode
 
     var body: some View {
-        if !item.isFinished {
+        if let error = item.errorMessage {
+            VStack(alignment: .leading, spacing: 6) {
+                Label("Download failed", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                Text(error).font(.caption)
+                Button("Retry", systemImage: "arrow.clockwise") {
+                    viewModel.retryDownload(for: episode)
+                }
+            }
+        } else if !item.isFinished {
             VStack {
-                ProgressView(value: item.progress)
-                    .progressViewStyle(.linear)
+                if item.isStalled {
+                    Text("No download progress for over 90 seconds. Check the connection or retry.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Button("Retry", systemImage: "arrow.clockwise") {
+                        viewModel.retryDownload(for: episode)
+                    }
+                }
+                if item.totalBytes != nil {
+                    ProgressView(value: item.progress)
+                        .progressViewStyle(.linear)
+                } else {
+                    ProgressView()
+                }
                     
                 HStack {
-                Text("\(item.progress, format: .percent.precision(.fractionLength(0)))")
-                Spacer()
-                    if item.isDownloading {
-                        if item.isPaused {
-                            Button(action: { viewModel.resumeDownload() }) {
-                                Label("Resume", systemImage: "play.circle")
-                            }
-                           
-                            .accessibilityHint("Continues the paused download")
-                        }else{
-                            Button(action: { viewModel.pauseDownload() }) {
-                                Label("Pause", systemImage: "pause.circle")
-                            }
-                           
-                            .accessibilityHint("Pauses the active download")
+                    if item.totalBytes != nil {
+                        Text("\(item.progress, format: .percent.precision(.fractionLength(0)))")
+                    } else {
+                        Text(item.downloadedBytes.formatted(.byteCount(style: .file)))
+                    }
+                    Spacer()
+                    if item.isPaused {
+                        Button(action: { viewModel.resumeDownload() }) {
+                            Label("Resume", systemImage: "play.circle")
                         }
-                        
-                        
+                        .accessibilityHint("Continues the paused download")
+                    } else if item.isDownloading {
+                        Button(action: { viewModel.pauseDownload() }) {
+                            Label("Pause", systemImage: "pause.circle")
+                        }
+                        .accessibilityHint("Pauses the active download")
                     }
                     if !item.isFinished {
                         Button(action: { viewModel.cancelDownload() }) {
                             Label("Cancel", systemImage: "xmark.circle")
                                 .foregroundColor(.red)
                         }
-                        
                         .accessibilityHint("Stops and removes this download")
                     }
-                    
-                  
                 }
                 .buttonStyle(.glass(.clear))
-                
             }
         }
     }
@@ -186,6 +202,10 @@ struct DownloadProgressView: View {
     item.isDownloading = true
     item.update(bytesWritten: 36, totalBytes: 100)
 
-    return DownloadProgressView(item: item, viewModel: DownloadViewModel())
+    return DownloadProgressView(item: item, viewModel: DownloadViewModel(), episode: Episode(
+        title: "Preview Episode", publishDate: .now,
+        url: URL(string: "https://example.com/preview-episode.mp3")!,
+        duration: 1_800, author: "Preview Author"
+    ))
         .padding()
 }

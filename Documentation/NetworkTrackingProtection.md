@@ -4,7 +4,7 @@ Up Next stores the global `networkTrackingProtection.enabled.v1` preference in i
 
 The version 1 URL policy preserves source/library URLs and changes only request URLs. It removes the recognized `utm_*`, click-ID, and campaign parameters from unsigned HTTP(S) requests, preserving all other percent-encoded query pairs in their original order. URLs carrying recognized HMAC, CloudFront, S3, or Google signing markers are left intact. URL user-info, private-feed tokens, unknown query fields, HTTP methods, conditional validators, range headers, and request timeouts are retained. The policy unwraps the supported OP3 `/e/<encoded absolute URL>` form offline, up to three levels. It does not contact OP3 while preparing the request.
 
-The Podtrac `/redirect.mp3/` and `/pts/redirect.mp3/` forms encode the target host/path without preserving whether the origin used HTTP or HTTPS. Up Next does not guess that scheme; it blocks those known prefixes and shows an actionable error so the publisher's original URL can be used. Generic CDN and media hosts are never rewritten based on their names.
+The Podtrac `/redirect.mp3/` and `/pts/redirect.mp3/` forms encode the target host/path without preserving whether the origin used HTTP or HTTPS. For a well-formed public DNS hostname, Up Next reconstructs a direct **HTTPS-only** publisher URL and removes Podtrac's `ptm_*` redirect parameters offline. Unsafe or unrecognized forms are blocked with an actionable error; the app never contacts Podtrac to discover a destination. Generic CDN and media hosts are never rewritten based on their names.
 
 ## Covered paths
 
@@ -15,7 +15,9 @@ The Podtrac `/redirect.mp3/` and `/pts/redirect.mp3/` forms encode the target ho
 
 ## Limits and release checks
 
-AVFoundation can issue playback, HLS, cookie, and redirect requests that the app cannot fully intercept through its public asset API. Its playback session identifier may still be sent. Background `URLSession` downloads follow redirects automatically and do not provide the redirect delegate hook needed to clean each hop. Known OP3 links are unwrapped before these requests, and the known Podtrac forms above are blocked, but this is not a guarantee against every unknown redirecting tracker. Changing the preference affects new tasks; active playback/download tasks are allowed to finish.
+AVFoundation can issue playback, HLS, cookie, and redirect requests that the app cannot fully intercept through its public asset API. Its playback session identifier may still be sent. Background `URLSession` downloads follow redirects automatically and do not provide the redirect delegate hook needed to clean each hop. Known OP3 and verified Podtrac links are unwrapped before these requests, but this is not a guarantee against every unknown redirecting tracker. Changing the preference affects new tasks; active playback/download tasks are allowed to finish.
+
+Background downloads associate the original episode URL and local destination with the URLSession task identifier. Delegate callbacks use this identifier rather than the sanitized wire URL; pending task associations are restored on launch. The UI reports request failures and offers Retry when no byte progress has been reported for 90 seconds. Retry starts a fresh transfer rather than reusing potentially stale privacy/authentication headers. These associations are local app state and must never be emitted to telemetry or diagnostic logs.
 
 The local diagnostic counters store only purpose/outcome totals in App Group defaults. They never store URLs, query values, credentials, feed IDs, or device identifiers. Do not describe this feature as anonymous downloading: origin servers can still observe IP address, timing, byte ranges, and publisher-side identifiers.
 

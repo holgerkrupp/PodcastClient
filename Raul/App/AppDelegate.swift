@@ -39,6 +39,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                      completionHandler: @escaping () -> Void) {
         // Save for later, DownloadManager will call this in urlSessionDidFinishEvents
         backgroundSessionCompletionHandler = completionHandler
+        Task {
+            await DownloadManager.shared.restorePendingDownloads()
+        }
     }
 
     func application(

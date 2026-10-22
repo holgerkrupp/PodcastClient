@@ -1390,6 +1390,7 @@ private struct RootWindowView: View {
                         await modelContainerManager.waitUntilApplicationQueriesReady()
                         guard Task.isCancelled == false else { return }
                         await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
+                        await DownloadManager.shared.restorePendingDownloads()
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(1))

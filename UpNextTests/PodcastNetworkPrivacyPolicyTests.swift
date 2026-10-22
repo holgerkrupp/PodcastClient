@@ -65,11 +65,21 @@ final class PodcastNetworkPrivacyPolicyTests: XCTestCase {
         XCTAssertEqual(PodcastNetworkPrivacyPolicy.prepare(decision.url, purpose: .audio, enabled: true).url, decision.url)
     }
 
-    func testMalformedOP3AndUnresolvablePodtracPrefixesAreBlockedWithoutContactingTracker() throws {
+    func testKnownPodtracRedirectIsUnwrappedWithoutContactingTracker() throws {
+        let source = try XCTUnwrap(URL(string: "https://dts.podtrac.com/redirect.mp3/files.lagedernation.org/lagedernation/LdN499.mp3?ptm_source=feed&ptm_context=mp3&ptm_file=LdN499.mp3"))
+        let decision = PodcastNetworkPrivacyPolicy.prepare(source, purpose: .audio, enabled: true)
+        XCTAssertEqual(decision.outcome, .bypassedKnownPrefix)
+        XCTAssertEqual(decision.url.absoluteString, "https://files.lagedernation.org/lagedernation/LdN499.mp3")
+        XCTAssertEqual(PodcastNetworkPrivacyPolicy.prepare(decision.url, purpose: .audio, enabled: true).url, decision.url)
+    }
+
+    func testMalformedOP3AndUnsafePodtracPrefixesAreBlockedWithoutContactingTracker() throws {
         let malformed = try XCTUnwrap(URL(string: "https://op3.dev/e/not-a-supported-target"))
-        let podtrac = try XCTUnwrap(URL(string: "https://dts.podtrac.com/redirect.mp3/www.example.com/audio.mp3"))
         XCTAssertEqual(PodcastNetworkPrivacyPolicy.prepare(malformed, purpose: .audio, enabled: true).outcome, .blocked)
-        XCTAssertEqual(PodcastNetworkPrivacyPolicy.prepare(podtrac, purpose: .audio, enabled: true).outcome, .blocked)
+        for target in ["localhost", "127.0.0.1", "foo.internal", "evil.com:8080", "user@evil.com", "one-label"] {
+            let url = try XCTUnwrap(URL(string: "https://dts.podtrac.com/redirect.mp3/\(target)/audio.mp3"))
+            XCTAssertEqual(PodcastNetworkPrivacyPolicy.prepare(url, purpose: .audio, enabled: true).outcome, .blocked, target)
+        }
     }
 
     func testOptOutPreservesTheOriginalPrefixAndTrackingQuery() throws {
