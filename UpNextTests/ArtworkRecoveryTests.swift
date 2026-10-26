@@ -155,6 +155,18 @@ final class ArtworkRecoveryTests: XCTestCase {
         XCTAssertNotNil(ImageLoaderAndCache.makeUIImage(from: data, maxPixelSize: 128))
     }
 
+    func testSideloadedM4BStillUsesContainerArtworkMetadata() async throws {
+        let m4aFixture = fixture(named: "artwork-recovery", extension: "m4a")
+        let m4bFixture = FileManager.default.temporaryDirectory
+            .appendingPathComponent("artwork-recovery-\(UUID().uuidString).m4b")
+        defer { try? FileManager.default.removeItem(at: m4bFixture) }
+        try Data(contentsOf: m4aFixture).write(to: m4bFixture)
+
+        let extracted = await EmbeddedAudioArtworkService.artworkData(from: m4bFixture, includeChapterArtwork: true)
+        let data = try XCTUnwrap(extracted)
+        XCTAssertNotNil(ImageLoaderAndCache.makeUIImage(from: data, maxPixelSize: 128))
+    }
+
     func testSparseLongMP3ReadsOnlyBoundedID3Tag() async throws {
         let fixture = fixture(named: "artwork-recovery", extension: "mp3")
         let source = try Data(contentsOf: fixture)
@@ -205,6 +217,25 @@ final class ArtworkRecoveryTests: XCTestCase {
             ),
             [chapter, podcast]
         )
+    }
+
+    func testEpisodeFallbackKeepsFailedChapterSourceEligibleForRetry() {
+        let chapter = URL(string: "https://example.invalid/chapter.jpg")!
+        let episode = URL(string: "https://example.invalid/episode.jpg")!
+        let podcast = URL(string: "https://example.invalid/podcast.jpg")!
+        XCTAssertEqual(
+            PlayerArtworkUpdatePolicy.higherPriorityImageURLs(
+                than: .url(episode.absoluteString, profileID: nil),
+                among: [chapter, episode, podcast],
+                profileID: nil
+            ),
+            [chapter]
+        )
+        XCTAssertTrue(PlayerArtworkUpdatePolicy.higherPriorityImageURLs(
+            than: .chapterData("embedded-chapter"),
+            among: [chapter, episode, podcast],
+            profileID: nil
+        ).isEmpty)
     }
 
     private func awaitValueIsSuccess(_ result: ImageDataLoadResult) -> Bool {

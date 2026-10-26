@@ -65,7 +65,7 @@ actor EmbeddedAudioArtworkService {
             return await Task.detached(priority: .utility) {
                 readMP3Artwork(from: fileURL, fileSize: values.fileSize ?? 0, includeChapterArtwork: includeChapterArtwork)
             }.value
-        case "m4a", "mp4", "m4v", "mov":
+        case "aac", "aif", "aiff", "caf", "m4a", "m4b", "m4p", "m4r", "mp4", "m4v", "mov", "wav":
             return await readContainerArtwork(from: fileURL)
         default:
             return nil

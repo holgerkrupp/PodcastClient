@@ -4091,13 +4091,19 @@ class Player {
                 guard Task.isCancelled == false,
                       let self,
                       artworkLoadGeneration == generation else { return }
+                var retryURLs = preferredImageURLs
                 if let resolvedArtwork {
                     applyCurrentArtwork(resolvedArtwork.image, identity: resolvedArtwork.identity)
-                    artworkLoadTask = nil
-                    return
-                }
-
-                if !localFallbackAttempted, let localArtworkURL {
+                    retryURLs = PlayerArtworkUpdatePolicy.higherPriorityImageURLs(
+                        than: resolvedArtwork.identity,
+                        among: preferredImageURLs,
+                        profileID: profile?.id
+                    )
+                    if retryURLs.isEmpty {
+                        artworkLoadTask = nil
+                        return
+                    }
+                } else if !localFallbackAttempted, let localArtworkURL {
                     localFallbackAttempted = true
                     if let image = await EmbeddedAudioArtworkService.shared.thumbnail(for: localArtworkURL) {
                         let identity = await Task.detached(priority: .utility) {
@@ -4115,19 +4121,7 @@ class Player {
                     }
                 }
 
-                if let podcastImageURL,
-                   preferredImageURLs.contains(podcastImageURL) == false,
-                   let podcastArtwork = await Self.loadCurrentArtwork(
-                       chapterData: nil,
-                       imageURLs: [podcastImageURL],
-                       profile: profile
-                   ) {
-                    guard Task.isCancelled == false,
-                          artworkLoadGeneration == generation else { return }
-                    applyCurrentArtwork(podcastArtwork.image, identity: podcastArtwork.identity)
-                }
-
-                let retryKeys = preferredImageURLs.map {
+                let retryKeys = retryURLs.map {
                     SharedImageRepository.recoveryKey(for: $0, profileID: profile?.id)
                 }
                 var delays: [TimeInterval] = []

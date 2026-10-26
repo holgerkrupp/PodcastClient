@@ -20,6 +20,25 @@ enum PlayerArtworkUpdatePolicy {
             .filter { seen.insert($0).inserted }
     }
 
+    static func higherPriorityImageURLs(
+        than resolvedIdentity: PlayerArtworkIdentity,
+        among candidates: [URL],
+        profileID: String?
+    ) -> [URL] {
+        switch resolvedIdentity {
+        case .chapterData:
+            return []
+        case .url(let source, let resolvedProfileID):
+            guard resolvedProfileID == profileID,
+                  let index = candidates.firstIndex(where: { $0.absoluteString == source }) else {
+                return candidates
+            }
+            return Array(candidates.prefix(index))
+        case .embeddedFile:
+            return candidates
+        }
+    }
+
     /// A resolved image only needs to be published when its source changes.
     /// A nil result clears an existing image after the fallback lookup finishes.
     static func shouldApply(

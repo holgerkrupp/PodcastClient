@@ -186,10 +186,11 @@ struct CoverImageView: View {
     @MainActor
     private func seedFromCacheIfPossible(for key: String) {
         guard key != lastAppliedKey else { return }
+        let hasUnresolvedChapterData = activeChapter?.imageData?.isEmpty == false
         for (index, url) in remoteImageCandidates.enumerated() {
             guard let uiImage = cachedUIImage(for: url) else { continue }
             loadedImage = Image(uiImage: uiImage)
-            if index == 0 {
+            if index == 0, !hasUnresolvedChapterData {
                 lastAppliedKey = key
             }
             return
