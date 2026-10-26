@@ -5,6 +5,20 @@
 //  Created by Holger Krupp on 23.04.25.
 //
 import SwiftData
+
+enum PlaylistCompletionError: LocalizedError {
+    case playbackPlaylistUnavailable
+    case userStateUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .playbackPlaylistUnavailable:
+            return "The playback playlist is unavailable."
+        case .userStateUnavailable:
+            return "The synchronized playlist store is unavailable."
+        }
+    }
+}
 import Foundation
 
 enum SmartShuffleResult: Sendable, Equatable {
@@ -279,7 +293,9 @@ actor PlaylistModelActor {
     /// committed before this method returns. This prevents playback from selecting from one
     /// queue snapshot while completion bookkeeping removes from a newer one later on.
     func dequeueFinishedEpisodeAndReturnNext(after episodeURL: URL) async throws -> URL? {
-        guard let playlist = try fetchPlaylist() else { return nil }
+        guard let playlist = try fetchPlaylist() else {
+            throw PlaylistCompletionError.playbackPlaylistUnavailable
+        }
         try markEpisodeFinished(episodeURL)
         guard playlist.isSmartPlaylist == false else {
             if modelContext.hasChanges {
@@ -311,11 +327,21 @@ actor PlaylistModelActor {
         // Finishing an episode always dequeues it from the playlist it was
         // played in. Every *other* playlist decides for itself whether a play
         // that happened elsewhere also drops its own copy.
+        let completionDate = try fetchEpisodes(byURL: episodeURL)
+            .compactMap { $0.metaData?.completionDate }
+            .max()
         let matchingEntries = try modelContext.fetch(FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate<PlaylistEntry> { entry in
                 entry.episode?.url == episodeURL
             }
         )).filter { entry in
+            // A user re-queue created after this completion is deliberate. A
+            // retry must not consume that newer entry.
+            if let completionDate,
+               let addedAt = entry.dateAdded,
+               addedAt > completionDate {
+                return false
+            }
             guard let entryPlaylist = entry.playlist else { return true }
             guard entryPlaylist.id != playlistID else { return true }
             return entryPlaylist.removesEpisodesPlayedElsewhere
@@ -324,6 +350,13 @@ actor PlaylistModelActor {
             if modelContext.hasChanges {
                 try modelContext.save()
             }
+            // Local deletion may have committed just before suspension while
+            // the UserState tombstone did not. Recreate the playback playlist
+            // tombstone from stable episode identity on retry.
+            try await tombstoneSplitStoreEntries(recoveryRemovals(
+                episodeURL: episodeURL,
+                playlist: playlist
+            ), at: completionDate ?? .now)
             return nextEpisodeURL
         }
 
@@ -361,10 +394,11 @@ actor PlaylistModelActor {
             scheduleAutoDownloadPolicy(for: affectedPlaylistID)
         }
 
-        // Cross-store propagation and presentation refreshes are not on the audio hand-off
-        // path. The local queue commit above is already durable before the successor is used.
+        // Keep the pending completion marker until both the local deletion and
+        // the synchronized tombstone have durable saves. This targeted write is
+        // part of the completion transaction; widgets remain follow-up work.
+        try await tombstoneSplitStoreEntries(removals, at: completionDate ?? .now)
         Task { [modelContainer] in
-            await self.tombstoneSplitStoreEntries(removals)
             await PlayNextWidgetSync.refresh(
                 using: modelContainer,
                 playlistIDs: affectedPlaylistIDs
@@ -842,7 +876,7 @@ actor PlaylistModelActor {
             }
             normalizeOrder()
             modelContext.saveIfNeeded()
-            await tombstoneSplitStoreEntries(removals)
+            try? await tombstoneSplitStoreEntries(removals)
             scheduleAutoDownloadPolicy()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -965,7 +999,14 @@ actor PlaylistModelActor {
             }
         )
 
-        let entries = try modelContext.fetch(descriptor)
+        let completionDate = try fetchEpisodes(byURL: episodeURL)
+            .compactMap { $0.metaData?.completionDate }
+            .max()
+        let entries = try modelContext.fetch(descriptor).filter { entry in
+            guard let completionDate,
+                  let addedAt = entry.dateAdded else { return true }
+            return addedAt <= completionDate
+        }
         guard entries.isEmpty == false else { return }
 
         let playlists = Set(entries.compactMap { $0.playlist?.id })
@@ -1001,8 +1042,10 @@ actor PlaylistModelActor {
             }
         }
 
-        modelContext.saveIfNeeded()
-        await tombstoneSplitStoreEntries(removals)
+        if modelContext.hasChanges {
+            try modelContext.save()
+        }
+        try await tombstoneSplitStoreEntries(removals, at: completionDate ?? .now)
         for affectedPlaylistID in playlists {
             scheduleAutoDownloadPolicy(for: affectedPlaylistID)
         }
@@ -1013,7 +1056,10 @@ actor PlaylistModelActor {
         }
     }
 
-    private func tombstoneSplitStoreEntries(_ removals: [StoreSplitPlaylistRemoval]) async {
+    private func tombstoneSplitStoreEntries(
+        _ removals: [StoreSplitPlaylistRemoval],
+        at date: Date = .now
+    ) async throws {
         guard removals.isEmpty == false else { return }
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
@@ -1023,11 +1069,38 @@ actor PlaylistModelActor {
                 "store_split_playlist_tombstone_deferred",
                 details: "count=\(removals.count)"
             )
-            return
+            throw PlaylistCompletionError.userStateUnavailable
         }
 
         let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
-        await writer.tombstone(removals)
+        try await writer.tombstoneDurably(removals, at: date)
+        CrashBreadcrumbs.shared.record(
+            "store_split_playlist_tombstone_committed",
+            details: "count=\(removals.count)"
+        )
+    }
+
+    private func recoveryRemovals(
+        episodeURL: URL,
+        playlist: Playlist
+    ) -> [StoreSplitPlaylistRemoval] {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { $0.url == episodeURL }
+        )
+        guard let episode = try? modelContext.fetch(descriptor).first else { return [] }
+        let identity = episode.stableEpisodeIdentity
+        let playlists = (try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        let eligiblePlaylists = playlists.filter {
+            $0.isSmartPlaylist == false
+                && ($0.id == playlistID || $0.title == Playlist.defaultQueueTitle || $0.removesEpisodesPlayedElsewhere)
+        }
+        return eligiblePlaylists.map { item in
+            StoreSplitPlaylistRemoval(
+                playlistID: item.storeSplitSyncID,
+                isDefaultQueue: item.title == Playlist.defaultQueueTitle,
+                identity: identity
+            )
+        }
     }
 
     private func publishSplitStorePlaylist(_ snapshot: StoreSplitPlaylistSnapshot) async {

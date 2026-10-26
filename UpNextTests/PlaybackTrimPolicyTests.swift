@@ -82,4 +82,38 @@ final class PlaybackTrimPolicyTests: XCTestCase {
         XCTAssertEqual(settings.cutFront, 0)
         XCTAssertEqual(settings.cutEnd, 0)
     }
+
+    func testNearEndResumeDoesNotTreatMaximumProgressAsCompletion() {
+        XCTAssertEqual(
+            PlaybackTrimPolicy.resolvedResumePosition(candidate: 59 * 60 + 30, duration: 60 * 60),
+            59 * 60 + 30
+        )
+        XCTAssertEqual(
+            PlaybackTrimPolicy.resolvedResumePosition(candidate: 59 * 60 + 59, duration: 60 * 60),
+            59 * 60 + 59
+        )
+    }
+
+    func testConfirmedEpisodeStartsAtZeroOnlyForExplicitReplay() {
+        let completedAt = Date(timeIntervalSince1970: 100)
+
+        XCTAssertEqual(
+            PlaybackTrimPolicy.resolvedResumePosition(
+                candidate: 3_590,
+                duration: 3_600,
+                completionDate: completedAt,
+                explicitlyReplayed: true
+            ),
+            0
+        )
+        XCTAssertEqual(
+            PlaybackTrimPolicy.resolvedResumePosition(
+                candidate: 3_590,
+                duration: 3_600,
+                completionDate: nil,
+                explicitlyReplayed: true
+            ),
+            3_590
+        )
+    }
 }

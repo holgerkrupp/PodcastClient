@@ -507,13 +507,14 @@ actor EpisodeActor {
         let previousMemberships = episodes.map(EpisodeSmartPlaylistMembershipState.init)
         for episode in episodes {
             ensureMetadata(for: episode)
+            let durableCompletionDate = episode.metaData?.completionDate ?? completionDate
             episode.metaData?.playPosition = position
             episode.metaData?.maxPlayposition = max(
                 episode.metaData?.maxPlayposition ?? 0,
                 position
             )
-            episode.metaData?.completionDate = completionDate
-            episode.metaData?.lastPlayed = completionDate
+            episode.metaData?.completionDate = durableCompletionDate
+            episode.metaData?.lastPlayed = durableCompletionDate
             episode.metaData?.isArchived = false
             episode.metaData?.isHistory = true
             episode.metaData?.isInbox = false
