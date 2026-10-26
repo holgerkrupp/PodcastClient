@@ -404,6 +404,10 @@ actor StoreSplitPlaylistSyncWriter {
     }
 
     func tombstone(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) {
+        try? tombstoneDurably(removals, at: date)
+    }
+
+    func tombstoneDurably(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) throws {
         guard removals.isEmpty == false else { return }
         let deviceID = ListeningDeviceIdentity.current().id
 
@@ -414,7 +418,7 @@ actor StoreSplitPlaylistSyncWriter {
             }
         }
 
-        modelContext.saveIfNeeded()
+        try modelContext.save()
     }
 
     private func tombstonePlaylistEntry(
@@ -432,6 +436,7 @@ actor StoreSplitPlaylistSyncWriter {
         )
 
         if let entry = try? modelContext.fetch(descriptor).first {
+            guard entry.addedAt <= date else { return }
             entry.isDeleted = true
             entry.deletedAt = date
             entry.updatedAt = date
@@ -463,6 +468,7 @@ actor StoreSplitPlaylistSyncWriter {
         )
 
         if let entry = try? modelContext.fetch(descriptor).first {
+            guard entry.addedAt <= date else { return }
             entry.isDeleted = true
             entry.deletedAt = date
             entry.updatedAt = date

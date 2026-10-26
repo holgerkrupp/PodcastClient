@@ -90,7 +90,8 @@ private enum PlaybackProgressDefaultsStore {
     private static let legacyDefaultsKey = "Player.cachedPlaybackProgress.v1"
     private static let indexKey = "Player.cachedPlaybackProgress.index.v2"
     private static let entryKeyPrefix = "Player.cachedPlaybackProgress.entry.v2."
-    private static let pendingCompletionKey = "Player.pendingFinishedEpisode.v1"
+    private static let pendingCompletionKey = "Player.pendingFinishedEpisodes.v2"
+    private static let legacyPendingCompletionKey = "Player.pendingFinishedEpisode.v1"
     private static let defaults = UserDefaults.standard
 
     struct PendingCompletion: Codable {
@@ -182,17 +183,39 @@ private enum PlaybackProgressDefaultsStore {
             playlistID: playlistID,
             finalPlaybackPosition: finalPlaybackPosition
         )
-        guard let data = try? JSONEncoder().encode(pending) else { return }
+        var pendingCompletions = allPendingCompletions()
+        pendingCompletions.removeAll { $0.episodeURL == episodeURL }
+        pendingCompletions.append(pending)
+        guard let data = try? JSONEncoder().encode(pendingCompletions) else { return }
         defaults.set(data, forKey: pendingCompletionKey)
     }
 
     static func pendingCompletion() -> PendingCompletion? {
-        guard let data = defaults.data(forKey: pendingCompletionKey) else { return nil }
-        return try? JSONDecoder().decode(PendingCompletion.self, from: data)
+        allPendingCompletions().first
     }
 
-    static func removePendingCompletion() {
-        defaults.removeObject(forKey: pendingCompletionKey)
+    static func allPendingCompletions() -> [PendingCompletion] {
+        if let data = defaults.data(forKey: pendingCompletionKey),
+           let pending = try? JSONDecoder().decode([PendingCompletion].self, from: data) {
+            return pending
+        }
+        guard let legacyData = defaults.data(forKey: legacyPendingCompletionKey),
+              let legacy = try? JSONDecoder().decode(PendingCompletion.self, from: legacyData) else {
+            return []
+        }
+        return [legacy]
+    }
+
+    static func removePendingCompletion(for episodeURL: URL) {
+        var pending = allPendingCompletions()
+        pending.removeAll { $0.episodeURL == episodeURL }
+        defaults.removeObject(forKey: legacyPendingCompletionKey)
+        guard pending.isEmpty == false,
+              let data = try? JSONEncoder().encode(pending) else {
+            defaults.removeObject(forKey: pendingCompletionKey)
+            return
+        }
+        defaults.set(data, forKey: pendingCompletionKey)
     }
 
     private static func entryKey(for episodeURL: URL) -> String {
@@ -621,6 +644,11 @@ class Player {
         Task {
             await retryPendingFinishedEpisode()
 
+            guard PlaybackProgressDefaultsStore.pendingCompletion() == nil else {
+                AppDiagnostics.log("Playback restoration deferred while a completion transaction is pending")
+                return
+            }
+
             // Restoring the episode is what makes the player usable, so nothing
             // else may sit in front of it. The cache reconciliation below used
             // to run first and walked every leftover entry with a store write
@@ -634,6 +662,15 @@ class Player {
         }
         loadPlayBackSpeed()
         listenToEvent()
+        engine.setEndHandler { [weak self] in
+            guard let self else { return }
+            self.handlePlaybackEndedEvent(
+                source: "item_end_notification",
+                observedPosition: self.engine.currentTime(),
+                observedDuration: self.engine.currentItemDuration(),
+                trustedEndEvent: true
+            )
+        }
         observeEnginePlaybackState()
         pause()
         addChangeSettingsObserver()
@@ -1860,7 +1897,9 @@ class Player {
         persistedMaxPosition: Double?,
         metadataPosition: Double?,
         metadataMaxPosition: Double?,
-        inMemoryPosition: Double?
+        inMemoryPosition: Double?,
+        completionDate: Date? = nil,
+        explicitlyReplayed: Bool = false
     ) -> Double {
         if let explicitTime {
             AppDiagnostics.log("Time provided when calling the playEpisode function: \(explicitTime)")
@@ -1884,19 +1923,21 @@ class Player {
             }
         }
 
-        let duration = sanitizedPosition(episodeDuration)
-        if duration > 0,
-           candidate >= (duration * progressThreshold) {
-            AppDiagnostics.log("episode considered finished - jump to beginning")
-            return 0
-        }
-
         if candidate > 0 {
             AppDiagnostics.log("jump to last position: \(candidate)")
         } else {
             AppDiagnostics.log("no persisted position - jump to beginning")
         }
-        return candidate
+        let resolved = PlaybackTrimPolicy.resolvedResumePosition(
+            candidate: candidate,
+            duration: episodeDuration,
+            completionDate: completionDate,
+            explicitlyReplayed: explicitlyReplayed
+        )
+        AppDiagnostics.log(
+            "resume position selected: \(resolved), completed=\(completionDate != nil), explicitReplay=\(explicitlyReplayed)"
+        )
+        return resolved
     }
 
     private func cachedPlaybackProgress(for episodeURL: URL) -> CachedPlaybackProgress? {
@@ -2500,7 +2541,9 @@ class Player {
             ),
             metadataPosition: currentEpisode?.metaData?.playPosition,
             metadataMaxPosition: currentEpisode?.metaData?.maxPlayposition,
-            inMemoryPosition: inMemoryResumePosition
+            inMemoryPosition: inMemoryResumePosition,
+            completionDate: episode.metaData?.completionDate,
+            explicitlyReplayed: playDirectly && time == nil
         )
         let targetStartTime = PlaybackTrimPolicy.initialPosition(
             resumePosition: resumePosition,
@@ -3134,6 +3177,15 @@ class Player {
         isPlaying = false
         resetSilenceGapReduction(updateEngine: false)
         stopPlaybackUpdates()
+        let pausePosition = sanitizedPosition(engine.currentTime())
+        let pauseDuration = sanitizedPosition(engine.currentItemDuration())
+        if pauseDuration > 0,
+           pausePosition / pauseDuration >= 0.99,
+           pausePosition < pauseDuration {
+            AppDiagnostics.log(
+                "Playback paused near end; retaining position \(pausePosition)s of \(pauseDuration)s"
+            )
+        }
         updateNowPlayingInfo()
         Task {
             await captureCurrentPlaybackStateFromEngine(force: true)
@@ -3422,13 +3474,15 @@ class Player {
         let finishThreshold = max(resolvedDuration * progressThreshold, resolvedDuration - 2.0)
         guard trustedEndEvent || resolvedPosition >= finishThreshold else {
             AppDiagnostics.log(
-                "Ignoring premature ended event from \(source): position=\(resolvedPosition), duration=\(resolvedDuration)"
+                "near_end_unconfirmed source=\(source) position=\(resolvedPosition) duration=\(resolvedDuration)"
             )
             return
         }
 
         playPosition = resolvedPosition
-        AppDiagnostics.log("Playback finished automatically (\(source))")
+        AppDiagnostics.log(
+            "playback_end_detected source=\(source) remaining=\(max(resolvedDuration - resolvedPosition, 0))s"
+        )
         handlePlaybackFinished()
     }
     
@@ -3588,8 +3642,12 @@ class Player {
         finishingEpisodeURL = finishedEpisodeURL
         let finalPlaybackPosition = max(playPosition, currentEpisode?.duration ?? 0.0)
         let playbackPlaylistID = currentPlaybackPlaylistID
+        let episodeToken = SHA256.hash(data: Data(finishedEpisodeURL.absoluteString.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
         AppDiagnostics.log(
-            "Playback finished; captured final position for \(finishedEpisodeURL.redactedPodcastURLString)"
+            "completion_transaction_started episode=\(episodeToken) playlist=\(playbackPlaylistID?.uuidString ?? "none")"
         )
         PlaybackProgressDefaultsStore.savePendingCompletion(
             episodeURL: finishedEpisodeURL,
@@ -3602,11 +3660,23 @@ class Player {
             let continuePlaying = await settingsActor?.getContiniousPlay() ?? true
             let sleepTimerContinuePlaying = !stopAfterEpisode
 
-            let queuedSuccessor = await commitFinishedEpisode(
-                episodeURL: finishedEpisodeURL,
-                finalPlaybackPosition: finalPlaybackPosition,
-                playlistID: playbackPlaylistID
-            )
+            let queuedSuccessor: URL?
+            do {
+                queuedSuccessor = try await commitFinishedEpisode(
+                    episodeURL: finishedEpisodeURL,
+                    finalPlaybackPosition: finalPlaybackPosition,
+                    playlistID: playbackPlaylistID
+                )
+            } catch {
+                // Keep the episode and exact final position available for retry.
+                // The durable pending marker remains the recovery source.
+                AppDiagnostics.log(
+                    "completion_transaction_failed error=\(String(describing: type(of: error)))"
+                )
+                finishingEpisodeURL = nil
+                finishEpisodeTransitionBackgroundTask()
+                return
+            }
 
             let nextEpisodeURL: URL?
             if sleepTimerContinuePlaying,
@@ -3656,72 +3726,70 @@ class Player {
         episodeURL: URL,
         finalPlaybackPosition: Double,
         playlistID: UUID?
-    ) async -> URL? {
-        do {
-            guard let episodeActor else {
-                throw EpisodeCompletionError.episodeNotFound(episodeURL)
-            }
-
-            AppDiagnostics.log(
-                "Committing completion state for \(episodeURL.redactedPodcastURLString)"
-            )
-            try await episodeActor.commitFinishedEpisode(
-                episodeURL: episodeURL,
-                finalPlaybackPosition: finalPlaybackPosition
-            )
-
-            let successor: URL?
-            if let playlistID {
-                guard let container = ModelContainerManager.shared.preparedContainer else {
-                    return nil
-                }
-                let playlistActor = try PlaylistModelActor(
-                    modelContainer: container,
-                    playlistID: playlistID
-                )
-                successor = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(
-                    after: episodeURL
-                )
-            } else {
-                // This episode was not supplied by the selected queue. Remove
-                // any stale copies without inventing a successor.
-                guard let container = ModelContainerManager.shared.preparedContainer else {
-                    return nil
-                }
-                let playlistActor = try PlaylistModelActor(
-                    modelContainer: container
-                )
-                try await playlistActor.removeFromAllPlaylists(episodeURL: episodeURL)
-                successor = nil
-            }
-
-            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
-            PlaybackProgressDefaultsStore.removePendingCompletion()
-            AppDiagnostics.log(
-                "Completion transaction finished for \(episodeURL.redactedPodcastURLString)"
-            )
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-            WatchSyncCoordinator.refreshSoon(force: true)
-            return successor
-        } catch {
-            AppDiagnostics.log(
-                "Completion transaction failed for \(episodeURL.redactedPodcastURLString): \(error.localizedDescription)"
-            )
-            return nil
+    ) async throws -> URL? {
+        guard let episodeActor else {
+            throw EpisodeCompletionError.episodeNotFound(episodeURL)
         }
+
+        AppDiagnostics.log("completion_episode_state_started")
+        try await episodeActor.commitFinishedEpisode(
+            episodeURL: episodeURL,
+            finalPlaybackPosition: finalPlaybackPosition
+        )
+        AppDiagnostics.log("episode_state_committed")
+
+        let successor: URL?
+        if let playlistID {
+            guard let container = ModelContainerManager.shared.preparedContainer else {
+                throw PlaylistCompletionError.playbackPlaylistUnavailable
+            }
+            let playlistActor = try PlaylistModelActor(
+                modelContainer: container,
+                playlistID: playlistID
+            )
+            successor = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(
+                after: episodeURL
+            )
+            AppDiagnostics.log("local_playlist_removal_committed playlist=\(playlistID.uuidString)")
+        } else {
+            // This episode was not supplied by the selected queue. Remove
+            // any stale copies without inventing a successor.
+            guard let container = ModelContainerManager.shared.preparedContainer else {
+                throw PlaylistCompletionError.playbackPlaylistUnavailable
+            }
+            let playlistActor = try PlaylistModelActor(
+                modelContainer: container
+            )
+            try await playlistActor.removeFromAllPlaylists(episodeURL: episodeURL)
+            successor = nil
+        }
+
+        PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        PlaybackProgressDefaultsStore.removePendingCompletion(for: episodeURL)
+        AppDiagnostics.log("completion_transaction_committed")
+        NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        WatchSyncCoordinator.refreshSoon(force: true)
+        return successor
     }
 
     private func retryPendingFinishedEpisode() async {
-        guard let pending = PlaybackProgressDefaultsStore.pendingCompletion() else { return }
-
-        AppDiagnostics.log(
-            "Retrying pending completion for \(pending.episodeURL.redactedPodcastURLString)"
-        )
-        _ = await commitFinishedEpisode(
-            episodeURL: pending.episodeURL,
-            finalPlaybackPosition: pending.finalPlaybackPosition,
-            playlistID: pending.playlistID
-        )
+        for pending in PlaybackProgressDefaultsStore.allPendingCompletions() {
+            AppDiagnostics.log(
+                "pending_completion_recovered episode=\(pending.episodeURL.redactedPodcastURLString)"
+            )
+            do {
+                _ = try await commitFinishedEpisode(
+                    episodeURL: pending.episodeURL,
+                    finalPlaybackPosition: pending.finalPlaybackPosition,
+                    playlistID: pending.playlistID
+                )
+            } catch {
+                AppDiagnostics.log(
+                    "pending_completion_retry_failed error=\(String(describing: type(of: error)))"
+                )
+                break
+            }
+        }
     }
 
     /// Resets the in-memory state left behind by the episode that just finished, so the next

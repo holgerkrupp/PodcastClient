@@ -75,7 +75,7 @@ private enum UserGuideRegistry {
               summary: "The mini player provides quick access to current playback. Open it for the full player and its episode controls.",
               steps: ["Tap the mini player to open the full player.", "Use the timeline to move through the episode. Tap play or pause to control playback.", "Use skip back and forward for the configured intervals. Use the chapter controls when chapters are available."],
               example: "If you skip by accident, use the undo prompt when it appears to return to the previous position.",
-              options: "Playback speed, skip intervals, audio enhancements, output, and sleep timer are configurable or available from the player. Some controls depend on the episode and device.", action: nil, related: ["chapters", "transcripts", "settings-playback"]),
+              options: "Playback speed, skip intervals, audio enhancements, output, and sleep timer are configurable or available from the player. Pausing preserves the saved position, including near the end; confirmed completion removes the episode from the playlist being played. Other playlists follow their removal preference. A completed episode can be deliberately played again from its episode actions. Some controls depend on the episode and device.", action: nil, related: ["chapters", "transcripts", "settings-playback", "queue-actions", "playlists"]),
         .init(id: "now-playing-widget", title: "Use the Now Playing widget", category: .playback,
               aliases: ["widget", "home screen widget", "cover art", "chapter art", "skip controls"],
               summary: "The Now Playing widget shows the current episode artwork and provides playback controls from the Home Screen.",

@@ -67,6 +67,8 @@ final class PlayerEngine {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var endObserver: NSObjectProtocol?
+    private var endObserverGeneration: UInt64 = 0
+    private var endHandler: (@MainActor @Sendable () -> Void)?
     private var boundaryTimeObserver: Any?
     private var outroBoundaryTimeObserver: Any?
     private var periodicTimeObserver: Any?
@@ -185,6 +187,35 @@ final class PlayerEngine {
         removeOutroBoundaryTimeObserver()
         removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
+        installEndObserver(for: item)
+    }
+
+    func setEndHandler(_ handler: (@MainActor @Sendable () -> Void)?) {
+        endHandler = handler
+    }
+
+    /// End detection belongs to the current media item, not to the cancellable
+    /// progress stream. A pause can stop progress updates without disarming the
+    /// one event that commits completion.
+    private func installEndObserver(for item: AVPlayerItem?) {
+        guard let item else { return }
+        endObserverGeneration &+= 1
+        let generation = endObserverGeneration
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self, weak item] notification in
+            guard let item,
+                  notification.object as? AVPlayerItem === item else { return }
+            Task { @MainActor [weak self, weak item] in
+                guard let self,
+                      let item,
+                      self.endObserverGeneration == generation,
+                      self.avPlayer.currentItem === item else { return }
+                self.endHandler?()
+            }
+        }
     }
 
     func setBoundaryTimeObserver(
@@ -334,6 +365,7 @@ final class PlayerEngine {
     }
 
     private func removeEndObserver() {
+        endObserverGeneration &+= 1
         if let endObserver {
             NotificationCenter.default.removeObserver(endObserver)
             self.endObserver = nil
@@ -354,15 +386,12 @@ final class PlayerEngine {
 
     private func removePlaybackStreamObservers(for streamID: UInt64) {
         guard streamID == activePlaybackStreamID else { return }
-        removeEndObserver()
         removePeriodicTimeObserver()
     }
     
     func playbackStream(interval: TimeInterval = 1.0) -> AsyncStream<PlaybackEvent> {
-        let currentItem = avPlayer.currentItem
         activePlaybackStreamID &+= 1
         let streamID = activePlaybackStreamID
-        removeEndObserver()
         removePeriodicTimeObserver()
         let safeInterval = max(interval, 0.25)
 
@@ -374,19 +403,6 @@ final class PlayerEngine {
                 continuation.yield(.position(time.seconds))
             }
             self.periodicTimeObserver = observer
-
-            let endObserver = NotificationCenter.default.addObserver(
-                forName: .AVPlayerItemDidPlayToEndTime,
-                object: currentItem,
-                queue: .main
-            ) { [weak self] _ in
-                continuation.yield(.ended)
-                continuation.finish()
-                Task{
-                    await self?.sendInterrupt(type: .finished)
-                }
-            }
-            self.endObserver = endObserver
 
             continuation.onTermination = { [weak self] _ in
                 Task {

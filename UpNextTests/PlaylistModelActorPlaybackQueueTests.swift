@@ -359,6 +359,33 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertEqual(orderedURLs, [fixture.episodes[1].url])
     }
 
+    func testCompletionRetryPreservesEpisodeExplicitlyRequeuedAfterCompletion() async throws {
+        let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
+        let finishedURL = try XCTUnwrap(fixture.episodes[0].url)
+        let episode = fixture.episodes[0]
+        let completedAt = Date(timeIntervalSince1970: 2_000)
+        episode.metaData?.completionDate = completedAt
+        let requeuedAt = Date(timeIntervalSince1970: 3_000)
+        let requeuedEntry = PlaylistEntry(
+            episode: episode,
+            playlist: fixture.selectedPlaylist,
+            order: 0,
+            dateAdded: requeuedAt
+        )
+        fixture.context.insert(requeuedEntry)
+        try fixture.context.save()
+
+        let actor = try PlaylistModelActor(
+            modelContainer: fixture.container,
+            playlistID: fixture.selectedPlaylist.id
+        )
+        _ = try await actor.dequeueFinishedEpisodeAndReturnNext(after: finishedURL)
+
+        let orderedURLs = try await actor.orderedEpisodeURLs()
+        XCTAssertEqual(orderedURLs, [finishedURL])
+        XCTAssertEqual(requeuedEntry.dateAdded, requeuedAt)
+    }
+
     func testPrunerRemovesPlayedEpisodesButKeepsADeliberateRelisten() async throws {
         // The pruner ships disabled; this test covers the removal path itself.
         UserDefaults.standard.set(

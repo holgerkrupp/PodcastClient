@@ -1,6 +1,23 @@
 import Foundation
 
 enum PlaybackTrimPolicy {
+    /// Historical progress is not proof that the current completion transaction
+    /// succeeded. Only an explicit replay of an episode with a durable
+    /// completion date starts at zero; unfinished near-end positions survive.
+    static func resolvedResumePosition(
+        candidate: TimeInterval,
+        duration: TimeInterval?,
+        completionDate: Date? = nil,
+        explicitlyReplayed: Bool = false
+    ) -> TimeInterval {
+        if completionDate != nil, explicitlyReplayed { return 0 }
+        let position = sanitized(candidate)
+        guard let duration else { return position }
+        let safeDuration = sanitized(duration)
+        guard safeDuration > 0 else { return position }
+        return min(position, safeDuration)
+    }
+
     static func initialPosition(
         resumePosition: TimeInterval,
         introSkipSeconds: TimeInterval,

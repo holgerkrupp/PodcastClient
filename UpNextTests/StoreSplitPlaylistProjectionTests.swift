@@ -655,6 +655,46 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
     }
 
     @MainActor
+    func testOlderCompletionTombstoneCannotRemoveAStoredNewerRequeue() async throws {
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let identity = EpisodeStableIdentity(
+            feedURL: "https://example.com/feed.xml",
+            episodeID: "newer-requeue"
+        )
+        let completionDate = Date(timeIntervalSince1970: 2_000)
+        let requeuedAt = Date(timeIntervalSince1970: 3_000)
+        let context = ModelContext(userState)
+        context.insert(PlaylistEntrySync(
+            playlistID: Playlist.defaultQueueSyncID,
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0,
+            addedAt: requeuedAt
+        ))
+        context.insert(QueueEntrySync(
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0,
+            addedAt: requeuedAt
+        ))
+        try context.save()
+
+        let writer = StoreSplitPlaylistSyncWriter(modelContainer: userState)
+        try await writer.tombstoneDurably(
+            [StoreSplitPlaylistRemoval(
+                playlistID: Playlist.defaultQueueSyncID,
+                isDefaultQueue: true,
+                identity: identity
+            )],
+            at: completionDate
+        )
+
+        let persisted = ModelContext(userState)
+        XCTAssertFalse(try XCTUnwrap(persisted.fetch(FetchDescriptor<PlaylistEntrySync>()).first).isDeleted)
+        XCTAssertFalse(try XCTUnwrap(persisted.fetch(FetchDescriptor<QueueEntrySync>()).first).isDeleted)
+    }
+
+    @MainActor
     func testImportDoesNotRequeueAnEpisodeThatWasAlreadyPlayed() async throws {
         // The played-episode queue rule ships disabled; enable it to cover it.
         UserDefaults.standard.set(
