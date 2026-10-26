@@ -150,6 +150,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
 
     private var activeByID: [UUID: ActiveEvent] = [:]
     private var importCountsByID: [UUID: StoreCounts?] = [:]
+    private var processCPUAtEventStart: [UUID: ProcessCPUSample] = [:]
     private var reconciliations: [StoreKind: Reconciliation] = [:]
     private var observer: NSObjectProtocol?
     private var legacyStoreUUID: String?
@@ -290,6 +291,10 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
         let storeKind = storeKind(for: event.storeIdentifier)
         let id = event.id
         if let endedAt = event.endDate {
+            let cpuAtEnd = SystemProcessCPUTimeSource().sample()
+            let cpuDelta = processCPUAtEventStart.removeValue(forKey: id).map {
+                max(0, cpuAtEnd.cpuTime - $0.cpuTime)
+            }
             activeByID.removeValue(forKey: id)
             if eventKind == .export {
                 // A new process may finish the export that killed the old one
@@ -343,6 +348,9 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 "cloudkit_store_event_finished",
                 details: details
             )
+            AppDiagnostics.log(
+                "cloudkit_store_event_finished store=\(storeKind.rawValue) type=\(eventKind.rawValue) duration_ms=\(Int(endedAt.timeIntervalSince(event.startDate) * 1_000)) process_cpu_seconds_delta=\(cpuDelta.map { String(format: "%.2f", $0) } ?? "unavailable") memory_footprint_bytes=\(MemoryFootprint.current()) audio_active=\(Player.hasActivePlaybackInProcess || Player.shared.isPlaying) background_processing_active=\(ModelContainerManager.shared.isRunningBackgroundProcessingTask)"
+            )
             if eventKind == .export {
                 Task {
                     await StoreSplitWorkCoordinator.shared.resumeAfterCloudKitExport()
@@ -352,6 +360,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 }
             }
         } else {
+            processCPUAtEventStart[id] = SystemProcessCPUTimeSource().sample()
             if eventKind == .export {
                 LegacyCloudExportRecovery.started(
                     id: id, storeIdentifier: event.storeIdentifier
@@ -375,6 +384,9 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                     + ",store_id=" + event.storeIdentifier
                     + ",event_id=" + id.uuidString
                     + ",type=" + eventKind.rawValue
+            )
+            AppDiagnostics.log(
+                "cloudkit_store_event_started store=\(storeKind.rawValue) type=\(eventKind.rawValue) memory_footprint_bytes=\(MemoryFootprint.current()) audio_active=\(Player.hasActivePlaybackInProcess || Player.shared.isPlaying) background_processing_active=\(ModelContainerManager.shared.isRunningBackgroundProcessingTask)"
             )
         }
         activeEvents = activeByID.values.sorted { $0.startedAt < $1.startedAt }
@@ -550,7 +562,7 @@ class ModelContainerManager: ObservableObject {
     /// Set while a `BGProcessingTask` is driving the migration. iOS has granted a
     /// time budget in that window, so the "app is backgrounded" stop condition
     /// must not apply.
-    private var isRunningBackgroundProcessingTask = false
+    private(set) var isRunningBackgroundProcessingTask = false
     private var maintenanceExecutionContext: StoreMaintenanceExecutionContext {
         isRunningBackgroundProcessingTask ? .systemBackgroundProcessing : .foreground
     }
@@ -2539,6 +2551,7 @@ class ModelContainerManager: ObservableObject {
         isMigratingSplitStores = true
         migrationError = nil
         let exportBefore = cloudKitExportInProgress()
+        let cpuStarted = SystemProcessCPUTimeSource().sample()
         let report = await StoreSplitMigrationService.runSlice(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
@@ -2548,7 +2561,11 @@ class ModelContainerManager: ObservableObject {
         applyMigrationSliceTelemetry(
             report,
             cloudKitExportInProgressBefore: exportBefore,
-            exporterWaitDuration: 0
+            exporterWaitDuration: 0,
+            processCPUSecondsDelta: max(
+                0,
+                SystemProcessCPUTimeSource().sample().cpuTime - cpuStarted.cpuTime
+            )
         )
         if report.status == .completed {
             markMigrationCompleted(hadFailures: report.error != nil)
@@ -3187,6 +3204,7 @@ class ModelContainerManager: ObservableObject {
 
                 let exportBefore = cloudKitExportInProgress()
                 let sliceStartedAt = Date()
+                let cpuStarted = SystemProcessCPUTimeSource().sample()
                 let report = await StoreSplitMigrationService.runSlice(
                     legacyContainer: legacyContainer,
                     userStateContainer: userStateContainer,
@@ -3204,7 +3222,11 @@ class ModelContainerManager: ObservableObject {
                 applyMigrationSliceTelemetry(
                     report,
                     cloudKitExportInProgressBefore: exportBefore,
-                    exporterWaitDuration: 0
+                    exporterWaitDuration: 0,
+                    processCPUSecondsDelta: max(
+                        0,
+                        SystemProcessCPUTimeSource().sample().cpuTime - cpuStarted.cpuTime
+                    )
                 )
                 let sliceWallDuration = Date().timeIntervalSince(sliceStartedAt)
                 activeWorkDuration += sliceWallDuration
@@ -3391,7 +3413,8 @@ class ModelContainerManager: ObservableObject {
     private func applyMigrationSliceTelemetry(
         _ report: StoreSplitSliceReport,
         cloudKitExportInProgressBefore: Bool = false,
-        exporterWaitDuration: TimeInterval = 0
+        exporterWaitDuration: TimeInterval = 0,
+        processCPUSecondsDelta: Double? = nil
     ) {
         migrationCurrentPhase = report.phase
         migrationLastSliceStatus = report.status
@@ -3420,7 +3443,11 @@ class ModelContainerManager: ObservableObject {
                 nextRetryAt: pendingSplitStoreWorkReason == nil
                     ? nil
                     : Date().addingTimeInterval(Self.exportBackpressureRetryDelay),
-                recordedAt: .now
+                recordedAt: .now,
+                processCPUSecondsDelta: processCPUSecondsDelta,
+                memoryFootprintBytes: MemoryFootprint.current(),
+                audioActive: Player.hasActivePlaybackInProcess || Player.shared.isPlaying,
+                backgroundProcessingActive: isRunningBackgroundProcessingTask
             )
         )
         if let error = report.error {
@@ -3977,7 +4004,12 @@ class ModelContainerManager: ObservableObject {
             // only when it creates a store, so every install that predates the
             // index declarations needs them created directly.
             if allowsSave {
+                let backfillStartedAt = ProcessInfo.processInfo.systemUptime
+                let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
                 LegacyStoreIndexBackfill.run(storeURL: storeURL)
+                AppDiagnostics.log(
+                    "legacy_store_index_backfill duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - backfillStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt)))"
+                )
             }
             configuration = ModelConfiguration(
                 "Legacy",
@@ -3994,8 +4026,12 @@ class ModelContainerManager: ObservableObject {
             )
         }
 
-        let container = try ModelContainer(
-            for: Podcast.self,
+        let openStartedAt = ProcessInfo.processInfo.systemUptime
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        let container: ModelContainer
+        do {
+            container = try ModelContainer(
+                for: Podcast.self,
                 PodcastMetaData.self,
                 Episode.self,
                 EpisodeMetaData.self,
@@ -4008,7 +4044,16 @@ class ModelContainerManager: ObservableObject {
                 ListeningStat.self,
                 PlaySessionSummary.self,
                 TranscriptionRecord.self,
-            configurations: configuration
+                configurations: configuration
+            )
+        } catch {
+            AppDiagnostics.log(
+                "model_container_open_failed store=legacy duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000))"
+            )
+            throw error
+        }
+        AppDiagnostics.log(
+            "model_container_opened store=legacy duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) cloudkit_attached=\(legacyCloudSyncToRecord ?? false)"
         )
         // Remember what was actually applied, so the next launch can tell an
         // off→on re-attach from a store that has always been mirrored.
@@ -4065,7 +4110,20 @@ class ModelContainerManager: ObservableObject {
             )
         }
 
-        return try ModelContainer(for: schema, configurations: configuration)
+        let openStartedAt = ProcessInfo.processInfo.systemUptime
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        do {
+            let container = try ModelContainer(for: schema, configurations: configuration)
+            AppDiagnostics.log(
+                "model_container_opened store=user_state duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) cloudkit_attached=\(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)"
+            )
+            return container
+        } catch {
+            AppDiagnostics.log(
+                "model_container_open_failed store=user_state duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000))"
+            )
+            throw error
+        }
     }
 
     nonisolated static func makeCacheContainer(
@@ -4120,7 +4178,20 @@ class ModelContainerManager: ObservableObject {
             )
         }
 
-        return try ModelContainer(for: schema, configurations: configuration)
+        let openStartedAt = ProcessInfo.processInfo.systemUptime
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        do {
+            let container = try ModelContainer(for: schema, configurations: configuration)
+            AppDiagnostics.log(
+                "model_container_opened store=podcast_cache duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) cloudkit_attached=false"
+            )
+            return container
+        } catch {
+            AppDiagnostics.log(
+                "model_container_open_failed store=podcast_cache duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000))"
+            )
+            throw error
+        }
     }
 }
 

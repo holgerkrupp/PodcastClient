@@ -253,6 +253,7 @@ actor StoreSplitWorkCoordinator {
                 maintenancePermit = permit
             }
             let startedAt = Date()
+            let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
             await publishCurrentJob(nextJob)
 
             switch nextJob {
@@ -313,6 +314,19 @@ actor StoreSplitWorkCoordinator {
             CrashBreadcrumbs.shared.record(
                 "store_split_heavy_job_finished",
                 details: "operation=\(nextJob.rawValue),duration_ms=\(Int(duration * 1_000)),next_retry_ms=\(Int(backoffSeconds * 1_000))"
+            )
+            let runtimeState = await MainActor.run {
+                (
+                    playbackActive: Player.hasActivePlaybackInProcess,
+                    backgroundProcessingActive: ModelContainerManager.shared.isRunningBackgroundProcessingTask
+                )
+            }
+            let cpuDelta = max(
+                0,
+                SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt
+            )
+            AppDiagnostics.log(
+                "store_split_worker_finished operation=\(nextJob.rawValue) duration_ms=\(Int(duration * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) playback_active=\(runtimeState.playbackActive) background_processing_active=\(runtimeState.backgroundProcessingActive)"
             )
         }
 

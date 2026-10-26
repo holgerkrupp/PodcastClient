@@ -470,6 +470,13 @@ struct StoreSplitMigrationHealthRecord: Codable, Sendable, Equatable {
     let exporterWaitDurationMilliseconds: Int
     let nextRetryAt: Date?
     let recordedAt: Date
+    /// Whole-process CPU consumed while the operation ran. Other process work
+    /// can overlap this interval, so this is correlation evidence, not a claim
+    /// that the operation owns every sampled CPU second.
+    var processCPUSecondsDelta: Double? = nil
+    var memoryFootprintBytes: UInt64? = nil
+    var audioActive: Bool? = nil
+    var backgroundProcessingActive: Bool? = nil
 }
 
 struct StoreSplitMigrationPhaseStatus: Identifiable, Sendable, Equatable {
@@ -583,6 +590,8 @@ enum StoreSplitMigrationDiagnostics {
         userStateContext: ModelContext,
         cacheContext: ModelContext
     ) -> StoreSplitMigrationDiagnosticsSnapshot {
+        let startedAt = ProcessInfo.processInfo.systemUptime
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
         let subscribedPodcastDescriptor = FetchDescriptor<Podcast>(
             predicate: #Predicate<Podcast> { $0.metaData?.isSubscribed != false }
         )
@@ -603,7 +612,7 @@ enum StoreSplitMigrationDiagnostics {
             predicate: #Predicate<StoreSplitMigrationCheckpoint> { $0.failedCount > 0 }
         )
 
-        return StoreSplitMigrationDiagnosticsSnapshot(
+        let result = StoreSplitMigrationDiagnosticsSnapshot(
             legacySubscribedPodcastCount: legacySubscribedPodcastCount,
             legacyEpisodeCount: legacyEpisodeCount,
             legacyEpisodesWithPlaybackProgressCount: legacyEpisodesWithPlaybackProgressCount,
@@ -627,6 +636,18 @@ enum StoreSplitMigrationDiagnostics {
             lastMigrationAt: defaults.object(forKey: lastMigrationKey) as? Date,
             failedItemCount: failedItems().count
         )
+        let userStateRows = result.syncedSubscriptionCount
+            + result.syncedEpisodeStateCount
+            + result.syncedPlaylistCount
+            + result.syncedPlaylistEntryCount
+            + result.syncedQueueEntryCount
+            + result.syncedBookmarkCount
+            + result.syncedListeningHistoryCount
+            + result.syncedListeningBaselineCount
+        AppDiagnostics.log(
+            "store_split_diagnostics_snapshot duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) legacy_episode_rows=\(result.legacyEpisodeCount) user_state_rows=\(userStateRows) cache_transcript_rows=\(result.cachedAITranscriptCount + result.cachedAITranscriptChunkCount + result.cachedAIChapterSetCount)"
+        )
+        return result
     }
 
     static func recordMigrationRun(at date: Date = .now) {

@@ -7,6 +7,11 @@ The dual-sync backfill must be exercised with release-equivalent stores before a
 - A two-device dual-sync fixture converges after interrupted slice work and a relaunch.
 - A failed store-preparation attempt remains deferred and succeeds after retry.
 - A CloudKit-busy window and active playback yield without mutating the stores.
+- Store-open and CloudKit event diagnostics report per-store operation duration
+  and whole-process CPU deltas. Migration-slice health records include rows
+  scanned/mutated, save count/duration, CPU delta, footprint, playback state,
+  and whether the operation held a BGProcessing grant. CPU deltas are
+  correlation evidence because unrelated process work can overlap a sample.
 - Background-processing expiration stops at a slice boundary and resumes later.
 - A fresh-install fixture completes without legacy data and without repeated full scans.
 - Bootstrap mode selection covers fresh install, local legacy upgrade, and the one-way post-cutover path.

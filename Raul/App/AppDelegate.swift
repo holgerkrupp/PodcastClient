@@ -9,6 +9,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     var backgroundSessionCompletionHandler: (() -> Void)?
     private var playbackStateFlushTask: Task<Void, Never>?
     private var playbackStateBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
+    private var backgroundTaskCPUStart: [String: Double] = [:]
+
+    private func beginBackgroundTaskDiagnostics(_ task: BGProcessingTask) {
+        let cpu = SystemProcessCPUTimeSource().sample().cpuTime
+        backgroundTaskCPUStart[task.identifier] = cpu
+        AppDiagnostics.log(
+            "background_processing_started task=\(task.identifier) process_cpu_seconds=\(String(format: "%.2f", cpu))"
+        )
+    }
 
     func applicationWillResignActive(_ application: UIApplication) {
         ModelContainerManager.shared.pauseSplitStoreWorkForBackground()
@@ -191,6 +200,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     private func handleStoreSplitMigration(task: BGProcessingTask) {
+        beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("store_split_migration_background_task_started")
 #if DEBUG
         StoreSplitMigrationDebugLog.record("background pass launched by iOS")
@@ -285,9 +295,15 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             && (waitForExportQuiescence == false || exportSettled)
         let detail = "task=\(task.identifier),operation=\(operation),requested_success=\(requestedSuccess),cancelled=\(cancelled),drain_required=\(waitForExportQuiescence),export_settled=\(exportSettled),drain_ms=\(elapsedMilliseconds),exports=\(storeExportStatus)"
             + (details.map { ",\($0)" } ?? "")
+        let cpuAtStart = backgroundTaskCPUStart.removeValue(forKey: task.identifier)
+        let cpuAtEnd = SystemProcessCPUTimeSource().sample().cpuTime
+        let cpuDelta = cpuAtStart.map { max(0, cpuAtEnd - $0) }
         CrashBreadcrumbs.shared.record(
             "background_task_export_diagnostics",
-            details: detail
+            details: detail + ",process_cpu_seconds_delta=\(cpuDelta.map { String(format: "%.2f", $0) } ?? "unavailable")"
+        )
+        AppDiagnostics.log(
+            "background_processing_completed task=\(task.identifier) operation=\(operation) success=\(succeeded) process_cpu_seconds_delta=\(cpuDelta.map { String(format: "%.2f", $0) } ?? "unavailable")"
         )
         task.setTaskCompleted(success: succeeded)
     }
@@ -443,6 +459,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     private func handlePublisherTranscriptSynchronization(task: BGProcessingTask) {
+        beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("publisher_transcript_sync_background_task_started")
         let processingTask = Task(priority: .utility) {
             guard Player.hasActivePlaybackInProcess == false else {
@@ -536,6 +553,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     private func handleFeedProcessing(task: BGProcessingTask) {
+        beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
         let processingTask = Task(priority: .utility) {
             Self.scheduleFeedProcessing()
@@ -625,6 +643,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     private func handleAutomaticTranscriptionProcessing(task: BGProcessingTask) {
+        beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("automatic_transcription_background_task_started")
         let processingTask = Task(priority: .utility) {
             guard Player.hasActivePlaybackInProcess == false else {
