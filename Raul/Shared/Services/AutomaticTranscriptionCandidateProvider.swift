@@ -38,10 +38,17 @@ struct AutomaticTranscriptionCandidate: Sendable, Equatable {
 /// with more transcribed episodes.
 actor AutomaticTranscriptionCandidateProvider {
     static let defaultLimit = 24
+    /// Do not materialize every episode in a large or unsupported smart
+    /// playlist just to find a small number of transcription candidates.
+    static let maximumUnsupportedSmartPlaylistLibraryScan = 200
     /// Upper bound on the episodes inspected per playlist. A smart playlist can
     /// match a whole library, and deciding whether an episode is downloaded
     /// touches the file system, so the scan stays near the top of each list.
     static let maximumEpisodesScannedPerPlaylist = 200
+    /// A transcript publication check is opportunistic. If a podcast has more
+    /// than this many recent episodes and none of them has a transcript, treat
+    /// its publication status as unknown and skip on-device analysis.
+    static let maximumPodcastTranscriptScan = 64
 
     private let modelContext: ModelContext
     private let selectedPlaylistID: UUID?
@@ -84,19 +91,26 @@ actor AutomaticTranscriptionCandidateProvider {
         var seenEpisodeURLs = Set<URL>()
         var publishedCandidates: [AutomaticTranscriptionCandidate] = []
         var onDeviceCandidates: [AutomaticTranscriptionCandidate] = []
+        var scannedEpisodeCount = 0
+        let scanStartedAt = ProcessInfo.processInfo.systemUptime
 
         playlistScan: for playlist in playlists {
             let episodes: [Episode]
             if playlist.isSmartPlaylist {
                 if SmartPlaylistEngine.candidatePlan(for: playlist.smartFilter) != nil {
-                    let candidates = (try? SmartPlaylistEngine.candidateEpisodes(
+                    let candidates = (try? SmartPlaylistEngine.boundedCandidateEpisodes(
                         in: modelContext,
-                        for: playlist.smartFilter
+                        for: playlist.smartFilter,
+                        limit: Self.maximumEpisodesScannedPerPlaylist + 1
                     )) ?? []
                     episodes = SmartPlaylistEngine.episodes(from: candidates, for: playlist)
                 } else {
                     if allEpisodes == nil {
-                        allEpisodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+                        var descriptor = FetchDescriptor<Episode>(
+                            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+                        )
+                        descriptor.fetchLimit = Self.maximumUnsupportedSmartPlaylistLibraryScan + 1
+                        allEpisodes = (try? modelContext.fetch(descriptor)) ?? []
                     }
                     episodes = SmartPlaylistEngine.episodes(from: allEpisodes ?? [], for: playlist)
                 }
@@ -107,6 +121,7 @@ actor AutomaticTranscriptionCandidateProvider {
             let playlistTitle = playlist.displayTitle
 
             for episode in episodes.prefix(Self.maximumEpisodesScannedPerPlaylist) {
+                scannedEpisodeCount += 1
                 guard let episodeURL = episode.url else { continue }
                 guard excludedEpisodeURLs.contains(episodeURL) == false else { continue }
                 guard seenEpisodeURLs.insert(episodeURL).inserted else { continue }
@@ -133,6 +148,10 @@ actor AutomaticTranscriptionCandidateProvider {
                 }
             }
         }
+
+        AppDiagnostics.log(
+            "automatic_transcription_candidates scanned=\(scannedEpisodeCount) candidates=\(min(limit, publishedCandidates.count + onDeviceCandidates.count)) duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - scanStartedAt) * 1_000))"
+        )
 
         return Array((publishedCandidates + onDeviceCandidates).prefix(limit))
     }
@@ -186,11 +205,13 @@ actor AutomaticTranscriptionCandidateProvider {
             return cached
         }
 
-        let descriptor = FetchDescriptor<Episode>(
+        var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { candidate in
                 candidate.podcast?.persistentModelID == podcastID
-            }
+            },
+            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
         )
+        descriptor.fetchLimit = Self.maximumPodcastTranscriptScan + 1
         // Automatic transcription is opportunistic. If SwiftData cannot
         // materialize this query during launch/import, fail closed and let the
         // next sweep retry instead of faulting a relationship.
@@ -201,14 +222,32 @@ actor AutomaticTranscriptionCandidateProvider {
         let publishesTranscripts = episodes.contains { candidate in
             candidate.externalFiles.contains { $0.category == .transcript }
         }
-        podcastPublishesTranscriptsCache[cacheKey] = publishesTranscripts
-        return publishesTranscripts
+        // If the bounded sample filled, absence of a transcript is not
+        // evidence that the publisher never provides one. Fail closed and
+        // avoid starting optional multi-minute analysis.
+        let result = publishesTranscripts || episodes.count > Self.maximumPodcastTranscriptScan
+        podcastPublishesTranscriptsCache[cacheKey] = result
+        return result
     }
 
     /// Visible playlists in display order, with the playlist the user plays from
     /// pulled to the front.
     private func orderedPlaylists() -> [Playlist] {
-        let allPlaylists = (try? modelContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        var descriptor = FetchDescriptor<Playlist>(
+            sortBy: [SortDescriptor(\.sortIndex, order: .forward)]
+        )
+        descriptor.fetchLimit = 64
+        var allPlaylists = (try? modelContext.fetch(descriptor)) ?? []
+        if let selectedPlaylistID,
+           allPlaylists.contains(where: { $0.id == selectedPlaylistID }) == false {
+            var selectedDescriptor = FetchDescriptor<Playlist>(
+                predicate: #Predicate<Playlist> { $0.id == selectedPlaylistID }
+            )
+            selectedDescriptor.fetchLimit = 1
+            if let selected = try? modelContext.fetch(selectedDescriptor).first {
+                allPlaylists.append(selected)
+            }
+        }
         guard allPlaylists.isEmpty == false else { return [] }
 
         var ordered = Playlist.visibleSorted(allPlaylists)
@@ -226,7 +265,7 @@ actor AutomaticTranscriptionCandidateProvider {
     /// SwiftData can invalidate a relationship object while another context
     /// updates the playlist, and reading `order` from it then traps.
     private func orderedEntries(in playlistID: UUID) -> [PlaylistEntry] {
-        let descriptor = FetchDescriptor<PlaylistEntry>(
+        var descriptor = FetchDescriptor<PlaylistEntry>(
             predicate: #Predicate<PlaylistEntry> { entry in
                 entry.playlist?.id == playlistID
             },
@@ -235,6 +274,7 @@ actor AutomaticTranscriptionCandidateProvider {
                 SortDescriptor(\PlaylistEntry.dateAdded, order: .forward)
             ]
         )
+        descriptor.fetchLimit = Self.maximumEpisodesScannedPerPlaylist + 1
         return (try? modelContext.fetch(descriptor)) ?? []
     }
 }

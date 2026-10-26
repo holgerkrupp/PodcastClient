@@ -108,13 +108,12 @@ enum SmartPlaylistEngine {
         return .publishedAtOrAfter(lowerBound)
     }
 
-    /// Fetches a safe candidate superset through a stored/indexed field where
-    /// possible. Unsupported and OR filters retain the full-library path.
+    /// Fetches the complete candidate set used by the user-facing smart
+    /// playlist evaluator.
     static func candidateEpisodes(in context: ModelContext, for filter: SmartPlaylistFilter?) throws -> [Episode] {
         guard let plan = candidatePlan(for: filter) else {
             return try context.fetch(FetchDescriptor<Episode>())
         }
-
         switch plan {
         case let .publishedAtOrAfter(lowerBound):
             let descriptor = FetchDescriptor<Episode>(
@@ -122,6 +121,32 @@ enum SmartPlaylistEngine {
                     episode.publishDate != nil && episode.publishDate! >= lowerBound
                 }
             )
+            return try context.fetch(descriptor)
+        }
+    }
+
+    /// Fetches a bounded candidate window for optional work such as transcript
+    /// analysis. This is deliberately not used for the user-facing smart
+    /// playlist result, which must remain complete.
+    static func boundedCandidateEpisodes(
+        in context: ModelContext,
+        for filter: SmartPlaylistFilter?,
+        limit: Int
+    ) throws -> [Episode] {
+        guard limit > 0 else { return [] }
+        var descriptor = FetchDescriptor<Episode>(
+            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = limit
+        guard let plan = candidatePlan(for: filter) else {
+            return try context.fetch(descriptor)
+        }
+
+        switch plan {
+        case let .publishedAtOrAfter(lowerBound):
+            descriptor.predicate = #Predicate<Episode> { episode in
+                episode.publishDate != nil && episode.publishDate! >= lowerBound
+            }
             return try context.fetch(descriptor)
         }
     }
