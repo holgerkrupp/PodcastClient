@@ -3,10 +3,52 @@ import CoreImage
 import ImageIO
 import SwiftUI
 
+enum ImageDataLoadResult: Sendable {
+    case success(Data)
+    case failure(ArtworkLoadFailure)
+    case deferred
+}
+
+actor ArtworkLoadConcurrencyLimiter {
+    static let shared = ArtworkLoadConcurrencyLimiter(maximumConcurrentLoads: 6)
+
+    private let maximumConcurrentLoads: Int
+    private var activeLoads = 0
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(maximumConcurrentLoads: Int) {
+        self.maximumConcurrentLoads = max(maximumConcurrentLoads, 1)
+    }
+
+    func withPermit<T: Sendable>(_ operation: @Sendable () async throws -> T) async rethrows -> T {
+        await acquire()
+        defer { release() }
+        return try await operation()
+    }
+
+    private func acquire() async {
+        if activeLoads < maximumConcurrentLoads {
+            activeLoads += 1
+            return
+        }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    private func release() {
+        if waiters.isEmpty {
+            activeLoads -= 1
+        } else {
+            waiters.removeFirst().resume()
+        }
+    }
+}
+
 actor SharedImageRepository {
     static let shared = SharedImageRepository()
 
-    private var inFlightDataTasks: [String: Task<Data?, Never>] = [:]
+    private var inFlightDataTasks: [String: Task<ImageDataLoadResult, Never>] = [:]
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
     private var inFlightBlurredTasks: [String: Task<UIImage?, Never>] = [:]
     private static let ciContext = CIContext(options: [.cacheIntermediates: true])
@@ -117,11 +159,20 @@ actor SharedImageRepository {
                 return image
             }
 
-            guard let data = await self.imageData(for: url, profile: profile),
-                  let image = ImageLoaderAndCache.makeUIImage(
-                    from: data,
-                    maxPixelSize: maxPixelSize
-                  ) else {
+            let loadResult = await self.imageData(for: url, profile: profile)
+            guard case .success(let data) = loadResult else { return nil }
+            guard let image = ImageLoaderAndCache.makeUIImage(
+                from: data,
+                maxPixelSize: maxPixelSize
+            ) else {
+                    await ArtworkRecoveryCoordinator.shared.recordFailure(
+                        Self.recoveryKey(for: url, profileID: profileID),
+                        failure: .invalidContent
+                    )
+                    if profile == nil {
+                        let request = URLRequest(url: url)
+                        URLCache.shared.removeCachedResponse(for: request)
+                    }
                 return nil
             }
 
@@ -242,14 +293,18 @@ actor SharedImageRepository {
     /// Inbox rows, blurred backgrounds, and larger destinations can therefore
     /// request the same artwork concurrently without starting multiple HTTP
     /// transfers for that URL.
-    private func imageData(for url: URL, profile: PodcastAccessProfile? = nil) async -> Data? {
+    private func imageData(for url: URL, profile: PodcastAccessProfile? = nil) async -> ImageDataLoadResult {
         let taskKey = url.absoluteString + "|profile:" + (profile?.id ?? "public")
         if let task = inFlightDataTasks[taskKey] {
             return await task.value
         }
 
-        let task = Task<Data?, Never>(priority: .userInitiated) {
-            await ImageLoaderAndCache.loadImageData(from: url, saveTo: nil, profile: profile)
+        let task = Task<ImageDataLoadResult, Never>(priority: .userInitiated) {
+            await ArtworkRecoveryCoordinator.shared.load(
+                key: Self.recoveryKey(for: url, profileID: profile?.id)
+            ) {
+                await ImageLoaderAndCache.loadImageDataResult(from: url, profile: profile)
+            }
         }
         inFlightDataTasks[taskKey] = task
         let data = await task.value
@@ -284,6 +339,10 @@ actor SharedImageRepository {
     ) -> String {
         let scope = profileID ?? "public"
         return "\(url.absoluteString)|profile:\(scope)|max:\(Int(maxPixelSize.rounded(.up)))"
+    }
+
+    nonisolated static func recoveryKey(for url: URL, profileID: String?) -> String {
+        "\(url.absoluteString)|profile:\(profileID ?? "public")"
     }
 
     nonisolated static func blurredCacheKey(
@@ -433,11 +492,24 @@ class ImageLoaderAndCache: ObservableObject {
         saveTo: URL?,
         profile: PodcastAccessProfile? = nil
     ) async -> Data? {
-        guard url.isFileURL || url.scheme?.lowercased() != "about" else {
+        guard case .success(let data) = await loadImageDataResult(from: url, profile: profile) else {
             return nil
         }
+        if let saveTo { try? data.write(to: saveTo) }
+        return data
+    }
 
-        guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .artwork) else { return nil }
+    nonisolated static func loadImageDataResult(
+        from url: URL,
+        profile: PodcastAccessProfile? = nil
+    ) async -> ImageDataLoadResult {
+        guard url.isFileURL || url.scheme?.lowercased() != "about" else {
+            return .failure(.permanentHTTP)
+        }
+
+        guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .artwork) else {
+            return .failure(.permanentHTTP)
+        }
         let request = URLRequest(url: wireURL, cachePolicy: .returnCacheDataElseLoad)
         let cache = URLCache.shared
         cache.memoryCapacity = 1024 * 1024 * 16
@@ -447,27 +519,59 @@ class ImageLoaderAndCache: ObservableObject {
         // not let a protected request reuse or populate that shared cache.
         if profile == nil,
            let cached = cache.cachedResponse(for: request)?.data {
-            return cached
+            if isImageData(cached) { return .success(cached) }
+            cache.removeCachedResponse(for: request)
         }
 
         do {
             let data: Data
             let response: URLResponse
-            (data, response) = try await PodcastHTTPClient.shared.data(for: request, profile: profile, purpose: .artwork)
+            (data, response) = try await ArtworkLoadConcurrencyLimiter.shared.withPermit {
+                try await PodcastHTTPClient.shared.data(for: request, profile: profile, purpose: .artwork)
+            }
+            guard data.count <= 20 * 1024 * 1024, isImageData(data) else {
+                cache.removeCachedResponse(for: request)
+                return .failure(.invalidContent)
+            }
             if profile == nil {
                 let cachedResponse = CachedURLResponse(response: response, data: data)
                 cache.storeCachedResponse(cachedResponse, for: request)
             }
-
-            if let saveTo {
-                try? data.write(to: saveTo)
+            return .success(data)
+        } catch is CancellationError {
+            return .failure(.cancelled)
+        } catch let error as PodcastHTTPError {
+            switch error {
+            case .invalidResponse:
+                return .failure(.transport)
+            case .httpStatus(let code, _, _, let retryAfter):
+                if code == 401 || code == 403 { return .failure(.authentication) }
+                if code == 429 || code == 503 {
+                    let delay = retryAfter.map { max(0, $0.timeIntervalSinceNow) }
+                    return .failure(.server(statusCode: code, retryAfter: delay))
+                }
+                if (500..<600).contains(code) { return .failure(.server(statusCode: code, retryAfter: nil)) }
+                return .failure(.permanentHTTP)
             }
-           
-            return data
+        } catch let error as URLError {
+            if error.code == .cancelled { return .failure(.cancelled) }
+            if [.notConnectedToInternet, .networkConnectionLost, .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed].contains(error.code) {
+                return .failure(.offline)
+            }
+            return .failure(.transport)
         } catch {
-            // print("Image loading failed: \(error)")
-            return nil
+            return .failure(.transport)
         }
+    }
+
+    nonisolated private static func isImageData(_ data: Data) -> Bool {
+        guard data.isEmpty == false,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int else { return false }
+        return width > 0 && height > 0 && width <= 20_000 && height <= 20_000
     }
 
     nonisolated static func makeUIImage(from data: Data, maxPixelSize: CGFloat = defaultMaxPixelSize) -> UIImage? {
