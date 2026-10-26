@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import OSLog
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -13,9 +14,14 @@ protocol AdTranscriptProvider: Sendable {
 /// upcoming window.
 struct RollingSpeechTranscriptProvider: AdTranscriptProvider, Sendable {
     let existingLines: [TranscriptDetectionLine]
+    let coordinator: AdDetectionTranscriptWorkCoordinator
 
-    init(existingLines: [TranscriptDetectionLine] = []) {
+    init(
+        existingLines: [TranscriptDetectionLine] = [],
+        coordinator: AdDetectionTranscriptWorkCoordinator = .shared
+    ) {
         self.existingLines = existingLines.sorted { $0.start < $1.start }
+        self.coordinator = coordinator
     }
 
     func lines(for request: AdDetectionRequest) async throws -> [TranscriptDetectionLine] {
@@ -26,28 +32,113 @@ struct RollingSpeechTranscriptProvider: AdTranscriptProvider, Sendable {
 
         // Use the same SpeechTranscriber implementation as the full transcript
         // pipeline, but feed it a bounded temporary audio window.
-        let snippetURL = try await AudioSnippetWriter.makeSnippet(
-            from: request.mediaURL,
-            range: request.range
-        )
-        defer { try? FileManager.default.removeItem(at: snippetURL) }
+        return try await coordinator.lines(for: request) {
+            let snippetURL = try await AudioSnippetWriter.makeSnippet(
+                from: request.mediaURL,
+                range: request.range
+            )
+            defer { try? FileManager.default.removeItem(at: snippetURL) }
 
-        let transcriber = await AITranscripts(
-            url: snippetURL,
-            language: request.languageIdentifier,
-            maxSnippetDurationSeconds: 2.5,
-            maxWordsPerSnippet: 12,
-            analyzerPriority: .utility,
-            throttle: .backgroundFriendly,
-            diagnosticPurpose: "ad_detection"
-        )
-        guard let results = try await transcriber.transcribe() else { return [] }
-        return results.compactMap { result in
-            let start = CMTimeGetSeconds(result.range.start) + request.range.start
-            let end = CMTimeGetSeconds(result.range.end) + request.range.start
-            guard start.isFinite, end.isFinite, end >= start else { return nil }
-            return TranscriptDetectionLine(text: result.text, start: start, end: end)
+            let transcriber = await AITranscripts(
+                url: snippetURL,
+                language: request.languageIdentifier,
+                maxSnippetDurationSeconds: 2.5,
+                maxWordsPerSnippet: 12,
+                analyzerPriority: .utility,
+                throttle: .backgroundFriendly,
+                diagnosticPurpose: "ad_detection"
+            )
+            guard let results = try await transcriber.transcribe() else { return [] }
+            return results.compactMap { result in
+                let start = CMTimeGetSeconds(result.range.start) + request.range.start
+                let end = CMTimeGetSeconds(result.range.end) + request.range.start
+                guard start.isFinite, end.isFinite, end >= start else { return nil }
+                return TranscriptDetectionLine(text: result.text, start: start, end: end)
+            }
         }
+    }
+}
+
+/// The textual and semantic ad detectors run concurrently and use the same
+/// transcript provider. Coalesce identical requests so they share one bounded
+/// CAF write and one SpeechTranscriber pass.
+actor AdDetectionTranscriptWorkCoordinator {
+    static let shared = AdDetectionTranscriptWorkCoordinator()
+
+    private struct Flight {
+        let id: UUID
+        let task: Task<[TranscriptDetectionLine], Error>
+    }
+
+    private struct CachedLines {
+        let expiresAt: Date
+        let lines: [TranscriptDetectionLine]
+    }
+
+    private var flights: [String: Flight] = [:]
+    private var cachedLines: [String: CachedLines] = [:]
+    private var didCleanupTemporaryFiles = false
+
+    func lines(
+        for request: AdDetectionRequest,
+        operation: @escaping @Sendable () async throws -> [TranscriptDetectionLine]
+    ) async throws -> [TranscriptDetectionLine] {
+        if didCleanupTemporaryFiles == false {
+            didCleanupTemporaryFiles = true
+            AudioSnippetWriter.removeAbandonedTemporarySnippets(
+                olderThan: Date().addingTimeInterval(-24 * 60 * 60)
+            )
+        }
+        let key = Self.key(for: request)
+        cachedLines = cachedLines.filter { $0.value.expiresAt > .now }
+        if let cached = cachedLines[key] { return cached.lines }
+        let flight: Flight
+        if let existing = flights[key] {
+            flight = existing
+        } else {
+            let created = Flight(
+                id: UUID(),
+                task: Task.detached(priority: .utility, operation: operation)
+            )
+            flights[key] = created
+            flight = created
+        }
+
+        do {
+            let result = try await withTaskCancellationHandler {
+                try await flight.task.value
+            } onCancel: {
+                flight.task.cancel()
+            }
+            if flights[key]?.id == flight.id {
+                flights.removeValue(forKey: key)
+                cachedLines[key] = CachedLines(
+                    expiresAt: Date().addingTimeInterval(5 * 60),
+                    lines: result
+                )
+                if cachedLines.count > 32,
+                   let oldestKey = cachedLines.min(by: {
+                       $0.value.expiresAt < $1.value.expiresAt
+                   })?.key {
+                    cachedLines.removeValue(forKey: oldestKey)
+                }
+            }
+            return result
+        } catch {
+            if flights[key]?.id == flight.id {
+                flights.removeValue(forKey: key)
+            }
+            throw error
+        }
+    }
+
+    private static func key(for request: AdDetectionRequest) -> String {
+        // The key is process-local and is never written to diagnostics.
+        let values = try? request.mediaURL.resourceValues(forKeys: [
+            .fileSizeKey,
+            .contentModificationDateKey
+        ])
+        return "\(request.mediaURL.standardizedFileURL.path)|\(values?.fileSize ?? -1)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? -1)|\(request.range.start)|\(request.range.end ?? -1)|\(request.languageIdentifier ?? "")"
     }
 }
 
@@ -510,7 +601,35 @@ private extension AdPublisherMarker {
     var range: AdTimeRange { AdTimeRange(start: start, end: end) }
 }
 
-private enum AudioSnippetWriter {
+enum AudioSnippetWriter {
+    static let maximumSnippetDuration: TimeInterval = 5 * 60
+
+    static func removeAbandonedTemporarySnippets(olderThan cutoff: Date) {
+        let fileManager = FileManager.default
+        guard let urls = try? fileManager.contentsOfDirectory(
+            at: fileManager.temporaryDirectory,
+            includingPropertiesForKeys: [.isRegularFileKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        var removedCount = 0
+        for url in urls where url.lastPathComponent.hasPrefix("AdDetection-")
+            && url.pathExtension == "caf" {
+            guard let values = try? url.resourceValues(forKeys: [
+                .isRegularFileKey,
+                .contentModificationDateKey
+            ]), values.isRegularFile == true,
+               let modifiedAt = values.contentModificationDate,
+               modifiedAt < cutoff else { continue }
+            if (try? fileManager.removeItem(at: url)) != nil {
+                removedCount += 1
+            }
+        }
+        if removedCount > 0 {
+            AppDiagnostics.log("ad_detection_abandoned_snippets_removed count=\(removedCount)")
+        }
+    }
+
     static func makeSnippet(from url: URL, range: AdTimeRange) async throws -> URL {
         guard url.isFileURL else {
             throw AudioAnalysisSourceError.unsupported("Rolling transcription needs a downloaded audio file.")
@@ -518,33 +637,94 @@ private enum AudioSnippetWriter {
         let input = try AVAudioFile(forReading: url)
         let format = input.processingFormat
         let sampleRate = format.sampleRate
-        let startFrame = AVAudioFramePosition(max(range.start, 0) * sampleRate)
-        let endFrame = AVAudioFramePosition((range.end ?? (Double(input.length) / sampleRate)) * sampleRate)
+        guard sampleRate.isFinite, sampleRate > 0, input.length > 0 else {
+            throw AudioAnalysisSourceError.noAudioTrack
+        }
+        let sourceDuration = Double(input.length) / sampleRate
+        let startTime = min(max(range.start, 0), sourceDuration)
+        let requestedEnd = min(range.end ?? sourceDuration, sourceDuration)
+        let endTime = min(max(requestedEnd, startTime), startTime + maximumSnippetDuration)
+        let startFrame = AVAudioFramePosition(startTime * sampleRate)
+        let endFrame = AVAudioFramePosition(endTime * sampleRate)
         let frameCount = AVAudioFrameCount(max(endFrame - startFrame, 0))
         guard frameCount > 0 else { throw AudioAnalysisSourceError.noAudioTrack }
 
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("AdDetection-\(UUID().uuidString).caf")
-        let settings: [String: Any] = [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: sampleRate,
-            AVNumberOfChannelsKey: format.channelCount,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false
-        ]
-        let output = try AVAudioFile(forWriting: outputURL, settings: settings)
-        input.framePosition = min(startFrame, input.length)
-        var remaining = min(frameCount, AVAudioFrameCount(input.length - input.framePosition))
-        while remaining > 0 {
+        do {
+            // Speech recognition does not need the source's full-rate stereo
+            // float representation. Downmix and resample while streaming so a
+            // five-minute look-ahead window stays small on disk and in memory.
+            let outputRate = min(sampleRate, 16_000)
+            guard let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: outputRate,
+                channels: 1,
+                interleaved: false
+            ), let converter = AVAudioConverter(from: format, to: outputFormat) else {
+                throw AudioAnalysisSourceError.noAudioTrack
+            }
+            let settings: [String: Any] = [
+                AVFormatIDKey: kAudioFormatLinearPCM,
+                AVSampleRateKey: outputRate,
+                AVNumberOfChannelsKey: 1,
+                AVLinearPCMBitDepthKey: 16,
+                AVLinearPCMIsFloatKey: false,
+                AVLinearPCMIsBigEndianKey: false
+            ]
+            let output = try AVAudioFile(
+                forWriting: outputURL,
+                settings: settings,
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            input.framePosition = min(startFrame, input.length)
+            var remaining = min(frameCount, AVAudioFrameCount(input.length - input.framePosition))
+            while remaining > 0 {
+                try Task.checkCancellation()
+                let count = min(remaining, AVAudioFrameCount(max(sampleRate * 10, 1)))
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: count) else { break }
+                try input.read(into: buffer, frameCount: count)
+                guard buffer.frameLength > 0 else { break }
+                let outputCapacity = AVAudioFrameCount(
+                    ceil(Double(buffer.frameLength) * outputRate / sampleRate) + 1_024
+                )
+                guard let converted = AVAudioPCMBuffer(
+                    pcmFormat: outputFormat,
+                    frameCapacity: outputCapacity
+                ) else { throw AudioAnalysisSourceError.noAudioTrack }
+                var didSupplyInput = false
+                var conversionError: NSError?
+                let status = converter.convert(to: converted, error: &conversionError) {
+                    _, inputStatus in
+                    guard didSupplyInput == false else {
+                        inputStatus.pointee = .noDataNow
+                        return nil
+                    }
+                    didSupplyInput = true
+                    inputStatus.pointee = .haveData
+                    return buffer
+                }
+                if status == .error {
+                    if let conversionError { throw conversionError }
+                    throw AudioAnalysisSourceError.noAudioTrack
+                }
+                if converted.frameLength > 0 {
+                    try output.write(from: converted)
+                }
+                remaining -= buffer.frameLength
+            }
             try Task.checkCancellation()
-            let count = min(remaining, AVAudioFrameCount(max(sampleRate * 10, 1)))
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: count) else { break }
-            try input.read(into: buffer, frameCount: count)
-            guard buffer.frameLength > 0 else { break }
-            try output.write(from: buffer)
-            remaining -= buffer.frameLength
+            let attributes = try? FileManager.default.attributesOfItem(atPath: outputURL.path)
+            let bytes = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+            AppDiagnostics.log(
+                "ad_detection_snippet_written duration_seconds=\(String(format: "%.2f", Double(frameCount) / sampleRate)) source_sample_rate=\(Int(sampleRate)) output_sample_rate=\(Int(outputRate)) output_channels=1 bytes=\(bytes)"
+            )
+            return outputURL
+        } catch {
+            try? FileManager.default.removeItem(at: outputURL)
+            AppDiagnostics.log("ad_detection_snippet_aborted partial_file_removed=true")
+            throw error
         }
-        return outputURL
     }
 }
