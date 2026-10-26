@@ -77,6 +77,51 @@ Feed discovery presents the Basic credential form only when the server's
 authentication challenge advertises Basic; a 403 without a challenge remains
 a normal load error and does not open an authentication window.
 
+## Refresh recovery and repair
+
+Existing subscription refreshes resolve access in this order: the local
+profile reference and its Keychain item, then the narrowly scoped legacy HTTP
+Basic profile identifiers derived from the same feed URL (trailing slash and
+HTTP/HTTPS spelling variants). A recovered profile is rebound to the current
+credential-free URL and the ordinary centralized request path sends the
+authenticated request. It never searches unrelated Keychain entries or
+forwards credentials across origins. HTTP-to-HTTPS on the same host is
+permitted; an automatic HTTPS-to-HTTP downgrade is not.
+
+Incomplete older manifests or user-state records may omit access metadata.
+Those missing fields are treated as unknown and do not erase a local profile
+reference. Credential changes update the authoritative `SubscriptionSync`
+profile fields even when the subscription was already active, without changing
+its original `subscribedAt` date. Profile references remain non-secret; the
+Keychain item is never reconstructed from synchronized metadata.
+
+When access is rejected or unavailable, the podcast remains in the library and
+background refresh backs off. Podcast Detail offers **Fix Authentication**;
+Podcast Settings also keeps credential management available when authentication
+metadata is incomplete. The editor validates a proposed credential against a
+valid feed before saving it, checks the returned feed title against the
+existing podcast, and leaves existing credentials in place on validation
+failure. Successful validation saves the credential in Keychain, updates the
+local and authoritative profile reference, clears the retry state, and starts a
+refresh. A network failure is reported separately from an authentication
+rejection.
+
+When a response advertises `WWW-Authenticate: Basic`, the repair form selects
+username and password by default. If the server instead advertises Bearer, the
+form selects a token; when metadata is absent or the server's request changes,
+the user can choose Basic, private RSS URL, or Bearer explicitly.
+
+The app distinguishes a missing Keychain item from a Keychain lookup failure,
+and from a server-observed rejected credential (`needsLogin`). A credential
+being present is not proof that the server accepts it. Only a 401 or an
+explicit authentication-required resolver result marks the feed as requiring
+login; a generic 403 is not treated as a Basic challenge.
+
+Credentials are device-only today. Subscription records and manifests carry
+only profile identifiers and access kind. A newly connected device can restore
+the subscription and show the authentication repair action, but the user must
+enter the secret again because the secret was intentionally never synchronized.
+
 ## Platform boundary
 
 The private access layer is compiled into the iOS/iPadOS/macOS app targets.

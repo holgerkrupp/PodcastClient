@@ -458,7 +458,9 @@ actor SubscriptionManifestModelActor {
                 continue
             }
 
-            let profile = accessProfile(for: entry, resourceURL: manifestFeed)
+            let existingPodcast = fetchPodcast(feed: manifestFeed)
+            let profile = existingPodcast.flatMap(storedPodcastAccessProfile(for:))
+                ?? accessProfile(for: entry, resourceURL: manifestFeed)
             let bootstrapDecision = accessResolver.bootstrapDecision(
                 for: profile,
                 fallbackURL: manifestFeed
@@ -476,7 +478,7 @@ actor SubscriptionManifestModelActor {
                 result.credentialRequiredProfileIDs.append(profileID)
             }
 
-            let podcast = fetchPodcast(feed: resolvedFeed) ?? {
+            let podcast = existingPodcast ?? fetchPodcast(feed: resolvedFeed) ?? {
                 let podcast = Podcast(feed: resolvedFeed)
                 modelContext.insert(podcast)
                 if hasCredential {
@@ -559,10 +561,18 @@ actor SubscriptionManifestModelActor {
 
         let metaData = ensureMetadata(for: podcast)
         metaData.isSubscribed = true
-        metaData.accessProfileID = profile?.id
-        metaData.accessKindRawValue = profile?.kind.rawValue
-        metaData.accessProviderID = profile?.providerID?.rawValue
-        metaData.credentialState = hasCredential ? .available : .missing
+        // Older manifests omit access metadata. An absent field is not an
+        // explicit request to make a protected local feed public.
+        if let profile {
+            metaData.accessProfileID = profile.id
+            metaData.accessKindRawValue = profile.kind.rawValue
+            metaData.accessProviderID = profile.providerID?.rawValue
+            metaData.credentialState = hasCredential ? .available : .missing
+        } else if metaData.accessProfileID == nil {
+            metaData.accessKindRawValue = nil
+            metaData.accessProviderID = nil
+            metaData.credentialState = .available
+        }
         metaData.subscriptionDate = metaData.subscriptionDate ?? manifestUpdatedAt
         metaData.lastRefresh = metaData.lastRefresh ?? entry.lastRefresh
     }

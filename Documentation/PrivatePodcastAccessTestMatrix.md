@@ -7,11 +7,15 @@ depend on a subscriber URL that may later be revoked.
 | --- | --- |
 | Existing device with a valid private URL | `PodcastPrivateFeedTests.testAccessResolverSupportsPrivateURLBasicAndBearerCredentials` and the local HTTP fixture tests |
 | HTTP Basic email and reserved/special characters | `testBasicAuthenticationDecodesReservedCharactersFromURLUserInfo` and `testHTTPClientFetchesTheSameFixtureThroughEveryAccessMode` |
+| Valid and rejected HTTP Basic credentials | `testBasicAuthenticationFixtureAcceptsValidAndRejectsIncorrectCredential`; the local fixture server's `private` endpoint was also exercised with missing, wrong, and fixture-only valid credentials |
 | 403 without an authentication challenge | `testResolverDoesNotShowAuthenticationPromptFor403WithoutChallenge` confirms the URL error path is used instead of showing credential UI |
 | Bearer access | `testAccessResolverSupportsPrivateURLBasicAndBearerCredentials` and local fixture coverage |
 | Fresh device with missing credential | `SubscriptionManifestSyncTests.testRestoreKeepsPrivateSubscriptionWhenCredentialIsMissing` and `StableIdentityTests.testPremiumSubscriptionWaitsForCredentialThenRebootstraps` |
 | Credential becomes available | `testRestoreUsesInjectedCredentialStoreWhenPrivateCredentialIsAvailable` and the one-time rebootstrap assertions |
+| An incomplete manifest cannot erase a local access profile | `SubscriptionManifestSyncTests.testManifestWithoutAccessMetadataDoesNotEraseLocalPrivateProfile` |
+| Access profile changes on an already-active subscription | `StableIdentityTests.testSubscriptionWriterPersistsAccessProfileForAlreadySubscribedFeed` checks the synced profile changes without changing `subscribedAt` |
 | Keychain unavailable | `PodcastPrivateFeedTests.testUnavailableCredentialStoreProducesRecoverableCredentialRequiredState` |
+| Local Keychain lookup failure is distinguishable from a missing item | `testUnavailableCredentialStoreProducesRecoverableCredentialRequiredState` asserts `.storageUnavailable` |
 | Expired provider session, cancellation, renewal, and sign-out | `testProviderLifecycleCoversExpiredRefreshCancellationRenewalAndRevocation` |
 | 401/403 recovery without abandonment | `PodcastReleasePredictorTests.testAuthenticationFailuresNeverMarkPodcastFeedUnavailable` |
 | Token rotation and stable identity | `testCredentialRotationUsesTheLatestCredentialWithoutChangingProfileIdentity` and `testHTTPClientRequestOverloadRebuildsRotatedAuthorization` |

@@ -214,6 +214,38 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(records[0].updatedAt, retry)
     }
 
+    @MainActor
+    func testSubscriptionWriterPersistsAccessProfileForAlreadySubscribedFeed() async throws {
+        let container = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let feedURL = URL(string: "https://example.com/private-feed.xml")!
+        let subscribedAt = Date(timeIntervalSince1970: 1_000)
+        let writer = StoreSplitSubscriptionSyncWriter(modelContainer: container)
+        _ = try await writer.setSubscribed(feedURL: feedURL, isSubscribed: true, at: subscribedAt)
+
+        let profile = PodcastAccessProfile.make(for: feedURL, kind: .httpBasic)
+        let updated = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: true,
+            accessProfile: profile,
+            at: Date(timeIntervalSince1970: 2_000)
+        )
+        let staleAccessWrite = try await writer.setSubscribed(
+            feedURL: feedURL,
+            isSubscribed: false,
+            accessProfile: PodcastAccessProfile.make(for: feedURL, kind: .privateURL),
+            at: Date(timeIntervalSince1970: 1_500)
+        )
+
+        let context = ModelContext(container)
+        let record = try XCTUnwrap(context.fetch(FetchDescriptor<SubscriptionSync>()).first)
+        XCTAssertTrue(updated.didChange)
+        XCTAssertFalse(staleAccessWrite.didChange)
+        XCTAssertEqual(record.accessProfileID, profile.id)
+        XCTAssertEqual(record.accessKindRawValue, PodcastAccessKind.httpBasic.rawValue)
+        XCTAssertEqual(record.subscribedAt, subscribedAt)
+        XCTAssertTrue(record.isSubscribed)
+    }
+
     func testMergePolicyPrefersNewestIncomingRecord() {
         let existing = Date(timeIntervalSince1970: 1_000)
         let incoming = Date(timeIntervalSince1970: 2_000)

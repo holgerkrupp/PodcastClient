@@ -364,6 +364,21 @@ actor PodcastModelActor {
         metadata.accessProviderID = profile.providerID?.rawValue
         metadata.credentialState = .available
         metadata.authenticationRetryAfter = nil
+        if let feedURL = profile.resourceURL {
+            Task {
+                do {
+                    _ = try await PodcastSubscriptionPersistence.upsertAccessProfile(
+                        for: feedURL,
+                        profile: profile
+                    )
+                } catch {
+                    CrashBreadcrumbs.shared.record(
+                        "podcast_access_profile_sync_deferred",
+                        details: "result=deferred"
+                    )
+                }
+            }
+        }
     }
 
     private func configureAccessMetadata(for feedURL: URL, metadata: PodcastMetaData?) {
@@ -415,8 +430,23 @@ actor PodcastModelActor {
         guard let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) else { return }
         let now = Date()
         let statusCode = Self.feedFailureStatusCode(from: error)
-        if statusCode == 401 || statusCode == 403 {
+        let explicitAuthenticationFailure = (error as? PodcastFeedResolverError).map { resolverError in
+            if case .authenticationRequired = resolverError { return true }
+            if case .bearerAuthenticationRequired = resolverError { return true }
+            return false
+        } ?? false
+        if statusCode == 401 || explicitAuthenticationFailure {
             metadata.credentialState = .needsLogin
+            if let resolverError = error as? PodcastFeedResolverError {
+                switch resolverError {
+                case .authenticationRequired:
+                    metadata.accessKindRawValue = PodcastAccessKind.httpBasic.rawValue
+                case .bearerAuthenticationRequired:
+                    metadata.accessKindRawValue = PodcastAccessKind.bearerToken.rawValue
+                default:
+                    break
+                }
+            }
             metadata.authenticationRetryAfter = now.addingTimeInterval(authenticationRetryInterval)
             metadata.lastFeedFailureDate = now
             metadata.lastFeedFailureStatusCode = statusCode
@@ -1071,17 +1101,21 @@ actor PodcastModelActor {
 
         let accessProfile = accessProfile(for: podcast.metaData, feedURL: feedURL)
 
-        if let accessProfile,
-           PodcastAccessResolver().credentialState(for: accessProfile) != .available {
-            if let metaIDRef,
-               let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
-                metadata.credentialState = .missing
-                metadata.authenticationRetryAfter = nil
-                metadata.lastFeedFailureStatusCode = nil
-                metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(accessProfile.id).localizedDescription
+        if let accessProfile {
+            let state = PodcastAccessResolver().credentialState(for: accessProfile)
+            guard state == .available else {
+                if let metaIDRef,
+                   let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {
+                    metadata.credentialState = state
+                    metadata.authenticationRetryAfter = nil
+                    metadata.lastFeedFailureStatusCode = nil
+                    metadata.lastFeedFailureMessage = state == .storageUnavailable
+                        ? String(localized: "Your podcast credentials could not be accessed on this device.")
+                        : PodcastAccessError.credentialMissing(accessProfile.id).localizedDescription
+                }
+                modelContext.saveIfNeeded()
+                return false
             }
-            modelContext.saveIfNeeded()
-            return false
         }
 
         // Manifest/store-split restore can call bootstrap again after a
@@ -1325,17 +1359,21 @@ actor PodcastModelActor {
             }
 
             let profile = accessProfile(for: podcast.metaData, feedURL: feedURL)
-            if let profile,
-               PodcastAccessResolver().credentialState(for: profile) != .available {
-                if let metadataID,
-                   let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) {
-                    metadata.credentialState = .missing
-                    metadata.authenticationRetryAfter = nil
-                    metadata.lastFeedFailureStatusCode = nil
-                    metadata.lastFeedFailureMessage = PodcastAccessError.credentialMissing(profile.id).localizedDescription
+            if let profile {
+                let state = PodcastAccessResolver().credentialState(for: profile)
+                guard state == .available else {
+                    if let metadataID,
+                       let metadata: PodcastMetaData = modelContext.existingModel(for: metadataID) {
+                        metadata.credentialState = state
+                        metadata.authenticationRetryAfter = nil
+                        metadata.lastFeedFailureStatusCode = nil
+                        metadata.lastFeedFailureMessage = state == .storageUnavailable
+                            ? String(localized: "Your podcast credentials could not be accessed on this device.")
+                            : PodcastAccessError.credentialMissing(profile.id).localizedDescription
+                    }
+                    modelContext.saveIfNeeded()
+                    return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
                 }
-                modelContext.saveIfNeeded()
-                return PodcastUpdateSummary(didUpdateFeed: false, newEpisodeCount: 0)
             }
             if policy.forceGETRegardlessOfHEAD == false,
                let metadataID,

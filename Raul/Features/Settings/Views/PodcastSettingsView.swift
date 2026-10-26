@@ -528,9 +528,10 @@ struct PodcastSettingsView: View {
             scopeSection
 
             if let podcast,
-               let rawKind = podcast.metaData?.accessKindRawValue,
-               let kind = PodcastAccessKind(rawValue: rawKind),
-               kind != .publicFeed {
+               (podcast.feed?.isLikelyPrivatePodcastURL == true
+                || podcast.metaData?.credentialState == .needsLogin
+                || podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) != nil
+                    && podcast.metaData?.accessKindRawValue != PodcastAccessKind.publicFeed.rawValue) {
                 PodcastAccessSettingsSection(podcast: podcast)
             }
 
@@ -2187,6 +2188,7 @@ private struct PodcastAccessSettingsSection: View {
     }
 
     private var credentialState: PodcastCredentialState {
+        if podcast.metaData?.credentialState == .needsLogin { return .needsLogin }
         guard let profile else { return .missing }
         return PodcastAccessResolver().credentialState(for: profile)
     }
@@ -2247,12 +2249,13 @@ private struct PodcastAccessSettingsSection: View {
 
     private var stateLabel: String {
         switch credentialState {
-        case .available: "Ready"
-        case .missing: "Login required"
-        case .expired: "Expired"
-        case .revoked: "Access revoked"
-        case .needsLogin: "Login required"
-        case .unsupported: "Unsupported"
+        case .available: String(localized: "Ready")
+        case .missing: String(localized: "Login required")
+        case .storageUnavailable: String(localized: "Credentials unavailable on this device")
+        case .expired: String(localized: "Expired")
+        case .revoked: String(localized: "Access revoked")
+        case .needsLogin: String(localized: "Login required")
+        case .unsupported: String(localized: "Unsupported")
         }
     }
 
@@ -2273,7 +2276,7 @@ private struct PodcastAccessSettingsSection: View {
     }
 }
 
-private struct PodcastAccessEditorView: View {
+struct PodcastAccessEditorView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Bindable var podcast: Podcast
@@ -2285,14 +2288,40 @@ private struct PodcastAccessEditorView: View {
     @State private var bearerToken = ""
     @State private var errorMessage: String?
     @State private var isSaving = false
+    @State private var selectedKind: PodcastAccessKind = .httpBasic
 
     private var kind: PodcastAccessKind {
-        podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) ?? .privateURL
+        if podcast.metaData?.credentialState == .needsLogin {
+            return selectedKind
+        }
+        guard let storedKind = podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)),
+              storedKind != .publicFeed else {
+            return selectedKind
+        }
+        return storedKind
+    }
+
+    private var hasKnownAccessKind: Bool {
+        guard podcast.metaData?.credentialState != .needsLogin else { return false }
+        guard let storedKind = podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) else {
+            return false
+        }
+        return storedKind != .publicFeed
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                if hasKnownAccessKind == false {
+                    Section("Authentication method") {
+                        Picker("Method", selection: $selectedKind) {
+                            Text("Username and Password").tag(PodcastAccessKind.httpBasic)
+                            Text("Private RSS URL").tag(PodcastAccessKind.privateURL)
+                            Text("Bearer token").tag(PodcastAccessKind.bearerToken)
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
                 Section {
                     switch kind {
                     case .privateURL:
@@ -2331,7 +2360,13 @@ private struct PodcastAccessEditorView: View {
                         .disabled(isSaving || !canSave)
                 }
             }
-            .task { loadExistingCredential() }
+            .task {
+                if let storedKind = podcast.metaData?.accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)),
+                   storedKind != .publicFeed {
+                    selectedKind = storedKind
+                }
+                loadExistingCredential()
+            }
         }
     }
 
@@ -2398,24 +2433,64 @@ private struct PodcastAccessEditorView: View {
         }
 
         let profile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
-        do {
-            try PodcastAccessResolver().save(credential, for: profile)
-            podcast.feed = profile.resourceURL
-            podcast.metaData?.accessProfileID = profile.id
-            podcast.metaData?.accessKindRawValue = kind.rawValue
-            podcast.metaData?.accessProviderID = profile.providerID?.rawValue
-            podcast.metaData?.credentialState = .available
-            podcast.metaData?.authenticationRetryAfter = nil
-            podcast.metaData?.lastFeedFailureStatusCode = nil
-            modelContext.saveIfNeeded()
-            onSave()
-            Task {
-                await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContext.container)
+        Task {
+            do {
+                let validated = try await PodcastFeedResolver.resolve(url: sourceURL, credential: credential)
+                guard case .podcast(let resolvedFeed) = validated else {
+                    throw PodcastFeedResolverError.notAPodcastFeed
+                }
+                if let resolvedTitle = resolvedFeed.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   let currentTitle = Optional(podcast.title.trimmingCharacters(in: .whitespacesAndNewlines)),
+                   currentTitle.isEmpty == false,
+                   resolvedTitle.isEmpty == false,
+                   resolvedTitle.podcastTitleComparisonKey != currentTitle.podcastTitleComparisonKey {
+                    throw PodcastFeedResolverError.notAPodcastFeed
+                }
+
+                let resolver = PodcastAccessResolver()
+                let previousCredential = resolver.credential(for: profile)
+                try resolver.save(credential, for: profile)
+                do {
+                    if podcast.isSubscribed {
+                        _ = try await PodcastSubscriptionPersistence.upsertAccessProfile(
+                            for: profile.resourceURL ?? sourceURL,
+                            profile: profile
+                        )
+                    }
+                    podcast.feed = profile.resourceURL
+                    podcast.metaData?.accessProfileID = profile.id
+                    podcast.metaData?.accessKindRawValue = kind.rawValue
+                    podcast.metaData?.accessProviderID = profile.providerID?.rawValue
+                    podcast.metaData?.credentialState = .available
+                    podcast.metaData?.authenticationRetryAfter = nil
+                    podcast.metaData?.lastFeedFailureStatusCode = nil
+                    podcast.metaData?.lastFeedFailureMessage = nil
+                    modelContext.saveIfNeeded()
+                    Task {
+                        await SubscriptionManifestSync.publishCurrentSubscriptions(modelContainer: modelContext.container)
+                    }
+                    onSave()
+                    dismiss()
+                } catch {
+                    if let previousCredential {
+                        try? resolver.save(previousCredential, for: profile)
+                    } else {
+                        try? resolver.removeCredential(for: profile)
+                    }
+                    throw error
+                }
+            } catch {
+                if case PodcastFeedResolverError.notAPodcastFeed = error {
+                    errorMessage = String(localized: "This feed does not match the subscribed podcast.")
+                } else if case PodcastFeedResolverError.authenticationRequired = error {
+                    errorMessage = String(localized: "The saved credentials were rejected. Check the username and password.")
+                } else if case PodcastParserError.couldNotLoad(_, let status, _) = error, status == 401 {
+                    errorMessage = String(localized: "The saved credentials were rejected. Check the username and password.")
+                } else {
+                    errorMessage = String(localized: "Could not validate this podcast feed. Check your connection and try again.")
+                }
+                isSaving = false
             }
-            dismiss()
-        } catch {
-            errorMessage = "Could not save the credential securely."
-            isSaving = false
         }
     }
 }
