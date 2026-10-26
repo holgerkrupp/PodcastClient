@@ -185,7 +185,13 @@ actor StoreSplitUserStateImporter {
                 result.failed += 1
                 continue
             }
-            let accessProfile = accessProfile(for: subscription, resourceURL: manifestFeedURL)
+            let locallyKnownPodcast = manifestFeedURL.podcastFeedComparisonKeys
+                .compactMap { podcastsByComparisonKey[$0].flatMap(indexedPodcast) }
+                .first
+            // A legacy/partial UserState record may omit access metadata even
+            // though the library already has the authoritative local profile.
+            let accessProfile = locallyKnownPodcast.flatMap(storedPodcastAccessProfile(for:))
+                ?? accessProfile(for: subscription, resourceURL: manifestFeedURL)
             let bootstrapDecision = accessResolver.bootstrapDecision(
                 for: accessProfile,
                 fallbackURL: manifestFeedURL
@@ -203,7 +209,7 @@ actor StoreSplitUserStateImporter {
                 result.credentialRequiredProfileIDs.append(profileID)
             }
             var createdPodcast = false
-            let podcast = resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
+            let podcast = locallyKnownPodcast ?? resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
@@ -231,10 +237,18 @@ actor StoreSplitUserStateImporter {
                 result.feedsToBootstrap.append(resolvedFeedURL)
             }
             setIfChanged(metadata, \.isSubscribed, subscription.isSubscribed)
-            setIfChanged(metadata, \.accessProfileID, accessProfile?.id)
-            setIfChanged(metadata, \.accessKindRawValue, accessProfile?.kind.rawValue)
-            setIfChanged(metadata, \.accessProviderID, accessProfile?.providerID?.rawValue)
-            setIfChanged(metadata, \.credentialState, hasCredential ? .available : .missing)
+            // Old synchronized records can lack access-profile fields. Treat
+            // that as unknown rather than a request to clear local metadata.
+            if let accessProfile {
+                setIfChanged(metadata, \.accessProfileID, accessProfile.id)
+                setIfChanged(metadata, \.accessKindRawValue, accessProfile.kind.rawValue)
+                setIfChanged(metadata, \.accessProviderID, accessProfile.providerID?.rawValue)
+                setIfChanged(metadata, \.credentialState, hasCredential ? .available : .missing)
+            } else if metadata.accessProfileID == nil {
+                setIfChanged(metadata, \.accessKindRawValue, Optional<String>.none)
+                setIfChanged(metadata, \.accessProviderID, Optional<String>.none)
+                setIfChanged(metadata, \.credentialState, PodcastCredentialState.available)
+            }
             if subscription.isSubscribed {
                 if metadata.subscriptionDate == nil {
                     metadata.subscriptionDate = subscription.subscribedAt

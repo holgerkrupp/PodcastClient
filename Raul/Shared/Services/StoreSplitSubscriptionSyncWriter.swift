@@ -68,6 +68,20 @@ enum PodcastSubscriptionPersistence {
             accessProfile: accessProfile
         )
     }
+
+    static func upsertAccessProfile(
+        for feedURL: URL,
+        profile: PodcastAccessProfile
+    ) async throws -> StoreSplitSubscriptionSyncWriter.Result {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            throw PodcastSubscriptionMutationError.authoritativeStoreUnavailable
+        }
+        return try await StoreSplitSubscriptionSyncWriter(modelContainer: userStateContainer)
+            .upsertAccessProfile(for: feedURL, profile: profile)
+    }
 }
 
 func storedPodcastAccessProfile(for podcast: Podcast) -> PodcastAccessProfile? {
@@ -144,7 +158,12 @@ actor StoreSplitSubscriptionSyncWriter {
             let stateIsConsistent = isSubscribed
                 ? subscription.unsubscribedAt == nil
                 : subscription.unsubscribedAt != nil
-            if subscription.isSubscribed == isSubscribed, stateIsConsistent {
+            let profileIsConsistent = profile == nil || (
+                subscription.accessProfileID == profile?.id
+                    && subscription.accessKindRawValue == profile?.kind.rawValue
+                    && subscription.accessProviderID == profile?.providerID?.rawValue
+            )
+            if subscription.isSubscribed == isSubscribed, stateIsConsistent, profileIsConsistent {
                 return Result(
                     feedKey: normalizedFeedURL,
                     isSubscribed: subscription.isSubscribed,
@@ -152,11 +171,13 @@ actor StoreSplitSubscriptionSyncWriter {
                     committedAt: subscription.updatedAt
                 )
             }
-            let didChange = subscription.isSubscribed != isSubscribed
             subscription.feedURL = normalizedFeedURL
-            subscription.accessProfileID = profile?.id
-            subscription.accessKindRawValue = profile?.kind.rawValue
-            subscription.accessProviderID = profile?.providerID?.rawValue
+            if let profile {
+                subscription.accessProfileID = profile.id
+                subscription.accessKindRawValue = profile.kind.rawValue
+                subscription.accessProviderID = profile.providerID?.rawValue
+            }
+            let didChange = subscription.isSubscribed != isSubscribed
             subscription.isSubscribed = isSubscribed
             subscription.unsubscribedAt = isSubscribed ? nil : date
             if isSubscribed {
@@ -164,7 +185,7 @@ actor StoreSplitSubscriptionSyncWriter {
                     subscription.subscribedAt = date
                 }
             }
-            subscription.updatedAt = date
+            subscription.updatedAt = max(date, subscription.updatedAt)
             subscription.sourceDeviceID = deviceID
             do {
                 try modelContext.save()
@@ -175,7 +196,7 @@ actor StoreSplitSubscriptionSyncWriter {
                 feedKey: normalizedFeedURL,
                 isSubscribed: isSubscribed,
                 didChange: didChange,
-                committedAt: date
+                committedAt: subscription.updatedAt
             )
         } else {
             modelContext.insert(
@@ -203,6 +224,55 @@ actor StoreSplitSubscriptionSyncWriter {
                 committedAt: date
             )
         }
+    }
+
+    /// Updates only synchronized access metadata, preserving subscription
+    /// status and its original subscription timestamp.
+    func upsertAccessProfile(
+        for feedURL: URL,
+        profile: PodcastAccessProfile,
+        at date: Date = .now
+    ) throws -> Result {
+        let key = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let descriptor = FetchDescriptor<SubscriptionSync>(
+            predicate: #Predicate<SubscriptionSync> { $0.id == key }
+        )
+        let subscription: SubscriptionSync
+        do {
+            guard let record = try modelContext.fetch(descriptor).first else {
+                // The library may have been restored before the first
+                // authoritative UserState projection. Recreate only that
+                // missing sync row, keeping it subscribed and attaching the
+                // non-secret profile reference.
+                return try setSubscribed(
+                    feedURL: feedURL,
+                    isSubscribed: true,
+                    accessProfile: profile,
+                    at: date
+                )
+            }
+            subscription = record
+        } catch let error as WriteError {
+            throw error
+        } catch {
+            throw WriteError.fetchFailed(error)
+        }
+        guard subscription.accessProfileID != profile.id
+                || subscription.accessKindRawValue != profile.kind.rawValue
+                || subscription.accessProviderID != profile.providerID?.rawValue else {
+            return Result(feedKey: key, isSubscribed: subscription.isSubscribed, didChange: false, committedAt: subscription.updatedAt)
+        }
+        subscription.accessProfileID = profile.id
+        subscription.accessKindRawValue = profile.kind.rawValue
+        subscription.accessProviderID = profile.providerID?.rawValue
+        subscription.updatedAt = max(date, subscription.updatedAt)
+        subscription.sourceDeviceID = ListeningDeviceIdentity.current().id
+        do {
+            try modelContext.save()
+        } catch {
+            throw WriteError.saveFailed(error)
+        }
+        return Result(feedKey: key, isSubscribed: subscription.isSubscribed, didChange: true, committedAt: subscription.updatedAt)
     }
 
     private static func legacyAccessProfile(for feedURL: URL) -> PodcastAccessProfile? {

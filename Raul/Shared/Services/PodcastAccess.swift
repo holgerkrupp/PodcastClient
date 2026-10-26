@@ -5,11 +5,13 @@ import CryptoKit
 import Security
 #endif
 
-enum PodcastAccessKind: String, Codable, Hashable, Sendable {
+enum PodcastAccessKind: String, Codable, CaseIterable, Hashable, Sendable, Identifiable {
     case publicFeed
     case privateURL
     case httpBasic
     case bearerToken
+
+    var id: String { rawValue }
 }
 
 /// A provider is only a hint for onboarding and presentation. It is never the
@@ -241,6 +243,7 @@ actor MockPremiumPodcastProviderAdapter: PremiumPodcastProviderAdapter {
 enum PodcastCredentialState: String, Codable, Hashable, Sendable {
     case available
     case missing
+    case storageUnavailable
     case expired
     case revoked
     case needsLogin
@@ -762,6 +765,10 @@ struct PodcastAccessResolver: Sendable {
     func credentialState(for profile: PodcastAccessProfile) -> PodcastCredentialState {
         do {
             return try credentialStore.credential(for: profile) == nil ? .missing : .available
+        } catch PodcastCredentialStoreError.unavailable {
+            return .storageUnavailable
+        } catch PodcastCredentialStoreError.keychain {
+            return .storageUnavailable
         } catch {
             return .missing
         }

@@ -1,6 +1,24 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "This podcast requires an updated access token. Choose Fix Authentication to update access." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Podcast benötigt ein aktualisiertes Zugriffstoken. Wähle „Anmeldung reparieren“, um den Zugriff zu aktualisieren." } } } },
+    "Your podcast credentials could not be accessed on this device." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Auf diesem Gerät konnte nicht auf die Podcast-Anmeldedaten zugegriffen werden." } } } },
+    "Login required" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Anmeldung erforderlich" } } } },
+    "Ready" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Bereit" } } } },
+    "Expired" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Abgelaufen" } } } },
+    "Access revoked" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Zugriff widerrufen" } } } },
+    "Unsupported" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Nicht unterstützt" } } } },
+    "The podcast could not be refreshed. Check your connection and try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Podcast konnte nicht aktualisiert werden. Prüfe deine Verbindung und versuche es erneut." } } } },
+    "This feed does not match the subscribed podcast." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Feed gehört nicht zum abonnierten Podcast." } } } },
+    "Authentication required" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Authentifizierung erforderlich" } } } },
+    "This podcast needs credentials to download new episodes." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Podcast benötigt Anmeldedaten, um neue Folgen zu laden." } } } },
+    "Fix Authentication" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Anmeldung reparieren" } } } },
+    "Credentials unavailable on this device" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Anmeldedaten auf diesem Gerät nicht verfügbar" } } } },
+    "This podcast requires authentication. Choose Fix Authentication to update access." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Podcast erfordert eine Anmeldung. Wähle „Anmeldung reparieren“, um den Zugriff zu aktualisieren." } } } },
+    "The saved credentials were rejected. Choose Fix Authentication to sign in again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Die gespeicherten Anmeldedaten wurden abgelehnt. Wähle „Anmeldung reparieren“, um dich erneut anzumelden." } } } },
+    "The podcast server is temporarily unavailable. Try again later." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Podcast-Server ist vorübergehend nicht erreichbar. Versuche es später erneut." } } } },
+    "Could not validate this podcast feed. Check your connection and try again." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Der Podcast-Feed konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut." } } } },
+    "The saved credentials were rejected. Check the username and password." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Die gespeicherten Anmeldedaten wurden abgelehnt. Prüfe Benutzername und Passwort." } } } },
     "" : {
 
     },

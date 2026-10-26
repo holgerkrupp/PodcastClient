@@ -71,6 +71,29 @@ private struct StatusFixtureTransport: PodcastHTTPTransport {
     }
 }
 
+private struct BasicAuthenticationFixtureTransport: PodcastHTTPTransport {
+    func data(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver
+    ) async throws -> (Data, URLResponse) {
+        let accepted = request.value(forHTTPHeaderField: "Authorization")
+            == "Basic Zml4dHVyZTpwYXNzd29yZA=="
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: accepted ? 200 : 401,
+            httpVersion: nil,
+            headerFields: accepted
+                ? ["Content-Type": "application/rss+xml"]
+                : ["WWW-Authenticate": "Basic realm=\"Local podcast fixture\""]
+        )!
+        return (
+            accepted ? Data("<rss><channel><title>Fixture private podcast</title></channel></rss>".utf8) : Data(),
+            response
+        )
+    }
+}
+
 final class PodcastPrivateFeedTests: XCTestCase {
     private struct FixtureTransport: PodcastHTTPTransport {
         let fixture: Data
@@ -117,6 +140,32 @@ final class PodcastPrivateFeedTests: XCTestCase {
         try store.save(.bearerToken("fake-bearer"), for: bearerProfile)
         let bearerResult = try await client.data(for: endpoint, profile: bearerProfile)
         XCTAssertEqual(bearerResult.0, fixture)
+    }
+
+    func testBasicAuthenticationFixtureAcceptsValidAndRejectsIncorrectCredential() async throws {
+        let endpoint = URL(string: "https://fixture.invalid/private/0")!
+        let profile = PodcastAccessProfile(id: "fixture-basic", kind: .httpBasic, resourceURL: endpoint)
+        let store = InMemoryPodcastCredentialStore()
+        let client = PodcastHTTPClient(
+            resolver: PodcastAccessResolver(credentialStore: store),
+            transport: BasicAuthenticationFixtureTransport()
+        )
+
+        try store.save(.httpBasic(username: "fixture", password: "password"), for: profile)
+        let (body, _) = try await client.data(for: endpoint, profile: profile)
+        XCTAssertTrue(String(decoding: body, as: UTF8.self).contains("Fixture private podcast"))
+
+        try store.save(.httpBasic(username: "fixture", password: "wrong"), for: profile)
+        do {
+            _ = try await client.data(for: endpoint, profile: profile)
+            XCTFail("Incorrect credentials must be rejected by the fixture")
+        } catch let error as PodcastHTTPError {
+            guard case .httpStatus(let code, _, let challenge, _) = error else {
+                return XCTFail("Expected an HTTP authentication failure")
+            }
+            XCTAssertEqual(code, 401)
+            XCTAssertEqual(challenge, "Basic realm=\"Local podcast fixture\"")
+        }
     }
 
     func testHTTPClientRequestOverloadRebuildsRotatedAuthorization() async throws {
@@ -477,6 +526,7 @@ final class PodcastPrivateFeedTests: XCTestCase {
             resolver.bootstrapDecision(for: profile, fallbackURL: feedURL),
             .credentialsRequired(profileID: profile.id, feedURL: feedURL)
         )
+        XCTAssertEqual(resolver.credentialState(for: profile), .storageUnavailable)
     }
 
     func testPrivatePodcastCreationReportsMissingWhenSecureStoreRejectsCredential() {

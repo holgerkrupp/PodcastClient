@@ -192,6 +192,32 @@ final class SubscriptionManifestSyncTests: XCTestCase {
         XCTAssertEqual(podcast.metaData?.credentialState, .available)
     }
 
+    func testManifestWithoutAccessMetadataDoesNotEraseLocalPrivateProfile() async throws {
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let privateFeed = URL(string: "https://example.com/private-existing.xml")!
+        let podcast = Podcast(feed: privateFeed)
+        podcast.title = "Private Example"
+        let profile = PodcastAccessProfile.make(for: privateFeed, kind: .httpBasic)
+        podcast.metaData?.accessProfileID = profile.id
+        podcast.metaData?.accessKindRawValue = profile.kind.rawValue
+        podcast.metaData?.credentialState = .available
+        context.insert(podcast)
+        let store = InMemoryPodcastCredentialStore()
+        try store.save(.httpBasic(username: "fixture", password: "fixture-password"), for: profile)
+        try context.save()
+
+        let manifest = SubscriptionManifest(entries: [
+            SubscriptionManifestEntry(feedURL: privateFeed.absoluteString, title: "Private Example")
+        ])
+        _ = await SubscriptionManifestModelActor(modelContainer: container)
+            .restoreWithStatus(manifest, credentialStore: store)
+
+        XCTAssertEqual(podcast.metaData?.accessProfileID, profile.id)
+        XCTAssertEqual(podcast.metaData?.accessKindRawValue, PodcastAccessKind.httpBasic.rawValue)
+        XCTAssertEqual(try store.credential(for: profile), .httpBasic(username: "fixture", password: "fixture-password"))
+    }
+
     func testRestoreScopesPremiumCredentialByCurrentUser() async throws {
         let container = try makeContainer()
         let context = ModelContext(container)

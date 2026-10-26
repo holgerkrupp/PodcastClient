@@ -41,6 +41,7 @@ struct PodcastDetailView: View {
     @State private var isLoading = false
     @State private var isSwitchingAlternativeFeed = false
     @State private var showFeedRepair = false
+    @State private var showAuthenticationEditor = false
     @State private var refreshProgress: Double = 0
     @State private var refreshProgressMessage: String?
     @State private var errorMessage: String?
@@ -187,6 +188,31 @@ struct PodcastDetailView: View {
         PodcastAbandonedFeedCard(metadata: podcast.metaData)
     }
 
+    private var needsAuthenticationRepair: Bool {
+        podcast.metaData?.credentialState == .needsLogin
+            || podcast.metaData?.credentialState == .storageUnavailable
+            || (podcast.feed?.isLikelyPrivatePodcastURL == true
+                && podcast.metaData?.credentialState == .missing)
+    }
+
+    private var authenticationRepairCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Authentication required", systemImage: "lock.fill")
+                .font(.headline)
+            Text("This podcast needs credentials to download new episodes.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            Button("Fix Authentication") {
+                showAuthenticationEditor = true
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityIdentifier("podcast-detail-fix-authentication")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     private var currentLiveItem: PodcastLiveItem? {
         liveItems.first { $0.status == .live }
     }
@@ -306,6 +332,10 @@ struct PodcastDetailView: View {
 
                     if isLoading {
                         refreshProgressCard
+                    }
+
+                    if needsAuthenticationRepair {
+                        authenticationRepairCard
                     }
 
                     abandonedFeedCard
@@ -616,6 +646,11 @@ struct PodcastDetailView: View {
                 applyEpisodeFilters()
             }
         }
+        .sheet(isPresented: $showAuthenticationEditor) {
+            PodcastAccessEditorView(podcast: podcast) {
+                Task { await refreshEpisodes() }
+            }
+        }
 #if DEBUG
         .navigationDestination(isPresented: $showDebugMetadata) {
             PodcastDebugMetadataView(podcast: podcast)
@@ -899,8 +934,7 @@ struct PodcastDetailView: View {
                 )
 #endif
                 await MainActor.run {
-                    let nsError = error as NSError
-                    errorMessage = "Failed to refresh episodes: \(error.localizedDescription) (\(nsError.domain) \(nsError.code))"
+                    errorMessage = Self.userFacingRefreshError(error)
                 }
             }
             
@@ -910,6 +944,27 @@ struct PodcastDetailView: View {
                 refreshProgressMessage = nil
             }
         }
+    }
+
+    private static func userFacingRefreshError(_ error: Error) -> String {
+        if case PodcastFeedResolverError.authenticationRequired = error {
+            return String(localized: "This podcast requires authentication. Choose Fix Authentication to update access.")
+        }
+        if case PodcastFeedResolverError.bearerAuthenticationRequired = error {
+            return String(localized: "This podcast requires an updated access token. Choose Fix Authentication to update access.")
+        }
+        if case PodcastParserError.couldNotLoad(_, let statusCode, _) = error,
+           statusCode == 401 {
+            return String(localized: "The saved credentials were rejected. Choose Fix Authentication to sign in again.")
+        }
+        if case PodcastFeedResolverError.httpStatus(_, let statusCode, _) = error,
+           statusCode == 401 {
+            return String(localized: "The saved credentials were rejected. Choose Fix Authentication to sign in again.")
+        }
+        if error is URLError {
+            return String(localized: "The podcast server is temporarily unavailable. Try again later.")
+        }
+        return String(localized: "The podcast could not be refreshed. Check your connection and try again.")
     }
 
     private var needsEpisodeImportRetry: Bool {
