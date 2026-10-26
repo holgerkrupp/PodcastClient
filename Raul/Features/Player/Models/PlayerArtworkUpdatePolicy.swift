@@ -3,9 +3,23 @@ import Foundation
 enum PlayerArtworkIdentity: Hashable {
     case url(String, profileID: String?)
     case chapterData(String)
+    case embeddedFile(String)
 }
 
 enum PlayerArtworkUpdatePolicy {
+    /// Chapter artwork stays ahead of the episode and podcast fallback in every
+    /// player surface. Duplicate URLs are requested once.
+    static func orderedImageURLs(
+        chapterURL: URL?,
+        episodeURL: URL?,
+        podcastURL: URL?
+    ) -> [URL] {
+        var seen = Set<URL>()
+        return [chapterURL, episodeURL, podcastURL]
+            .compactMap { $0 }
+            .filter { seen.insert($0).inserted }
+    }
+
     /// A resolved image only needs to be published when its source changes.
     /// A nil result clears an existing image after the fallback lookup finishes.
     static func shouldApply(

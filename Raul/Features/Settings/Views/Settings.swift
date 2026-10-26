@@ -11,7 +11,6 @@ import CryptoKit
 import SwiftData
 import AVFoundation
 import UniformTypeIdentifiers
-import mp3ChapterReader
 
 extension Notification.Name {
     static let podcastSettingsDidChange = Notification.Name("podcastSettingsDidChange")
@@ -932,7 +931,6 @@ actor SideLoadedLibraryActor {
 
         let artworkURL = await loadArtworkURL(
             for: fileURL,
-            metadataItems: metadataItems,
             canLoadMediaMetadata: canLoadMediaMetadata
         )
 
@@ -980,48 +978,18 @@ actor SideLoadedLibraryActor {
 
     private func loadArtworkURL(
         for fileURL: URL,
-        metadataItems: [AVMetadataItem],
         canLoadMediaMetadata: Bool
     ) async -> URL? {
         guard canLoadMediaMetadata else { return nil }
-
-        if let assetArtworkData = await assetArtworkData(from: metadataItems),
-           let cachedURL = cacheArtworkData(assetArtworkData) {
-            return cachedURL
-        }
-
-        guard fileURL.pathExtension.lowercased() == "mp3",
-              let mp3ArtworkData = await mp3ArtworkData(from: fileURL),
-              let cachedURL = cacheArtworkData(mp3ArtworkData) else {
+        guard let embeddedArtwork = await EmbeddedAudioArtworkService.artworkData(
+            from: fileURL,
+            includeChapterArtwork: true
+        ),
+              let cachedURL = cacheArtworkData(embeddedArtwork) else {
             return nil
         }
 
         return cachedURL
-    }
-
-    private func assetArtworkData(from metadataItems: [AVMetadataItem]) async -> Data? {
-        guard let artworkItem = metadataItems.first(where: { $0.commonKey == .commonKeyArtwork }) else {
-            return nil
-        }
-
-        let artworkValue = try? await artworkItem.load(.value)
-        return artworkValue as? Data
-    }
-
-    private func mp3ArtworkData(from fileURL: URL) async -> Data? {
-        await Task.detached(priority: .utility) {
-            guard let reader = mp3ChapterReader(with: fileURL) else {
-                return nil
-            }
-
-            let pictureFrames = Self.pictureFrames(in: reader.frames)
-            if let frontCover = pictureFrames.first(where: { $0.type == .coverFront })?.image,
-               frontCover.isEmpty == false {
-                return frontCover
-            }
-
-            return pictureFrames.first(where: { $0.image?.isEmpty == false })?.image
-        }.value
     }
 
     private func cacheArtworkData(_ data: Data) -> URL? {
@@ -1060,27 +1028,4 @@ actor SideLoadedLibraryActor {
         SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func pictureFrames(in frames: [Frame]) -> [PictureFrame] {
-        var collectedPictureFrames: [PictureFrame] = []
-        collectedPictureFrames.reserveCapacity(frames.count)
-
-        for frame in frames {
-            if let pictureFrame = frame as? PictureFrame {
-                collectedPictureFrames.append(pictureFrame)
-                continue
-            }
-
-            if let chapterFrame = frame as? ChapFrame {
-                collectedPictureFrames.append(contentsOf: Self.pictureFrames(in: chapterFrame.frames))
-                continue
-            }
-
-            if let tocFrame = frame as? CTOCFrame {
-                collectedPictureFrames.append(contentsOf: Self.pictureFrames(in: tocFrame.frames))
-                continue
-            }
-        }
-
-        return collectedPictureFrames
-    }
 }

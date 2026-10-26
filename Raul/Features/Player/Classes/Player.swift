@@ -5,6 +5,9 @@ import AVFoundation
 import MediaPlayer
 import SwiftData
 import mp3ChapterReader
+#if os(macOS)
+import AppKit
+#endif
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -471,6 +474,10 @@ class Player {
     private var artworkLoadTask: Task<Void, Never>?
     private var artworkLoadGeneration: UInt64 = 0
     private var currentArtworkIdentity: PlayerArtworkIdentity?
+    private var currentArtworkEpisodeURL: URL?
+    private var artworkConnectivityObserver: NSObjectProtocol?
+    private var artworkSettingsObserver: NSObjectProtocol?
+    private var artworkActivationObserver: NSObjectProtocol?
     private var lastTranscriptSynchronizationEpisodeURL: URL?
     private var lastTranscriptSynchronizationPosition: TimeInterval?
 #if !os(watchOS)
@@ -675,6 +682,7 @@ class Player {
         pause()
         addChangeSettingsObserver()
         addDownloadObserver()
+        addArtworkConnectivityObserver()
         installAdvertisementDetectionLifecycleObservers()
         Task{
             allowScrubbing = await settingsActor?.getAppSliderEnable()
@@ -1162,6 +1170,55 @@ class Player {
                 await self.handleDownloadFinished(for: episodeURL)
             }
         }
+    }
+
+    private func addArtworkConnectivityObserver() {
+        artworkConnectivityObserver = NotificationCenter.default.addObserver(
+            forName: .artworkConnectivityRecovered,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, currentEpisode != nil else { return }
+                scheduleCurrentArtworkUpdate()
+            }
+        }
+        artworkSettingsObserver = NotificationCenter.default.addObserver(
+            forName: .podcastSettingsDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let episode = currentEpisode else { return }
+                await ArtworkRecoveryCoordinator.shared.resetAuthenticationFailures(
+                    profileID: accessProfile(for: episode)?.id
+                )
+                scheduleCurrentArtworkUpdate()
+            }
+        }
+#if canImport(UIKit)
+        artworkActivationObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, currentEpisode != nil else { return }
+                scheduleCurrentArtworkUpdate()
+            }
+        }
+#elseif canImport(AppKit)
+        artworkActivationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, currentEpisode != nil else { return }
+                scheduleCurrentArtworkUpdate()
+            }
+        }
+#endif
     }
     
     private func applyPlaybackRate(_ playbackRate: Float, for podcastFeed: URL?, persist: Bool) async {
@@ -3853,6 +3910,9 @@ class Player {
 
     private func handleDownloadFinished(for episodeURL: URL) async {
         guard currentEpisodeURL == episodeURL else { return }
+        // The completed file can contain a local cover even when the feed image
+        // request failed earlier. Reconcile artwork independently of audio swap.
+        scheduleCurrentArtworkUpdate()
         await switchCurrentEpisodeToDownloadedCopyIfNeeded()
     }
 
@@ -3956,8 +4016,15 @@ class Player {
         artworkLoadTask = nil
 
         guard let episode = currentEpisode else {
+            currentArtworkEpisodeURL = nil
             applyCurrentArtwork(nil, identity: nil)
             return
+        }
+        let episodeIdentityURL = episode.url ?? currentEpisodeURL
+        if currentArtworkEpisodeURL != episodeIdentityURL {
+            currentArtworkEpisodeURL = episodeIdentityURL
+            // Never carry a previous episode's image into the new episode.
+            applyCurrentArtwork(nil, identity: nil)
         }
 
         let chapter = currentChapter.flatMap { candidate in
@@ -3967,15 +4034,22 @@ class Player {
             } ? candidate : nil
         }
         let chapterData = chapter?.imageData.flatMap { $0.isEmpty ? nil : $0 }
-        let imageURLs = [
-            chapter?.image,
-            episode.imageURL,
-            episode.podcast?.imageURL
-        ].compactMap { $0 }
+        let podcastImageURL = episode.podcast?.imageURL
+        let preferredImageURLs = PlayerArtworkUpdatePolicy.orderedImageURLs(
+            chapterURL: chapter?.image,
+            episodeURL: episode.imageURL,
+            podcastURL: podcastImageURL
+        )
         let profile = accessProfile(for: episode)
+        let localArtworkURL: URL? = {
+            guard mediaSelection == .primary,
+                  episode.source == .sideLoaded || episode.metaData?.isAvailableLocally == true,
+                  let localFile = episode.localFile else { return nil }
+            return localFile
+        }()
 
         if chapterData == nil,
-           let primaryURL = imageURLs.first,
+           let primaryURL = preferredImageURLs.first,
            let cachedImage = SharedImageRepository.cachedImage(
                for: primaryURL,
                profileID: profile?.id
@@ -3988,22 +4062,93 @@ class Player {
         }
 
         artworkLoadTask = Task(priority: .userInitiated) { [weak self] in
-            let resolvedArtwork = await Self.loadCurrentArtwork(
-                chapterData: chapterData,
-                imageURLs: imageURLs,
-                profile: profile
-            )
-            guard Task.isCancelled == false,
-                  let self,
-                  artworkLoadGeneration == generation else {
-                return
+            var attempt = 0
+            let chapterHasArtworkCandidate = chapterData != nil || chapter?.image != nil
+            var localFallbackAttempted = false
+            if !chapterHasArtworkCandidate, let localArtworkURL,
+               let image = await EmbeddedAudioArtworkService.shared.thumbnail(for: localArtworkURL) {
+                localFallbackAttempted = true
+                let identity = await Task.detached(priority: .utility) {
+                    Self.embeddedArtworkIdentity(for: localArtworkURL)
+                }.value
+                guard Task.isCancelled == false,
+                      let self,
+                      artworkLoadGeneration == generation else { return }
+                if let identity {
+                    if case .chapterData = currentArtworkIdentity {
+                        // Existing chapter image remains the most specific source.
+                    } else {
+                        applyCurrentArtwork(image, identity: .embeddedFile(identity))
+                    }
+                }
             }
-            if let resolvedArtwork {
-                applyCurrentArtwork(resolvedArtwork.image, identity: resolvedArtwork.identity)
-            } else {
-                applyCurrentArtwork(nil, identity: nil)
+            while !Task.isCancelled {
+                let resolvedArtwork = await Self.loadCurrentArtwork(
+                    chapterData: chapterData,
+                    imageURLs: preferredImageURLs,
+                    profile: profile
+                )
+                guard Task.isCancelled == false,
+                      let self,
+                      artworkLoadGeneration == generation else { return }
+                if let resolvedArtwork {
+                    applyCurrentArtwork(resolvedArtwork.image, identity: resolvedArtwork.identity)
+                    artworkLoadTask = nil
+                    return
+                }
+
+                if !localFallbackAttempted, let localArtworkURL {
+                    localFallbackAttempted = true
+                    if let image = await EmbeddedAudioArtworkService.shared.thumbnail(for: localArtworkURL) {
+                        let identity = await Task.detached(priority: .utility) {
+                            Self.embeddedArtworkIdentity(for: localArtworkURL)
+                        }.value
+                        guard Task.isCancelled == false,
+                              artworkLoadGeneration == generation else { return }
+                        if let identity {
+                            if case .chapterData = currentArtworkIdentity {
+                                // Keep an already visible chapter image stable.
+                            } else {
+                                applyCurrentArtwork(image, identity: .embeddedFile(identity))
+                            }
+                        }
+                    }
+                }
+
+                if let podcastImageURL,
+                   preferredImageURLs.contains(podcastImageURL) == false,
+                   let podcastArtwork = await Self.loadCurrentArtwork(
+                       chapterData: nil,
+                       imageURLs: [podcastImageURL],
+                       profile: profile
+                   ) {
+                    guard Task.isCancelled == false,
+                          artworkLoadGeneration == generation else { return }
+                    applyCurrentArtwork(podcastArtwork.image, identity: podcastArtwork.identity)
+                }
+
+                let retryKeys = preferredImageURLs.map {
+                    SharedImageRepository.recoveryKey(for: $0, profileID: profile?.id)
+                }
+                var delays: [TimeInterval] = []
+                for key in retryKeys {
+                    if let delay = await ArtworkRecoveryCoordinator.shared.retryDelayRemaining(for: key) {
+                        delays.append(delay)
+                    }
+                }
+                guard !delays.isEmpty else {
+                    artworkLoadTask = nil
+                    return
+                }
+                attempt += 1
+                let policyDelay = ArtworkRetryPolicy.transientDelay(attempt: attempt)
+                let wait = max(delays.min() ?? policyDelay, ArtworkRetryPolicy.minimumConnectivityGap)
+                do {
+                    try await Task.sleep(for: .seconds(wait))
+                } catch {
+                    return
+                }
             }
-            artworkLoadTask = nil
         }
     }
 
@@ -4030,6 +4175,14 @@ class Player {
 
     nonisolated private static func artworkIdentity(for url: URL, profileID: String?) -> PlayerArtworkIdentity {
         .url(url.absoluteString, profileID: profileID)
+    }
+
+    nonisolated private static func embeddedArtworkIdentity(for url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey]),
+              values.isRegularFile == true,
+              let size = values.fileSize,
+              let modified = values.contentModificationDate else { return nil }
+        return "\(url.standardizedFileURL.path)|\(size)|\(modified.timeIntervalSince1970)"
     }
 
     nonisolated private static func loadCurrentArtwork(
