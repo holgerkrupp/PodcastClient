@@ -3614,6 +3614,9 @@ class Player {
     }
 
     func chapterPlaybackPreferenceChanged(_ chapter: Marker, shouldPlay: Bool) {
+        if shouldPlay == false && chapter.shouldPlay {
+            ChapterSkipRecognition.shared.recordManuallySkippedChapter(chapter)
+        }
         chapter.shouldPlay = shouldPlay
         rebuildChapterSkipPlan()
         configureChapterBoundaryObserver()
@@ -3653,6 +3656,16 @@ class Player {
         let nextChapter = chapters?.first(where: { ($0.start ?? 0) > playPosition + 0.5 })
 
         if let start = nextChapter?.start{
+            if let currentChapter,
+               currentChapter.episode?.url == currentEpisodeURL,
+               let chapterStart = currentChapter.start,
+               ChapterSkipRecognition.isDeliberateNextChapterSkip(
+                   position: playPosition,
+                   chapterStart: chapterStart,
+                   chapterEnd: start
+               ) {
+                ChapterSkipRecognition.shared.recordManuallySkippedChapter(currentChapter)
+            }
              await jumpTo(time: start, protectLargeSeek: protectLargeSeek)
         }else if let end = currentChapter?.end{
             await jumpTo(time: end, protectLargeSeek: protectLargeSeek)

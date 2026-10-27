@@ -4,6 +4,7 @@ import SwiftUI
 enum SettingsDestination: String, Codable, Hashable {
     case main
     case playback
+    case suggestedChapterRule
 }
 
 struct SettingsWindowRequest: Codable, Hashable, Identifiable {
@@ -11,12 +12,13 @@ struct SettingsWindowRequest: Codable, Hashable, Identifiable {
 
     let podcastID: PersistentIdentifier?
     var destination: SettingsDestination = .main
+    var chapterRuleSuggestion: ChapterSkipRuleSuggestion?
 
     static let global = SettingsWindowRequest(podcastID: nil)
 
     var id: String {
         let scope = podcastID.map { String(describing: $0) } ?? "global"
-        return "\(destination.rawValue)-\(scope)"
+        return "\(destination.rawValue)-\(scope)-\(chapterRuleSuggestion?.keyword ?? "")"
     }
 
     static func podcast(_ podcast: Podcast) -> SettingsWindowRequest {
@@ -30,29 +32,45 @@ struct SettingsWindowRequest: Codable, Hashable, Identifiable {
         )
     }
 
+    static func suggestedChapterRule(
+        for podcast: Podcast,
+        suggestion: ChapterSkipRuleSuggestion
+    ) -> SettingsWindowRequest {
+        SettingsWindowRequest(
+            podcastID: podcast.persistentModelID,
+            destination: .suggestedChapterRule,
+            chapterRuleSuggestion: suggestion
+        )
+    }
+
     private enum CodingKeys: String, CodingKey {
         case podcastID
         case destination
+        case chapterRuleSuggestion
     }
 
     init(
         podcastID: PersistentIdentifier?,
-        destination: SettingsDestination = .main
+        destination: SettingsDestination = .main,
+        chapterRuleSuggestion: ChapterSkipRuleSuggestion? = nil
     ) {
         self.podcastID = podcastID
         self.destination = destination
+        self.chapterRuleSuggestion = chapterRuleSuggestion
     }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         podcastID = try container.decodeIfPresent(PersistentIdentifier.self, forKey: .podcastID)
         destination = try container.decodeIfPresent(SettingsDestination.self, forKey: .destination) ?? .main
+        chapterRuleSuggestion = try container.decodeIfPresent(ChapterSkipRuleSuggestion.self, forKey: .chapterRuleSuggestion)
     }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(podcastID, forKey: .podcastID)
         try container.encode(destination, forKey: .destination)
+        try container.encodeIfPresent(chapterRuleSuggestion, forKey: .chapterRuleSuggestion)
     }
 }
 
@@ -88,6 +106,7 @@ struct SettingsWindowContent: View {
             modelContainer: modelContext.container,
             embedInNavigationStack: true,
             destination: request.destination,
+            chapterRuleSuggestion: request.chapterRuleSuggestion,
             onOpenAllSettings: onOpenAllSettings
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)

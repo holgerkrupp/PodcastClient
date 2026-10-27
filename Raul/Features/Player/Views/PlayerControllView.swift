@@ -15,6 +15,7 @@ struct PlayerControllView: View {
     @Environment(\.openPodcastSettings) private var openSettings
 
     @Bindable private var player = Player.shared
+    @Bindable private var chapterSkipRecognition = ChapterSkipRecognition.shared
     @State private var showTranscripts: Bool = false
 
     @State private var showFullTranscripts: Bool = false
@@ -92,6 +93,29 @@ struct PlayerControllView: View {
                 }
                 
                 chapterControlsRow
+
+                if let suggestion = chapterSkipRecognition.suggestion(for: episode.podcast?.feed),
+                   let podcast = episode.podcast {
+                    let tip = ChapterSkipSuggestionTip(suggestion: suggestion)
+                    TipView(tip, arrowEdge: .none) { action in
+                        if action.id == "create-rule" {
+                            openSuggestedChapterRule(for: podcast, suggestion: suggestion)
+                        } else if action.id == "not-now" {
+                            chapterSkipRecognition.dismiss(suggestion)
+                            tip.invalidate(reason: .tipClosed)
+                        }
+                    }
+                    .padding(.horizontal)
+                    .task(id: tip.id) {
+                        for await status in tip.statusUpdates {
+                            guard case .invalidated(let reason) = status else { continue }
+                            if reason == .tipClosed || reason == .displayCountExceeded {
+                                chapterSkipRecognition.dismiss(suggestion)
+                            }
+                            break
+                        }
+                    }
+                }
                 
                 
                 Text("\(episode.title)")
@@ -318,6 +342,21 @@ struct PlayerControllView: View {
 
     private func openPlaybackSettings() {
         let request = SettingsWindowRequest.playback(for: player.currentEpisode?.podcast)
+#if os(iOS)
+        settingsRequest = request
+#else
+        openSettings(request)
+#endif
+    }
+
+    private func openSuggestedChapterRule(
+        for podcast: Podcast,
+        suggestion: ChapterSkipRuleSuggestion
+    ) {
+        let request = SettingsWindowRequest.suggestedChapterRule(
+            for: podcast,
+            suggestion: suggestion
+        )
 #if os(iOS)
         settingsRequest = request
 #else
