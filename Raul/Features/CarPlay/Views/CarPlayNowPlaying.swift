@@ -127,15 +127,9 @@ class CarPlayNowPlaying {
     }
 
     private func skipToNextPreferredChapter() async {
-        let chapters = preferredChapters()
-        let nextChapter = chapters.first(where: { ($0.start ?? 0) >= player.playPosition })
-
-        if let start = nextChapter?.start {
-            await player.jumpTo(time: start)
-        } else if let currentChapter = chapters.last(where: { ($0.start ?? 0) <= player.playPosition }),
-                  let end = currentChapter.end {
-            await player.jumpTo(time: end)
-        }
+        // Share the manual-next action with the full player, including its
+        // local chapter-skip recognition and near-boundary false-positive guard.
+        await player.skipToNextChapter()
     }
     
 }

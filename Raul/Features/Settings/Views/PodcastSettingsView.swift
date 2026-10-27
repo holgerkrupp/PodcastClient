@@ -119,6 +119,7 @@ struct PodcastSettingsView: View {
     let podcastID: PersistentIdentifier?
     let embedInNavigationStack: Bool
     let destination: SettingsDestination
+    let chapterRuleSuggestion: ChapterSkipRuleSuggestion?
     let onOpenAllSettings: (() -> Void)?
 
     @Bindable private var player = Player.shared
@@ -147,6 +148,7 @@ struct PodcastSettingsView: View {
     @State private var pendingAutoDownloadPolicyChanged = false
     @State private var selectedGlobalCategory: GlobalSettingsCategory? = .playback
     @State private var showCreatePlaylistFromSettings = false
+    @State private var didSaveSuggestedChapterRule = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
     @Query(filter: defaultSettingsFilter) private var defaultSettings: [PodcastSettings]
@@ -158,11 +160,13 @@ struct PodcastSettingsView: View {
         modelContainer: ModelContainer,
         embedInNavigationStack: Bool = false,
         destination: SettingsDestination = .main,
+        chapterRuleSuggestion: ChapterSkipRuleSuggestion? = nil,
         onOpenAllSettings: (() -> Void)? = nil
     ) {
         self.podcastID = podcastID
         self.embedInNavigationStack = embedInNavigationStack
         self.destination = destination
+        self.chapterRuleSuggestion = chapterRuleSuggestion
         self.onOpenAllSettings = onOpenAllSettings
         _ = modelContainer
         self._useCustomSettings = State(initialValue: false)
@@ -173,11 +177,13 @@ struct PodcastSettingsView: View {
         modelContainer: ModelContainer,
         embedInNavigationStack: Bool = false,
         destination: SettingsDestination = .main,
+        chapterRuleSuggestion: ChapterSkipRuleSuggestion? = nil,
         onOpenAllSettings: (() -> Void)? = nil
     ) {
         self.podcastID = podcast?.persistentModelID
         self.embedInNavigationStack = embedInNavigationStack
         self.destination = destination
+        self.chapterRuleSuggestion = chapterRuleSuggestion
         self.onOpenAllSettings = onOpenAllSettings
         _ = modelContainer
         self._useCustomSettings = State(initialValue: podcast?.settings?.isEnabled == true)
@@ -353,7 +359,9 @@ struct PodcastSettingsView: View {
     @ViewBuilder
     private var settingsContent: some View {
         if let effectiveSettings, let globalSettings {
-            if destination == .playback {
+            if destination == .suggestedChapterRule {
+                suggestedChapterRuleSettings(effectiveSettings: effectiveSettings)
+            } else if destination == .playback {
                 playbackSettingsList(
                     effectiveSettings: effectiveSettings,
                     globalSettings: globalSettings
@@ -373,6 +381,71 @@ struct PodcastSettingsView: View {
                 }
             }
             .navigationTitle(podcast == nil ? "Settings" : "Podcast Settings")
+        }
+    }
+
+    @ViewBuilder
+    private func suggestedChapterRuleSettings(effectiveSettings: PodcastSettings) -> some View {
+        if let podcast, let feed = podcast.feed,
+           let suggestion = chapterRuleSuggestion,
+           suggestion.podcastKey == ChapterSkipRecognition.podcastKey(for: feed) {
+            if didSaveSuggestedChapterRule {
+                ChapterRuleSettingsDetailView(
+                    settingsID: (podcast.settings ?? effectiveSettings).persistentModelID,
+                    isEditable: podcast.settings?.isEnabled == true,
+                    source: resolvedSettingsSource,
+                    readOnlyMessage: nil,
+                    onChange: saveAndNotify
+                )
+            } else {
+                ChapterSkipRuleSuggestionReviewView(
+                    suggestion: suggestion,
+                    podcastTitle: podcast.title,
+                    customSettingsEnabled: isPodcastCustomSettingsActive,
+                    existingRules: effectiveSettings.autoSkipKeywords,
+                    onSave: saveSuggestedChapterRule
+                )
+            }
+        } else {
+            ContentUnavailableView(
+                "Suggestion Unavailable",
+                systemImage: "text.badge.xmark",
+                description: Text("Open this podcast's settings to manage its chapter skip rules.")
+            )
+        }
+    }
+
+    /// This is the only path from a local observation to CloudKit-synced
+    /// settings. Opening the tip or editing its draft never writes a rule.
+    private func saveSuggestedChapterRule(keyword: String, matchStyle: Operator) -> Bool {
+        guard let podcast, let feed = podcast.feed,
+              let suggestion = chapterRuleSuggestion,
+              suggestion.podcastKey == ChapterSkipRecognition.podcastKey(for: feed) else {
+            return false
+        }
+        let trimmed = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.isEmpty == false else { return false }
+
+        do {
+            try enableCustomSettings(for: podcast, in: context)
+            guard let settings = podcast.settings else { return false }
+            if settings.autoSkipKeywords.contains(where: {
+                $0.keyWord?.caseInsensitiveCompare(trimmed) == .orderedSame
+                    && $0.keyOperator == matchStyle
+            }) == false {
+                settings.autoSkipKeywords.append(skipKey(keyWord: trimmed, keyOperator: matchStyle))
+            }
+            try context.commitChangesIfNeeded()
+            useCustomSettings = true
+            settingsSaveError = nil
+            publishPortableSettings()
+            postSettingsDidChange()
+            ChapterSkipRecognition.shared.complete(suggestion)
+            didSaveSuggestedChapterRule = true
+            return true
+        } catch {
+            settingsSaveError = error.localizedDescription
+            return false
         }
     }
 
@@ -3119,6 +3192,86 @@ private struct SettingsReadOnlyNotice: View {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
+    }
+}
+
+/// Unlike the ordinary rule editor, these fields are a draft. Saving is the
+/// explicit consent point for a per-podcast rule to enter synced settings.
+private struct ChapterSkipRuleSuggestionReviewView: View {
+    let suggestion: ChapterSkipRuleSuggestion
+    let podcastTitle: String
+    let customSettingsEnabled: Bool
+    let existingRules: [skipKey]
+    let onSave: (String, Operator) -> Bool
+
+    @State private var keyword: String
+    @State private var matchStyle: Operator = .Contains
+
+    init(
+        suggestion: ChapterSkipRuleSuggestion,
+        podcastTitle: String,
+        customSettingsEnabled: Bool,
+        existingRules: [skipKey],
+        onSave: @escaping (String, Operator) -> Bool
+    ) {
+        self.suggestion = suggestion
+        self.podcastTitle = podcastTitle
+        self.customSettingsEnabled = customSettingsEnabled
+        self.existingRules = existingRules
+        self.onSave = onSave
+        _keyword = State(initialValue: suggestion.keyword)
+    }
+
+    var body: some View {
+        Form {
+            Section("Suggested for \(podcastTitle)") {
+                Label(
+                    "You skipped matching chapters in \(suggestion.skipCount) different episodes.",
+                    systemImage: "lightbulb"
+                )
+
+                TextField("Keyword or phrase", text: $keyword)
+
+                Picker("Match style", selection: $matchStyle) {
+                    ForEach(Operator.allCases, id: \.self) { style in
+                        Text(style.settingsLabel).tag(style)
+                    }
+                }
+
+                Text("Preview: Skip chapters whose title contains “\(keyword)”.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    _ = onSave(keyword, matchStyle)
+                } label: {
+                    Label("Save Chapter Skip Rule", systemImage: "checkmark.circle.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .disabled(keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } footer: {
+                Text(customSettingsEnabled
+                     ? "Nothing changes until you save. This podcast-specific rule will sync through iCloud."
+                     : "Saving enables podcast-specific settings. Existing custom preferences may become active again; new settings inherit your global defaults. The rule will sync through iCloud.")
+            }
+
+            if existingRules.isEmpty == false {
+                Section("Currently Applied Rules") {
+                    ForEach(Array(existingRules.enumerated()), id: \.offset) { _, rule in
+                        Text(rule.previewDescription)
+                    }
+                }
+            }
+
+            Section {
+                Text("Only the rules you save are synced. The listening patterns used to suggest this rule remain on this device.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .formStyle(.grouped)
+        .navigationTitle("Chapter Skip Rules")
+        .platformInlineNavigationTitle()
     }
 }
 
