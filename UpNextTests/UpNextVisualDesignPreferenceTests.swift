@@ -1,9 +1,18 @@
 import XCTest
 import SwiftUI
 import UIKit
+import ESADesignKit
 @testable import UpNext
 
 final class UpNextVisualDesignPreferenceTests: XCTestCase {
+    func testArtworkBlurDefaultAndInvalidPreferences() {
+        XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: 2), .standard)
+        XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: -1), .standard)
+        XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: 99), .standard)
+        XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: 0), .minimal)
+        XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: 4), .maximum)
+    }
+
     func testRGBPreferenceValidatesAndKeepsUnsetSeparateFromExplicitColor() {
         XCTAssertNil(UpNextVisualDesignPreference.validatedRGB(nil))
         XCTAssertEqual(UpNextVisualDesignPreference.validatedRGB("#abcdef"), "#ABCDEF")

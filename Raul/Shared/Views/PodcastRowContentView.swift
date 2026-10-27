@@ -156,6 +156,7 @@ struct PodcastRowContentView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.esaVisualStyle) private var visualStyle
+    @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
     @ScaledMetric(relativeTo: .body) private var comfortableRowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var comfortableArtworkSize: CGFloat = 112
     @ScaledMetric(relativeTo: .body) private var compactRowHeight: CGFloat = 72
@@ -306,7 +307,7 @@ struct PodcastRowContentView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(.thinMaterial)
+                Rectangle().fill(artworkBlurLevel.rowMaterial)
             }
         }
     }
@@ -328,11 +329,12 @@ struct PodcastRowContentView: View {
                                 previewArtwork
                                     .resizable()
                                     .scaledToFill()
-                                    .blur(radius: 18)
+                                    .blur(radius: artworkBlurLevel.rowBlurRadius * 2.25)
                             } else {
                                 BlurredCoverImageView(
                                     imageURL: presentation.artworkURL,
                                     accessProfileOverride: presentation.artworkAccessProfile,
+                                    radius: artworkBlurLevel.rowBlurRadius,
                                     maxPixelSize: 256,
                                     loadDelay: .milliseconds(350)
                                 )

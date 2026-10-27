@@ -17,6 +17,7 @@ Guide validation should check stable topic ID uniqueness, related-topic resoluti
 - Keep one primary action prominent in each context. Use a short secondary-action group for frequent actions and native menus or disclosures for occasional utilities.
 - Use a consistent artwork, title, author, and summary treatment. Podcast rows use the shared value-driven `PodcastRowContentView`: comfortable density in Library, compact density in Search and broadcaster discovery. The caller owns navigation and subscription lookup.
 - Keep artwork and text readable in Artwork, Adaptive Color, and Uniform styles, including Increased Contrast. Scale row and header content with Dynamic Type; use 44 pt or larger interactive targets.
+- Appearance → Design → Artwork exposes a five-step, device-only **Background blur** slider. The Standard preset reproduces existing artwork-row and detail-blur radii and frosted materials; other presets adjust both while leaving the cover-hero image sharp, the hero scroll/transport hierarchy unchanged, and Adaptive Color / Uniform untouched.
 - Avoid per-row model queries, episode-relationship access, repeated HTML parsing, or additional image decoding. Pass small presentation values into shared row content.
 - Keep critical errors, active work, and retry states visible. Put low-frequency management and diagnostic actions in native menus or disclosures.
 

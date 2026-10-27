@@ -11,11 +11,16 @@ import AppKit
 
 enum UpNextVisualDesignPreference {
     static let storageKey = "upNext.visualDesign"
+    static let artworkBlurLevelKey = "upNext.artworkBackgroundBlurLevel.v1"
     static let uniformColorKey = "upNext.uniformColorRGB"
     static let widgetAppearanceKey = "upNext.widgetAppearance.v1"
     static let appGroupID = "group.de.holgerkrupp.PodcastClient"
     static let defaultDarkRGB = "#1A3B38"
     static let defaultLightRGB = "#D4EDE6"
+
+    static func artworkBlurLevel(for storedValue: Int) -> ESAArtworkBlurLevel {
+        ESAArtworkBlurLevel(rawValue: storedValue) ?? .standard
+    }
 
     /// App preferences remain canonical. Migrate the in-progress shared style key once.
     static func appDefaults() -> UserDefaults {
@@ -172,6 +177,8 @@ private struct UpNextVisualDesignRootModifier: ViewModifier {
     private var storedStyle = ESAVisualStyle.artwork.rawValue
     @AppStorage(UpNextVisualDesignPreference.uniformColorKey, store: UpNextVisualDesignPreference.appDefaults())
     private var customRGB = ""
+    @AppStorage(UpNextVisualDesignPreference.artworkBlurLevelKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var storedArtworkBlurLevel = ESAArtworkBlurLevel.standard.rawValue
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var accessibilityContrast
 
@@ -180,6 +187,7 @@ private struct UpNextVisualDesignRootModifier: ViewModifier {
             ESAVisualStyle(rawValue: storedStyle) ?? .artwork,
             uniformPalette: UpNextVisualDesignPreference.uniformPalette(for: colorScheme, customRGB: customRGB, highContrast: accessibilityContrast == .increased)
         )
+        .esaArtworkBlurLevel(UpNextVisualDesignPreference.artworkBlurLevel(for: storedArtworkBlurLevel))
         .task { WidgetAppearancePublisher.publishAndReloadDebounced() }
         .onChange(of: storedStyle) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
         .onChange(of: customRGB) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
@@ -193,6 +201,8 @@ struct VisualDesignChooser: View {
     @Environment(\.colorSchemeContrast) private var accessibilityContrast
     @AppStorage(UpNextVisualDesignPreference.uniformColorKey, store: UpNextVisualDesignPreference.appDefaults())
     private var customRGB = ""
+    @AppStorage(UpNextVisualDesignPreference.artworkBlurLevelKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var storedArtworkBlurLevel = ESAArtworkBlurLevel.standard.rawValue
     @State private var previewPodcast: Podcast = {
         let podcast = Podcast(feed: URL(string: "https://example.com/up-next-design-preview.xml")!)
         podcast.title = "Up Next"
@@ -276,6 +286,9 @@ struct VisualDesignChooser: View {
                     if style == .uniform && selection == .uniform {
                         uniformColorControls
                     }
+                    if style == .artwork && selection == .artwork {
+                        artworkBlurControls
+                    }
                 }
             }
             .padding()
@@ -308,11 +321,68 @@ struct VisualDesignChooser: View {
         .padding(.bottom, 4)
     }
 
+    private var artworkBlurControls: some View {
+        let level = UpNextVisualDesignPreference.artworkBlurLevel(for: storedArtworkBlurLevel)
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Background blur")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Text(level.settingsLabel)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 12) {
+                Text("Less")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(
+                        get: { Double(level.rawValue) },
+                        set: { storedArtworkBlurLevel = min(max(Int($0.rounded()), 0), 4) }
+                    ),
+                    in: Double(ESAArtworkBlurLevel.minimal.rawValue)...Double(ESAArtworkBlurLevel.maximum.rawValue),
+                    step: 1
+                )
+                .accessibilityLabel("Artwork background blur")
+                .accessibilityValue(level.settingsLabel)
+                .accessibilityHint("Adjusts the blurred artwork and frosted background on podcast and episode rows and detail screens.")
+                Text("More")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text("Changes apply immediately to the Artwork design on this device. Standard keeps the original appearance.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Reset to Standard") {
+                storedArtworkBlurLevel = ESAArtworkBlurLevel.standard.rawValue
+            }
+            .disabled(level == .standard)
+        }
+        .padding(.leading, 12)
+        .padding(.bottom, 4)
+    }
+
     private var uniformColorBinding: Binding<Color> {
         Binding(
             get: { UpNextVisualDesignPreference.color(fromRGB: customRGB) ?? UpNextVisualDesignPreference.color(fromRGB: colorScheme == .light ? UpNextVisualDesignPreference.defaultLightRGB : UpNextVisualDesignPreference.defaultDarkRGB)! },
             set: { customRGB = UpNextVisualDesignPreference.rgbString(from: $0) ?? customRGB }
         )
+    }
+}
+
+private extension ESAArtworkBlurLevel {
+    var settingsLabel: String {
+        switch self {
+        case .minimal: "Minimal"
+        case .soft: "Soft"
+        case .standard: "Standard"
+        case .strong: "Strong"
+        case .maximum: "Maximum"
+        }
     }
 }
 
