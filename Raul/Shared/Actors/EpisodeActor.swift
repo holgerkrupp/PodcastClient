@@ -704,6 +704,27 @@ actor EpisodeActor {
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
+    /// Apply one snapshot of the inbox in bounded batches, preserving playlist,
+    /// playback, archive and synced user state. Publish only once after the work.
+    func removeEpisodesFromInbox(episodeURLs: [URL]) async throws {
+        let urls = Array(Set(episodeURLs))
+        for start in stride(from: 0, to: urls.count, by: 250) {
+            let batch = Array(urls[start..<min(start + 250, urls.count)])
+            let descriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> {
+                $0.url != nil && batch.contains($0.url!)
+            })
+            let episodes = try modelContext.fetch(descriptor)
+            for episode in episodes {
+                ensureMetadata(for: episode)
+                episode.metaData?.setInboxMembership(false)
+            }
+            try modelContext.save()
+            await persistLocalEpisodeClassification(episodes)
+        }
+        await InboxChangeBroadcaster.notifyInboxDidChange()
+        WatchSyncCoordinator.refreshSoon(force: true)
+    }
+
     func addToInbox(_ episodeURL: URL?) async {
         guard let episodeURL else { return }
         let episodes = await fetchEpisodes(byURL: episodeURL)

@@ -57,3 +57,9 @@ Manual chapter-skip recognition is local to the device. After five different epi
 ## Responsive review
 
 Review portrait and compact-height iPhone, iPhone Duo, landscape, regular-width iPad, and macOS layouts. Let content wrap or move into scrollable sections and native menus rather than increasing the Player hero or shrinking transport hit targets. Check long localized titles, large text, VoiceOver, Reduce Motion, high contrast, and all three visual styles. The detailed player interaction and Duo regression gate remains in #314/#320.
+
+### Inbox bulk clearing and subscription imports
+
+The Inbox toolbar exposes **Clear inbox** beside refresh when episodes are present. A confirmation shows the current episode count. Clearing removes the current inbox snapshot in batches while preserving Library, playlists, playback history and archive state.
+
+All subscriptions, including OPML imports, admit only episodes released strictly after the subscription date to Inbox. Older or undated episodes remain in Library as suppressed back catalogue.

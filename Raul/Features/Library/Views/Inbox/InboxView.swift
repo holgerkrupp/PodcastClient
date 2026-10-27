@@ -52,6 +52,7 @@ struct InboxListView: View {
 
     @State private var episodes: [Episode] = []
     @State private var isClearingInbox = false
+    @State private var showClearInboxConfirmation = false
     @State private var hasLoaded = false
     @State private var loadGeneration = 0
 
@@ -179,12 +180,9 @@ struct InboxListView: View {
             }
 
             if !episodes.isEmpty {
-                ToolbarItem(placement: .secondaryAction) {
+                ToolbarItem(placement: .primaryAction) {
                     Button(action: {
-                        Task {
-                            await clearInbox()
-                            await loadEpisodes()
-                        }
+                        showClearInboxConfirmation = true
                     }) {
                         if isClearingInbox {
                             ProgressView()
@@ -198,6 +196,17 @@ struct InboxListView: View {
                     .accessibilityInputLabels([Text("Clear inbox"), Text("Remove all inbox episodes")])
                 }
             }
+        }
+        .confirmationDialog("Clear inbox?", isPresented: $showClearInboxConfirmation, titleVisibility: .visible) {
+            Button("Clear inbox", role: .destructive) {
+                Task {
+                    await clearInbox()
+                    await loadEpisodes()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remove all \(episodes.count) episodes from Inbox? They remain in your library and playlists, and are not marked played.")
         }
         .alert("Error", isPresented: .constant(errorMessage != nil)) {
             Button("OK") {
@@ -258,7 +267,11 @@ struct InboxListView: View {
         isClearingInbox = true
         let episodeURLs = episodes.map { $0.url }
         let episodeActor = PodcastModelActor(modelContainer: modelContext.container)
-        await episodeActor.removeEpisodesFromInbox(episodeURLs: episodeURLs)
+        do {
+            try await episodeActor.removeEpisodesFromInbox(episodeURLs: episodeURLs)
+        } catch {
+            errorMessage = "Failed to clear inbox: \(error.localizedDescription)"
+        }
         isClearingInbox = false
     }
     
