@@ -10,6 +10,7 @@ import SwiftData
 import ESADesignKit
 
 struct PodcastDetailView: View {
+    @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
     private static let episodePageSize = 80
 
     enum EpisodeSortOption: String, CaseIterable, Identifiable {
@@ -554,7 +555,11 @@ struct PodcastDetailView: View {
             }
             .listRowSeparator(.hidden)
         }
-        .coverHero(image: .url(podcast.imageURL), title: podcast.title)
+        .coverHero(
+            image: .url(podcast.imageURL),
+            title: podcast.title,
+            material: artworkBlurLevel.detailMaterial
+        )
         .ESAFullBackground(image: podcast.imageURL)
         .listStyle(.plain)
         .padding(.top, 0)

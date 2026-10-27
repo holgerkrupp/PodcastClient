@@ -15,6 +15,7 @@ struct EpisodeRowView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.esaVisualStyle) private var visualStyle
+    @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
 
     @Bindable var episode: Episode
     let showsRemoveFromInboxAction: Bool
@@ -159,14 +160,14 @@ struct EpisodeRowView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(.thinMaterial)
+                Rectangle().fill(artworkBlurLevel.rowMaterial)
             }
         }
         .background {
-            if visualStyle == .artwork {
+            if visualStyle == .artwork && colorSchemeContrast == .standard {
             BlurredCoverImageView(
                 imageURL: episode.imageURL ?? episode.podcast?.imageURL,
-                radius: 8,
+                radius: artworkBlurLevel.rowBlurRadius,
                 maxPixelSize: 512
             )
             .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)

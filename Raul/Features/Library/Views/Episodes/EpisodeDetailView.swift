@@ -11,6 +11,7 @@ import ESADesignKit
 
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
+    @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
 
     @Bindable var episode: Episode
     private let transcriptSearchNavigation: TranscriptSearchNavigation?
@@ -77,7 +78,11 @@ struct EpisodeDetailView: View {
                 .padding(.top, 8)
                 .padding(.bottom, 24)
             }
-            .coverHero(image: .url(episode.imageURL ?? episode.podcast?.imageURL), title: episode.title)
+            .coverHero(
+                image: .url(episode.imageURL ?? episode.podcast?.imageURL),
+                title: episode.title,
+                material: artworkBlurLevel.detailMaterial
+            )
         }
         .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
         .alert(
