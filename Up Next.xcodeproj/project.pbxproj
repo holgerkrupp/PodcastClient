@@ -15,6 +15,7 @@
 		4827FCD42DA5AC0500FA6778 /* README.md in Resources */ = {isa = PBXBuildFile; fileRef = 4827FCD32DA5AC0500FA6778 /* README.md */; };
 		485AEE7B30737DD300E5A889 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 485AEE7A30737DD300E5A889 /* ESADesignKit */; };
 		485AEE7D30737E0900E5A889 /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 485AEE7C30737E0900E5A889 /* ESADesignKit */; };
+		486AEE7D30737E0900E5A88A /* ESADesignKit in Frameworks */ = {isa = PBXBuildFile; productRef = 486AEE7C30737E0900E5A88A /* ESADesignKit */; };
 		4878D3812DDA612600BA3D92 /* PodcastFeactures.md in Resources */ = {isa = PBXBuildFile; fileRef = 4878D3802DDA612600BA3D92 /* PodcastFeactures.md */; };
 		48B638D12F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
 		48B638D22F59999F00940B67 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 48B638D02F59999F00940B67 /* Localizable.xcstrings */; };
@@ -314,6 +315,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				486AEE7D30737E0900E5A88A /* ESADesignKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -499,6 +501,7 @@
 			);
 			name = PlayNextWidget;
 			packageProductDependencies = (
+				486AEE7C30737E0900E5A88A /* ESADesignKit */,
 			);
 			productName = PlayNextWidget;
 			productReference = A1B2C3022F00000100000001 /* PlayNextWidget.appex */;
@@ -1611,6 +1614,11 @@
 			productName = ESADesignKit;
 		};
 		485AEE7C30737E0900E5A889 /* ESADesignKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 485AEE7930737DD300E5A889 /* XCLocalSwiftPackageReference "../ESADesignKit" */;
+			productName = ESADesignKit;
+		};
+		486AEE7C30737E0900E5A88A /* ESADesignKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = 485AEE7930737DD300E5A889 /* XCLocalSwiftPackageReference "../ESADesignKit" */;
 			productName = ESADesignKit;
