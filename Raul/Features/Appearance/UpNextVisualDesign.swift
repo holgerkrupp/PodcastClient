@@ -107,10 +107,12 @@ enum UpNextVisualDesignPreference {
     }
 }
 
-private struct WidgetAppearanceSnapshot: Codable {
+struct WidgetAppearanceSnapshot: Codable {
     let schemaVersion: Int
     let visualStyle: String
     let uniformColorRGB: String?
+    /// Optional for compatibility with snapshots written by older app versions.
+    let artworkBlurLevel: Int?
 }
 
 @MainActor
@@ -122,7 +124,16 @@ enum WidgetAppearancePublisher {
         let style = defaults.string(forKey: UpNextVisualDesignPreference.storageKey) ?? ESAVisualStyle.artwork.rawValue
         let rawColor = defaults.string(forKey: UpNextVisualDesignPreference.uniformColorKey)
         let color = UpNextVisualDesignPreference.validatedRGB(rawColor)
-        let snapshot = WidgetAppearanceSnapshot(schemaVersion: 1, visualStyle: style, uniformColorRGB: color)
+        let blur = UpNextVisualDesignPreference.artworkBlurLevel(
+            for: defaults.object(forKey: UpNextVisualDesignPreference.artworkBlurLevelKey) as? Int
+                ?? ESAArtworkBlurLevel.standard.rawValue
+        )
+        let snapshot = WidgetAppearanceSnapshot(
+            schemaVersion: 1,
+            visualStyle: style,
+            uniformColorRGB: color,
+            artworkBlurLevel: blur.rawValue
+        )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         let sharedDefaults = UserDefaults(suiteName: UpNextVisualDesignPreference.appGroupID)
         guard sharedDefaults?.data(forKey: UpNextVisualDesignPreference.widgetAppearanceKey) != data else { return }
@@ -191,6 +202,7 @@ private struct UpNextVisualDesignRootModifier: ViewModifier {
         .task { WidgetAppearancePublisher.publishAndReloadDebounced() }
         .onChange(of: storedStyle) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
         .onChange(of: customRGB) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
+        .onChange(of: storedArtworkBlurLevel) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
     }
 }
 
@@ -297,6 +309,7 @@ struct VisualDesignChooser: View {
         }
         .accessibilityIdentifier("visualDesignChooser")
         .onChange(of: customRGB) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
+        .onChange(of: storedArtworkBlurLevel) { _, _ in WidgetAppearancePublisher.publishAndReloadDebounced() }
     }
 
     private var uniformColorControls: some View {
@@ -347,13 +360,13 @@ struct VisualDesignChooser: View {
                 )
                 .accessibilityLabel("Artwork background blur")
                 .accessibilityValue(level.settingsLabel)
-                .accessibilityHint("Adjusts the blurred artwork and frosted background on podcast and episode rows and detail screens.")
+                .accessibilityHint("Adjusts blurred artwork and frosted backgrounds on podcast and episode views and Home Screen widgets.")
                 Text("More")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Text("Changes apply immediately to the Artwork design on this device. Standard keeps the original appearance.")
+            Text("Changes apply to the Artwork design on this device, including widgets. Widget updates depend on the system. Standard preserves the original in-app blur.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
