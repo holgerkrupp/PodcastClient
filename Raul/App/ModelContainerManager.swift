@@ -872,6 +872,7 @@ class ModelContainerManager: ObservableObject {
             let runtimeContainer = try Self.makeLegacyContainer(
                 isStoredInMemoryOnly: runtimeProjectsFromCache
             )
+            StoreSplitLaunchHealth.markRuntimeReady()
             return RuntimeContainerPreparation(
                 container: runtimeContainer,
                 requiresInitialCloudImport: requiresInitialCloudImport,
