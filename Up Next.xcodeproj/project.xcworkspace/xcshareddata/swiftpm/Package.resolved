@@ -38,15 +38,6 @@
       }
     },
     {
-      "identity" : "sfsymbolselector",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/holgerkrupp/SFSymbolSelector.git",
-      "state" : {
-        "branch" : "main",
-        "revision" : "30703f75f4435792f6fcc9112d3bfd223e720474"
-      }
-    },
-    {
       "identity" : "swiftdeviceinfo",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/holgerkrupp/SwiftDeviceInfo.git",

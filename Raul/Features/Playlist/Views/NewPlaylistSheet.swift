@@ -103,11 +103,11 @@ enum SmartPlaylistExample: String, CaseIterable, Hashable {
     var symbol: String {
         switch self {
         case .offlineCommute: "car"
-        case .shortEpisodes: "bolt"
+        case .shortEpisodes: "timer"
         case .freshNews: "newspaper"
         case .germanListening: "globe"
-        case .deepDive: "book"
-        case .continueListening: "arrow.uturn.backward"
+        case .deepDive: "text.book.closed.fill"
+        case .continueListening: "play.circle.fill"
         }
     }
     var filter: SmartPlaylistFilter {

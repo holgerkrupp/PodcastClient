@@ -163,50 +163,57 @@ class Playlist {
     static let defaultManualSymbolName = "list.bullet"
     static let defaultQueueSymbolName = "calendar.day.timeline.leading"
     static let smartPlaylistSymbolName = "line.3.horizontal.decrease.circle"
+    /// One curated palette for manual and smart playlists. These are display
+    /// choices, not a validation list for already-saved playlist symbols.
     static let symbolOptions: [PlaylistSymbolOption] = [
         PlaylistSymbolOption(symbolName: "list.bullet", title: "List"),
+        PlaylistSymbolOption(symbolName: "calendar.day.timeline.leading", title: "Queue"),
+        PlaylistSymbolOption(symbolName: "line.3.horizontal.decrease.circle", title: "Smart"),
         PlaylistSymbolOption(symbolName: "music.note.list", title: "Mix"),
-        PlaylistSymbolOption(symbolName: "clock", title: "Later"),
-        PlaylistSymbolOption(symbolName: "sparkles", title: "Highlights"),
         PlaylistSymbolOption(symbolName: "star", title: "Favorites"),
-        PlaylistSymbolOption(symbolName: "heart", title: "Loved"),
         PlaylistSymbolOption(symbolName: "arrow.down.circle.fill", title: "Downloaded"),
-        PlaylistSymbolOption(symbolName: "tray.and.arrow.down.fill", title: "Offline"),
         PlaylistSymbolOption(symbolName: "checkmark.circle.fill", title: "Finished"),
         PlaylistSymbolOption(symbolName: "play.circle.fill", title: "Continue"),
-        PlaylistSymbolOption(symbolName: "waveform", title: "Audio"),
-        PlaylistSymbolOption(symbolName: "timer", title: "Short"),
+        PlaylistSymbolOption(symbolName: "clock", title: "Later"),
         PlaylistSymbolOption(symbolName: "calendar.badge.clock", title: "Recent"),
-        PlaylistSymbolOption(symbolName: "clock.arrow.circlepath", title: "In Progress"),
-        PlaylistSymbolOption(symbolName: "text.book.closed.fill", title: "Learning"),
-        PlaylistSymbolOption(symbolName: "globe", title: "Language"),
-        PlaylistSymbolOption(symbolName: "square.stack.3d.up.fill", title: "Categories"),
-        PlaylistSymbolOption(symbolName: "bolt", title: "Quick"),
-        PlaylistSymbolOption(symbolName: "flame", title: "Hot"),
-        PlaylistSymbolOption(symbolName: "moon", title: "Night"),
+        PlaylistSymbolOption(symbolName: "timer", title: "Short"),
         PlaylistSymbolOption(symbolName: "sun.max", title: "Morning"),
-        PlaylistSymbolOption(symbolName: "person.2", title: "People"),
-        PlaylistSymbolOption(symbolName: "briefcase", title: "Work"),
-        PlaylistSymbolOption(symbolName: "car", title: "Drive"),
+        PlaylistSymbolOption(symbolName: "moon", title: "Night"),
+        PlaylistSymbolOption(symbolName: "car", title: "Commute"),
         PlaylistSymbolOption(symbolName: "airplane", title: "Travel"),
-        PlaylistSymbolOption(symbolName: "house", title: "Home"),
-        PlaylistSymbolOption(symbolName: "book", title: "Learning"),
-        PlaylistSymbolOption(symbolName: "bubble.left.and.bubble.right", title: "Talk"),
-        PlaylistSymbolOption(symbolName: "mic", title: "Interviews"),
+        PlaylistSymbolOption(symbolName: "briefcase", title: "Work"),
         PlaylistSymbolOption(symbolName: "newspaper", title: "News"),
-        PlaylistSymbolOption(symbolName: "calendar", title: "Daily"),
         PlaylistSymbolOption(symbolName: "building.columns", title: "Politics"),
-        PlaylistSymbolOption(symbolName: "hammer", title: "DIY"),
+        PlaylistSymbolOption(symbolName: "chart.line.uptrend.xyaxis", title: "Business"),
         PlaylistSymbolOption(symbolName: "macbook.and.iphone", title: "Tech"),
-        PlaylistSymbolOption(symbolName: "brain.head.profile", title: "Education"),
-        PlaylistSymbolOption(symbolName: "soccerball", title: "Sport"),
+        PlaylistSymbolOption(symbolName: "atom", title: "Science"),
+        PlaylistSymbolOption(symbolName: "text.book.closed.fill", title: "Learning"),
+        PlaylistSymbolOption(symbolName: "books.vertical", title: "History"),
+        PlaylistSymbolOption(symbolName: "cross.case", title: "Health"),
+        PlaylistSymbolOption(symbolName: "soccerball", title: "Sports"),
         PlaylistSymbolOption(symbolName: "gamecontroller", title: "Games"),
-        PlaylistSymbolOption(symbolName: "tv", title: "TV"),
-        PlaylistSymbolOption(symbolName: "movieclapper", title: "Movies"),
+        PlaylistSymbolOption(symbolName: "film", title: "TV & Film"),
         PlaylistSymbolOption(symbolName: "book.closed", title: "Books"),
-        PlaylistSymbolOption(symbolName: "cross.case", title: "Medical")
-        
+        PlaylistSymbolOption(symbolName: "face.smiling", title: "Comedy"),
+        PlaylistSymbolOption(symbolName: "music.note", title: "Music"),
+        PlaylistSymbolOption(symbolName: "paintpalette", title: "Arts"),
+        PlaylistSymbolOption(symbolName: "magnifyingglass", title: "True Crime"),
+        PlaylistSymbolOption(symbolName: "fork.knife", title: "Food"),
+        PlaylistSymbolOption(symbolName: "leaf", title: "Nature"),
+        PlaylistSymbolOption(symbolName: "person.3", title: "Family"),
+        PlaylistSymbolOption(symbolName: "person.2", title: "Society"),
+        PlaylistSymbolOption(symbolName: "globe", title: "Languages")
     ]
+
+    /// Keep a former catalog choice visible and selected without rewriting it.
+    /// Selecting one of the curated options is the only way to replace it.
+    static func symbolOptions(including selection: String) -> [PlaylistSymbolOption] {
+        guard !selection.isEmpty,
+              !symbolOptions.contains(where: { $0.symbolName == selection }) else {
+            return symbolOptions
+        }
+        return [PlaylistSymbolOption(symbolName: selection, title: "Current")] + symbolOptions
+    }
 
     var title: String = ""
     var symbolName: String = Playlist.defaultManualSymbolName

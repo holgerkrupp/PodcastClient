@@ -45,6 +45,8 @@ Manual chapter-skip recognition is local to the device. After five different epi
 
 ## Action locations
 
+The **Icon** section in both New Playlist and Playlist Settings shows one grid of large, labeled square tiles. It includes a small set of generic and podcast-topic choices; there is no second Symbols catalog. Older stored symbols remain unchanged and can be replaced from the same grid (displayed as **Current** when no longer in the curated set).
+
 | Surface | Frequent actions | Contextual and less-frequent actions |
 | --- | --- | --- |
 | Player | Scrub, play/pause, skip, bookmark, playback speed, output, sleep timer, chapter selection, transcript visibility/settings. | Website, share at current position, audio/video switch, Listen Together, and debug metadata in the player More menu; full transcript opens from the inline transcript card. Show Notes, transcript, and chapters stay in the content pane or scrolling content. |
