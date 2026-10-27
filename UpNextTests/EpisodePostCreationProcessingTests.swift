@@ -104,40 +104,56 @@ final class EpisodePostCreationProcessingTests: XCTestCase {
         XCTAssertEqual(defaultEntries.count, 1)
     }
 
-    func testSilentFirstPageClassificationUsesSubscriptionBaseline() {
-        let subscriptionDate = Date(timeIntervalSince1970: 1_800_000_000)
-        let lastRefresh = subscriptionDate.addingTimeInterval(60)
-        let recentlyPublished = subscriptionDate.addingTimeInterval(120)
-        let olderEpisode = subscriptionDate.addingTimeInterval(-120)
+    func testInboxClassificationRequiresReleaseStrictlyAfterSubscription() {
+        let baseline = Date(timeIntervalSince1970: 1_800_000_000)
+        for release in [nil, baseline.addingTimeInterval(-1), baseline] as [Date?] {
+            XCTAssertEqual(PodcastEpisodeImportClassification.classify(
+                publishDate: release, subscriptionDate: baseline
+            ), .backCatalog)
+        }
+        XCTAssertEqual(PodcastEpisodeImportClassification.classify(
+            publishDate: baseline.addingTimeInterval(1), subscriptionDate: baseline
+        ), .newlyPublished)
+        XCTAssertEqual(PodcastEpisodeImportClassification.classify(
+            publishDate: baseline, subscriptionDate: nil
+        ), .backCatalog)
+    }
 
-        XCTAssertEqual(
-            PodcastEpisodeImportClassification.classify(
-                publishDate: recentlyPublished,
-                subscriptionDate: subscriptionDate,
-                lastSuccessfulRefresh: lastRefresh,
-                knownEpisodeCount: 1
-            ),
-            .newlyPublished
-        )
-        XCTAssertEqual(
-            PodcastEpisodeImportClassification.classify(
-                publishDate: olderEpisode,
-                subscriptionDate: subscriptionDate,
-                lastSuccessfulRefresh: lastRefresh,
-                knownEpisodeCount: 1
-            ),
-            .backCatalog
-        )
-        XCTAssertEqual(
-            PodcastEpisodeImportClassification.classify(
-                publishDate: recentlyPublished,
-                subscriptionDate: subscriptionDate,
-                lastSuccessfulRefresh: nil,
-                knownEpisodeCount: 0
-            ),
-            .backCatalog,
-            "Initial subscription episodes remain back catalog."
-        )
+    func testBulkInboxClearPreservesOtherStateAndUnselectedEpisodes() async throws {
+        let fixture = try makeFixture()
+        var urls: [URL] = []
+        for index in 0..<251 {
+            let url = URL(string: "https://example.com/bulk-\(index).mp3")!
+            urls.append(url)
+            let episode = Episode(guid: "bulk-\(index)", title: "Bulk", url: url, podcast: fixture.podcast)
+            fixture.context.insert(episode)
+            if index == 0 {
+                episode.metaData?.playPosition = 42
+                let entry = PlaylistEntry(episode: episode, order: 0)
+                entry.playlist = fixture.customPlaylist
+                fixture.context.insert(entry)
+            }
+        }
+        let untouchedURL = URL(string: "https://example.com/untouched.mp3")!
+        fixture.context.insert(Episode(guid: "untouched", title: "Untouched", url: untouchedURL, podcast: fixture.podcast))
+        try fixture.context.save()
+        try await EpisodeActor(modelContainer: fixture.container)
+            .removeEpisodesFromInbox(episodeURLs: urls + [urls[0]])
+
+        let verification = ModelContext(fixture.container)
+        let episodes = try verification.fetch(FetchDescriptor<Episode>())
+        for episode in episodes {
+            XCTAssertEqual(episode.metaData?.isInbox, episode.url == untouchedURL)
+            XCTAssertEqual(episode.metaData?.isArchived, false)
+            XCTAssertEqual(episode.metaData?.isHistory, false)
+            if episode.url == urls[0] {
+                XCTAssertEqual(episode.metaData?.playPosition, 42)
+            }
+        }
+        let entries = try verification.fetch(FetchDescriptor<PlaylistEntry>())
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.episode?.url, urls[0])
+        XCTAssertEqual(entries.first?.playlist?.id, fixture.customPlaylist.id)
     }
 
     private struct Fixture {

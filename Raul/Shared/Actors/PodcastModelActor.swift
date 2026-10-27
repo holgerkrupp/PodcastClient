@@ -150,29 +150,14 @@ enum PodcastEpisodeImportClassification: Sendable, Equatable {
     case newlyPublished
     case backCatalog
 
-    static func isEstablishedSubscription(
-        lastSuccessfulRefresh: Date?,
-        knownEpisodeCount: Int
-    ) -> Bool {
-        lastSuccessfulRefresh != nil && knownEpisodeCount > 0
-    }
-
     static func classify(
         publishDate: Date?,
-        subscriptionDate: Date?,
-        lastSuccessfulRefresh: Date?,
-        knownEpisodeCount: Int
+        subscriptionDate: Date?
     ) -> PodcastEpisodeImportClassification {
-        guard isEstablishedSubscription(
-            lastSuccessfulRefresh: lastSuccessfulRefresh,
-            knownEpisodeCount: knownEpisodeCount
-        ) else {
-            return .backCatalog
-        }
-
-        let subscriptionBaseline = subscriptionDate
-            ?? Date(timeIntervalSinceNow: -60 * 60 * 24 * 7)
-        return (publishDate ?? Date()) < subscriptionBaseline ? .backCatalog : .newlyPublished
+        // Discovery time is not a release date. Without both dates we cannot
+        // establish that an episode was released after the subscription.
+        guard let publishDate, let subscriptionDate else { return .backCatalog }
+        return publishDate > subscriptionDate ? .newlyPublished : .backCatalog
     }
 }
 
@@ -2106,13 +2091,11 @@ actor PodcastModelActor {
             let progressPodcastTitle = podcastTitle.isEmpty ? "podcast" : podcastTitle
             var unsavedSilentEpisodeChanges = 0
             // Silence controls UI and notification behavior. It must not
-            // change whether a newly published episode on an established
-            // subscription is classified as new or as back catalog.
+            // change classification. The persisted subscription date applies
+            // equally to first imports, pagination, retries and later refreshes.
             let existingEpisodes = podcast.episodes ?? []
-            let shouldProcessNewEpisodes = PodcastEpisodeImportClassification.isEstablishedSubscription(
-                lastSuccessfulRefresh: podcast.metaData?.lastRefresh,
-                knownEpisodeCount: existingEpisodes.count
-            )
+            let shouldProcessNewEpisodes = podcast.metaData?.isSubscribed == true
+                && podcast.metaData?.subscriptionDate != nil
             var existingEpisodesByGUID: [String: Episode] = [:]
             var existingEpisodesByURL: [URL: Episode] = [:]
             for episode in existingEpisodes {
@@ -2228,9 +2211,7 @@ actor PodcastModelActor {
                 }
                 let classification = PodcastEpisodeImportClassification.classify(
                     publishDate: episode.publishDate,
-                    subscriptionDate: episode.podcast?.metaData?.subscriptionDate,
-                    lastSuccessfulRefresh: podcast.metaData?.lastRefresh,
-                    knownEpisodeCount: existingEpisodes.count
+                    subscriptionDate: episode.podcast?.metaData?.subscriptionDate
                 )
                 if shouldProcessNewEpisodes {
                     await fillMissingRemoteMP3DurationIfNeeded(
@@ -2559,11 +2540,9 @@ actor PodcastModelActor {
         }
     }
     
-    func removeEpisodesFromInbox(episodeURLs: [URL?]) async {
-        let episodeActor = EpisodeActor(modelContainer: modelContainer)
-        for episodeURL in episodeURLs {
-            await episodeActor.removeFromInbox(episodeURL)
-        }
+    func removeEpisodesFromInbox(episodeURLs: [URL?]) async throws {
+        try await EpisodeActor(modelContainer: modelContainer)
+            .removeEpisodesFromInbox(episodeURLs: episodeURLs.compactMap { $0 })
     }
     
     func unarchiveEpisode(_ episodeID: PersistentIdentifier) async throws {
