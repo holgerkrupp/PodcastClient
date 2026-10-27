@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreGraphics
+import ESADesignKit
 #if canImport(UIKit)
 import UIKit
 typealias WidgetPlatformImage = UIImage
@@ -41,6 +42,8 @@ enum WidgetVisualDesign {
         let schemaVersion: Int
         let visualStyle: String
         let uniformColorRGB: String?
+        /// Missing from older v1 snapshots; use the original 50pt blur.
+        let artworkBlurLevel: Int?
     }
 
     private static var appearance: AppearanceSnapshot? {
@@ -52,6 +55,11 @@ enum WidgetVisualDesign {
 
     static var selectedStyle: String {
         appearance?.visualStyle ?? "artwork"
+    }
+
+    static var artworkBlurLevel: ESAArtworkBlurLevel {
+        ESAArtworkBlurLevel(rawValue: appearance?.artworkBlurLevel ?? ESAArtworkBlurLevel.standard.rawValue)
+            ?? .standard
     }
 
     static var systemBackground: Color {
@@ -228,6 +236,8 @@ extension View {
 
 struct WidgetVisualDesignBackground: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let style: String
     let artwork: WidgetPlatformImage?
 
@@ -236,14 +246,20 @@ struct WidgetVisualDesignBackground: View {
     }
 
     var body: some View {
-        if style == "artwork", let artwork {
+        if style == "artwork", colorSchemeContrast == .increased || reduceTransparency {
+            WidgetVisualDesign.systemBackground
+        } else if style == "artwork", let artwork {
             ZStack {
                 WidgetVisualDesign.systemBackground
                 WidgetVisualDesign.image(artwork)
                     .resizable()
                     .scaledToFill()
-                    .blur(radius: 50)
+                    .blur(radius: WidgetVisualDesign.artworkBlurLevel.fullBackgroundBlurRadius)
                     .opacity(0.5)
+                // Match ESADesignKit's frosted artwork surfaces. The unblurred
+                // episode covers remain in the foreground widget content.
+                Rectangle()
+                    .fill(WidgetVisualDesign.artworkBlurLevel.rowMaterial)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()

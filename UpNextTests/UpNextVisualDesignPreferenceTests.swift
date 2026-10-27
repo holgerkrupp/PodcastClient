@@ -13,6 +13,35 @@ final class UpNextVisualDesignPreferenceTests: XCTestCase {
         XCTAssertEqual(UpNextVisualDesignPreference.artworkBlurLevel(for: 4), .maximum)
     }
 
+    func testWidgetAppearanceSnapshotCarriesDeviceLocalArtworkBlurLevel() throws {
+        let snapshot = WidgetAppearanceSnapshot(
+            schemaVersion: 1,
+            visualStyle: "artwork",
+            uniformColorRGB: nil,
+            artworkBlurLevel: ESAArtworkBlurLevel.strong.rawValue
+        )
+        let data = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(WidgetAppearanceSnapshot.self, from: data)
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.visualStyle, "artwork")
+        XCTAssertEqual(decoded.artworkBlurLevel, ESAArtworkBlurLevel.strong.rawValue)
+    }
+
+    func testLegacyWidgetAppearanceSnapshotWithoutBlurStillDecodes() throws {
+        let legacy = #"{"schemaVersion":1,"visualStyle":"artwork","uniformColorRGB":null}"#
+        let decoded = try JSONDecoder().decode(
+            WidgetAppearanceSnapshot.self,
+            from: Data(legacy.utf8)
+        )
+        XCTAssertNil(decoded.artworkBlurLevel)
+        XCTAssertEqual(
+            UpNextVisualDesignPreference.artworkBlurLevel(
+                for: decoded.artworkBlurLevel ?? ESAArtworkBlurLevel.standard.rawValue
+            ),
+            .standard
+        )
+    }
+
     func testRGBPreferenceValidatesAndKeepsUnsetSeparateFromExplicitColor() {
         XCTAssertNil(UpNextVisualDesignPreference.validatedRGB(nil))
         XCTAssertEqual(UpNextVisualDesignPreference.validatedRGB("#abcdef"), "#ABCDEF")
