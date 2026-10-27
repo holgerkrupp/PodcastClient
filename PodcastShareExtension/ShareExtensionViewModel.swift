@@ -76,6 +76,8 @@ final class ShareExtensionViewModel: ObservableObject {
 
         sharedURL = url
         playlists = PendingSharedEpisodeShareStore.playlists()
+        selectedPlaylistID = playlists.first(where: { $0.isPreferred == true })?.id
+            ?? playlists.first(where: { $0.isDefaultQueue == true })?.id
         state = .checking(url)
         ShareExtensionDiagnostics.log("url.extracted")
         let resolution = await ShareLinkResolver().resolve(url) { [weak self] podcast in
@@ -98,13 +100,19 @@ final class ShareExtensionViewModel: ObservableObject {
         ShareExtensionDiagnostics.log("url.ready")
     }
 
-    func addEpisode() {
+    func addEpisode(at queuePosition: SharedEpisodeQueuePosition? = nil) {
         guard isActive, didComplete == false, canAdd, let sharedURL else { return }
         ShareExtensionDiagnostics.log("action.add")
         state = .saving
         do {
-            try PendingSharedEpisodeShareStore.save(.importEpisode(url: sharedURL, playlistID: selectedPlaylistID))
-            state = .saved(destinationDescription)
+            try PendingSharedEpisodeShareStore.save(
+                .importEpisode(
+                    url: sharedURL,
+                    playlistID: selectedPlaylistID,
+                    queuePosition: queuePosition
+                )
+            )
+            state = .saved(destinationDescription(for: queuePosition))
         } catch {
             state = .failed(error.localizedDescription)
         }
@@ -171,9 +179,14 @@ final class ShareExtensionViewModel: ObservableObject {
         ShareExtensionDiagnostics.log("handling.stopped")
     }
 
-    private var destinationDescription: String {
+    private func destinationDescription(for queuePosition: SharedEpisodeQueuePosition?) -> String {
         guard let selectedPlaylistID, let playlist = playlists.first(where: { $0.id == selectedPlaylistID }) else {
             return "The episode will appear in Inbox."
+        }
+        switch queuePosition {
+        case .front: return "The episode will be added next in \(playlist.title) when Up Next opens."
+        case .end: return "The episode will be added last in \(playlist.title) when Up Next opens."
+        case nil: break
         }
         return "The episode will appear in \(playlist.title)."
     }

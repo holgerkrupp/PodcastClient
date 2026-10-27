@@ -141,8 +141,29 @@ struct ShareExtensionView: View {
     private var addEpisodeActions: some View {
         VStack(spacing: 12) {
             destinationList
-            Button("Add Episode") { viewModel.addEpisode() }
-                .buttonStyle(.borderedProminent)
+            if let selectedPlaylistID = viewModel.selectedPlaylistID,
+               viewModel.playlists.contains(where: { $0.id == selectedPlaylistID }) {
+                HStack(spacing: 12) {
+                    Button {
+                        viewModel.addEpisode(at: .front)
+                    } label: {
+                        Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    Button {
+                        viewModel.addEpisode(at: .end)
+                    } label: {
+                        Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            } else {
+                Button("Add Episode") { viewModel.addEpisode() }
+                    .buttonStyle(.borderedProminent)
+            }
         }
         .frame(maxWidth: .infinity)
     }

@@ -51,6 +51,13 @@ actor SharedImageRepository {
     private var inFlightDataTasks: [String: Task<ImageDataLoadResult, Never>] = [:]
     private var inFlightTasks: [String: Task<UIImage?, Never>] = [:]
     private var inFlightBlurredTasks: [String: Task<UIImage?, Never>] = [:]
+    private var inFlightCarPlayTasks: [String: Task<UIImage?, Never>] = [:]
+    nonisolated(unsafe) private static let carPlayMemoryCache: NSCache<NSString, UIImage> = {
+        let cache = NSCache<NSString, UIImage>()
+        cache.countLimit = 120
+        cache.totalCostLimit = 1024 * 1024 * 32
+        return cache
+    }()
     private static let ciContext = CIContext(options: [.cacheIntermediates: true])
 
     nonisolated(unsafe) private static let memoryCache: NSCache<NSString, UIImage> = {
@@ -200,6 +207,29 @@ actor SharedImageRepository {
         inFlightTasks[cacheKey] = task
         let image = await task.value
         inFlightTasks[cacheKey] = nil
+        return image
+    }
+
+    /// Uses a cache namespace that cannot be populated by the general-purpose decoder.
+    func carPlayImage(for url: URL, maxPixelSize: Int) async -> UIImage? {
+        let budget = min(max(maxPixelSize, 1), 512)
+        let key = "\(url.absoluteString)|carplay-bitmap-v1|\(budget)"
+        if let cached = Self.carPlayMemoryCache.object(forKey: key as NSString) { return cached }
+        if let task = inFlightCarPlayTasks[key] { return await task.value }
+        let task = Task<UIImage?, Never>(priority: .userInitiated) {
+            guard case .success(let data) = await self.imageData(for: url),
+                  let image = ImageLoaderAndCache.makeCarPlayUIImage(from: data, maxPixelSize: budget) else {
+                return nil
+            }
+            return image
+        }
+        inFlightCarPlayTasks[key] = task
+        let image = await task.value
+        inFlightCarPlayTasks[key] = nil
+        if let image {
+            Self.carPlayMemoryCache.setObject(image, forKey: key as NSString,
+                                             cost: Self.memoryCost(for: image))
+        }
         return image
     }
 
@@ -596,6 +626,28 @@ class ImageLoaderAndCache: ObservableObject {
         }
 
         return UIImage(cgImage: cgImage)
+    }
+
+    /// Strict decoder for optional CarPlay artwork. It deliberately has no UIImage(data:) fallback.
+    nonisolated static func makeCarPlayUIImage(from data: Data, maxPixelSize: Int) -> UIImage? {
+        let budget = min(max(maxPixelSize, 1), 512)
+        guard data.isEmpty == false, data.count <= 20 * 1024 * 1024,
+              let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int,
+              width > 0, height > 0, width <= 20_000, height <= 20_000,
+              width <= 100_000_000 / height,
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: budget,
+                kCGImageSourceShouldCache: true,
+                kCGImageSourceShouldCacheImmediately: true
+              ] as CFDictionary),
+              cgImage.width > 0, cgImage.height > 0,
+              cgImage.width <= budget, cgImage.height <= budget else { return nil }
+        return UIImage(cgImage: cgImage, scale: 1, orientation: .up)
     }
     
     nonisolated static func loadUIImage(

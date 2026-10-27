@@ -16,6 +16,7 @@ class CarPlayInbox {
     private let modelContext: ModelContext
     var template: CPListTemplate
     private var notificationObserver: CarPlayInboxNotificationObserver?
+    private var artworkSettingsObserver: CarPlayInboxNotificationObserver?
     private var refreshTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
     private var generation = 0
@@ -42,7 +43,10 @@ class CarPlayInbox {
         artworkTask?.cancel()
         artworkTask = nil
         notificationObserver = nil
+        artworkSettingsObserver = nil
     }
+
+    func refreshForArtworkPreferenceChange() { scheduleRefresh() }
 
     private func observeChanges() {
         let token = NotificationCenter.default.addObserver(
@@ -53,6 +57,14 @@ class CarPlayInbox {
             Task { @MainActor [weak self] in self?.scheduleRefresh() }
         }
         notificationObserver = CarPlayInboxNotificationObserver(token: token)
+        let artworkToken = NotificationCenter.default.addObserver(
+            forName: CarPlayArtworkSettings.didChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.scheduleRefresh() }
+        }
+        artworkSettingsObserver = CarPlayInboxNotificationObserver(token: artworkToken)
     }
 
     private func scheduleRefresh() {

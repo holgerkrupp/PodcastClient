@@ -74,7 +74,15 @@ struct ShareLinkResolver: Sendable {
         let description = metadata("og:description", in: html) ?? metadata("description", in: html)
         let author = metadata("author", in: html)
         let artworkURL = metadata("og:image", in: html).flatMap { URL(string: $0, relativeTo: url)?.absoluteURL }
+        // Publisher pages often advertise several article/category RSS feeds.
+        // Those are unrelated to the episode and can make a share extension
+        // spend its short execution window downloading and parsing feeds that
+        // cannot contain playable podcast episodes (for example, news sites
+        // that expose one RSS feed per topic). Keep feeds explicitly labeled
+        // for podcast/audio discovery, plus feeds with no descriptive label.
         let feedURLs = feedURLs(in: html, baseURL: url)
+            .filter { isEditorialRSSFeed($0) == false }
+            .prefix(3)
 
         var discoveredPodcast: ShareLinkPodcast?
         for feedLink in feedURLs {
@@ -219,6 +227,20 @@ struct ShareLinkResolver: Sendable {
             return (url, attribute("title", in: tag), title.contains("podcast") || title.contains("audio"))
         }
         return candidates.sorted { $0.isPodcast && !$1.isPodcast }
+    }
+
+    private func isEditorialRSSFeed(_ feedLink: (url: URL, title: String?, isPodcast: Bool)) -> Bool {
+        guard feedLink.isPodcast == false,
+              let title = feedLink.title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              title.isEmpty == false else { return false }
+
+        // An RSS label that names a publisher/news category is not evidence
+        // that the page is associated with a podcast feed. A direct RSS URL
+        // is still parsed normally by resolve(_:).
+        return title.hasPrefix("der spiegel rss")
+            || title.contains("schlagzeilen")
+            || title.contains("headlines")
+            || title.contains("news feed")
     }
 
     private func fallbackPodcastTitle(

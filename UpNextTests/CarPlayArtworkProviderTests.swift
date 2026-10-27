@@ -9,6 +9,23 @@ final class CarPlayArtworkProviderTests: XCTestCase {
         XCTAssertNil(CarPlayArtworkProvider.loadImage(from: Data([0, 1, 2, 3]), maxPixelSize: 180))
     }
 
+    func testStrictDecoderReturnsOnlyBoundedBitmapBackedImages() {
+        XCTAssertNil(ImageLoaderAndCache.makeCarPlayUIImage(from: Data(), maxPixelSize: 128))
+        XCTAssertNil(ImageLoaderAndCache.makeCarPlayUIImage(from: Data(repeating: 0xFF, count: 32), maxPixelSize: 128))
+
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 600))
+        let data = renderer.image { context in
+            UIColor.systemBlue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 900, height: 600))
+        }.pngData()!
+        let image = ImageLoaderAndCache.makeCarPlayUIImage(from: data, maxPixelSize: 96)
+        XCTAssertNotNil(image?.cgImage)
+        XCTAssertTrue(CarPlayArtworkProvider.isDisplayable(image!, maxPixelSize: 96))
+        XCTAssertLessThanOrEqual(image!.cgImage!.width, 96)
+        XCTAssertLessThanOrEqual(image!.cgImage!.height, 96)
+        XCTAssertFalse(CarPlayArtworkProvider.isDisplayable(image!, maxPixelSize: 64))
+    }
+
     func testPixelBudgetUsesDisplayScaleAndStaysBoundedByCarPlaySize() async {
         let oneX = await CarPlayArtworkProvider.pixelBudget(displayScale: 1)
         let threeX = await CarPlayArtworkProvider.pixelBudget(displayScale: 3)

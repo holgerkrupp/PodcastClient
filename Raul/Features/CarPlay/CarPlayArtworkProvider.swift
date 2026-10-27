@@ -1,9 +1,32 @@
 import CarPlay
 import Foundation
 import UIKit
+import os
+
+enum CarPlayArtworkSettings {
+    static let showArtworkKey = "carPlayShowArtwork"
+    static let didChange = Notification.Name("carPlayArtworkSettingDidChange")
+    static let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UpNext", category: "CarPlayArtwork")
+
+    static var showArtwork: Bool {
+        UserDefaults.standard.object(forKey: showArtworkKey) as? Bool ?? true
+    }
+
+    static func setShowArtwork(_ enabled: Bool) {
+        UserDefaults.standard.set(enabled, forKey: showArtworkKey)
+        NotificationCenter.default.post(name: didChange, object: nil)
+        logger.info("Artwork mode changed: \(enabled ? "enabled" : "text-only", privacy: .public)")
+    }
+}
 
 enum CarPlayArtworkProvider {
     static let maximumConcurrentLoads = 4
+
+    struct Request: Sendable {
+        let index: Int
+        let url: URL?
+        let data: Data?
+    }
 
     @MainActor
     static func pixelBudget(displayScale: CGFloat) -> CGFloat {
@@ -19,11 +42,16 @@ enum CarPlayArtworkProvider {
         from url: URL,
         maxPixelSize: CGFloat
     ) async -> UIImage? {
-        guard let image = await ImageLoaderAndCache.loadUIImage(
-            from: url,
-            maxPixelSize: maxPixelSize
-        ), isDisplayable(image) else {
+        guard CarPlayArtworkSettings.showArtwork else { return nil }
+        let budget = max(1, min(Int(ceil(maxPixelSize)), 512))
+        CarPlayArtworkSettings.logger.info("Artwork requested; source=remote budget=\(budget)")
+        guard let image = await SharedImageRepository.shared.carPlayImage(for: url, maxPixelSize: budget),
+              isDisplayable(image, maxPixelSize: budget) else {
+            CarPlayArtworkSettings.logger.info("Artwork rejected or unavailable; source=remote")
             return nil
+        }
+        if let cgImage = image.cgImage {
+            CarPlayArtworkSettings.logger.info("Artwork ready; source=remote size=\(cgImage.width)x\(cgImage.height) budget=\(budget)")
         }
         return image
     }
@@ -32,27 +60,52 @@ enum CarPlayArtworkProvider {
         from data: Data,
         maxPixelSize: CGFloat
     ) -> UIImage? {
-        guard let image = ImageLoaderAndCache.makeUIImage(
-            from: data,
-            maxPixelSize: maxPixelSize
-        ), isDisplayable(image) else {
+        guard CarPlayArtworkSettings.showArtwork else { return nil }
+        let budget = max(1, min(Int(ceil(maxPixelSize)), 512))
+        CarPlayArtworkSettings.logger.info("Artwork requested; source=inline budget=\(budget)")
+        guard let image = ImageLoaderAndCache.makeCarPlayUIImage(from: data, maxPixelSize: budget),
+              isDisplayable(image, maxPixelSize: budget) else {
+            CarPlayArtworkSettings.logger.info("Artwork rejected or unavailable; source=inline")
             return nil
+        }
+        if let cgImage = image.cgImage {
+            CarPlayArtworkSettings.logger.info("Artwork ready; source=inline size=\(cgImage.width)x\(cgImage.height) budget=\(budget)")
         }
         return image
     }
 
-    nonisolated static func isDisplayable(_ image: UIImage) -> Bool {
-        if let cgImage = image.cgImage {
-            return cgImage.width > 0 && cgImage.height > 0
+    nonisolated static func isDisplayable(_ image: UIImage, maxPixelSize: Int = 512) -> Bool {
+        guard let cgImage = image.cgImage else { return false }
+        let budget = min(max(maxPixelSize, 1), 512)
+        return cgImage.width > 0 && cgImage.height > 0
+            && cgImage.width <= budget && cgImage.height <= budget
+    }
+
+    @MainActor
+    static func buttonImage(systemName: String, displayScale: CGFloat) -> UIImage? {
+        guard CarPlayArtworkSettings.showArtwork else { return nil }
+        let scale = max(displayScale, 1)
+        let maximum = Int(min(512, max(24, ceil(CPNowPlayingButtonMaximumImageSize.width * scale))))
+        let config = UIImage.SymbolConfiguration(pointSize: CGFloat(maximum) / scale, weight: .regular)
+        guard let symbol = UIImage(systemName: systemName, withConfiguration: config)?.withTintColor(.white, renderingMode: .alwaysOriginal) else { return nil }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: maximum, height: maximum), format: format)
+        let bitmap = renderer.image { _ in
+            let ratio = min(CGFloat(maximum) / max(symbol.size.width, 1), CGFloat(maximum) / max(symbol.size.height, 1))
+            let size = CGSize(width: symbol.size.width * ratio, height: symbol.size.height * ratio)
+            let rect = CGRect(
+                x: (CGFloat(maximum) - size.width) / 2,
+                y: (CGFloat(maximum) - size.height) / 2,
+                width: size.width,
+                height: size.height
+            )
+            symbol.draw(in: rect)
         }
-        guard let ciImage = image.ciImage else { return false }
-        let extent = ciImage.extent
-        return extent.isNull == false
-            && extent.isInfinite == false
-            && extent.width.isFinite
-            && extent.height.isFinite
-            && extent.width > 0
-            && extent.height > 0
+        guard isDisplayable(bitmap, maxPixelSize: maximum) else { return nil }
+        CarPlayArtworkSettings.logger.info("Artwork ready; source=button size=\(maximum)x\(maximum) budget=\(maximum)")
+        return bitmap
     }
 
     @MainActor
@@ -78,8 +131,11 @@ enum CarPlayArtworkProvider {
             }
 
             while let (index, image) = await group.next() {
-                if Task.isCancelled { group.cancelAll(); return }
-                if let image, isDisplayable(image) {
+                if Task.isCancelled {
+                    CarPlayArtworkSettings.logger.info("Artwork batch cancelled")
+                    group.cancelAll(); return
+                }
+                if let image, isDisplayable(image, maxPixelSize: Int(ceil(maxPixelSize))) {
                     didLoad(index, image)
                 }
                 guard nextIndex < requests.count else { continue }
@@ -88,6 +144,38 @@ enum CarPlayArtworkProvider {
                 group.addTask {
                     (request.index, await loader(request.url, maxPixelSize))
                 }
+            }
+        }
+    }
+
+    @MainActor
+    static func loadBounded(
+        requests: [Request],
+        maxPixelSize: CGFloat,
+        didLoad: @escaping @MainActor @Sendable (Int, UIImage) -> Void
+    ) async {
+        guard requests.isEmpty == false, CarPlayArtworkSettings.showArtwork else { return }
+        await withTaskGroup(of: (Int, UIImage?).self) { group in
+            var nextIndex = 0
+            func add(_ request: Request) {
+                group.addTask {
+                    if let data = request.data {
+                        return (request.index, loadImage(from: data, maxPixelSize: maxPixelSize))
+                    }
+                    guard let url = request.url else { return (request.index, nil) }
+                    return (request.index, await loadImage(from: url, maxPixelSize: maxPixelSize))
+                }
+            }
+            for _ in 0..<min(maximumConcurrentLoads, requests.count) {
+                add(requests[nextIndex]); nextIndex += 1
+            }
+            while let (index, image) = await group.next() {
+                if Task.isCancelled || CarPlayArtworkSettings.showArtwork == false {
+                    CarPlayArtworkSettings.logger.info("Artwork batch cancelled")
+                    group.cancelAll(); return
+                }
+                if let image { didLoad(index, image) }
+                if nextIndex < requests.count { add(requests[nextIndex]); nextIndex += 1 }
             }
         }
     }

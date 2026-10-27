@@ -22,6 +22,8 @@ class CarPlayChapterMarkList {
         artworkTask = nil
     }
 
+    func refreshForArtworkPreferenceChange() { setupTemplate() }
+
     private func setupTemplate() {
         artworkTask?.cancel()
         generation &+= 1
@@ -35,23 +37,12 @@ class CarPlayChapterMarkList {
             return
         }
 
-        var remoteImageTargets: [(item: CPListItem, url: URL)] = []
+        var artworkTargets: [(item: CPListItem, request: CarPlayArtworkProvider.Request)] = []
         let items = loadedChapters.map { chapter in
-            let image: UIImage?
-            if let imageData = chapter.imageData {
-                image = CarPlayArtworkProvider.loadImage(
-                    from: imageData,
-                    maxPixelSize: CarPlayArtworkProvider.pixelBudget(
-                        displayScale: interfaceController.carTraitCollection.displayScale
-                    )
-                )
-            } else {
-                image = nil
-            }
             let item = CPListItem(
                 text: chapter.displayTitle,
                 detailText: chapter.start.map(formattedTime),
-                image: image
+                image: nil
             )
             item.userInfo = chapter
             item.isPlaying = chapter.id == Player.shared.currentChapter?.id
@@ -61,22 +52,28 @@ class CarPlayChapterMarkList {
                 Task { await Player.shared.skipTo(chapter: chapter) }
                 self.interfaceController.popTemplate(animated: true, completion: nil)
             }
-            if image == nil, let url = chapter.image {
-                remoteImageTargets.append((item, url))
+            if let imageData = chapter.imageData {
+                artworkTargets.append((item, CarPlayArtworkProvider.Request(
+                    index: artworkTargets.count, url: nil, data: imageData
+                )))
+            } else if let url = chapter.image {
+                artworkTargets.append((item, CarPlayArtworkProvider.Request(
+                    index: artworkTargets.count, url: url, data: nil
+                )))
             }
             return item
         }
         template.trailingNavigationBarButtons = []
         template.updateSections([CPListSection(items: items)])
 
-        let targets = remoteImageTargets
+        let targets = artworkTargets
         let activeTemplate = template
         let maxPixelSize = CarPlayArtworkProvider.pixelBudget(
             displayScale: interfaceController.carTraitCollection.displayScale
         )
         artworkTask = Task { [weak self] in
             await CarPlayArtworkProvider.loadBounded(
-                requests: targets.enumerated().map { (index: $0.offset, url: $0.element.url) },
+                requests: targets.map(\.request),
                 maxPixelSize: maxPixelSize
             ) { index, image in
                 guard let self,
