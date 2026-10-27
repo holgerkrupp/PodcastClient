@@ -24,7 +24,6 @@
 		48C038EF2FF7806300343AF1 /* CloudDataPresence in Frameworks */ = {isa = PBXBuildFile; productRef = 48C038EE2FF7806300343AF1 /* CloudDataPresence */; };
 		48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */ = {isa = PBXBuildFile; productRef = 48C30C262E4B5B8200E51444 /* mp3ChapterReader */; };
 		48E626F72FA0307A0045AC1C /* AppIntents.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 48E626F62FA0307A0045AC1C /* AppIntents.framework */; };
-		4A6B7C8D9E0F102030405060 /* SFSymbolSelector in Frameworks */ = {isa = PBXBuildFile; productRef = 4A6B7C8D9E0F102030405062 /* SFSymbolSelector */; };
 		7BD56FCE270E923E6668CC89 /* PodcastAccess.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6074A10FAF20A62C04391E91 /* PodcastAccess.swift */; };
 		7CD337B61A4F2955F16FA2FC /* URLextension.swift in Sources */ = {isa = PBXBuildFile; fileRef = A556E5871DD8D34CE85CAEC3 /* URLextension.swift */; };
 		A1B2C3012F00000100000001 /* PlayNextWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3022F00000100000001 /* PlayNextWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -306,7 +305,6 @@
 				48C30C272E4B5B8200E51444 /* mp3ChapterReader in Frameworks */,
 				485AEE7B30737DD300E5A889 /* ESADesignKit in Frameworks */,
 				4803081F2E5B7D6C0059DFA2 /* RichText in Frameworks */,
-				4A6B7C8D9E0F102030405060 /* SFSymbolSelector in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -459,7 +457,6 @@
 				48C30C262E4B5B8200E51444 /* mp3ChapterReader */,
 				4803081E2E5B7D6C0059DFA2 /* RichText */,
 				485AEE7A30737DD300E5A889 /* ESADesignKit */,
-				4A6B7C8D9E0F102030405062 /* SFSymbolSelector */,
 			);
 			productName = Raul;
 			productReference = 487F5C6F2D9D4F0C00056D08 /* UpNext.app */;
@@ -647,7 +644,6 @@
 				48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */,
 				48C038ED2FF7806300343AF1 /* XCRemoteSwiftPackageReference "CloudDataPresence" */,
 				485AEE7930737DD300E5A889 /* XCLocalSwiftPackageReference "../ESADesignKit" */,
-				4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 487F5C702D9D4F0C00056D08 /* Products */;
@@ -1585,14 +1581,6 @@
 				kind = branch;
 			};
 		};
-		4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/holgerkrupp/SFSymbolSelector.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -1624,11 +1612,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 48CE1CF82FF2872400AD6067 /* XCRemoteSwiftPackageReference "mp3ChapterReader" */;
 			productName = mp3ChapterReader;
-		};
-		4A6B7C8D9E0F102030405062 /* SFSymbolSelector */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 4A6B7C8D9E0F102030405061 /* XCRemoteSwiftPackageReference "SFSymbolSelector" */;
-			productName = SFSymbolSelector;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
