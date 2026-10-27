@@ -158,6 +158,37 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         ))
     }
 
+    func testMigrationHealthRecordPersistsWholeProcessCPUAndExecutionContext() throws {
+        let record = StoreSplitMigrationHealthRecord(
+            operation: "migration_slice",
+            appState: "granted_background_processing",
+            playbackActive: false,
+            rowsScanned: 80,
+            rowsMutated: 24,
+            modelContextSaveCount: 1,
+            modelContextSaveDurationMilliseconds: 12,
+            targetStores: "UserState.sqlite,PodcastCache.sqlite",
+            cloudKitExportInProgressBefore: false,
+            cloudKitExportInProgressAfter: false,
+            exporterWaitDurationMilliseconds: 0,
+            nextRetryAt: nil,
+            recordedAt: .now,
+            processCPUSecondsDelta: 2.5,
+            memoryFootprintBytes: 42_000_000,
+            audioActive: false,
+            backgroundProcessingActive: true
+        )
+        let decoded = try JSONDecoder().decode(
+            StoreSplitMigrationHealthRecord.self,
+            from: JSONEncoder().encode(record)
+        )
+
+        XCTAssertEqual(decoded.processCPUSecondsDelta, 2.5)
+        XCTAssertEqual(decoded.memoryFootprintBytes, 42_000_000)
+        XCTAssertEqual(decoded.audioActive, false)
+        XCTAssertEqual(decoded.backgroundProcessingActive, true)
+    }
+
     func testActiveCloudKitExportInterruptsAnAlreadyAdmittedMaintenanceBatch() {
         let source = MutableProcessCPUTimeSource()
         let budget = StoreMaintenanceResourceBudget(source: source)
