@@ -181,6 +181,29 @@ final class AutomaticTranscriptionCandidateProviderTests: XCTestCase {
         XCTAssertEqual(candidates.map(\.episodeURL), [second.url].compactMap { $0 })
     }
 
+    func testOptionalSmartPlaylistCandidateFetchIsBounded() throws {
+        let fixture = try makeFixture()
+        for index in 0..<250 {
+            let episode = Episode(
+                guid: "bounded-\(index)",
+                title: "Episode \(index)",
+                url: URL(fileURLWithPath: "/tmp/bounded-\(index).mp3")
+            )
+            episode.publishDate = Date(timeIntervalSince1970: TimeInterval(index))
+            fixture.context.insert(episode)
+        }
+        try fixture.context.save()
+
+        let candidates = try SmartPlaylistEngine.boundedCandidateEpisodes(
+            in: fixture.context,
+            for: nil,
+            limit: 16
+        )
+
+        XCTAssertEqual(candidates.count, 16)
+        XCTAssertEqual(candidates.first?.title, "Episode 249")
+    }
+
     // MARK: - Fixture
 
     struct Fixture {

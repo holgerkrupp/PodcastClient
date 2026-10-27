@@ -416,12 +416,20 @@ actor TranscriptionManager {
         respectSweepCooldown: Bool = true,
         deadline: Date? = nil
     ) async -> URL? {
-        guard await MainActor.run(body: {
-            Player.hasActivePlaybackInProcess == false
-                && ModelContainerManager.shared.isCloudKitExportInProgress == false
-        }) else {
+        let runtimeState = await MainActor.run {
+            (
+                playbackActive: Player.hasActivePlaybackInProcess,
+                exportActive: ModelContainerManager.shared.isCloudKitExportInProgress
+            )
+        }
+        guard let scanPermit = StoreMaintenanceResourceBudget.shared.acquire(
+            operation: "automatic_transcription_candidate_scan",
+            playbackActive: runtimeState.playbackActive,
+            cloudKitExportActive: runtimeState.exportActive
+        ) else {
             return nil
         }
+        defer { scanPermit.release() }
         guard let container = await preparedModelContainer() else {
             return nil
         }
@@ -457,6 +465,13 @@ actor TranscriptionManager {
             allowOnDeviceFallback: allowsAnalyzer,
             excluding: Set(items.keys).union(automaticRetryBlockedUntil.keys)
         )
+        guard Task.isCancelled == false else { return nil }
+        guard scanPermit.yieldReason(
+            playbackActive: await MainActor.run(body: { Player.hasActivePlaybackInProcess }),
+            cloudKitExportActive: await MainActor.run(body: {
+                ModelContainerManager.shared.isCloudKitExportInProgress
+            })
+        ) == nil else { return nil }
         guard candidates.isEmpty == false else { return nil }
 
         let episodeActor = EpisodeActor(modelContainer: container)
