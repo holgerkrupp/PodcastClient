@@ -1,4 +1,5 @@
 import XCTest
+import AVFoundation
 @testable import UpNext
 
 final class AdDetectionTests: XCTestCase {
@@ -169,6 +170,110 @@ final class AdDetectionTests: XCTestCase {
         XCTAssertEqual(audio.emittedChunkCount, 360)
     }
 
+    func testRollingTranscriptRequestsShareOneInFlightOperation() async throws {
+        let coordinator = AdDetectionTranscriptWorkCoordinator()
+        let request = AdDetectionRequest(
+            episodeIdentity: "episode",
+            mediaURL: URL(fileURLWithPath: "/tmp/episode.m4a"),
+            range: AdTimeRange(start: 10, end: 30)
+        )
+        let counter = AsyncOperationCounter()
+        let results = try await withThrowingTaskGroup(of: [TranscriptDetectionLine].self) { group in
+            for _ in 0..<2 {
+                group.addTask {
+                    try await coordinator.lines(for: request) {
+                        await counter.increment()
+                        try await Task.sleep(for: .milliseconds(100))
+                        return [TranscriptDetectionLine(text: "sample", start: 10, end: 11)]
+                    }
+                }
+            }
+            var results: [[TranscriptDetectionLine]] = []
+            for try await value in group { results.append(value) }
+            return results
+        }
+
+        let invocationCount = await counter.value
+        XCTAssertEqual(invocationCount, 1)
+        XCTAssertEqual(results.count, 2)
+        XCTAssertEqual(results[0], results[1])
+        let cached = try await coordinator.lines(for: request) {
+            await counter.increment()
+            return []
+        }
+        XCTAssertEqual(cached, results[0])
+        let invocationCountAfterCache = await counter.value
+        XCTAssertEqual(invocationCountAfterCache, 1)
+    }
+
+    func testAbandonedSnippetCleanupIsAgeAndNameScoped() throws {
+        let directory = FileManager.default.temporaryDirectory
+        let id = UUID().uuidString
+        let old = directory.appendingPathComponent("AdDetection-test-old-\(id).caf")
+        let recent = directory.appendingPathComponent("AdDetection-test-recent-\(id).caf")
+        let unrelated = directory.appendingPathComponent("TranscriptSync-test-old-\(id).caf")
+        defer {
+            try? FileManager.default.removeItem(at: old)
+            try? FileManager.default.removeItem(at: recent)
+            try? FileManager.default.removeItem(at: unrelated)
+        }
+        try Data([1]).write(to: old)
+        try Data([1]).write(to: recent)
+        try Data([1]).write(to: unrelated)
+        let oldDate = Date(timeIntervalSinceNow: -48 * 60 * 60)
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate],
+            ofItemAtPath: old.path
+        )
+        try FileManager.default.setAttributes(
+            [.modificationDate: oldDate],
+            ofItemAtPath: unrelated.path
+        )
+
+        AudioSnippetWriter.removeAbandonedTemporarySnippets(
+            olderThan: Date(timeIntervalSinceNow: -24 * 60 * 60)
+        )
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: recent.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: unrelated.path))
+    }
+
+    func testAdSnippetWriterResamplesToBoundedSpeechFormat() async throws {
+        let sourceURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("AdDetection-source-\(UUID().uuidString).caf")
+        defer { try? FileManager.default.removeItem(at: sourceURL) }
+        let sourceFormat = try XCTUnwrap(AVAudioFormat(
+            standardFormatWithSampleRate: 48_000,
+            channels: 2
+        ))
+        let source = try AVAudioFile(forWriting: sourceURL, settings: sourceFormat.settings)
+        let sourceBuffer = try XCTUnwrap(AVAudioPCMBuffer(
+            pcmFormat: sourceFormat,
+            frameCapacity: 48_000 * 5
+        ))
+        sourceBuffer.frameLength = sourceBuffer.frameCapacity
+        if let channels = sourceBuffer.floatChannelData {
+            for channel in 0..<Int(sourceFormat.channelCount) {
+                channels[channel].initialize(repeating: 0, count: Int(sourceBuffer.frameLength))
+            }
+        }
+        try source.write(from: sourceBuffer)
+
+        let snippetURL = try await AudioSnippetWriter.makeSnippet(
+            from: sourceURL,
+            range: AdTimeRange(start: 0, end: 5)
+        )
+        defer { try? FileManager.default.removeItem(at: snippetURL) }
+        let snippet = try AVAudioFile(forReading: snippetURL)
+        let attributes = try FileManager.default.attributesOfItem(atPath: snippetURL.path)
+        let bytes = try XCTUnwrap((attributes[.size] as? NSNumber)?.intValue)
+
+        XCTAssertEqual(snippet.processingFormat.sampleRate, 16_000)
+        XCTAssertEqual(snippet.processingFormat.channelCount, 1)
+        XCTAssertLessThan(bytes, 400_000)
+    }
+
     func testEvaluationReportsPrecisionRecallAndBoundaryError() {
         let metrics = AdDetectionEvaluator.metrics(
             detected: [AdTimeRange(start: 101, end: 129)],
@@ -228,4 +333,9 @@ private actor CountingAdProvider: AdSignalProvider {
         callCount += 1
         return []
     }
+}
+
+private actor AsyncOperationCounter {
+    private(set) var value = 0
+    func increment() { value += 1 }
 }
