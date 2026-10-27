@@ -7,6 +7,12 @@ The dual-sync backfill must be exercised with release-equivalent stores before a
 - A two-device dual-sync fixture converges after interrupted slice work and a relaunch.
 - A failed store-preparation attempt remains deferred and succeeds after retry.
 - A CloudKit-busy window and active playback yield without mutating the stores.
+- Opening the usable runtime container records startup readiness independently
+  from the longer exporter observation window. Short foreground sessions,
+  ordinary backgrounding, and stale export markers never change the legacy
+  store's CloudKit attachment. Automatic quarantine remains disabled until a
+  reliable incident signal and a data-convergence gate exist; diagnostics and
+  a recovery offer may still be recorded without modifying either store.
 - Background-processing expiration stops at a slice boundary and resumes later.
 - A fresh-install fixture completes without legacy data and without repeated full scans.
 - Bootstrap mode selection covers fresh install, local legacy upgrade, and the one-way post-cutover path.

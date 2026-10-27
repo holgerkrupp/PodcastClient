@@ -90,19 +90,25 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
     }
 
-    func testLegacyMirrorQuarantineIsOneWayAcrossLaunches() {
+    func testShortUsableSessionsDoNotTriggerLegacyMirrorQuarantine() {
         StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
         let base = Date(timeIntervalSince1970: 1_000)
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base))
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(1)))
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(2)))
-        XCTAssertTrue(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(3)))
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        for offset in 0..<4 {
+            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
+                now: base.addingTimeInterval(Double(offset) * 100)
+            ))
+            StoreSplitLaunchHealth.markRuntimeReady(
+                now: base.addingTimeInterval(Double(offset) * 100 + 1)
+            )
+        }
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
 
-        // A later policy evaluation cannot silently re-attach the legacy store.
+        // Eligibility alone is not a convergence proof and must not detach
+        // the legacy CloudKit exporter after otherwise usable sessions.
         StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
     func testRecoveryOfferSurvivesAHealthyForegroundSession() {
@@ -117,20 +123,37 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
     }
 
-    func testRepeatedUnhealthyLaunchesWithUnfinishedLegacyExportQuarantineBeforeOpen() {
+    func testStaleExportMarkerNeverQuarantinesLegacyMirror() {
         let exportID = UUID()
         LegacyCloudExportRecovery.started(
             id: exportID, storeIdentifier: "SharedDatabase.sqlite"
         )
         let base = Date(timeIntervalSince1970: 2_000)
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base))
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(1)))
-        XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(2)))
-        XCTAssertTrue(StoreSplitLaunchHealth.beginLaunch(now: base.addingTimeInterval(3)))
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+        for offset in 0..<4 {
+            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
+                now: base.addingTimeInterval(Double(offset) * 100)
+            ))
+            StoreSplitLaunchHealth.markRuntimeReady(
+                now: base.addingTimeInterval(Double(offset) * 100 + 1)
+            )
+        }
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
         XCTAssertTrue(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)
         LegacyCloudExportRecovery.ended(id: exportID)
+    }
+
+    func testRepeatedPreReadyLaunchesOfferRecoveryWithoutDetachingSync() {
+        StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
+        let base = Date(timeIntervalSince1970: 2_500)
+        for offset in 0..<4 {
+            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
+                now: base.addingTimeInterval(Double(offset))
+            ))
+        }
+        XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
+        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
     func testCompletedExportDoesNotTriggerAutomaticQuarantine() {

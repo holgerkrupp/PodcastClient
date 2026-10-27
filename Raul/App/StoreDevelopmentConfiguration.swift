@@ -90,15 +90,18 @@ enum LegacyCloudExportRecovery {
 }
 
 struct StoreSplitLaunchHealthState: Codable, Sendable, Equatable {
+    /// Retained under its original persisted field name for migration
+    /// compatibility. This now counts launches without a runtime-ready marker;
+    /// it is not proof of a crash.
     var consecutiveUnhealthyLaunches = 0
     var lastLaunchStartedAt: Date?
     var lastHealthyAt: Date?
+    var lastRuntimeReadyAt: Date?
 }
 
 enum StoreSplitLaunchHealth {
     static let stateKey = "storeSplit.launchHealth.v1"
     static let recoverySuggestedKey = "storeSplit.legacyRecoverySuggested.v1"
-    static let quarantineThreshold = 3
 
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
@@ -109,7 +112,10 @@ enum StoreSplitLaunchHealth {
         var state = read()
         let previousLaunchWasUnhealthy: Bool
         if let lastLaunchStartedAt = state.lastLaunchStartedAt {
-            previousLaunchWasUnhealthy = state.lastHealthyAt.map {
+            // Runtime readiness is distinct from the 75-second exporter
+            // observation window. A user who backgrounds a usable app before
+            // that window ends must not be counted as a failed launch.
+            previousLaunchWasUnhealthy = state.lastRuntimeReadyAt.map {
                 lastLaunchStartedAt > $0
             } ?? true
         } else {
@@ -128,26 +134,35 @@ enum StoreSplitLaunchHealth {
             defaults.set(true, forKey: recoverySuggestedKey)
         }
 
+        // iOS does not provide a reliable previous-process termination reason.
+        // Missing a foreground checkpoint plus a persisted export ID cannot
+        // prove a crash or establish that detaching is safe. Keep the diagnostic
+        // signal and recovery offer, but never change CloudKit attachment here.
         let unfinishedLegacyExport = LegacyCloudExportRecovery.hasUnfinishedLegacyExport
-        let shouldQuarantine = previousLaunchWasUnhealthy
-            && state.consecutiveUnhealthyLaunches >= quarantineThreshold
-            && (StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligible
-                || unfinishedLegacyExport)
-            && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
-        if shouldQuarantine {
-            StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
-                reason: unfinishedLegacyExport
-                    ? "repeated_unhealthy_launches_with_legacy_export"
-                    : "repeated_unhealthy_launches"
-            )
-        }
-        return shouldQuarantine
+        CrashBreadcrumbs.shared.record(
+            "store_split_launch_started",
+            details: "previous_incomplete=\(previousLaunchWasUnhealthy),consecutive=\(state.consecutiveUnhealthyLaunches),unfinished_legacy_export=\(unfinishedLegacyExport),quarantine=disabled_without_convergence_gate"
+        )
+        return false
+    }
+
+    /// Call as soon as the primary runtime container has opened successfully.
+    /// This is a startup-readiness checkpoint, not a claim that CloudKit export
+    /// has been quiet or that the process passed a long-running health window.
+    static func markRuntimeReady(now: Date = .now) {
+        var state = read()
+        state.consecutiveUnhealthyLaunches = 0
+        state.lastRuntimeReadyAt = now
+        state.lastHealthyAt = now
+        write(state)
+        CrashBreadcrumbs.shared.record("store_split_runtime_ready")
     }
 
     static func markHealthy(now: Date = .now) {
         var state = read()
         state.consecutiveUnhealthyLaunches = 0
         state.lastHealthyAt = now
+        state.lastRuntimeReadyAt = now
         write(state)
     }
 
