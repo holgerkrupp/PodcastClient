@@ -35,6 +35,11 @@ struct LegacyStoreCleanupGate: Equatable, Sendable {
 /// and telemetry gates have independently passed.
 enum StoreSplitMigrationVerifier {
     static let verificationID = "store-split-v\(StoreSplitMigrationService.migrationVersion)"
+    private static let verificationInvalidatedKey = "storeSplit.verificationAttemptInvalidated.v1"
+
+    private static var verificationDefaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
 
     /// Builds the local half of the authority-release gate. Population-level
     /// convergence and delayed-import evidence are supplied by release
@@ -76,38 +81,69 @@ enum StoreSplitMigrationVerifier {
         var sourceLines: [String] = []
         var destinationLines: [String] = []
 
+        // Invalidate an older green result before beginning a new attempt. If a
+        // later source read fails, a stale verification must not remain usable
+        // as evidence for this migration revision.
+        verificationDefaults.set(true, forKey: verificationInvalidatedKey)
+        if let invalidationFailure = invalidatePreviousVerification(in: cache) {
+            return failedReport("verification_invalidation_failed:\(invalidationFailure)")
+        }
+
+        func read<T>(_ label: String, fallback: T, _ operation: () throws -> T) -> T {
+            do {
+                return try operation()
+            } catch {
+                // Do not include storage error strings: they may contain private
+                // store paths or other diagnostic data.
+                issues.append("verification_fetch_failed:\(label)")
+                return fallback
+            }
+        }
+
         let subscriptions = newest(
-            (try? userState.fetch(FetchDescriptor<SubscriptionSync>())) ?? [],
+            read("user_state_subscriptions", fallback: []) {
+                try userState.fetch(FetchDescriptor<SubscriptionSync>())
+            },
             id: \SubscriptionSync.id,
             date: \SubscriptionSync.updatedAt,
             device: { $0.sourceDeviceID }
         )
         let episodeStates = newest(
-            (try? userState.fetch(FetchDescriptor<EpisodeStateSync>())) ?? [],
+            read("user_state_episode_states", fallback: []) {
+                try userState.fetch(FetchDescriptor<EpisodeStateSync>())
+            },
             id: \EpisodeStateSync.id,
             date: \EpisodeStateSync.updatedAt,
             device: { $0.sourceDeviceID }
         )
         let playlists = newest(
-            (try? userState.fetch(FetchDescriptor<PlaylistSync>())) ?? [],
+            read("user_state_playlists", fallback: []) {
+                try userState.fetch(FetchDescriptor<PlaylistSync>())
+            },
             id: \PlaylistSync.id,
             date: \PlaylistSync.updatedAt,
             device: { $0.sourceDeviceID }
         )
         let playlistEntries = newest(
-            (try? userState.fetch(FetchDescriptor<PlaylistEntrySync>())) ?? [],
+            read("user_state_playlist_entries", fallback: []) {
+                try userState.fetch(FetchDescriptor<PlaylistEntrySync>())
+            },
             id: \PlaylistEntrySync.id,
             date: \PlaylistEntrySync.updatedAt,
             device: { $0.sourceDeviceID }
         )
         let bookmarks = newest(
-            (try? userState.fetch(FetchDescriptor<BookmarkSync>())) ?? [],
+            read("user_state_bookmarks", fallback: []) {
+                try userState.fetch(FetchDescriptor<BookmarkSync>())
+            },
             id: \BookmarkSync.id,
             date: \BookmarkSync.updatedAt,
             device: { $0.sourceDeviceID }
         )
         let preferences = newest(
-            (try? userState.fetch(FetchDescriptor<PodcastPreferenceSync>())) ?? [],
+            read("user_state_preferences", fallback: []) {
+                try userState.fetch(FetchDescriptor<PodcastPreferenceSync>())
+            },
             id: \PodcastPreferenceSync.id,
             date: \PodcastPreferenceSync.updatedAt,
             device: { $0.sourceDeviceID }
@@ -118,7 +154,9 @@ enum StoreSplitMigrationVerifier {
         destinationCounts["playlists"] = playlists.count
         destinationCounts["playlistEntries"] = playlistEntries.count
         let queueEntries = newest(
-            (try? userState.fetch(FetchDescriptor<QueueEntrySync>())) ?? [],
+            read("user_state_queue_entries", fallback: []) {
+                try userState.fetch(FetchDescriptor<QueueEntrySync>())
+            },
             id: \QueueEntrySync.id,
             date: \QueueEntrySync.updatedAt,
             device: { $0.sourceDeviceID }
@@ -126,10 +164,14 @@ enum StoreSplitMigrationVerifier {
         destinationCounts["queueEntries"] = queueEntries.count
         destinationCounts["bookmarks"] = bookmarks.count
         destinationCounts["preferences"] = preferences.count
-        destinationCounts["listeningHistory"] =
-            (try? userState.fetchCount(FetchDescriptor<ListeningHistorySync>())) ?? 0
-        destinationCounts["listeningBaselines"] =
-            (try? userState.fetchCount(FetchDescriptor<ListeningBaselineSync>())) ?? 0
+        let destinationHistory = read("user_state_listening_history", fallback: [ListeningHistorySync]()) {
+            try userState.fetch(FetchDescriptor<ListeningHistorySync>())
+        }
+        let destinationBaselines = read("user_state_listening_baselines", fallback: [ListeningBaselineSync]()) {
+            try userState.fetch(FetchDescriptor<ListeningBaselineSync>())
+        }
+        destinationCounts["listeningHistory"] = destinationHistory.count
+        destinationCounts["listeningBaselines"] = destinationBaselines.count
 
         var requiredFeedKeys = Set<String>()
         var requiredEpisodeKeys = Set<String>()
@@ -140,7 +182,9 @@ enum StoreSplitMigrationVerifier {
         var sourceQueueEntryIDs = Set<String>()
         var sourceBookmarkIDs = Set<String>()
         var sourcePreferenceIDs = Set<String>()
-        let legacyPodcasts = (try? legacy.fetch(FetchDescriptor<Podcast>())) ?? []
+        let legacyPodcasts = read("legacy_podcasts", fallback: [Podcast]()) {
+            try legacy.fetch(FetchDescriptor<Podcast>())
+        }
         sourceCounts["subscriptions"] = 0
         for podcast in legacyPodcasts {
             guard let feed = podcast.feed else { continue }
@@ -170,7 +214,9 @@ enum StoreSplitMigrationVerifier {
             }
         }
 
-        let legacyEpisodes = (try? legacy.fetch(FetchDescriptor<Episode>())) ?? []
+        let legacyEpisodes = read("legacy_episodes", fallback: [Episode]()) {
+            try legacy.fetch(FetchDescriptor<Episode>())
+        }
         sourceCounts["episodeStates"] = 0
         for episode in legacyEpisodes {
             guard let metadata = episode.metaData,
@@ -218,7 +264,9 @@ enum StoreSplitMigrationVerifier {
             }
         }
 
-        let legacyPlaylists = (try? legacy.fetch(FetchDescriptor<Playlist>())) ?? []
+        let legacyPlaylists = read("legacy_playlists", fallback: [Playlist]()) {
+            try legacy.fetch(FetchDescriptor<Playlist>())
+        }
         sourceCounts["playlists"] = legacyPlaylists.count
         sourceCounts["playlistEntries"] = 0
         for playlist in legacyPlaylists {
@@ -281,7 +329,9 @@ enum StoreSplitMigrationVerifier {
             }
         }
 
-        let legacyBookmarks = (try? legacy.fetch(FetchDescriptor<Bookmark>())) ?? []
+        let legacyBookmarks = read("legacy_bookmarks", fallback: [Bookmark]()) {
+            try legacy.fetch(FetchDescriptor<Bookmark>())
+        }
         sourceCounts["bookmarks"] = 0
         for bookmark in legacyBookmarks {
             guard let episode = bookmark.bookmarkEpisode,
@@ -321,7 +371,9 @@ enum StoreSplitMigrationVerifier {
             }
         }
 
-        let legacyPreferences = (try? legacy.fetch(FetchDescriptor<PodcastSettings>())) ?? []
+        let legacyPreferences = read("legacy_preferences", fallback: [PodcastSettings]()) {
+            try legacy.fetch(FetchDescriptor<PodcastSettings>())
+        }
         sourceCounts["preferences"] = Set(legacyPreferences.map {
             $0.podcast?.feed.map(PodcastFeedIdentity.normalizedFeedURLString)
                 .map { StableIdentityKey.make("feed", $0) }
@@ -398,24 +450,138 @@ enum StoreSplitMigrationVerifier {
         // importer projected back from UserState are not an independent source.
         // Counting them made verification permanently unsatisfiable, which left
         // the rollout stuck before the read cutover.
-        let legacySessions = (try? legacy.fetch(FetchDescriptor<PlaySession>())) ?? []
+        let legacySessions = read("legacy_play_sessions", fallback: [PlaySession]()) {
+            try legacy.fetch(FetchDescriptor<PlaySession>())
+        }
+        var expectedHistory: [String: ListeningHistorySync] = [:]
+        var expectedIncompleteCacheSessions: [String: CachedPlaySession] = [:]
         var cacheableSessionCount = 0
-        var completedSessionCount = 0
         for session in legacySessions {
             guard session.appVersion
                     != ListeningDeviceIdentity.splitStoreProjectionAppVersion,
-                  session.episode?.podcast?.feed != nil,
+                  let episode = session.episode,
+                  episode.podcast?.feed != nil,
                   let startedAt = session.startTime else { continue }
             cacheableSessionCount += 1
-            if let endedAt = session.endTime, endedAt > startedAt {
-                completedSessionCount += 1
+            let identity = episode.stableEpisodeIdentity
+            let startPosition = session.startPosition ?? 0
+            if session.endTime.map({ $0 > startedAt }) != true {
+                let cacheID = session.id?.uuidString ?? StableIdentityKey.uuid(for:
+                    StableIdentityKey.make(identity.key, String(Int(startedAt.timeIntervalSince1970)))
+                ).uuidString
+                expectedIncompleteCacheSessions[cacheID] = CachedPlaySession(
+                    id: cacheID,
+                    feedURL: identity.feedURL,
+                    episodeID: identity.episodeID,
+                    podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                    episodeTitle: episode.title,
+                    sourceDeviceID: session.sourceDeviceID ?? StableIdentityKey.make(
+                        "legacy-device", session.deviceModel ?? "unknown-model",
+                        session.osVersion ?? "unknown-os"
+                    ),
+                    sourceDeviceName: session.sourceDeviceName ?? session.deviceModel ?? "Legacy device",
+                    deviceModel: session.deviceModel,
+                    osVersion: session.osVersion,
+                    appVersion: session.appVersion,
+                    startedAt: startedAt,
+                    endedAt: nil,
+                    startPosition: startPosition,
+                    endPosition: session.endPosition,
+                    silenceGapTimeSavedSeconds: max(0, session.silenceGapTimeSavedSeconds ?? 0),
+                    playbackRateTimeSavedSeconds: max(0, PlaybackRateSavingsCalculator.secondsSaved(in: session)),
+                    endedCleanly: session.endedCleanly == true,
+                    updatedAt: startedAt
+                )
+                continue
+            }
+            guard let endedAt = session.endTime else { continue }
+            let endPosition = session.endPosition ?? 0
+            let id = ListeningHistoryIdentity.make(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                startPosition: startPosition,
+                endPosition: endPosition
+            )
+            let sourceDeviceID = session.sourceDeviceID ?? StableIdentityKey.make(
+                "legacy-device", session.deviceModel ?? "unknown-model",
+                session.osVersion ?? "unknown-os"
+            )
+            let expected = ListeningHistorySync(
+                id: id,
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                episodeTitle: episode.title,
+                sourceDeviceID: sourceDeviceID,
+                sourceDeviceName: session.sourceDeviceName ?? session.deviceModel ?? "Legacy device",
+                deviceModel: session.deviceModel,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                startPosition: startPosition,
+                endPosition: endPosition,
+                listenedSeconds: endedAt.timeIntervalSince(startedAt),
+                silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+                playbackRateTimeSavedSeconds: PlaybackRateSavingsCalculator.secondsSaved(in: session),
+                endedCleanly: session.endedCleanly == true,
+                isLegacyMigrated: true,
+                updatedAt: endedAt
+            )
+            if let previous = expectedHistory[id], historyPayload(previous) != historyPayload(expected) {
+                issues.append("conflicting_legacy_listening_history:\(id)")
+            } else {
+                expectedHistory[id] = expected
+                sourceLines.append(canonical("listeningHistory", id, historyPayload(expected)))
             }
         }
-        sourceCounts["listeningHistory"] = completedSessionCount
+        let destinationHistoryByID = newest(
+            destinationHistory,
+            id: \.id,
+            date: \.updatedAt,
+            device: { $0.sourceDeviceID }
+        )
+        for (id, record) in destinationHistoryByID {
+            destinationLines.append(canonical("listeningHistory", id, historyPayload(record)))
+        }
+        sourceCounts["listeningHistory"] = expectedHistory.count
         sourceCounts["cacheablePlaySessions"] = cacheableSessionCount
-        destinationCounts["cachedPlaySessions"] = (try? cache.fetchCount(
-            FetchDescriptor<CachedPlaySession>()
-        )) ?? 0
+        for (id, expected) in expectedHistory {
+            guard let actual = destinationHistoryByID[id] else {
+                issues.append("missing_listening_history:\(id)")
+                continue
+            }
+            requiredFeedKeys.insert(expected.feedURL)
+            requiredEpisodeKeys.insert(StableIdentityKey.make(expected.feedURL, expected.episodeID))
+            // CloudKit can deliver a newer version from another device. Keep it
+            // and classify it as authoritative; equal/older rows must match the
+            // complete migrated payload exactly.
+            if actual.updatedAt <= expected.updatedAt,
+               historyPayload(actual) != historyPayload(expected) {
+                issues.append("listening_history_fields:\(id)")
+            }
+        }
+        let cachedSessionsByID = Dictionary(
+            read("cache_play_session_rows", fallback: [CachedPlaySession]()) {
+                try cache.fetch(FetchDescriptor<CachedPlaySession>())
+            }.map { ($0.id, $0) },
+            uniquingKeysWith: { first, second in first.updatedAt >= second.updatedAt ? first : second }
+        )
+        destinationCounts["cachedPlaySessions"] = cachedSessionsByID.count
+        sourceCounts["incompletePlaySessions"] = expectedIncompleteCacheSessions.count
+        for (id, expected) in expectedIncompleteCacheSessions {
+            guard let actual = cachedSessionsByID[id] else {
+                issues.append("missing_incomplete_cached_session:\(id)")
+                continue
+            }
+            if cachedSessionPayload(actual) != cachedSessionPayload(expected) {
+                issues.append("incomplete_cached_session_fields:\(id)")
+            }
+            requiredFeedKeys.insert(expected.feedURL)
+            requiredEpisodeKeys.insert(StableIdentityKey.make(expected.feedURL, expected.episodeID))
+            sourceLines.append(canonical("incompleteSession", id, cachedSessionPayload(expected)))
+            destinationLines.append(canonical("incompleteSession", id, cachedSessionPayload(actual)))
+        }
         // Legacy summaries do not migrate one-to-one: they collapse into the
         // frozen per-feed `ListeningBaselineSync` rows, and only the summaries
         // in the baseline period tier that carry positive time produce a row.
@@ -423,46 +589,78 @@ enum StoreSplitMigrationVerifier {
         // destination bucket nothing ever writes made this issue permanent for
         // every user with listening history, so `isMigrationVerified` and the
         // cleanup/convergence gate could never pass.
-        let legacySummaries = (try? legacy.fetch(FetchDescriptor<PlaySessionSummary>())) ?? []
+        let legacySummaries = read("legacy_listening_summaries", fallback: [PlaySessionSummary]()) {
+            try legacy.fetch(FetchDescriptor<PlaySessionSummary>())
+        }
         let baselineFeedKeys = baselineEligibleFeedKeys(in: legacySummaries)
         sourceCounts["listeningSummaries"] = legacySummaries.count
         sourceCounts["listeningBaselines"] = baselineFeedKeys.count
-        if completedSessionCount > 0,
-           destinationCounts["listeningHistory", default: 0] == 0 {
-            issues.append("missing_listening_history")
+        let expectedBaselines = baselineTotals(in: legacySummaries)
+        let destinationBaselinesByFeed = Dictionary(
+            destinationBaselines.map { ($0.feedURL, $0) },
+            uniquingKeysWith: { first, second in
+                first.capturedAt >= second.capturedAt ? first : second
+            }
+        )
+        for (feed, baseline) in destinationBaselinesByFeed {
+            destinationLines.append(canonical(
+                "listeningBaseline", feed, baseline.totalSeconds,
+                baseline.silenceGapTimeSavedSeconds,
+                baseline.playbackRateTimeSavedSeconds
+            ))
         }
-        // Cached raw sessions are deliberately prunable device-local analytics
-        // (`StoreSplitLocalAnalyticsWriter` enforces a 30-day retention), so
-        // their count is telemetry, not a losslessness invariant. Compact
-        // history and the baselines below carry what has to survive.
-        //
-        // Baselines are write-once per feed, including rows that arrived from
-        // another device, so a per-feed comparison would be unsatisfiable by
-        // design. The invariant is only that a store with migratable baseline
-        // material did not end up with an empty baseline table.
-        if baselineFeedKeys.isEmpty == false,
-           destinationCounts["listeningBaselines", default: 0] == 0 {
-            issues.append("missing_listening_baselines")
+        for feed in baselineFeedKeys {
+            guard let expected = expectedBaselines[feed],
+                  let actual = destinationBaselinesByFeed[feed] else {
+                issues.append("missing_listening_baseline:\(feed)")
+                continue
+            }
+            if !approximatelyEqual(actual.totalSeconds, expected.totalSeconds)
+                || !approximatelyEqual(actual.silenceGapTimeSavedSeconds, expected.silenceSaved)
+                || !approximatelyEqual(actual.playbackRateTimeSavedSeconds, expected.playbackRateSaved)
+                || actual.id != feed {
+                // Baselines are immutable first-writer snapshots with no update
+                // version that can prove which device's value is newer. Preserve
+                // the destination row and keep readiness blocked on conflict.
+                issues.append("listening_baseline_conflict:\(feed)")
+            }
+            sourceLines.append(canonical(
+                "listeningBaseline", feed, expected.totalSeconds,
+                expected.silenceSaved, expected.playbackRateSaved
+            ))
+        }
+        let destinationOnlyBaselineCount = Set(destinationBaselinesByFeed.keys)
+            .subtracting(baselineFeedKeys).count
+        if destinationOnlyBaselineCount > 0 {
+            issues.append("destination_only_listening_baselines:\(destinationOnlyBaselineCount)")
         }
 
-        let cachedFeedKeys = Set(
-            ((try? cache.fetch(FetchDescriptor<CachedPodcast>())) ?? []).map(\.feedURL)
-        )
-        let cachedEpisodeKeys = Set(
-            ((try? cache.fetch(FetchDescriptor<CachedEpisode>())) ?? []).map(\.id)
-        )
+        let cachedFeedKeys = Set(read("cache_podcasts", fallback: [CachedPodcast]()) {
+            try cache.fetch(FetchDescriptor<CachedPodcast>())
+        }.map(\.feedURL))
+        let cachedEpisodeKeys = Set(read("cache_episodes", fallback: [CachedEpisode]()) {
+            try cache.fetch(FetchDescriptor<CachedEpisode>())
+        }.map(\.id))
         var recoverableCount = 0
         var missingCount = 0
         for feedKey in requiredFeedKeys {
-            if cachedFeedKeys.contains(feedKey) || isRSSRecoverable(feedKey) {
+            // This verifier has no evidence that a URL currently resolves to a
+            // validated RSS feed (or that private-feed credentials are present).
+            // A syntactically valid HTTP URL is not recovery proof.
+            if cachedFeedKeys.contains(feedKey) {
                 recoverableCount += 1
             } else {
                 missingCount += 1
                 issues.append("unrecoverable_feed:\(feedKey)")
             }
         }
-        for episodeKey in requiredEpisodeKeys where cachedEpisodeKeys.contains(episodeKey) {
-            recoverableCount += 1
+        for episodeKey in requiredEpisodeKeys {
+            if cachedEpisodeKeys.contains(episodeKey) {
+                recoverableCount += 1
+            } else {
+                missingCount += 1
+                issues.append("missing_cached_episode:\(episodeKey)")
+            }
         }
 
         let report = StoreSplitVerificationReport(
@@ -474,13 +672,18 @@ enum StoreSplitMigrationVerifier {
             cacheMissingCount: missingCount,
             issues: Array(Set(issues)).sorted()
         )
-        persist(report, in: cache)
+        if persist(report, in: cache) == false {
+            return failedReport("verification_persistence_failed")
+        }
         return report
     }
 
     static func latestVerification(
         cacheContainer: ModelContainer
     ) -> StoreSplitMigrationVerification? {
+        guard verificationDefaults.bool(forKey: verificationInvalidatedKey) == false else {
+            return nil
+        }
         let context = ModelContext(cacheContainer)
         let id = verificationID
         var descriptor = FetchDescriptor<StoreSplitMigrationVerification>(
@@ -508,35 +711,71 @@ enum StoreSplitMigrationVerifier {
         )
     }
 
-    private static func persist(
-        _ report: StoreSplitVerificationReport,
-        in context: ModelContext
-    ) {
+    private static func invalidatePreviousVerification(in context: ModelContext) -> String? {
         let id = verificationID
         var descriptor = FetchDescriptor<StoreSplitMigrationVerification>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1
-        let record = (try? context.fetch(descriptor).first)
-            ?? StoreSplitMigrationVerification(
+        do {
+            guard let record = try context.fetch(descriptor).first else { return nil }
+            record.verifiedAt = nil
+            record.issues = ["verification_in_progress"]
+            record.updatedAt = .now
+            try context.save()
+            return nil
+        } catch {
+            context.rollback()
+            return "cache_store_unavailable"
+        }
+    }
+
+    private static func failedReport(_ issue: String) -> StoreSplitVerificationReport {
+        StoreSplitVerificationReport(
+            sourceCounts: [:],
+            destinationCounts: [:],
+            sourceDigest: "",
+            destinationDigest: "",
+            cacheRecoverableCount: 0,
+            cacheMissingCount: 0,
+            issues: [issue]
+        )
+    }
+
+    private static func persist(
+        _ report: StoreSplitVerificationReport,
+        in context: ModelContext
+    ) -> Bool {
+        let id = verificationID
+        var descriptor = FetchDescriptor<StoreSplitMigrationVerification>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        do {
+            let existing = try context.fetch(descriptor).first
+            let record = existing ?? StoreSplitMigrationVerification(
                 id: id,
                 migrationVersion: StoreSplitMigrationService.migrationVersion
             )
-        if record.modelContext == nil { context.insert(record) }
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.sortedKeys]
-        record.sourceCountsJSON = (try? encoder.encode(report.sourceCounts))
-            .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
-        record.destinationCountsJSON = (try? encoder.encode(report.destinationCounts))
-            .map { String(decoding: $0, as: UTF8.self) } ?? "{}"
-        record.sourceDigest = report.sourceDigest
-        record.destinationDigest = report.destinationDigest
-        record.cacheRecoverableCount = report.cacheRecoverableCount
-        record.cacheMissingCount = report.cacheMissingCount
-        record.issues = report.issues
-        record.verifiedAt = report.isLossless ? .now : nil
-        record.updatedAt = .now
-        try? context.save()
+            if existing == nil { context.insert(record) }
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.sortedKeys]
+            record.sourceCountsJSON = String(decoding: try encoder.encode(report.sourceCounts), as: UTF8.self)
+            record.destinationCountsJSON = String(decoding: try encoder.encode(report.destinationCounts), as: UTF8.self)
+            record.sourceDigest = report.sourceDigest
+            record.destinationDigest = report.destinationDigest
+            record.cacheRecoverableCount = report.cacheRecoverableCount
+            record.cacheMissingCount = report.cacheMissingCount
+            record.issues = report.issues
+            record.verifiedAt = report.isLossless ? .now : nil
+            record.updatedAt = .now
+            try context.save()
+            verificationDefaults.set(false, forKey: verificationInvalidatedKey)
+            return true
+        } catch {
+            context.rollback()
+            return false
+        }
     }
 
     /// The feeds a baseline row is actually expected for, derived exactly the
@@ -547,19 +786,81 @@ enum StoreSplitMigrationVerifier {
     private static func baselineEligibleFeedKeys(
         in summaries: [PlaySessionSummary]
     ) -> Set<String> {
+        Set(baselineTotals(in: summaries).filter { $0.value.totalSeconds > 0 }.keys)
+    }
+
+    private struct BaselineTotals {
+        var totalSeconds: Double = 0
+        var silenceSaved: Double = 0
+        var playbackRateSaved: Double = 0
+    }
+
+    private static func baselineTotals(
+        in summaries: [PlaySessionSummary]
+    ) -> [String: BaselineTotals] {
         guard let baselineKind = StoreSplitMigrationService.baselinePeriodKind(
             in: summaries
-        ) else { return [] }
-        var totals: [String: Double] = [:]
+        ) else { return [:] }
+        var totals: [String: BaselineTotals] = [:]
         for summary in summaries {
             guard summary.periodKind == baselineKind,
                   summary.periodStart != nil else { continue }
             let feedURL = summary.podcastFeed
                 .map(PodcastFeedIdentity.normalizedFeedURLString)
                 ?? ListeningBaselineSync.allPodcastsFeedURL
-            totals[feedURL, default: 0] += max(0, summary.totalSeconds ?? 0)
+            var value = totals[feedURL] ?? BaselineTotals()
+            value.totalSeconds += max(0, summary.totalSeconds ?? 0)
+            value.silenceSaved += max(0, summary.silenceGapTimeSavedSeconds ?? 0)
+            value.playbackRateSaved += max(0, summary.playbackRateTimeSavedSeconds ?? 0)
+            totals[feedURL] = value
         }
-        return Set(totals.filter { $0.value > 0 }.keys)
+        return totals
+    }
+
+    private static func approximatelyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        abs(lhs - rhs) <= max(0.001, max(abs(lhs), abs(rhs)) * 0.000_001)
+    }
+
+    private static func historyPayload(_ record: ListeningHistorySync) -> String {
+        canonical(
+            record.feedURL,
+            record.episodeID,
+            record.podcastName ?? "",
+            record.episodeTitle ?? "",
+            record.startedAt.timeIntervalSince1970,
+            record.endedAt.timeIntervalSince1970,
+            record.listenedSeconds,
+            record.startPosition,
+            record.endPosition,
+            record.silenceGapTimeSavedSeconds,
+            record.playbackRateTimeSavedSeconds,
+            record.sourceDeviceID,
+            record.sourceDeviceName ?? "",
+            record.deviceModel ?? "",
+            record.endedCleanly,
+            record.isLegacyMigrated
+        )
+    }
+
+    private static func cachedSessionPayload(_ record: CachedPlaySession) -> String {
+        canonical(
+            record.feedURL,
+            record.episodeID,
+            record.podcastName ?? "",
+            record.episodeTitle ?? "",
+            record.sourceDeviceID,
+            record.sourceDeviceName ?? "",
+            record.deviceModel ?? "",
+            record.osVersion ?? "",
+            record.appVersion ?? "",
+            record.startedAt.timeIntervalSince1970,
+            record.endedAt?.timeIntervalSince1970 ?? 0,
+            record.startPosition,
+            record.endPosition ?? 0,
+            record.silenceGapTimeSavedSeconds,
+            record.playbackRateTimeSavedSeconds,
+            record.endedCleanly
+        )
     }
 
     private static func newest<Model>(
@@ -593,11 +894,6 @@ enum StoreSplitMigrationVerifier {
         return SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
     }
 
-    private static func isRSSRecoverable(_ feedURL: String) -> Bool {
-        guard let url = URL(string: feedURL),
-              let scheme = url.scheme?.lowercased() else { return false }
-        return scheme == "http" || scheme == "https"
-    }
 }
 
 /// The CloudKit-backed schema is intentionally enumerated here so tests and

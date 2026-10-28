@@ -374,17 +374,21 @@ struct DevelopmentSettingsView: View {
                         "Pending feeds recoverable from RSS",
                         value: "\(cacheStatus.rssRecoverablePendingFeedCount)"
                     )
+                    LabeledContent(
+                        "Feeds with unverified recovery",
+                        value: "\(cacheStatus.unverifiedRecoverabilityFeedCount)"
+                    )
                     LabeledContent("Cached episodes", value: "\(cacheStatus.cachedEpisodeCount)")
                     LabeledContent("Cached transcript records", value: "\(cacheStatus.cachedTranscriptCount)")
                     LabeledContent("Cached transcript lines", value: "\(cacheStatus.cachedTranscriptLineCount)")
                     LabeledContent("Cached AI chapters", value: "\(cacheStatus.cachedChapterCount)")
                     LabeledContent(
                         "Cache status",
-                        value: cacheStatus.isComplete
-                            && cacheStatus.failedOrRetryableFeedCount == 0
-                            ? "Ready for cutover"
-                            : "Filling"
+                        value: cacheStatus.readinessStatusDescription
                     )
+                    if let failureStage = cacheStatus.readinessFailureStage {
+                        LabeledContent("Readiness failure stage", value: failureStage)
+                    }
                     LabeledContent(
                         "Last successful progress",
                         value: cacheStatus.lastSuccessfulProgressAt?.formatted(

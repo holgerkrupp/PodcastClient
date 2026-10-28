@@ -1022,6 +1022,28 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
 
         await drainSlices(containers, shouldContinue: { true })
 
+        // Verification requires materialized cache evidence; a syntactically
+        // valid RSS URL alone does not prove that this feed or its referenced
+        // historical episodes can be reconstructed.
+        let feedURL = URL(string: "https://example.com/feed.xml")!
+        let cacheProjection = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feedURL,
+            parsedFeed: ["title": "Example"],
+            episodeRows: (0..<5).map { index in
+                [
+                    "guid": "episode-\(index)",
+                    "title": "Episode \(index)",
+                    "enclosure": [[
+                        "url": "https://example.com/\(index).mp3",
+                        "type": "audio/mpeg"
+                    ]]
+                ]
+            },
+            isCompleteFeed: true,
+            cacheContainer: containers.cache
+        )
+        XCTAssertTrue(cacheProjection.completed)
+
         let report = StoreSplitMigrationVerifier.verify(
             legacyContainer: containers.legacy,
             userStateContainer: containers.userState,

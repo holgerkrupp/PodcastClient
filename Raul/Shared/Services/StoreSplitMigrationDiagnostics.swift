@@ -375,25 +375,47 @@ struct StoreSplitMigrationDiagnosticsSnapshot: Sendable {
 /// intentionally contains counts, versions and dates but no feed URLs, titles,
 /// or other user content.
 struct StoreSplitFeedCacheReadiness: Sendable, Equatable {
+    enum Status: String, Sendable {
+        /// Every subscribed feed has a complete local cache projection.
+        case ready
+        /// The source and cache were readable, but coverage is incomplete or
+        /// recovery has not been proven.
+        case incomplete
+        /// A required source/cache query failed. Counts must not be interpreted
+        /// as an empty library or as successful readiness.
+        case unavailable
+    }
+
+    let status: Status
+    /// A stable, privacy-safe stage identifier; never contains a feed URL or
+    /// the underlying SwiftData error description.
+    let failureStage: String?
     let subscribedFeedCount: Int
     let readyFeedCount: Int
     let pendingFeedCount: Int
     let failedOrRetryableFeedCount: Int
     let unrecoverableFeedCount: Int
+    /// Pending feeds for which no validated local or remote recovery evidence
+    /// is available. A syntactically valid HTTP(S) URL does not prove RSS
+    /// availability, credentials, or recoverability.
+    let unverifiedRecoverabilityFeedCount: Int
     let cachedEpisodeCount: Int
     let cacheSchemaVersion: Int
     let lastSuccessfulProgressAt: Date?
 
     var rssRecoverablePendingFeedCount: Int {
-        max(0, pendingFeedCount - unrecoverableFeedCount)
+        // No pending feed is counted as recoverable merely because its URL is
+        // HTTP(S). A future validated-RSS checkpoint can provide that proof.
+        0
     }
 
     var requiredFieldsCachedOrRSSRecoverable: Bool {
-        unrecoverableFeedCount == 0
+        unrecoverableFeedCount == 0 && unverifiedRecoverabilityFeedCount == 0
     }
 
     var isSafeForCutover: Bool {
-        pendingFeedCount == 0
+        status == .ready
+            && pendingFeedCount == 0
             && failedOrRetryableFeedCount == 0
             && requiredFieldsCachedOrRSSRecoverable
     }
@@ -402,12 +424,23 @@ struct StoreSplitFeedCacheReadiness: Sendable, Equatable {
         legacyContext: ModelContext,
         cacheContext: ModelContext
     ) -> Self {
+        let legacyPodcasts: [Podcast]
+        do {
+            legacyPodcasts = try legacyContext.fetch(FetchDescriptor<Podcast>())
+        } catch {
+            return unavailable(failureStage: "source_podcasts")
+        }
         let sourceFeeds = Set(
-            ((try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? [])
+            legacyPodcasts
                 .filter { $0.metaData?.isSubscribed != false }
                 .compactMap { $0.feed.map(PodcastFeedIdentity.normalizedFeedURLString) }
         )
-        let cachedPodcasts = (try? cacheContext.fetch(FetchDescriptor<CachedPodcast>())) ?? []
+        let cachedPodcasts: [CachedPodcast]
+        do {
+            cachedPodcasts = try cacheContext.fetch(FetchDescriptor<CachedPodcast>())
+        } catch {
+            return unavailable(failureStage: "cache_podcasts")
+        }
         let readyCacheByFeed = Dictionary(
             cachedPodcasts.map { ($0.id, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -418,9 +451,14 @@ struct StoreSplitFeedCacheReadiness: Sendable, Equatable {
                     >= StoreSplitFeedCacheWriter.currentCacheSchemaVersion
             }
         )
-        let checkpoints = (try? cacheContext.fetch(
-            FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
-        )) ?? []
+        let checkpoints: [StoreSplitFeedCacheCheckpoint]
+        do {
+            checkpoints = try cacheContext.fetch(
+                FetchDescriptor<StoreSplitFeedCacheCheckpoint>()
+            )
+        } catch {
+            return unavailable(failureStage: "cache_checkpoints")
+        }
         let failedFeeds = Set(
             checkpoints.filter {
                 $0.targetSchemaVersion >= StoreSplitFeedCacheWriter.currentCacheSchemaVersion
@@ -428,28 +466,60 @@ struct StoreSplitFeedCacheReadiness: Sendable, Equatable {
             }.map(\.feedURL)
         ).intersection(sourceFeeds)
         let pendingFeeds = sourceFeeds.subtracting(readyFeeds)
-        let unrecoverable = pendingFeeds.filter { isRSSRecoverable($0) == false }
+        // URL syntax is not evidence that the publisher serves a current feed,
+        // that the feed is accessible, or that required credentials exist.
+        // There is currently no durable validated-RSS recovery receipt, so
+        // leave pending URLs explicitly unresolved instead of green-lighting
+        // them based on their scheme.
+        let unrecoverable = pendingFeeds.filter { isPlausibleRSSURL($0) == false }
+        let unverifiedRecoverability = pendingFeeds.count - unrecoverable.count
         let successfulDates = checkpoints.compactMap(\.lastSuccessfulAt)
         let cachedProgressDates = cachedPodcasts
             .filter { sourceFeeds.contains($0.id) }
             .map(\.updatedAt)
         let lastProgress = (successfulDates + cachedProgressDates).max()
 
+        let cachedEpisodeCount: Int
+        do {
+            cachedEpisodeCount = try cacheContext.fetchCount(FetchDescriptor<CachedEpisode>())
+        } catch {
+            return unavailable(failureStage: "cache_episodes")
+        }
+
         return Self(
+            status: pendingFeeds.isEmpty && failedFeeds.isEmpty ? .ready : .incomplete,
+            failureStage: nil,
             subscribedFeedCount: sourceFeeds.count,
             readyFeedCount: readyFeeds.count,
             pendingFeedCount: pendingFeeds.count,
             failedOrRetryableFeedCount: failedFeeds.count,
             unrecoverableFeedCount: unrecoverable.count,
-            cachedEpisodeCount: ((try? cacheContext.fetch(
-                FetchDescriptor<CachedEpisode>()
-            )) ?? []).filter { sourceFeeds.contains($0.feedURL) }.count,
+            unverifiedRecoverabilityFeedCount: unverifiedRecoverability,
+            cachedEpisodeCount: cachedEpisodeCount,
             cacheSchemaVersion: StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
             lastSuccessfulProgressAt: lastProgress
         )
     }
 
-    private static func isRSSRecoverable(_ feedURL: String) -> Bool {
+    private static func unavailable(failureStage: String) -> Self {
+        Self(
+            status: .unavailable,
+            failureStage: failureStage,
+            subscribedFeedCount: 0,
+            readyFeedCount: 0,
+            // Keep existing count-only consumers fail-closed while exposing
+            // the explicit unavailable state to richer diagnostics.
+            pendingFeedCount: 1,
+            failedOrRetryableFeedCount: 1,
+            unrecoverableFeedCount: 1,
+            unverifiedRecoverabilityFeedCount: 0,
+            cachedEpisodeCount: 0,
+            cacheSchemaVersion: StoreSplitFeedCacheWriter.currentCacheSchemaVersion,
+            lastSuccessfulProgressAt: nil
+        )
+    }
+
+    private static func isPlausibleRSSURL(_ feedURL: String) -> Bool {
         guard let url = URL(string: feedURL),
               let scheme = url.scheme?.lowercased() else { return false }
         return scheme == "http" || scheme == "https"

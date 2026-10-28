@@ -39,6 +39,20 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
     }
 }
 
+/// Bridges cancellation from a background operation to an unstructured worker
+/// that owns bounded store work.
+enum StoreSplitTaskCancellation {
+    static func awaitValue<Value: Sendable>(
+        of task: Task<Value, Never>
+    ) async -> Value {
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+}
+
 /// Absence must be established by a successful directory read, not fileExists
 /// (which also returns false for protected/unavailable storage).
 enum StoreLineage {
@@ -3374,7 +3388,12 @@ class ModelContainerManager: ObservableObject {
             return executionResult
         }
         migrationTask = task
-        return await task.value
+        // BGTask expiration cancels the operation task owned by AppDelegate.
+        // `Task { @MainActor in ... }` above is unstructured and does not
+        // inherit later cancellation, so bridge cancellation explicitly before
+        // awaiting its result. This prevents further SQLite work after the
+        // system revokes the background execution grant.
+        return await StoreSplitTaskCancellation.awaitValue(of: task)
     }
 
     /// Re-queues the backfill after a delay, so a run that yielded to CloudKit
