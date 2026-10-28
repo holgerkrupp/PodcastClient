@@ -180,3 +180,49 @@ reattached to CloudKit or made authoritative by a migration checkpoint.
 - `UpNextTests/PlaylistModelActorPlaybackQueueTests.swift`
 - `UpNextTests/StoreSplitPlaylistProjectionTests.swift`
 - `Documentation/StoreSplitReleaseGate.md`
+
+
+## Main branch consolidation — 2026-10-28
+
+All local and fetched remote branch tips were merged into main, including the
+previously missing `77d59e26` widget, CarPlay and share-extension updates.
+CPU attribution, transcription scanning, optional audio-analysis and launch
+quarantine branches had already been integrated by squash; merge commits now
+record their ancestry without undoing newer code. The durable episode-completion
+branch and detached artwork-recovery worktree were already ancestors of main.
+The worktrees had no uncommitted changes. Saved localization changes and version
+2026.35 (701) were committed, including removal of the obsolete prediction
+localization. Branches and worktrees were retained.
+
+Merge conflicts retained #390's persistence/lineage safeguards, the latest
+version settings, localized save-error text and the equivalent actor-safe
+stall-monitor implementation. The widget file now matches the newer source
+branch exactly. The shipping store-split phase is unchanged.
+
+Verification:
+
+- Release arm64 simulator build passed after consolidation.
+- Guide registry: 23 unique IDs and 63 valid related-topic links; localization
+  JSON and diff whitespace checks pass.
+- A full-suite attempt logged hundreds of passing cases and ten failing cases,
+  then encountered simulator test-host launch/finalization errors. It did not
+  complete successfully.
+- Nine of those ten failures reproduce against the isolated pre-consolidation
+  `47b6fc3f` source: two automatic-migration scheduling tests; nested smart-playlist
+  categories; playback-rate and silence-gap statistics; share-link matching;
+  AI transcript tombstone preservation; the old authoritative-playlist test;
+  and subscription access-profile persistence. These are not newly introduced
+  by merging the branches. The old authoritative-playlist assertion conflicts
+  with #390's rule against inferring deletion from absent remote membership.
+- The remaining chapter-gap test passed in isolation on pre-consolidation main.
+  A merged single-process focused run passed 117 cases but encountered SwiftData
+  `No eligible connection available` fixture exceptions in chapter/playlist
+  fixtures. These runs do not establish a clean full-suite result.
+
+The retained command logs under `/tmp/podcast-consolidated-*.log` distinguish
+full-suite, isolated baseline, focused, core and Release runs. Simulator and
+fixture-only build/source directories are temporary and are removed after
+validation. No personal device stores were reset. The merged changes retain
+their existing in-app share/CarPlay help and action-location updates; visual
+head-unit/widget and cross-platform screenshot review remains separate from
+these automated checks.
