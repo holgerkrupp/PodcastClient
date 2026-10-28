@@ -1075,6 +1075,7 @@ struct RaulApp: App {
                 return
             }
             guard Task.isCancelled == false else { return }
+            await ModelContainerManager.shared.reconcileSplitRuntimePlaylists()
             if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }
@@ -1108,6 +1109,9 @@ struct RaulApp: App {
                StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
                storeKind == .legacy {
                 await modelContainerManager.reconcileLegacyStoreAfterCloudKitImport()
+            }
+            if storeKind == .userState {
+                await modelContainerManager.reconcileSplitRuntimePlaylists()
             }
             if StoreDevelopmentConfiguration.userStateImportEnabled,
                storeKind == .userState {
@@ -1467,6 +1471,11 @@ private struct RootWindowView: View {
 #endif
             }
             .upNextVisualDesignRoot()
+            .alert("Could Not Save Playlist", isPresented: $modelContainerManager.playlistSaveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Playlist changes could not be saved. Please try again when storage is available.")
+            }
         } else {
             ModelContainerLaunchView(
                 errorMessage: modelContainerManager.initializationError,

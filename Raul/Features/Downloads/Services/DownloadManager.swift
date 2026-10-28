@@ -385,14 +385,19 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(30))
                 guard !Task.isCancelled, let self else { return }
-                guard let last = self.lastProgressAt[identifier],
-                      let url = self.taskIdentity.episodeURL(for: identifier),
-                      self.activeTaskIdentifiers[url] == identifier else { return }
-                if Date.now.timeIntervalSince(last) >= 90, let item = self.downloads[url] {
-                    await MainActor.run { item.isStalled = true }
-                }
+                guard await self.checkForStalledDownload(identifier) else { return }
             }
         }
+    }
+
+    private func checkForStalledDownload(_ identifier: Int) async -> Bool {
+        guard let last = lastProgressAt[identifier],
+              let url = taskIdentity.episodeURL(for: identifier),
+              activeTaskIdentifiers[url] == identifier else { return false }
+        if Date.now.timeIntervalSince(last) >= 90, let item = downloads[url] {
+            await MainActor.run { item.isStalled = true }
+        }
+        return true
     }
 
     private func recordProgress(for identifier: Int) async -> DownloadItem? {

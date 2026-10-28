@@ -767,3 +767,207 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
         XCTAssertTrue(queue.ordered.isEmpty)
     }
 }
+
+// These fixtures deliberately reopen the disk stores. A second ModelContext on
+// an in-memory container would miss the restart failure reported in #390.
+extension StoreSplitPlaylistProjectionTests {
+    @MainActor
+    func testFreshSplitPlaylistQueueEditsAndTombstonesSurviveContainerRecreation() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let stateURL = directory.appendingPathComponent("UserState.sqlite")
+        let cacheURL = directory.appendingPathComponent("PodcastCache.sqlite")
+        let feed = URL(string: "https://example.com/restart-fixture.xml")!
+        var manualID = ""
+        var expectedQueue: [String] = []
+
+        // First process: runtime is ephemeral; both backing stores are on disk.
+        do {
+            let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+            let state = try ModelContainerManager.makeUserStateContainer(storageURL: stateURL)
+            let cache = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
+            let context = runtime.mainContext
+            let podcast = Podcast(feed: feed)
+            context.insert(podcast)
+            let episodes = (0..<3).map { index in
+                Episode(guid: "restart-\(index)", title: "Fixture \(index)",
+                        url: URL(string: "https://example.com/restart-\(index).mp3")!, podcast: podcast)
+            }
+            podcast.episodes = episodes
+            for episode in episodes { context.insert(episode) }
+            let queue = Playlist.ensureDefaultQueue(in: context)
+            for (index, episode) in episodes.reversed().enumerated() {
+                let entry = PlaylistEntry(episode: episode, order: index)
+                context.insert(entry)
+                entry.playlist = queue
+            }
+            try context.save()
+            try StoreSplitPlaylistSyncCoordinator.publish(queue, userStateContainer: state)
+            let removed = try XCTUnwrap(queue.ordered.first { $0.episode?.guid == "restart-1" })
+            let removedIdentity = try XCTUnwrap(removed.episode?.stableEpisodeIdentity)
+            context.delete(removed)
+            try context.save()
+            for (index, entry) in queue.ordered.reversed().enumerated() { entry.order = index }
+            try context.save()
+            try StoreSplitPlaylistTransaction(modelContext: ModelContext(state)).tombstoneDurably([
+                StoreSplitPlaylistRemoval(playlistID: queue.storeSplitSyncID, isDefaultQueue: true, identity: removedIdentity)
+            ])
+            try StoreSplitPlaylistSyncCoordinator.publish(queue, userStateContainer: state)
+            expectedQueue = queue.ordered.compactMap { $0.episode?.guid }
+            XCTAssertEqual(expectedQueue, ["restart-0", "restart-2"])
+            let manual = try PlaylistLibrary.create(name: "Restart fixture", symbolName: "car", in: context, userStateContainer: state)
+            manualID = manual.storeSplitSyncID
+            manual.title = "Edited fixture"
+            manual.sortIndex = 7
+            try context.save()
+            try StoreSplitPlaylistSyncCoordinator.publish(manual, userStateContainer: state)
+            XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(feedURL: feed, legacyContainer: runtime, cacheContainer: cache))
+        }
+
+        // Second process, offline: empty import first, then delayed persisted data.
+        do {
+            let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+            let state = try ModelContainerManager.makeUserStateContainer(storageURL: stateURL)
+            let cache = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
+            let first = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, projectListeningHistoryToLegacy: false)
+            XCTAssertFalse(first.playlistFeedsToBootstrap.isEmpty)
+            XCTAssertEqual(StoreSplitCompatibilityProjectionService.rebuild(cacheContainer: cache, runtimeContainer: runtime).failed, 0)
+            // No UserState timestamp changes: hydration must still be retried.
+            _ = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, projectListeningHistoryToLegacy: false)
+            let playlists = try ModelContext(runtime).fetch(FetchDescriptor<Playlist>())
+            let queue = try XCTUnwrap(playlists.first { $0.title == Playlist.defaultQueueTitle })
+            XCTAssertEqual(queue.ordered.compactMap { $0.episode?.guid }, expectedQueue)
+            let manual = try XCTUnwrap(playlists.first { $0.storeSplitSyncID == manualID })
+            XCTAssertEqual(manual.title, "Edited fixture")
+            XCTAssertEqual(manual.sortIndex, 7)
+            let stale = manual.storeSplitSnapshot
+            try PlaylistLibrary.delete(manual, in: manual.modelContext!, userStateContainer: state)
+            // An obsolete publisher must not revive a deleted playlist ID.
+            try StoreSplitPlaylistTransaction(modelContext: ModelContext(state)).upsert(stale, at: .now.addingTimeInterval(10))
+        }
+        do {
+            let state = try ModelContainerManager.makeUserStateContainer(storageURL: stateURL)
+            let records = try ModelContext(state).fetch(FetchDescriptor<PlaylistSync>())
+            XCTAssertTrue(try XCTUnwrap(records.first { $0.id == manualID }).isDeleted)
+            XCTAssertEqual(try ModelContext(state).fetchCount(FetchDescriptor<QueueEntrySync>()), 3)
+        }
+    }
+
+    @MainActor
+    func testInterruptedPlaylistCommitThrowsAndDoesNotPersistOrInventTombstones() throws {
+        enum Interrupted: Error { case write }
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("UserState.sqlite")
+        do {
+            let state = try ModelContainerManager.makeUserStateContainer(storageURL: url)
+            let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+            let playlist = Playlist()
+            playlist.title = "Interrupted fixture"
+            runtime.mainContext.insert(playlist)
+            try runtime.mainContext.save()
+            let transaction = StoreSplitPlaylistTransaction(modelContext: ModelContext(state), commit: { _ in throw Interrupted.write })
+            XCTAssertThrowsError(try transaction.upsert(playlist.storeSplitSnapshot))
+            XCTAssertFalse(transaction.modelContext.hasChanges)
+        }
+        let state = try ModelContainerManager.makeUserStateContainer(storageURL: url)
+        XCTAssertEqual(try ModelContext(state).fetchCount(FetchDescriptor<PlaylistSync>()), 0)
+        XCTAssertEqual(try ModelContext(state).fetchCount(FetchDescriptor<PlaylistEntrySync>()), 0)
+    }
+
+    func testUnavailableAndMissingPreviouslyOpenedStorageFailClosed() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        XCTAssertNoThrow(try StoreLineage.validate(directory: directory, expected: []))
+        XCTAssertThrowsError(try StoreLineage.validate(directory: nil, expected: []))
+        XCTAssertThrowsError(try StoreLineage.validate(directory: directory.appendingPathComponent("unavailable"), expected: []))
+        XCTAssertThrowsError(try StoreLineage.validate(directory: directory, expected: ["SharedDatabase.sqlite"]))
+        try Data().write(to: directory.appendingPathComponent("SharedDatabase.sqlite-wal"))
+        XCTAssertThrowsError(try StoreLineage.validate(directory: directory, expected: []))
+    }
+
+    @MainActor
+    func testDownloadedFileReconstructionAndVisibilityIgnoreMissingDatabaseFlag() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cacheURL = directory.appendingPathComponent("PodcastCache.sqlite")
+        var audioURL: URL!
+        do {
+            let source = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+            let cache = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
+            let podcast = Podcast(feed: URL(string: "https://example.com/offline-fixture.xml")!)
+            let episode = Episode(guid: UUID().uuidString, title: "Offline fixture", url: URL(string: "https://example.com/\(UUID().uuidString).mp3")!, podcast: podcast)
+            podcast.episodes = [episode]
+            source.mainContext.insert(podcast)
+            source.mainContext.insert(episode)
+            audioURL = try XCTUnwrap(episode.localFile)
+            try Data("offline fixture".utf8).write(to: audioURL)
+            try source.mainContext.save()
+            XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(feedURL: podcast.feed!, legacyContainer: source, cacheContainer: cache))
+        }
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let cache = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
+        XCTAssertEqual(StoreSplitCompatibilityProjectionService.rebuild(cacheContainer: cache, runtimeContainer: runtime).failed, 0)
+        let context = ModelContext(runtime)
+        let episode = try XCTUnwrap(context.fetch(FetchDescriptor<Episode>()).first)
+        XCTAssertEqual(episode.metaData?.isAvailableLocally, true)
+        episode.metaData?.isAvailableLocally = false
+        try context.save()
+        let actor = EpisodeListQueryActor(modelContainer: runtime)
+        let visible = try await actor.downloadedEpisodeIDs(downloadedFiles: [audioURL.standardizedFileURL], sort: .newestFirst)
+        XCTAssertEqual(visible.count, 1)
+        try FileManager.default.removeItem(at: audioURL)
+        let missing = try await actor.downloadedEpisodeIDs(downloadedFiles: [], sort: .newestFirst)
+        XCTAssertTrue(missing.isEmpty)
+        let nextRuntime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        XCTAssertEqual(StoreSplitCompatibilityProjectionService.rebuild(cacheContainer: cache, runtimeContainer: nextRuntime).failed, 0)
+        let unavailable = try XCTUnwrap(ModelContext(nextRuntime).fetch(FetchDescriptor<Episode>()).first)
+        XCTAssertEqual(unavailable.metaData?.isAvailableLocally, false)
+    }
+}
+
+extension StoreSplitPlaylistProjectionTests {
+    @MainActor
+    func testEmptyDelayedImportDoesNotDeleteLocalMembershipAndLaterTombstoneDoes() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let state = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let context = runtime.mainContext
+        let podcast = Podcast(feed: URL(string: "https://example.com/delayed-fixture.xml")!)
+        let episode = Episode(guid: "delayed", title: "Delayed fixture", url: URL(string: "https://example.com/delayed.mp3")!, podcast: podcast)
+        context.insert(podcast)
+        context.insert(episode)
+        let playlist = Playlist()
+        playlist.title = "Delayed fixture"
+        context.insert(playlist)
+        let entry = PlaylistEntry(episode: episode, order: 0)
+        context.insert(entry)
+        entry.playlist = playlist
+        try context.save()
+        let snapshot = playlist.storeSplitSnapshot
+        _ = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, authoritativePlaylists: true, projectListeningHistoryToLegacy: false)
+        XCTAssertEqual(try ModelContext(runtime).fetchCount(FetchDescriptor<PlaylistEntry>()), 1)
+        let transaction = StoreSplitPlaylistTransaction(modelContext: ModelContext(state))
+        try transaction.upsert(snapshot)
+        _ = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, projectListeningHistoryToLegacy: false)
+        XCTAssertEqual(try ModelContext(runtime).fetchCount(FetchDescriptor<PlaylistEntry>()), 1)
+        try transaction.tombstoneDurably([StoreSplitPlaylistRemoval(playlistID: snapshot.id, isDefaultQueue: false, identity: episode.stableEpisodeIdentity)])
+        _ = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, projectListeningHistoryToLegacy: false)
+        XCTAssertEqual(try ModelContext(runtime).fetchCount(FetchDescriptor<PlaylistEntry>()), 0)
+    }
+
+    @MainActor
+    func testPlaylistTombstoneArrivingBeforeHeaderDoesNotCreateADefaultQueueDuplicate() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let state = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        try StoreSplitPlaylistTransaction(modelContext: ModelContext(state)).tombstonePlaylist(id: UUID().uuidString)
+        _ = await StoreSplitUserStateImporter.apply(legacyContainer: runtime, userStateContainer: state, projectListeningHistoryToLegacy: false)
+        let playlists = try ModelContext(runtime).fetch(FetchDescriptor<Playlist>())
+        XCTAssertEqual(playlists.count, 1)
+        XCTAssertEqual(playlists.first?.title, Playlist.defaultQueueTitle)
+    }
+}

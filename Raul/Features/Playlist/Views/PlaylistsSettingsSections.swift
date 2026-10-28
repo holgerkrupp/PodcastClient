@@ -79,7 +79,7 @@ struct PlaylistsSettingsSections: View {
             presenting: playlistPendingDeletion
         ) { playlist in
             Button("Delete Playlist", role: .destructive) {
-                PlaylistLibrary.delete(playlist, in: modelContext)
+                PlaylistLibrary.perform { try PlaylistLibrary.delete(playlist, in: modelContext) }
                 playlistPendingDeletion = nil
             }
             Button("Cancel", role: .cancel) {

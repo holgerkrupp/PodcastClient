@@ -309,7 +309,7 @@ private struct LibraryPlaylistsView: View {
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
             NewPlaylistSheet { draft in
-                createPlaylist(from: draft)
+                try createPlaylist(from: draft)
             }
         }
         .task { ensurePlaylistPreferencesValid() }
@@ -319,7 +319,7 @@ private struct LibraryPlaylistsView: View {
     private func deletePlaylists(at offsets: IndexSet) {
         let candidates = visiblePlaylists
         for index in offsets where index < candidates.count {
-            PlaylistLibrary.delete(candidates[index], in: modelContext)
+            PlaylistLibrary.perform { try PlaylistLibrary.delete(candidates[index], in: modelContext) }
         }
         ensurePlaylistPreferencesValid()
     }
@@ -346,8 +346,8 @@ private struct LibraryPlaylistsView: View {
 
     }
 
-    private func createPlaylist(from draft: PlaylistCreationDraft) {
-        PlaylistLibrary.create(
+    private func createPlaylist(from draft: PlaylistCreationDraft) throws {
+        try PlaylistLibrary.create(
             name: draft.name,
             symbolName: draft.symbolName,
             kind: draft.kind,

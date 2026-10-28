@@ -55,3 +55,128 @@ Run the following cases on physical devices or release-equivalent CloudKit accou
 - Confirm the diagnostics health record contains only target host, phase, counts, timing, and redacted errors—never feed URLs, credentials, or payloads.
 
 Record the build number, OS version, fixture name, and result for each run in the release checklist before enabling the migration remotely.
+
+
+## Issue #390 persistence repair — 2026-10-28
+
+The production phase remains `dualSyncBackfill`. Fresh installations still use
+UserState + PodcastCache and an ephemeral compatibility graph; upgrades keep
+SharedDatabase as their runtime. This repair does not create a legacy database
+on every fresh install or enable the December authority cutover.
+
+### Confirmed mechanisms
+
+- Fresh bootstrap deliberately selected an in-memory library when no legacy
+  SQLite file existed. Playlist creation saved that graph, then launched an
+  unawaited UserState task: termination could lose an acknowledged playlist.
+  Queue publishers also swallowed UserState write failures.
+- Initial cache reconstruction imported UserState once. Later successful
+  UserState CloudKit events were gated behind the disabled Release authority
+  cutover, so delayed records could stay invisible until another launch.
+- Reconstructed episodes did not recover availability metadata. Downloads
+  filtered by that flag before checking files. CachedDownloadRecord stores the
+  flag and local URL, but neither is evidence that a file still exists in the
+  current sandbox. Reconstruction and Downloads now check current file paths.
+- A failed file-existence check could select a fresh runtime; factories silently
+  fell back to memory when the app-group URL was unavailable. Factories now
+  throw, bootstrap requires a successful directory read, and known store
+  lineage (including earlier successful legacy-open markers) fails closed when
+  its file is missing. Required split stores open before exposing the runtime.
+
+These are reproduced source mechanisms, not proof of the reporting customer's
+store topology; no customer database or launch diagnostics were supplied.
+
+### Write and recovery behavior
+
+Playlist creation/edits commit UserState synchronously; queue insertion/reorder
+awaits a throwing commit. Split-runtime queue writes persist referenced feed
+metadata before acknowledgment. Explicit removals/deletions persist tombstones;
+failed fetches/commits throw and roll back pending transaction changes. A stale
+publisher cannot revive a deleted playlist. Partial/empty imports cannot infer
+deletions, and a tombstone arriving before its header cannot create a phantom
+Up Next playlist.
+
+Split runtimes hydrate playlists after successful CloudKit imports, foreground
+activation, feed-cache completion, and acknowledged local writes. Hydration is
+serialized and retries unresolved episode references without depending on a new
+UserState timestamp. Failed cache fetches remain failures, and projection
+retries add missing data without replacing existing runtime playlists.
+
+### Reproduction and verification
+
+Fixtures use anonymized `example.com` feeds, temporary disk-backed UserState and
+PodcastCache databases, and a temporary audio file. Tests release the first
+containers, recreate them at the same paths, and reconstruct a new runtime.
+
+| Scenario | Automated evidence |
+| --- | --- |
+| Fresh/no legacy SQLite | Create and edit manual playlist; queue insert/remove/reorder; recreate both backing stores offline; restore identity/title/order |
+| Intact legacy upgrade | Existing durable-store, projection, schema-upgrade and attachment-guard suites remain green |
+| Unavailable storage | Nil/nonexistent directory, missing known store, and orphaned legacy WAL fail closed |
+| Immediate restart | No CloudKit round trip between acknowledged playlist/queue writes and container recreation |
+| Download restart | Existing file restored and visible even with false metadata flag; deleted file reconstructs as unavailable |
+| Interrupted write | Inject commit failure; error propagates, context rolls back, reopened store has no phantom rows/tombstones |
+| Delayed imports | State before cache; retry with unchanged state timestamps; empty import preserves membership; later explicit tombstone removes it |
+| Out-of-order deletion | Tombstone before header does not create a default-queue duplicate; stale publisher cannot revive a deleted ID |
+
+Validation: 127 selected tests passed on iPhone 18 Pro / iOS 27.0 Simulator,
+and 127 passed on iPhone Duo / iOS 27.1 Simulator with Swift 6. Release
+simulator compilation passed with the iOS 26 deployment target. The guide
+registry has 23 unique topic IDs and 63 resolving related-topic links.
+
+A separate disposable iPhone 18 Pro simulator also launched the real app,
+terminated it and relaunched under a different process ID. Its app group held
+UserState.sqlite + PodcastCache.sqlite (and their WAL/SHM files) without creating
+SharedDatabase.sqlite; the relaunched process remained running. This is a
+startup/topology smoke check, not a UI-driven playlist creation test. Simulator
+UI automation was unavailable through the desktop app controls.
+
+The build also required small existing compile-fixture repairs: isolate the
+download stall monitor's actor reads, use SwiftUI's header/footer Section
+initializer, use PlaylistEntry's actual initializer, and date a completion after
+its queue insertion rather than decades before it.
+
+### Help and limits
+
+The in-app `playlists` and `downloads` topics and action-location guide were
+updated. New error alerts have German translations. No help actions or deep
+links were added. Settings/Siri guidance remains accurate. There is no guide
+screenshot/fixture UI harness or canonical Documentation/UserGuide directory in
+this checkout, so no synthetic screenshot was added. Compact-height, iPad,
+macOS, VoiceOver and localized alert layout need real UI review. Live
+multi-device CloudKit, physical storage protection, iOS 26 execution and
+process-kill timing have not been verified here; disk-container recreation and
+failure injection do not substitute for that release matrix.
+
+Existing audio and playlists already present in UserState/legacy storage are
+recoverable without reinstalling. State that existed only in memory before this
+fix cannot be reconstructed. No customer files/stores were reset, removed,
+reattached to CloudKit or made authoritative by a migration checkpoint.
+
+### Changed files
+
+- `Documentation/UpNextViewHierarchy.md`
+- `Localizable.xcstrings`
+- `Raul/App/ModelContainerManager.swift`
+- `Raul/App/RaulApp.swift`
+- `Raul/Features/Downloads/Services/DownloadManager.swift`
+- `Raul/Features/Downloads/Views/DownloadedEpisodesView.swift`
+- `Raul/Features/Help/UserGuideView.swift`
+- `Raul/Features/Library/Views/Podcasts/PodcastListView.swift`
+- `Raul/Features/Playlist/PlaylistLibrary.swift`
+- `Raul/Features/Playlist/Views/NewPlaylistSheet.swift`
+- `Raul/Features/Playlist/Views/PlaylistSettingsView.swift`
+- `Raul/Features/Playlist/Views/PlaylistView.swift`
+- `Raul/Features/Playlist/Views/PlaylistsSettingsSections.swift`
+- `Raul/Features/Settings/Views/PodcastSettingsView.swift`
+- `Raul/Models/Podcast/Episode.swift`
+- `Raul/Shared/Actors/EpisodeListQueryActor.swift`
+- `Raul/Shared/Actors/PlaylistModelActor.swift`
+- `Raul/Shared/Services/StoreSplitCompatibilityProjectionService.swift`
+- `Raul/Shared/Services/StoreSplitFeedCacheWriter.swift`
+- `Raul/Shared/Services/StoreSplitPlaylistSyncWriter.swift`
+- `Raul/Shared/Services/StoreSplitUserStateImporter.swift`
+- `UpNextTests/PlaylistLibraryTests.swift`
+- `UpNextTests/PlaylistModelActorPlaybackQueueTests.swift`
+- `UpNextTests/StoreSplitPlaylistProjectionTests.swift`
+- `Documentation/StoreSplitReleaseGate.md`

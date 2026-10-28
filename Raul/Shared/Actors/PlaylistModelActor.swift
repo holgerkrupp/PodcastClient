@@ -674,7 +674,7 @@ actor PlaylistModelActor {
         )
         let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
         await persistLocalEpisodeClassification(classificationSnapshots)
-        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
+        if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
         if startDownload {
             await startDownloadIfNeeded(episodeURL: episodeURL)
@@ -751,7 +751,7 @@ actor PlaylistModelActor {
         )
         let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
         await persistLocalEpisodeClassification(classificationSnapshots)
-        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
+        if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
         if startDownload {
@@ -829,7 +829,7 @@ actor PlaylistModelActor {
         )
         let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
         await persistLocalEpisodeClassification(classificationSnapshots)
-        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
+        if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
         if startDownload {
@@ -874,9 +874,11 @@ actor PlaylistModelActor {
                 modelContext.delete(entry)
                 entry.episode?.refresh.toggle()
             }
-            normalizeOrder()
-            modelContext.saveIfNeeded()
-            try? await tombstoneSplitStoreEntries(removals)
+            for (index, entry) in try fetchOrderedEntries().filter({ !matchingEntries.contains($0) }).enumerated() {
+                entry.order = index
+            }
+            try modelContext.commitChangesIfNeeded()
+            try await tombstoneSplitStoreEntries(removals)
             scheduleAutoDownloadPolicy()
             Task {
                 await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -927,7 +929,7 @@ actor PlaylistModelActor {
             playlistID: playlistID,
             in: modelContext
         )
-        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
+        if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         scheduleAutoDownloadPolicy()
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -983,7 +985,7 @@ actor PlaylistModelActor {
             playlistID: playlistID,
             in: modelContext
         )
-        if let committedSnapshot { await publishSplitStorePlaylist(committedSnapshot) }
+        if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         scheduleAutoDownloadPolicy()
         Task {
             await PlayNextWidgetSync.refresh(using: modelContainer, playlistIDs: Set([playlistID]))
@@ -1074,6 +1076,7 @@ actor PlaylistModelActor {
 
         let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
         try await writer.tombstoneDurably(removals, at: date)
+        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
         CrashBreadcrumbs.shared.record(
             "store_split_playlist_tombstone_committed",
             details: "count=\(removals.count)"
@@ -1103,14 +1106,50 @@ actor PlaylistModelActor {
         }
     }
 
-    private func publishSplitStorePlaylist(_ snapshot: StoreSplitPlaylistSnapshot) async {
-        guard snapshot.kindRawValue != Playlist.Kind.smart.rawValue else { return }
+    private func publishSplitStorePlaylist(_ snapshot: StoreSplitPlaylistSnapshot) async throws {
         await ModelContainerManager.shared.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
             ModelContainerManager.shared.preparedUserStateContainer
-        }) else { return }
-        await StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
-            .upsert(snapshot)
+        }) else { throw PlaylistPersistenceError.storageUnavailable }
+        // Split-only runtimes must also persist enough episode metadata to
+        // resolve the committed membership after offline container recreation.
+        let source = modelContainer
+        let isSplitRuntime = await MainActor.run {
+            ModelContainerManager.shared.runtimeProjectsFromCache
+                && ModelContainerManager.shared.preparedContainer === source
+        }
+        if isSplitRuntime {
+            guard let cache = await MainActor.run(body: {
+                ModelContainerManager.shared.preparedCacheContainer
+            }) else { throw PlaylistPersistenceError.storageUnavailable }
+            for feedKey in Set(snapshot.entries.map(\.identity.feedURL)) {
+                guard let feed = URL(string: feedKey) else { throw PlaylistPersistenceError.storageUnavailable }
+                let episodeGUIDs = Set(snapshot.entries.filter { $0.identity.feedURL == feedKey }
+                    .compactMap { entry in
+                        entry.identity.episodeID.hasPrefix("guid:")
+                            ? String(entry.identity.episodeID.dropFirst(5)) : nil
+                    })
+                let episodeURLs = Set(try fetchOrderedEntries().compactMap { entry -> URL? in
+                    guard entry.episode?.stableEpisodeIdentity.feedURL == feedKey else { return nil }
+                    return entry.episode?.url
+                })
+                let persisted = await Task.detached {
+                    StoreSplitFeedCacheWriter.projectFeed(
+                        feedURL: feed,
+                        legacyContainer: source,
+                        cacheContainer: cache,
+                        refreshedEpisodeGUIDs: episodeGUIDs,
+                        refreshedEpisodeURLs: episodeURLs
+                    ).completed
+                }.value
+                guard persisted else { throw PlaylistPersistenceError.storageUnavailable }
+            }
+        }
+        try await StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
+            .upsertDurably(snapshot)
+        // A cache completion may have started hydration before this commit.
+        // Queue another pass so that the final UI reflects the committed order.
+        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
     }
 
     // MARK: - Convenience helpers callable from outside

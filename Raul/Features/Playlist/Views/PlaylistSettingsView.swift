@@ -317,8 +317,10 @@ struct PlaylistSettingsView: View {
     }
 
     private func save() {
-        modelContext.saveIfNeeded()
-        StoreSplitPlaylistSyncCoordinator.publish(playlist)
+        guard PlaylistLibrary.perform({
+            try modelContext.commitChangesIfNeeded()
+            try StoreSplitPlaylistSyncCoordinator.publish(playlist)
+        }) else { return }
 
         guard playlist.autoDownloadEnabled else { return }
         PlaylistAutoDownloadCoordinator.schedule(

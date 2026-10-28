@@ -92,6 +92,13 @@ enum StoreSplitFeedCacheWriter {
             result.failureReason = "cancelled_or_deadline"
             return result
         }
+        defer {
+            if result.completed {
+                Task { @MainActor in
+                    await ModelContainerManager.shared.reconcileSplitRuntimePlaylists()
+                }
+            }
+        }
         let legacyContext = ModelContext(legacyContainer)
         
         // Resolve identity aliases with indexed equality lookups. This keeps

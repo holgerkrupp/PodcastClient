@@ -163,52 +163,101 @@ enum StoreSplitPlaylistSnapshotBuilder {
     }
 }
 
+enum PlaylistPersistenceError: LocalizedError {
+    case storageUnavailable
+    var errorDescription: String? {
+        String(localized: "Playlist changes could not be saved. Please try again when storage is available.")
+    }
+}
+
 @MainActor
 enum StoreSplitPlaylistSyncCoordinator {
-    static func publish(_ playlist: Playlist) {
-        guard let container = ModelContainerManager.shared.preparedContainer,
-              let snapshot = try? StoreSplitPlaylistSnapshotBuilder.build(
-                  playlistID: playlist.id,
-                  in: ModelContext(container)
-              ) else { return }
-        Task {
-            await ModelContainerManager.shared.prepareSplitStores()
-            guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
-                return
+    static func publish(_ playlist: Playlist, userStateContainer: ModelContainer? = nil) throws {
+        guard let context = playlist.modelContext else { throw PlaylistPersistenceError.storageUnavailable }
+        guard let container = userStateContainer ?? ModelContainerManager.shared.preparedUserStateContainer else {
+            // A disk-backed legacy graph remains durable without the secondary mirror.
+            guard context.container.configurations.allSatisfy({ !$0.isStoredInMemoryOnly }) else {
+                throw PlaylistPersistenceError.storageUnavailable
             }
-            await StoreSplitPlaylistSyncWriter(modelContainer: container).upsert(snapshot)
+            return
         }
+        try StoreSplitPlaylistTransaction(modelContext: ModelContext(container))
+            .upsert(playlist.storeSplitSnapshot)
+        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
     }
 
-    static func tombstone(playlistID: String) {
-        Task {
-            await ModelContainerManager.shared.prepareSplitStores()
-            guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
-                return
+    static func tombstone(playlistID: String, in context: ModelContext, userStateContainer: ModelContainer? = nil) throws {
+        guard let container = userStateContainer ?? ModelContainerManager.shared.preparedUserStateContainer else {
+            guard context.container.configurations.allSatisfy({ !$0.isStoredInMemoryOnly }) else {
+                throw PlaylistPersistenceError.storageUnavailable
             }
-            await StoreSplitPlaylistSyncWriter(modelContainer: container)
-                .tombstonePlaylist(id: playlistID)
+            return
         }
+        try StoreSplitPlaylistTransaction(modelContext: ModelContext(container))
+            .tombstonePlaylist(id: playlistID)
+        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
     }
 }
 
 @ModelActor
 actor StoreSplitPlaylistSyncWriter {
+    func upsert(_ snapshot: StoreSplitPlaylistSnapshot, at date: Date? = nil, authoritative: Bool = false) {
+        do { try upsertDurably(snapshot, at: date, authoritative: authoritative) }
+        catch { CrashBreadcrumbs.shared.record("playlist_sync_save_failed") }
+    }
+
+    func upsertDurably(_ snapshot: StoreSplitPlaylistSnapshot, at date: Date? = nil, authoritative: Bool = false) throws {
+        try StoreSplitPlaylistTransaction(modelContext: modelContext).upsert(snapshot, at: date, authoritative: authoritative)
+    }
+
+    func tombstonePlaylist(id: String, at date: Date = .now) {
+        do { try StoreSplitPlaylistTransaction(modelContext: modelContext).tombstonePlaylist(id: id, at: date) }
+        catch { CrashBreadcrumbs.shared.record("playlist_sync_save_failed") }
+    }
+
+    func tombstone(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) {
+        do { try tombstoneDurably(removals, at: date) }
+        catch { CrashBreadcrumbs.shared.record("playlist_sync_save_failed") }
+    }
+
+    func tombstoneDurably(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) throws {
+        try StoreSplitPlaylistTransaction(modelContext: modelContext).tombstoneDurably(removals, at: date)
+    }
+}
+
+/// One context and one throwing commit for each acknowledged playlist mutation.
+struct StoreSplitPlaylistTransaction {
+    let modelContext: ModelContext
+    var commit: (ModelContext) throws -> Void = { try $0.save() }
+
+    private func save() throws {
+        do { try commit(modelContext) }
+        catch {
+            modelContext.rollback()
+            throw error
+        }
+    }
+
     func upsert(
         _ snapshot: StoreSplitPlaylistSnapshot,
         at requestedDate: Date? = nil,
         authoritative: Bool = false
-    ) {
+    ) throws {
+        var committed = false
+        defer { if !committed { modelContext.rollback() } }
         let date = requestedDate ?? snapshot.capturedAt
         let deviceID = ListeningDeviceIdentity.current().id
         let playlistID = snapshot.id
         let playlistDescriptor = FetchDescriptor<PlaylistSync>(
             predicate: #Predicate<PlaylistSync> { $0.id == playlistID }
         )
-        if let playlist = try? modelContext.fetch(playlistDescriptor).first {
+        if let playlist = try modelContext.fetch(playlistDescriptor).first {
             // A suspended older publisher must never replace a newer committed
             // local playlist snapshot when its task resumes later.
             if authoritative == false, playlist.updatedAt > date { return }
+            // Editing a stale projection is not an explicit recreation. A new
+            // playlist receives a new identity; deleted IDs never revive.
+            if playlist.isDeleted || playlist.deletedAt != nil { return }
             playlist.title = snapshot.title
             playlist.symbolName = snapshot.symbolName
             playlist.sortIndex = snapshot.sortIndex
@@ -243,19 +292,19 @@ actor StoreSplitPlaylistSyncWriter {
             )
         }
 
-        let fetchedEntries = (try? modelContext.fetch(
+        let fetchedEntries = try modelContext.fetch(
             FetchDescriptor<PlaylistEntrySync>(
                 predicate: #Predicate<PlaylistEntrySync> {
                     $0.playlistID == playlistID
                 }
             )
-        )) ?? []
+        )
         var existingEntries = consolidateEntries(
             fetchedEntries,
             id: \.id
         )
         let fetchedQueueEntries = snapshot.title == Playlist.defaultQueueTitle
-            ? ((try? modelContext.fetch(FetchDescriptor<QueueEntrySync>())) ?? [])
+            ? try modelContext.fetch(FetchDescriptor<QueueEntrySync>())
             : []
         var existingQueueEntries = consolidateEntries(
             fetchedQueueEntries,
@@ -345,7 +394,8 @@ actor StoreSplitPlaylistSyncWriter {
             }
         }
 
-        modelContext.saveIfNeeded()
+        try save()
+        committed = true
     }
 
     /// A snapshot is a projection of one device's local playlist, so it can be
@@ -380,27 +430,37 @@ actor StoreSplitPlaylistSyncWriter {
         return result
     }
 
-    func tombstonePlaylist(id: String, at date: Date = .now) {
+    func tombstonePlaylist(id: String, at date: Date = .now) throws {
+        var committed = false
+        defer { if !committed { modelContext.rollback() } }
         let deviceID = ListeningDeviceIdentity.current().id
         let descriptor = FetchDescriptor<PlaylistSync>(
             predicate: #Predicate<PlaylistSync> { $0.id == id }
         )
-        if let playlist = try? modelContext.fetch(descriptor).first {
+        if let playlist = try modelContext.fetch(descriptor).first {
             playlist.isDeleted = true
             playlist.deletedAt = date
             playlist.updatedAt = date
             playlist.sourceDeviceID = deviceID
+        } else {
+            modelContext.insert(PlaylistSync(
+                id: id, title: "", symbolName: Playlist.defaultManualSymbolName,
+                sortIndex: 0, kindRawValue: Playlist.Kind.manual.rawValue,
+                isDeleted: true, deletedAt: date,
+                updatedAt: date, sourceDeviceID: deviceID
+            ))
         }
-        let entries = ((try? modelContext.fetch(
+        let entries = (try modelContext.fetch(
             FetchDescriptor<PlaylistEntrySync>()
-        )) ?? []).filter { $0.playlistID == id }
+        )).filter { $0.playlistID == id }
         for entry in entries {
             entry.isDeleted = true
             entry.deletedAt = date
             entry.updatedAt = date
             entry.sourceDeviceID = deviceID
         }
-        modelContext.saveIfNeeded()
+        try save()
+        committed = true
     }
 
     func tombstone(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) {
@@ -409,23 +469,26 @@ actor StoreSplitPlaylistSyncWriter {
 
     func tombstoneDurably(_ removals: [StoreSplitPlaylistRemoval], at date: Date = .now) throws {
         guard removals.isEmpty == false else { return }
+        var committed = false
+        defer { if !committed { modelContext.rollback() } }
         let deviceID = ListeningDeviceIdentity.current().id
 
         for removal in removals {
-            tombstonePlaylistEntry(removal, at: date, deviceID: deviceID)
+            try tombstonePlaylistEntry(removal, at: date, deviceID: deviceID)
             if removal.isDefaultQueue {
-                tombstoneQueueEntry(removal, at: date, deviceID: deviceID)
+                try tombstoneQueueEntry(removal, at: date, deviceID: deviceID)
             }
         }
 
-        try modelContext.save()
+        try save()
+        committed = true
     }
 
     private func tombstonePlaylistEntry(
         _ removal: StoreSplitPlaylistRemoval,
         at date: Date,
         deviceID: String
-    ) {
+    ) throws {
         let id = StableIdentityKey.make(
             removal.playlistID,
             removal.identity.feedURL,
@@ -435,7 +498,7 @@ actor StoreSplitPlaylistSyncWriter {
             predicate: #Predicate<PlaylistEntrySync> { $0.id == id }
         )
 
-        if let entry = try? modelContext.fetch(descriptor).first {
+        if let entry = try modelContext.fetch(descriptor).first {
             guard entry.addedAt <= date else { return }
             entry.isDeleted = true
             entry.deletedAt = date
@@ -461,13 +524,13 @@ actor StoreSplitPlaylistSyncWriter {
         _ removal: StoreSplitPlaylistRemoval,
         at date: Date,
         deviceID: String
-    ) {
+    ) throws {
         let id = removal.identity.key
         let descriptor = FetchDescriptor<QueueEntrySync>(
             predicate: #Predicate<QueueEntrySync> { $0.id == id }
         )
 
-        if let entry = try? modelContext.fetch(descriptor).first {
+        if let entry = try modelContext.fetch(descriptor).first {
             guard entry.addedAt <= date else { return }
             entry.isDeleted = true
             entry.deletedAt = date

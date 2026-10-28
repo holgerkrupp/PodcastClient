@@ -82,11 +82,9 @@ actor EpisodeListQueryActor {
         downloadedFiles: Set<URL>,
         sort: EpisodeListQuerySort
     ) throws -> [PersistentIdentifier] {
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { episode in
-                episode.metaData?.isAvailableLocally == true
-            }
-        )
+        // Availability flags can lag a download or a reconstructed cache graph.
+        // The caller's on-disk inventory is the authority for Downloads.
+        let descriptor = FetchDescriptor<Episode>()
         var episodes = try modelContext.fetch(descriptor).filter { episode in
             guard let localFile = episode.localFile?.standardizedFileURL else {
                 return false

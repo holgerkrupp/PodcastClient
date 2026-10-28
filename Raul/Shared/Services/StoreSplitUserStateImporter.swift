@@ -21,6 +21,7 @@ struct StoreSplitUserStateImportResult: Sendable {
 }
 
 actor StoreSplitUserStateImporter {
+    private var sourceReadFailed = false
     private let sourcePageSize = 200
     private let historyPageSize = 100
     /// Page size for the last-resort feed scan. Kept small so each batch of
@@ -92,12 +93,14 @@ actor StoreSplitUserStateImporter {
             userStateContainer: userStateContainer,
             credentialStore: credentialStore
         )
-        return await importer.run(
+        var result = await importer.run(
             authoritativePlaylists: authoritativePlaylists,
             projectListeningHistoryToLegacy: projectListeningHistoryToLegacy,
             episodeStateProjectionRecencyCutoff: episodeStateProjectionRecencyCutoff,
             changedStreams: changedStreams
         )
+        if await importer.sourceReadFailed { result.failed += 1 }
+        return result
     }
 
 #if DEBUG
@@ -616,7 +619,16 @@ actor StoreSplitUserStateImporter {
         authoritative: Bool,
         result: inout StoreSplitUserStateImportResult
     ) async {
-        var localPlaylists = ((try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? [])
+        // Queue rows can arrive before their PlaylistSync header.
+        let fetchedPlaylists: [Playlist]
+        do {
+            _ = try Playlist.ensureDefaultQueueCommitted(in: legacyContext)
+            fetchedPlaylists = try legacyContext.fetch(FetchDescriptor<Playlist>())
+        } catch {
+            result.failed += 1
+            return
+        }
+        var localPlaylists = fetchedPlaylists
             .reduce(into: [String: Playlist]()) { $0[$1.id.uuidString] = $1 }
         var localPlaylistBySyncedID: [String: Playlist] = [:]
         var localPlaylistByLogicalKey: [String: Playlist] = [:]
@@ -645,6 +657,20 @@ actor StoreSplitUserStateImporter {
                     continue
                 }
 
+                if record.isDeleted || record.deletedAt != nil {
+                    // A tombstone may arrive before the original playlist.
+                    // Never materialize it as a new default-titled Playlist.
+                    if let playlist = localPlaylists[record.id]
+                        ?? matchingLocalPlaylist(for: record, among: Array(localPlaylists.values)),
+                       record.id != Playlist.defaultQueueSyncID {
+                        setIfChanged(playlist, \.hidden, true)
+                        for entry in playlist.items ?? [] { legacyContext.delete(entry) }
+                        localPlaylistByLogicalKey[logicalKey] = playlist
+                        result.playlistsApplied += 1
+                    }
+                    continue
+                }
+
                 guard let playlistID = UUID(uuidString: record.id) else {
                     result.failed += 1
                     continue
@@ -670,16 +696,6 @@ actor StoreSplitUserStateImporter {
                         ? Playlist.defaultQueueSyncID
                         : record.id
                 )
-
-                if record.isDeleted || record.deletedAt != nil {
-                    guard playlist.title != Playlist.defaultQueueTitle else { continue }
-                    setIfChanged(playlist, \.hidden, true)
-                    for entry in playlist.items ?? [] {
-                        legacyContext.delete(entry)
-                    }
-                    result.playlistsApplied += 1
-                    continue
-                }
 
                 setIfChanged(playlist, \.title, record.title)
                 setIfChanged(playlist, \.symbolName, record.symbolName)
@@ -864,25 +880,8 @@ actor StoreSplitUserStateImporter {
             }
         }
 
-        if authoritative {
-            for (playlistID, activeRemoteIdentities) in activeRemoteIdentitiesByPlaylistID {
-                guard let playlist = localPlaylists[playlistID] else { continue }
-                for entry in playlist.ordered {
-                    guard let episode = entry.episode else {
-                        legacyContext.delete(entry)
-                        continue
-                    }
-                    let identity = stableIdentityKey(
-                        feedURL: episode.stableEpisodeIdentity.feedURL,
-                        episodeID: episode.stableEpisodeIdentity.episodeID
-                    )
-                    if activeRemoteIdentities.contains(identity) == false {
-                        legacyContext.delete(entry)
-                        result.playlistEntriesApplied += 1
-                    }
-                }
-            }
-        }
+        // Never infer removals from membership absent in a partial CloudKit
+        // delivery. Explicit tombstones above carry deletion intent.
     }
 
     private func applyQueueEntryFallback(
@@ -1866,7 +1865,12 @@ actor StoreSplitUserStateImporter {
         var descriptor = FetchDescriptor<Model>(sortBy: sortBy)
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = limit
-        return (try? context(for: type).fetch(descriptor)) ?? []
+        do { return try context(for: type).fetch(descriptor) }
+        catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_import_fetch_failed")
+            return []
+        }
     }
 
     private func fetchEpisodeStatePage(offset: Int, limit: Int) -> [EpisodeStateSync] {

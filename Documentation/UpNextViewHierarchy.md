@@ -65,3 +65,10 @@ Review portrait and compact-height iPhone, iPhone Duo, landscape, regular-width 
 The Inbox toolbar exposes **Clear inbox** beside refresh when episodes are present. A confirmation shows the current episode count. Clearing removes the current inbox snapshot in batches while preserving Library, playlists, playback history and archive state.
 
 All subscriptions, including OPML imports, admit only episodes released strictly after the subscription date to Inbox. Older or undated episodes remain in Library as suppressed back catalogue.
+
+
+### Playlist persistence and Downloads recovery (#390)
+
+- New Playlist stays open with **Could Not Save Playlist** if the local persistent write fails. Retry after storage is available. Other playlist edits/deletions surface the same error at the app root.
+- Up Next membership/order is acknowledged after the local UserState commit; CloudKit delivery is asynchronous. Split-only runtimes hydrate later imports additively; only explicit tombstones remove membership.
+- **Downloads → More → Rescan** refreshes the local file inventory. Files decide visibility even when reconstructed metadata is stale. No navigation action performs a replacement download.

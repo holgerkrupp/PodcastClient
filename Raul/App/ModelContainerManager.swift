@@ -39,6 +39,24 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
     }
 }
 
+/// Absence must be established by a successful directory read, not fileExists
+/// (which also returns false for protected/unavailable storage).
+enum StoreLineage {
+    static let key = "storeSplit.openedPersistentStores.v1"
+
+    static func validate(directory: URL?, expected: [String]) throws {
+        guard let directory else { throw PlaylistPersistenceError.storageUnavailable }
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        for name in expected where !files.contains(name) {
+            throw PlaylistPersistenceError.storageUnavailable
+        }
+        if !files.contains("SharedDatabase.sqlite"),
+           files.contains(where: { $0 == "SharedDatabase.sqlite-wal" || $0 == "SharedDatabase.sqlite-shm" }) {
+            throw PlaylistPersistenceError.storageUnavailable
+        }
+    }
+}
+
 @MainActor
 final class StoreCloudKitActivityMonitor: ObservableObject {
     enum StoreKind: String, Codable, CaseIterable, Sendable {
@@ -525,6 +543,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var preparedUserStateContainer: ModelContainer?
     @Published private(set) var preparedCacheContainer: ModelContainer?
     @Published private(set) var initializationError: String?
+    @Published var playlistSaveFailed = false
     @Published private(set) var bootstrapMode: StoreBootstrapMode = .freshSplitInstall
     @Published private(set) var userStateInitializationError: String?
     @Published private(set) var cacheInitializationError: String?
@@ -566,6 +585,7 @@ class ModelContainerManager: ObservableObject {
     private var maintenanceExecutionContext: StoreMaintenanceExecutionContext {
         isRunningBackgroundProcessingTask ? .systemBackgroundProcessing : .foreground
     }
+    private var didAttemptCompatibilityProjection = false
     private var didBuildCompatibilityProjection = false
     private var isBuildingCompatibilityProjection = false
     private var migrationTask: Task<StoreSplitMigrationExecutionResult, Never>?
@@ -794,6 +814,8 @@ class ModelContainerManager: ObservableObject {
         let container: ModelContainer
         let requiresInitialCloudImport: Bool
         let bootstrapMode: StoreBootstrapMode
+        var userStateContainer: ModelContainer? = nil
+        var cacheContainer: ModelContainer? = nil
     }
 
     /// Holds the open started by `startEagerContainerPreparation` until
@@ -853,6 +875,16 @@ class ModelContainerManager: ObservableObject {
 #if !DEBUG
             _ = Self.promoteRolloutForCompletedSplitStoreMigrationIfNeeded()
 #endif
+            var expectedStores = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
+            let lineageDefaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+            // Older builds already recorded this only after a successful disk
+            // open. Preserve that lineage on the first launch of this fix.
+            if !StoreDevelopmentConfiguration.legacyCloudCutoverCompleted,
+               lineageDefaults.object(forKey: StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey) != nil,
+               !expectedStores.contains("SharedDatabase.sqlite") {
+                expectedStores.append("SharedDatabase.sqlite")
+            }
+            try StoreLineage.validate(directory: Self.sharedContainerURL, expected: expectedStores)
             let requiresInitialCloudImport =
                 StoreDevelopmentConfiguration.legacyCloudSyncEnabled
                 && (Self.sharedStoreURL.map {
@@ -866,17 +898,29 @@ class ModelContainerManager: ObservableObject {
                 legacyCloudCutoverCompleted: StoreDevelopmentConfiguration.legacyCloudCutoverCompleted,
                 releasePhaseIsPostCutover: StoreSplitReleasePhase.current == .userStateAuthority
             )
+            CrashBreadcrumbs.shared.record("store_bootstrap_classified", details: "mode=\(bootstrapMode.rawValue),legacy_present=\(legacyStoreExists),known_stores=\(expectedStores.count)")
             let runtimeProjectsFromCache = Self.runtimeUsesCacheProjection
                 || (StoreDevelopmentConfiguration.splitStoresEnabled
                     && bootstrapMode.usesInMemoryRuntimeProjection)
+            // A projection is usable only after its durable backing stores
+            // opened. Never expose a writable empty runtime on opening failure.
+            let userState = runtimeProjectsFromCache ? try Self.makeUserStateContainer() : nil
+            let cache = runtimeProjectsFromCache ? try Self.makeCacheContainer() : nil
             let runtimeContainer = try Self.makeLegacyContainer(
                 isStoredInMemoryOnly: runtimeProjectsFromCache
             )
+            if !runtimeProjectsFromCache {
+                var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
+                if !expected.contains("SharedDatabase.sqlite") { expected.append("SharedDatabase.sqlite") }
+                UserDefaults.standard.set(expected, forKey: StoreLineage.key)
+            }
             StoreSplitLaunchHealth.markRuntimeReady()
             return RuntimeContainerPreparation(
                 container: runtimeContainer,
                 requiresInitialCloudImport: requiresInitialCloudImport,
-                bootstrapMode: bootstrapMode
+                bootstrapMode: bootstrapMode,
+                userStateContainer: userState,
+                cacheContainer: cache
             )
         }
     }
@@ -915,6 +959,8 @@ class ModelContainerManager: ObservableObject {
             let preparedContainer = preparation.container
             requiresInitialCloudImport = preparation.requiresInitialCloudImport
             bootstrapMode = preparation.bootstrapMode
+            if let userState = preparation.userStateContainer { preparedUserStateContainer = userState }
+            if let cache = preparation.cacheContainer { preparedCacheContainer = cache }
             if self.preparedContainer == nil {
                 self.preparedContainer = preparedContainer
                 StoreCloudKitActivityMonitor.shared.refreshStoreIdentifiers()
@@ -1042,8 +1088,20 @@ class ModelContainerManager: ObservableObject {
             Self.reconcileMigrationLedger(cacheContainer: cache)
         }
 
+        if runtimeProjectsFromCache {
+            guard preparedUserStateContainer != nil, preparedCacheContainer != nil else {
+                initializationError = "Persistent storage is unavailable. Please try again."
+                return
+            }
+            var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
+            for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
+                expected.append(name)
+            }
+            UserDefaults.standard.set(expected, forKey: StoreLineage.key)
+        }
         await buildRuntimeGraphIfNeeded()
         runtimeStoreReadiness = .ready
+        NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         updateMigrationReadiness()
         CrashBreadcrumbs.shared.record("runtime_store_ready")
 
@@ -1295,8 +1353,27 @@ class ModelContainerManager: ObservableObject {
         UserDefaults.standard.set(true, forKey: Self.usedInMemoryProjectionKey)
 
         await prepareLegacyMigrationSourceIfNeeded(cacheContainer: cacheContainer)
+        let isRetry = didAttemptCompatibilityProjection
+        didAttemptCompatibilityProjection = true
         let projection = await Task.detached(priority: .userInitiated) {
-            StoreSplitCompatibilityProjectionService.rebuild(
+            if isRetry {
+                // A partial projection can already contain successful user
+                // edits. Retry missing cache rows additively, never replace it.
+                do {
+                    let context = ModelContext(cacheContainer)
+                    let keys = Set(try context.fetch(FetchDescriptor<CachedPodcast>()).map(\.feedURL))
+                    return StoreSplitCompatibilityProjectionService.recoverMissingLibraryData(
+                        cacheContainer: cacheContainer,
+                        runtimeContainer: runtimeContainer,
+                        recoverableFeedKeys: keys
+                    )
+                } catch {
+                    var failed = StoreSplitCompatibilityProjectionResult()
+                    failed.failed = 1
+                    return failed
+                }
+            }
+            return StoreSplitCompatibilityProjectionService.rebuild(
                 cacheContainer: cacheContainer,
                 runtimeContainer: runtimeContainer
             )
@@ -1311,7 +1388,7 @@ class ModelContainerManager: ObservableObject {
             _ = await StoreSplitUserStateImporter.apply(
                 legacyContainer: runtimeContainer,
                 userStateContainer: userStateContainer,
-                authoritativePlaylists: true,
+                authoritativePlaylists: false,
                 projectListeningHistoryToLegacy: true,
                 episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
                     .episodeStateProjectionRecencyCutoff
@@ -3556,6 +3633,35 @@ class ModelContainerManager: ObservableObject {
         }
     }
 
+    /// Lightweight playlist hydration for split-only runtimes. Legacy upgrade
+    /// reads retain their shipping authority and background migration policy.
+    func reconcileSplitRuntimePlaylists() async {
+        guard runtimeProjectsFromCache,
+              runtimeStoreReadiness == .ready,
+              let runtime = preparedContainer,
+              let userState = preparedUserStateContainer else { return }
+        await buildCompatibilityProjectionIfNeeded()
+        if let userStateImportTask {
+            _ = await userStateImportTask.value
+            await reconcileSplitRuntimePlaylists()
+            return
+        }
+        let task = Task {
+            await StoreSplitUserStateImporter.apply(
+                legacyContainer: runtime,
+                userStateContainer: userState,
+                authoritativePlaylists: false,
+                projectListeningHistoryToLegacy: false,
+                changedStreams: [.playlists]
+            )
+        }
+        userStateImportTask = task
+        let result = await task.value
+        userStateImportTask = nil
+        NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
+        CrashBreadcrumbs.shared.record("split_runtime_playlist_import", details: "failed=\(result.failed),pending_feeds=\(result.playlistFeedsToBootstrap.count)")
+    }
+
     private func applySyncedUserStateIfPossible(
         authoritativePlaylists: Bool = false,
         refreshMissingFeeds: Bool = false
@@ -4019,12 +4125,7 @@ class ModelContainerManager: ObservableObject {
                 cloudKitDatabase: legacyCloudSyncApplied ? .automatic : .none
             )
         } else {
-            configuration = ModelConfiguration(
-                "Legacy",
-                isStoredInMemoryOnly: true,
-                allowsSave: allowsSave,
-                cloudKitDatabase: .none
-            )
+            throw PlaylistPersistenceError.storageUnavailable
         }
 
         let openStartedAt = ProcessInfo.processInfo.systemUptime
@@ -4071,7 +4172,8 @@ class ModelContainerManager: ObservableObject {
     }
 
     nonisolated static func makeUserStateContainer(
-        isStoredInMemoryOnly: Bool = false
+        isStoredInMemoryOnly: Bool = false,
+        storageURL: URL? = nil
     ) throws -> ModelContainer {
         let schema = Schema([
             SubscriptionSync.self,
@@ -4093,6 +4195,8 @@ class ModelContainerManager: ObservableObject {
                 isStoredInMemoryOnly: true,
                 cloudKitDatabase: .none
             )
+        } else if let storageURL {
+            configuration = ModelConfiguration("UserState", schema: schema, url: storageURL, cloudKitDatabase: .none)
         } else if let userStateStoreURL {
             configuration = ModelConfiguration(
                 "UserState",
@@ -4103,12 +4207,7 @@ class ModelContainerManager: ObservableObject {
                     : .none
             )
         } else {
-            configuration = ModelConfiguration(
-                "UserState",
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                cloudKitDatabase: .none
-            )
+            throw PlaylistPersistenceError.storageUnavailable
         }
 
         let openStartedAt = ProcessInfo.processInfo.systemUptime
@@ -4128,7 +4227,8 @@ class ModelContainerManager: ObservableObject {
     }
 
     nonisolated static func makeCacheContainer(
-        isStoredInMemoryOnly: Bool = false
+        isStoredInMemoryOnly: Bool = false,
+        storageURL: URL? = nil
     ) throws -> ModelContainer {
         let schema = Schema([
             StoreSplitMigrationCheckpoint.self,
@@ -4163,6 +4263,8 @@ class ModelContainerManager: ObservableObject {
                 isStoredInMemoryOnly: true,
                 cloudKitDatabase: .none
             )
+        } else if let storageURL {
+            configuration = ModelConfiguration("PodcastCache", schema: schema, url: storageURL, cloudKitDatabase: .none)
         } else if let cacheStoreURL {
             configuration = ModelConfiguration(
                 "PodcastCache",
@@ -4171,12 +4273,7 @@ class ModelContainerManager: ObservableObject {
                 cloudKitDatabase: .none
             )
         } else {
-            configuration = ModelConfiguration(
-                "PodcastCache",
-                schema: schema,
-                isStoredInMemoryOnly: true,
-                cloudKitDatabase: .none
-            )
+            throw PlaylistPersistenceError.storageUnavailable
         }
 
         let openStartedAt = ProcessInfo.processInfo.systemUptime

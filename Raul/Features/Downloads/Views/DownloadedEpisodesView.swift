@@ -75,6 +75,9 @@ struct DownloadedEpisodesView: View {
         .task {
             await refreshDownloadedEpisodes()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .splitRuntimeDidHydrate)) { _ in
+            Task { await refreshDownloadedEpisodes() }
+        }
         .onChange(of: sortRaw) { _, _ in
             Task { await refreshDownloadedEpisodes() }
         }

@@ -1,6 +1,26 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Playlist changes could not be saved. Please try again when storage is available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Änderungen an der Playlist konnten nicht gespeichert werden. Versuche es erneut, sobald der Speicher verfügbar ist."
+          }
+        }
+      }
+    },
+    "Could Not Save Playlist" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Playlist konnte nicht gespeichert werden"
+          }
+        }
+      }
+    },
     "This podcast requires an updated access token. Choose Fix Authentication to update access." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Podcast benötigt ein aktualisiertes Zugriffstoken. Wähle „Anmeldung reparieren“, um den Zugriff zu aktualisieren." } } } },
     "Your podcast credentials could not be accessed on this device." : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Auf diesem Gerät konnte nicht auf die Podcast-Anmeldedaten zugegriffen werden." } } } },
     "Login required" : { "localizations" : { "de" : { "stringUnit" : { "state" : "translated", "value" : "Anmeldung erforderlich" } } } },

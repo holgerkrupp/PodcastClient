@@ -644,7 +644,7 @@ struct PodcastSettingsView: View {
         // lose their presentation anchor during SwiftUI reconciliation.
         .sheet(isPresented: $showCreatePlaylistFromSettings) {
             NewPlaylistSheet { draft in
-                PlaylistLibrary.create(
+                try PlaylistLibrary.create(
                     name: draft.name,
                     symbolName: draft.symbolName,
                     kind: draft.kind,
@@ -3224,7 +3224,7 @@ private struct ChapterSkipRuleSuggestionReviewView: View {
 
     var body: some View {
         Form {
-            Section("Suggested for \(podcastTitle)") {
+            Section {
                 Label(
                     "You skipped matching chapters in \(suggestion.skipCount) different episodes.",
                     systemImage: "lightbulb"
@@ -3249,6 +3249,8 @@ private struct ChapterSkipRuleSuggestionReviewView: View {
                         .frame(maxWidth: .infinity)
                 }
                 .disabled(keyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            } header: {
+                Text("Suggested for \(podcastTitle)")
             } footer: {
                 Text(customSettingsEnabled
                      ? "Nothing changes until you save. This podcast-specific rule will sync through iCloud."

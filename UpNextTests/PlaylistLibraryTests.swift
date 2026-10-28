@@ -6,9 +6,12 @@ import XCTest
 final class PlaylistLibraryTests: XCTestCase {
     private var defaults: UserDefaults!
     private var defaultsSuiteName: String!
+    private var directory: URL!
     private var container: ModelContainer?
 
     override func setUp() async throws {
+        directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defaultsSuiteName = "PlaylistLibraryTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuiteName)
     }
@@ -16,14 +19,15 @@ final class PlaylistLibraryTests: XCTestCase {
     override func tearDown() async throws {
         defaults.removePersistentDomain(forName: defaultsSuiteName)
         container = nil
+        try FileManager.default.removeItem(at: directory)
     }
 
     func testCreateAppendsAManualPlaylistWithADistinctName() throws {
         let context = try makeContext()
         _ = Playlist.ensureDefaultQueue(in: context)
 
-        let first = PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
-        let second = PlaylistLibrary.create(name: "Commute", symbolName: "", in: context)
+        let first = try PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
+        let second = try PlaylistLibrary.create(name: "Commute", symbolName: "", in: context)
 
         XCTAssertEqual(first.title, "Commute")
         XCTAssertEqual(first.symbolName, "car")
@@ -37,7 +41,7 @@ final class PlaylistLibraryTests: XCTestCase {
     func testDeleteRemovesThePlaylistAndItsEntriesButKeepsTheEpisodes() throws {
         let context = try makeContext()
         _ = Playlist.ensureDefaultQueue(in: context)
-        let playlist = PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
+        let playlist = try PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
         let episode = Episode(
             title: "Episode",
             url: URL(string: "https://example.com/episode.mp3")!
@@ -48,7 +52,7 @@ final class PlaylistLibraryTests: XCTestCase {
         entry.playlist = playlist
         try context.save()
 
-        PlaylistLibrary.delete(playlist, in: context, defaults: defaults)
+        try PlaylistLibrary.delete(playlist, in: context, defaults: defaults)
 
         let remainingTitles = try context.fetch(FetchDescriptor<Playlist>()).map(\.title)
         XCTAssertFalse(remainingTitles.contains("Commute"))
@@ -59,10 +63,10 @@ final class PlaylistLibraryTests: XCTestCase {
     func testDeletingTheSelectedPlaylistSelectsTheBuiltInQueue() throws {
         let context = try makeContext()
         let queue = Playlist.ensureDefaultQueue(in: context)
-        let playlist = PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
+        let playlist = try PlaylistLibrary.create(name: "Commute", symbolName: "car", in: context)
         defaults.set(playlist.id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
 
-        PlaylistLibrary.delete(playlist, in: context, defaults: defaults)
+        try PlaylistLibrary.delete(playlist, in: context, defaults: defaults)
 
         XCTAssertEqual(
             defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID),
@@ -73,11 +77,11 @@ final class PlaylistLibraryTests: XCTestCase {
     func testDeletingAnotherPlaylistLeavesTheSelectionAlone() throws {
         let context = try makeContext()
         _ = Playlist.ensureDefaultQueue(in: context)
-        let selected = PlaylistLibrary.create(name: "Selected", symbolName: "car", in: context)
-        let other = PlaylistLibrary.create(name: "Other", symbolName: "car", in: context)
+        let selected = try PlaylistLibrary.create(name: "Selected", symbolName: "car", in: context)
+        let other = try PlaylistLibrary.create(name: "Other", symbolName: "car", in: context)
         defaults.set(selected.id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
 
-        PlaylistLibrary.delete(other, in: context, defaults: defaults)
+        try PlaylistLibrary.delete(other, in: context, defaults: defaults)
 
         XCTAssertEqual(
             defaults.string(forKey: PlaylistPreferenceKeys.selectedPlaylistID),
@@ -92,7 +96,7 @@ final class PlaylistLibraryTests: XCTestCase {
         // still protects it.
         queue.deleteable = true
 
-        PlaylistLibrary.delete(queue, in: context, defaults: defaults)
+        try PlaylistLibrary.delete(queue, in: context, defaults: defaults)
 
         let titles = try context.fetch(FetchDescriptor<Playlist>()).map(\.title)
         XCTAssertTrue(titles.contains(Playlist.defaultQueueTitle))
@@ -118,7 +122,7 @@ final class PlaylistLibraryTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let configuration = ModelConfiguration(
-            isStoredInMemoryOnly: true,
+            url: directory.appendingPathComponent("Library.sqlite"),
             cloudKitDatabase: .none
         )
         let container = try ModelContainer(

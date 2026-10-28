@@ -51,9 +51,10 @@ enum StoreSplitCompatibilityProjectionService {
             )
             feedDescriptor.fetchOffset = feedOffset
             feedDescriptor.fetchLimit = feedPageSize
-            guard let feeds = try? cache.fetch(feedDescriptor), !feeds.isEmpty else {
-                break
-            }
+            let feeds: [CachedPodcast]
+            do { feeds = try cache.fetch(feedDescriptor) }
+            catch { result.failed += 1; return result }
+            guard !feeds.isEmpty else { break }
 
             for cachedPodcast in feeds {
                 guard let feedURL = URL(string: cachedPodcast.feedURL) else {
@@ -75,8 +76,10 @@ enum StoreSplitCompatibilityProjectionService {
                     )
                     episodeDescriptor.fetchOffset = episodeOffset
                     episodeDescriptor.fetchLimit = episodePageSize
-                    guard let cachedEpisodes = try? episodeCache.fetch(episodeDescriptor),
-                          !cachedEpisodes.isEmpty else { break }
+                    let cachedEpisodes: [CachedEpisode]
+                    do { cachedEpisodes = try episodeCache.fetch(episodeDescriptor) }
+                    catch { result.failed += 1; return result }
+                    guard !cachedEpisodes.isEmpty else { break }
 
                     for cachedEpisode in cachedEpisodes {
                         let episode = makeEpisode(
@@ -153,9 +156,10 @@ enum StoreSplitCompatibilityProjectionService {
             )
             feedDescriptor.fetchOffset = feedOffset
             feedDescriptor.fetchLimit = feedPageSize
-            guard let feeds = try? cache.fetch(feedDescriptor), !feeds.isEmpty else {
-                break
-            }
+            let feeds: [CachedPodcast]
+            do { feeds = try cache.fetch(feedDescriptor) }
+            catch { result.failed += 1; return result }
+            guard !feeds.isEmpty else { break }
 
             for cachedPodcast in feeds {
                 guard recoverableFeedKeys.contains(cachedPodcast.feedURL) else {
@@ -195,8 +199,10 @@ enum StoreSplitCompatibilityProjectionService {
                     )
                     episodeDescriptor.fetchOffset = episodeOffset
                     episodeDescriptor.fetchLimit = episodePageSize
-                    guard let cachedEpisodes = try? episodeCache.fetch(episodeDescriptor),
-                          !cachedEpisodes.isEmpty else { break }
+                    let cachedEpisodes: [CachedEpisode]
+                    do { cachedEpisodes = try episodeCache.fetch(episodeDescriptor) }
+                    catch { result.failed += 1; return result }
+                    guard !cachedEpisodes.isEmpty else { break }
 
                     for cachedEpisode in cachedEpisodes {
                         guard knownEpisodeKeys.contains(cachedEpisode.id) == false else {
@@ -297,6 +303,12 @@ enum StoreSplitCompatibilityProjectionService {
         episode.metaData?.systemSuppressionReasonRawValue =
             cachedEpisode.localSystemSuppressionReasonRawValue
         episode.metaData?.reconcileLegacyStatus()
+        // Resolve the current sandbox path rather than trusting a cached URL or
+        // flag from a previous installation. Never redownload an existing file.
+        episode.metaData?.isAvailableLocally = episode.localFile.map {
+            FileManager.default.fileExists(atPath: $0.path)
+        } ?? false
+
 
         let rowID = cachedEpisode.id
         let chapterDescriptor = FetchDescriptor<CachedChapter>(

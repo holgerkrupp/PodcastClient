@@ -87,7 +87,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([0, 1], in: fixture.selectedPlaylist, fixture: fixture)
         let finishedURL = try XCTUnwrap(fixture.episodes[0].url)
-        let completionDate = Date(timeIntervalSince1970: 10_000)
+        let completionDate = Date.now
         let episodeActor = EpisodeActor(modelContainer: fixture.container)
 
         try await episodeActor.commitFinishedEpisode(
@@ -368,10 +368,10 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         let requeuedAt = Date(timeIntervalSince1970: 3_000)
         let requeuedEntry = PlaylistEntry(
             episode: episode,
-            playlist: fixture.selectedPlaylist,
-            order: 0,
-            dateAdded: requeuedAt
+            order: 0
         )
+        requeuedEntry.playlist = fixture.selectedPlaylist
+        requeuedEntry.dateAdded = requeuedAt
         fixture.context.insert(requeuedEntry)
         try fixture.context.save()
 

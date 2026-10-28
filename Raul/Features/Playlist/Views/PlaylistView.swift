@@ -132,7 +132,7 @@ struct PlaylistView: View {
         }
         .sheet(isPresented: $showCreatePlaylistSheet) {
             NewPlaylistSheet { draft in
-                createPlaylist(from: draft)
+                try createPlaylist(from: draft)
             }
         }
         .sheet(isPresented: $showsLivePodcasts) {
@@ -216,8 +216,8 @@ struct PlaylistView: View {
         storedPlaylistID = selectedPlaylistID
     }
 
-    private func createPlaylist(from draft: PlaylistCreationDraft) {
-        let playlist = PlaylistLibrary.create(
+    private func createPlaylist(from draft: PlaylistCreationDraft) throws {
+        let playlist = try PlaylistLibrary.create(
             name: draft.name,
             symbolName: draft.symbolName,
             kind: draft.kind,

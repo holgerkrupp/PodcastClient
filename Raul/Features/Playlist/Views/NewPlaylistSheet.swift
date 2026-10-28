@@ -11,7 +11,8 @@ struct NewPlaylistSheet: View {
 
     @State private var draft = PlaylistCreationDraft()
 
-    let onCreate: (PlaylistCreationDraft) -> Void
+    @State private var saveFailed = false
+    let onCreate: (PlaylistCreationDraft) throws -> Void
 
     var body: some View {
         NavigationStack {
@@ -55,6 +56,11 @@ struct NewPlaylistSheet: View {
                     PlaylistSymbolGridPicker(selection: $draft.symbolName)
                 }
             }
+            .alert("Could Not Save Playlist", isPresented: $saveFailed) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("Playlist changes could not be saved. Please try again when storage is available.")
+            }
             .navigationTitle("New Playlist")
             .platformInlineNavigationTitle()
             .toolbar {
@@ -66,8 +72,12 @@ struct NewPlaylistSheet: View {
 
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
-                        onCreate(draft)
-                        dismiss()
+                        do {
+                            try onCreate(draft)
+                            dismiss()
+                        } catch {
+                            saveFailed = true
+                        }
                     }
                     .disabled(canCreate == false)
                 }
