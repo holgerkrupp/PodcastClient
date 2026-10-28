@@ -1454,7 +1454,11 @@ final class StableIdentityTests: XCTestCase {
             podcast: podcast
         )
         publisherEpisode.transcriptLines = [
-            TranscriptLineAndTime(text: "Publisher supplied", startTime: 0)
+            TranscriptLineAndTime(
+                text: "Publisher supplied",
+                startTime: 0,
+                source: .publisher
+            )
         ]
         podcast.episodes = [generatedEpisode, publisherEpisode]
         legacyContainer.mainContext.insert(podcast)
@@ -1492,6 +1496,16 @@ final class StableIdentityTests: XCTestCase {
         }
         try legacyContainer.mainContext.save()
         try cacheContainer.mainContext.save()
+
+        // The importer consumes PodcastCache materializations. Model the real
+        // release path by copying publisher content and episode identity before
+        // applying the AI tombstones.
+        let cacheProjection = StoreSplitFeedCacheWriter.projectFeed(
+            feedURL: try XCTUnwrap(podcast.feed),
+            legacyContainer: legacyContainer,
+            cacheContainer: cacheContainer
+        )
+        XCTAssertTrue(cacheProjection.completed)
 
         let result = await StoreSplitAIContentImporter.apply(
             legacyContainer: legacyContainer,
@@ -1751,7 +1765,7 @@ final class StableIdentityTests: XCTestCase {
     }
 
     @MainActor
-    func testAuthoritativePlaylistImportReplacesStaleSameNamedLocalEntries() async throws {
+    func testPartialPlaylistImportPreservesEntriesWithoutTombstones() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true
         )
@@ -1828,7 +1842,11 @@ final class StableIdentityTests: XCTestCase {
                 .first { $0.title == Playlist.defaultQueueTitle }
         )
         XCTAssertEqual(queue.id, macPlaylist.id)
-        XCTAssertEqual(queue.ordered.map { $0.episode?.guid }, ["phone"])
+        XCTAssertEqual(
+            queue.ordered.map { $0.episode?.guid },
+            ["stale", "phone"],
+            "A partial or delayed CloudKit snapshot cannot prove that the absent legacy membership was deleted."
+        )
     }
 
     @MainActor

@@ -177,11 +177,18 @@ actor StoreSplitSubscriptionSyncWriter {
                 subscription.accessKindRawValue = profile.kind.rawValue
                 subscription.accessProviderID = profile.providerID?.rawValue
             }
-            let didChange = subscription.isSubscribed != isSubscribed
+            // Report metadata-only updates as committed changes too. Callers
+            // use this result to acknowledge and schedule downstream work; a
+            // new credential profile must not look like a no-op merely because
+            // the subscription's Boolean state was already correct.
+            let subscriptionStateChanged = subscription.isSubscribed != isSubscribed
+            let didChange = subscriptionStateChanged
+                || stateIsConsistent == false
+                || profileIsConsistent == false
             subscription.isSubscribed = isSubscribed
             subscription.unsubscribedAt = isSubscribed ? nil : date
             if isSubscribed {
-                if didChange {
+                if subscriptionStateChanged {
                     subscription.subscribedAt = date
                 }
             }
