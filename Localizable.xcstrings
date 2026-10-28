@@ -1883,6 +1883,9 @@
         }
       }
     },
+    "Adjusts blurred artwork and frosted backgrounds on podcast and episode views and Home Screen widgets." : {
+
+    },
     "Adjusts the current playback position" : {
       "localizations" : {
         "de" : {
@@ -3584,6 +3587,9 @@
         }
       }
     },
+    "Changes apply to the Artwork design on this device, including widgets. Widget updates depend on the system. Standard preserves the original in-app blur." : {
+
+    },
     "Changes archive state without changing inbox or playlist membership" : {
       "localizations" : {
         "de" : {
@@ -4038,6 +4044,9 @@
           }
         }
       }
+    },
+    "Clear inbox?" : {
+
     },
     "Clear recent searches" : {
       "localizations" : {
@@ -4796,6 +4805,9 @@
           }
         }
       }
+    },
+    "Current playlist icon, %@" : {
+
     },
     "Current Status" : {
       "localizations" : {
@@ -17001,6 +17013,9 @@
           }
         }
       }
+    },
+    "Remove all %lld episodes from Inbox? They remain in your library and playlists, and are not marked played." : {
+
     },
     "Remove all inbox episodes" : {
       "localizations" : {
