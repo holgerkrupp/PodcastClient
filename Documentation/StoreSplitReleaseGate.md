@@ -203,7 +203,8 @@ Verification:
 
 - Release arm64 simulator build passed after consolidation.
 - A subsequent core-suite run in the normal iPhone Duo / iOS 27.1 simulator
-  configuration succeeded: 126 passing test cases, with no reported failures.
+  configuration succeeded: the Xcode result bundle confirms 127 passing test
+  cases, zero failures and zero skips.
 - Guide registry: 23 unique IDs and 63 valid related-topic links; localization
   JSON and diff whitespace checks pass.
 - A full-suite attempt logged hundreds of passing cases and ten failing cases,
