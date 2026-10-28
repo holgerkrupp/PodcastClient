@@ -38,10 +38,26 @@ actor StoreSplitAIContentImporter {
 
     private func run() -> StoreSplitAIContentImportResult {
         var result = StoreSplitAIContentImportResult()
-        var receiptsByID = ((try? cacheContext.fetch(FetchDescriptor<AppliedAIContentRevision>())) ?? [])
+        let receipts: [AppliedAIContentRevision]
+        do {
+            receipts = try cacheContext.fetch(FetchDescriptor<AppliedAIContentRevision>())
+        } catch {
+            result.failed += 1
+            recordFetchFailure("receipts", error: error)
+            return result
+        }
+        var receiptsByID = receipts
             .reduce(into: [String: AppliedAIContentRevision]()) { $0[$1.id] = $1 }
 
-        let transcripts = ((try? cacheContext.fetch(FetchDescriptor<AITranscriptSync>())) ?? [])
+        let transcriptRecords: [AITranscriptSync]
+        do {
+            transcriptRecords = try cacheContext.fetch(FetchDescriptor<AITranscriptSync>())
+        } catch {
+            result.failed += 1
+            recordFetchFailure("transcripts", error: error)
+            return result
+        }
+        let transcripts = transcriptRecords
             .reduce(into: [String: AITranscriptSync]()) { result, transcript in
                 guard let existing = result[transcript.id],
                       existing.updatedAt >= transcript.updatedAt else {
@@ -49,7 +65,15 @@ actor StoreSplitAIContentImporter {
                     return
                 }
             }
-        let chapterSets = ((try? cacheContext.fetch(FetchDescriptor<AIChapterSetSync>())) ?? [])
+        let chapterRecords: [AIChapterSetSync]
+        do {
+            chapterRecords = try cacheContext.fetch(FetchDescriptor<AIChapterSetSync>())
+        } catch {
+            result.failed += 1
+            recordFetchFailure("chapter_sets", error: error)
+            return result
+        }
+        let chapterSets = chapterRecords
             .reduce(into: [String: AIChapterSetSync]()) { result, chapterSet in
                 guard let existing = result[chapterSet.id],
                       existing.updatedAt >= chapterSet.updatedAt else {
@@ -58,13 +82,18 @@ actor StoreSplitAIContentImporter {
                 }
             }
 
+        let transcriptAppliedAtStart = result.transcriptsApplied
         for transcript in transcripts.values {
             autoreleasepool {
+                let failuresBeforeEpisodeLookup = result.failed
                 guard ensureCachedEpisode(
                     feedURL: transcript.feedURL,
-                    episodeID: transcript.episodeID
+                    episodeID: transcript.episodeID,
+                    result: &result
                 ) else {
-                    result.skipped += 1
+                    if result.failed == failuresBeforeEpisodeLookup {
+                        result.skipped += 1
+                    }
                     return
                 }
                 if applyTranscriptDirectlyToCache(
@@ -77,15 +106,23 @@ actor StoreSplitAIContentImporter {
                 result.skipped += 1
             }
         }
-        saveChanges(result: &result)
+        guard saveChanges(
+            result: &result,
+            transcriptChanges: result.transcriptsApplied - transcriptAppliedAtStart
+        ) else { return result }
 
+        let chaptersAppliedAtStart = result.chaptersApplied
         for chapterSet in chapterSets.values {
             autoreleasepool {
+                let failuresBeforeEpisodeLookup = result.failed
                 guard ensureCachedEpisode(
                     feedURL: chapterSet.feedURL,
-                    episodeID: chapterSet.episodeID
+                    episodeID: chapterSet.episodeID,
+                    result: &result
                 ) else {
-                    result.skipped += 1
+                    if result.failed == failuresBeforeEpisodeLookup {
+                        result.skipped += 1
+                    }
                     return
                 }
                 if applyChapterSetDirectlyToCache(
@@ -98,7 +135,10 @@ actor StoreSplitAIContentImporter {
                 result.skipped += 1
             }
         }
-        saveChanges(result: &result)
+        guard saveChanges(
+            result: &result,
+            chapterChanges: result.chaptersApplied - chaptersAppliedAtStart
+        ) else { return result }
 
         CrashBreadcrumbs.shared.record(
             "store_split_ai_content_import_completed",
@@ -110,24 +150,50 @@ actor StoreSplitAIContentImporter {
     /// Cache-only final path. If an older cache projection has not reached this
     /// feed yet, refresh its feed-derived rows into PodcastCache first; never
     /// materialize AI content back into the durable library graph.
-    private func ensureCachedEpisode(feedURL: String, episodeID: String) -> Bool {
+    private func ensureCachedEpisode(
+        feedURL: String,
+        episodeID: String,
+        result: inout StoreSplitAIContentImportResult
+    ) -> Bool {
         let cacheEpisodeID = StableIdentityKey.make(feedURL, episodeID)
         var descriptor = FetchDescriptor<CachedEpisode>(
             predicate: #Predicate { $0.id == cacheEpisodeID }
         )
         descriptor.fetchLimit = 1
-        if (try? cacheContext.fetch(descriptor).first) != nil {
-            return true
+        do {
+            if try cacheContext.fetch(descriptor).first != nil {
+                return true
+            }
+        } catch {
+            result.failed += 1
+            recordFetchFailure("cached_episode", error: error)
+            return false
         }
-        guard let feed = URL(string: feedURL) else { return false }
+        guard let feed = URL(string: feedURL) else {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record(
+                "store_split_ai_content_feed_url_invalid"
+            )
+            return false
+        }
         guard StoreSplitFeedCacheWriter.projectFeed(
             feedURL: feed,
             legacyContainer: legacyContainer,
             cacheContainer: cacheContainer
         ).completed else {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record(
+                "store_split_ai_content_feed_projection_incomplete"
+            )
             return false
         }
-        return (try? cacheContext.fetch(descriptor).first) != nil
+        do {
+            return try cacheContext.fetch(descriptor).first != nil
+        } catch {
+            result.failed += 1
+            recordFetchFailure("cached_episode_after_projection", error: error)
+            return false
+        }
     }
 
     private func applyTranscriptDirectlyToCache(
@@ -143,8 +209,15 @@ actor StoreSplitAIContentImporter {
             predicate: #Predicate { $0.id == cacheEpisodeID }
         )
         episodeDescriptor.fetchLimit = 1
-        guard (try? cacheContext.fetch(episodeDescriptor).first) != nil else {
-            return false
+        do {
+            guard try cacheContext.fetch(episodeDescriptor).first != nil else {
+                result.skipped += 1
+                return false
+            }
+        } catch {
+            result.failed += 1
+            recordFetchFailure("transcript_episode", error: error)
+            return true
         }
 
         let receipt = receipt(for: transcript.id, receiptsByID: &receiptsByID)
@@ -155,7 +228,14 @@ actor StoreSplitAIContentImporter {
                 $0.feedURL == feedURL && $0.episodeID == episodeID
             }
         )
-        let existingLines = (try? cacheContext.fetch(linesDescriptor)) ?? []
+        let existingLines: [CachedTranscriptLine]
+        do {
+            existingLines = try cacheContext.fetch(linesDescriptor)
+        } catch {
+            result.failed += 1
+            recordFetchFailure("transcript_lines", error: error)
+            return true
+        }
         let generatedLines = existingLines.filter {
             $0.sourceRawValue == CachedTranscriptSource.ai.rawValue
                 || $0.sourceRawValue == CachedTranscriptSource.localAI.rawValue
@@ -185,14 +265,25 @@ actor StoreSplitAIContentImporter {
             },
             sortBy: [SortDescriptor(\AITranscriptChunkSync.chunkIndex)]
         )
-        let chunks = (try? cacheContext.fetch(chunkDescriptor)) ?? []
+        let chunks: [AITranscriptChunkSync]
+        do {
+            chunks = try cacheContext.fetch(chunkDescriptor)
+        } catch {
+            result.failed += 1
+            recordFetchFailure("transcript_chunks", error: error)
+            return true
+        }
         guard chunks.count == transcript.chunkCount,
               chunks.indices.allSatisfy({ index in
                   chunks[index].chunkIndex == index
                       && chunks[index].contentHash
                       == AIContentSyncCodec.sha256Hex(Data(chunks[index].payloadJSON.utf8))
               }) else {
-            result.skipped += 1
+            result.failed += 1
+            CrashBreadcrumbs.shared.record(
+                "store_split_ai_transcript_chunks_incomplete",
+                details: "chunks=\(chunks.count),expected=\(transcript.chunkCount)"
+            )
             return true
         }
 
@@ -211,9 +302,15 @@ actor StoreSplitAIContentImporter {
             predicate: #Predicate { $0.episodeID == episodeID },
             sortBy: [SortDescriptor(\CachedTranscriptionRecord.finishedAt, order: .reverse)]
         )
-        if let localGeneratedAt = try? cacheContext.fetch(transcriptionDescriptor).first?.finishedAt,
-           localGeneratedAt > transcript.generatedAt {
-            result.skipped += 1
+        do {
+            if let localGeneratedAt = try cacheContext.fetch(transcriptionDescriptor).first?.finishedAt,
+               localGeneratedAt > transcript.generatedAt {
+                result.skipped += 1
+                return true
+            }
+        } catch {
+            result.failed += 1
+            recordFetchFailure("local_transcription", error: error)
             return true
         }
 
@@ -267,8 +364,15 @@ actor StoreSplitAIContentImporter {
             predicate: #Predicate { $0.id == cacheEpisodeID }
         )
         episodeDescriptor.fetchLimit = 1
-        guard (try? cacheContext.fetch(episodeDescriptor).first) != nil else {
-            return false
+        do {
+            guard try cacheContext.fetch(episodeDescriptor).first != nil else {
+                result.skipped += 1
+                return false
+            }
+        } catch {
+            result.failed += 1
+            recordFetchFailure("chapter_episode", error: error)
+            return true
         }
 
         let receipt = receipt(for: chapterSet.id, receiptsByID: &receiptsByID)
@@ -289,7 +393,7 @@ actor StoreSplitAIContentImporter {
             let descriptor = FetchDescriptor<CachedChapter>(
                 predicate: #Predicate { $0.episodeID == episodeID }
             )
-            let current = (try? cacheContext.fetch(descriptor)) ?? []
+            let current = try cacheContext.fetch(descriptor)
             let currentAI = current.filter {
                 $0.typeRawValue == MarkerType.ai.rawValue
                     || $0.typeRawValue == "advertisement"
@@ -337,14 +441,36 @@ actor StoreSplitAIContentImporter {
         return true
     }
 
-    private func saveChanges(result: inout StoreSplitAIContentImportResult) {
+    private func saveChanges(
+        result: inout StoreSplitAIContentImportResult,
+        transcriptChanges: Int = 0,
+        chapterChanges: Int = 0
+    ) -> Bool {
         do {
             if cacheContext.hasChanges {
                 try cacheContext.save()
             }
+            return true
         } catch {
+            // Receipts and materialized rows must commit together. Rolling back
+            // makes the same revision eligible for a later retry.
+            cacheContext.rollback()
             result.failed += 1
+            result.transcriptsApplied = max(0, result.transcriptsApplied - transcriptChanges)
+            result.chaptersApplied = max(0, result.chaptersApplied - chapterChanges)
+            CrashBreadcrumbs.shared.record(
+                "store_split_ai_content_save_failed",
+                details: "error_type=\(String(describing: type(of: error)))"
+            )
+            return false
         }
+    }
+
+    private func recordFetchFailure(_ stage: String, error: Error) {
+        CrashBreadcrumbs.shared.record(
+            "store_split_ai_content_fetch_failed",
+            details: "stage=\(stage),error_type=\(String(describing: type(of: error)))"
+        )
     }
 
     private func receipt(

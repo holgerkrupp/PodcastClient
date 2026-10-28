@@ -41,6 +41,15 @@ enum StoreSplitMigrationVerifier {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     }
 
+    /// Invalidates any older full-store result before a production verification
+    /// stage admits work. The local history stage is narrower than the global
+    /// proof and must never leave a stale green marker readable.
+    @discardableResult
+    static func invalidateForMigrationStage(in context: ModelContext) -> Bool {
+        verificationDefaults.set(true, forKey: verificationInvalidatedKey)
+        return invalidatePreviousVerification(in: context) == nil
+    }
+
     /// Builds the local half of the authority-release gate. Population-level
     /// convergence and delayed-import evidence are supplied by release
     /// telemetry because they cannot be inferred from one device's SQLite file.
@@ -719,6 +728,7 @@ enum StoreSplitMigrationVerifier {
         descriptor.fetchLimit = 1
         do {
             guard let record = try context.fetch(descriptor).first else { return nil }
+            guard record.verifiedAt != nil else { return nil }
             record.verifiedAt = nil
             record.issues = ["verification_in_progress"]
             record.updatedAt = .now

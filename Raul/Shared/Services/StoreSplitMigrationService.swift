@@ -84,6 +84,7 @@ struct StoreSplitMigrationResult: Sendable {
     var listeningSummaries = StoreSplitMigrationPhaseResult()
     var aiTranscripts = StoreSplitMigrationPhaseResult()
     var aiChapters = StoreSplitMigrationPhaseResult()
+    var listeningHistoryVerification = StoreSplitMigrationPhaseResult()
 
     var failedCount: Int {
         subscriptions.failed
@@ -94,6 +95,7 @@ struct StoreSplitMigrationResult: Sendable {
             + bookmarks.failed
             + preferences.failed
             + listeningHistory.failed
+            + listeningHistoryVerification.failed
             + listeningSummaries.failed
             + aiTranscripts.failed
             + aiChapters.failed
@@ -132,7 +134,7 @@ struct StoreSplitSliceReport: Sendable {
         case advanced
         /// The current phase finished; another phase may still be pending.
         case phaseCompleted
-        /// Every required user-state and AI-cache phase has completed.
+        /// Every backfill phase and the bounded listening-history check completed.
         case completed
         /// The slice was cancelled before doing work.
         case cancelled
@@ -252,7 +254,8 @@ actor StoreSplitMigrationService {
     private static let phaseRevisions: [String: Int] = [
         Phase.bookmarks: 1,
         Phase.listeningSummaries: 1,
-        Phase.listeningHistory: 1
+        Phase.listeningHistory: 1,
+        Phase.listeningHistoryVerification: 1
     ]
 
     /// The checkpoint row identity for a phase at its current revision. Rows
@@ -278,11 +281,13 @@ actor StoreSplitMigrationService {
     private static let episodePageSize = 100
     private static let listeningSummaryPageSize = 200
     private static let listeningHistoryPageSize = 40
+    private static let listeningHistoryVerificationPageSize = 40
     private static let aiContentPageSize = 10
     private static let maximumFailedItemKeys = 100
 
     /// Ordered, memory-prioritised migration phases. Legacy AI content is copied
-    /// to the local-only cache in its own bounded stages after user-owned state.
+    /// to the local-only cache in bounded stages after user-owned state; the
+    /// final phase re-reads completed history and verifies its portable copy.
     nonisolated static let slicePhaseOrder = [
         Phase.subscriptions,
         Phase.playlists,
@@ -293,7 +298,8 @@ actor StoreSplitMigrationService {
         Phase.listeningHistory,
         Phase.episodeStates,
         Phase.aiTranscripts,
-        Phase.aiChapters
+        Phase.aiChapters,
+        Phase.listeningHistoryVerification
     ]
 
     enum Phase {
@@ -308,6 +314,7 @@ actor StoreSplitMigrationService {
         static let listeningHistory = "listening_history"
         static let aiTranscripts = "ai_transcripts"
         static let aiChapters = "ai_chapters"
+        static let listeningHistoryVerification = "verification_listening_history"
     }
 
     /// The paging order of every sliced phase, in one place. `resolvedOffset`
@@ -327,6 +334,7 @@ actor StoreSplitMigrationService {
         ]
         static let playSessions = [SortDescriptor(\PlaySession.startTime)]
             + [SortDescriptor(\PlaySession.id)]
+        static let verificationPlaySessions = [SortDescriptor(\PlaySession.id)]
         static let listeningSummaries = [
             SortDescriptor(\PlaySessionSummary.periodStart),
             SortDescriptor(\PlaySessionSummary.id)
@@ -571,10 +579,17 @@ actor StoreSplitMigrationService {
             duration: Double(pageDuration.seconds) + Double(pageDuration.attoseconds) / 1e18
         )
 
-        let combined = resume.result + outcome.delta
+        var combined = resume.result + outcome.delta
+        if phase == Phase.listeningHistoryVerification {
+            // For this verification phase, failedCount represents unresolved
+            // failure on the current page. A repaired page clears it on retry.
+            combined.failed = outcome.error == nil ? 0 : max(1, resume.result.failed)
+        }
         let nextCursor = SliceCursor(
-            offset: offset + outcome.processed,
-            boundaryKey: outcome.boundaryKey ?? resume.cursor.boundaryKey,
+            offset: outcome.error == nil ? offset + outcome.processed : resume.cursor.offset,
+            boundaryKey: outcome.error == nil
+                ? (outcome.boundaryKey ?? resume.cursor.boundaryKey)
+                : resume.cursor.boundaryKey,
             didRelocateFail: resolved.didRelocateFail
         )
         let saveStartedAt = Date()
@@ -667,6 +682,8 @@ actor StoreSplitMigrationService {
             case Phase.listeningHistory: result.listeningHistory = phaseResult.primary
             case Phase.aiTranscripts: result.aiTranscripts = phaseResult.primary
             case Phase.aiChapters: result.aiChapters = phaseResult.primary
+            case Phase.listeningHistoryVerification:
+                result.listeningHistoryVerification = phaseResult.primary
             default: break
             }
             await Task.yield()
@@ -679,7 +696,7 @@ actor StoreSplitMigrationService {
         )
         CrashBreadcrumbs.shared.record(
             "store_split_migration_completed",
-            details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
+            details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),history_verified=\(result.listeningHistoryVerification.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
         )
         return result
     }
@@ -840,6 +857,15 @@ actor StoreSplitMigrationService {
                 cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
+        case Phase.listeningHistoryVerification:
+            return Self.verifyListeningHistoryPage(
+                offset: offset,
+                pageSize: pageSize,
+                legacyContext: legacyContext,
+                destinationContext: userStateContext,
+                cacheContext: cacheContext,
+                shouldContinue: shouldContinue
+            )
         case Phase.aiTranscripts:
             return Self.processAITranscriptPage(
                 offset: offset,
@@ -864,6 +890,7 @@ actor StoreSplitMigrationService {
         case Phase.episodeStates: episodePageSize
         case Phase.listeningSummaries: listeningSummaryPageSize
         case Phase.listeningHistory: listeningHistoryPageSize
+        case Phase.listeningHistoryVerification: listeningHistoryVerificationPageSize
         default: defaultPageSize
         }
     }
@@ -970,6 +997,12 @@ actor StoreSplitMigrationService {
                 FetchDescriptor<PlaySession>(sortBy: SourceOrder.playSessions),
                 boundaryKey: boundaryKey, offset: offset,
                 pageSize: listeningHistoryPageSize, context: legacyContext
+            )
+        case Phase.listeningHistoryVerification:
+            return relocate(
+                FetchDescriptor<PlaySession>(sortBy: SourceOrder.verificationPlaySessions),
+                boundaryKey: boundaryKey, offset: offset,
+                pageSize: listeningHistoryVerificationPageSize, context: legacyContext
             )
         case Phase.listeningSummaries:
             guard let kind = (try? selectedBaselinePeriodKind(in: legacyContext)) ?? nil else {
@@ -2009,6 +2042,259 @@ actor StoreSplitMigrationService {
         return outcome
     }
 
+    /// Rechecks one bounded source page after backfill. The cursor is managed by
+    /// the normal phase checkpoint machinery and advances only when every
+    /// eligible completed session in the page has a matching UserState row.
+    private static func verifyListeningHistoryPage(
+        offset: Int,
+        pageSize: Int,
+        legacyContext: ModelContext,
+        destinationContext: ModelContext,
+        cacheContext: ModelContext,
+        shouldContinue: @Sendable () -> Bool
+    ) -> PageOutcome {
+        var outcome = PageOutcome()
+        guard StoreSplitMigrationVerifier.invalidateForMigrationStage(in: cacheContext) else {
+            outcome.error = "listening_history_verification_invalidation_failed"
+            outcome.delta.failed = 1
+            outcome.reachedEnd = false
+            return outcome
+        }
+        var descriptor = FetchDescriptor<PlaySession>(sortBy: SourceOrder.verificationPlaySessions)
+        descriptor.fetchOffset = offset
+        descriptor.fetchLimit = pageSize
+
+        let sessions: [PlaySession]
+        do {
+            sessions = try legacyContext.fetch(descriptor)
+        } catch {
+            outcome.error = "listening_history_verification_source_fetch_failed"
+            outcome.delta.failed = 1
+            outcome.reachedEnd = false
+            return outcome
+        }
+
+        for session in sessions {
+            guard shouldContinue() else {
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+            outcome.processed += 1
+            outcome.delta.scanned += 1
+
+            guard let episode = session.episode,
+                  episode.podcast?.feed != nil,
+                  let startedAt = session.startTime else {
+                outcome.delta.skipped += 1
+                continue
+            }
+
+            let identity = episode.stableEpisodeIdentity
+            let sourceDeviceID = session.sourceDeviceID ?? legacyDeviceID(
+                deviceModel: session.deviceModel,
+                osVersion: session.osVersion
+            )
+            let sourceDeviceName = session.sourceDeviceName
+                ?? session.deviceModel
+                ?? "Legacy device"
+
+            guard let endedAt = session.endTime, endedAt > startedAt else {
+                let cacheID = cachedLegacySessionID(
+                    session,
+                    identity: identity,
+                    startedAt: startedAt
+                )
+                let cached: CachedPlaySession?
+                do {
+                    var cachedDescriptor = FetchDescriptor<CachedPlaySession>(
+                        predicate: #Predicate { $0.id == cacheID }
+                    )
+                    cachedDescriptor.fetchLimit = 1
+                    cached = try cacheContext.fetch(cachedDescriptor).first
+                } catch {
+                    outcome.error = "listening_history_verification_cache_fetch_failed"
+                    outcome.delta.failed += 1
+                    outcome.processed = 0
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                guard let cached else {
+                    outcome.error = "listening_history_verification_missing_incomplete_cache_record"
+                    outcome.delta.failed += 1
+                    outcome.processed = 0
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                let expectedCached = CachedPlaySession(
+                    id: cacheID,
+                    feedURL: identity.feedURL,
+                    episodeID: identity.episodeID,
+                    podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                    episodeTitle: episode.title,
+                    sourceDeviceID: sourceDeviceID,
+                    sourceDeviceName: sourceDeviceName,
+                    deviceModel: session.deviceModel,
+                    osVersion: session.osVersion,
+                    appVersion: session.appVersion,
+                    startedAt: startedAt,
+                    endedAt: nil,
+                    startPosition: session.startPosition ?? 0,
+                    endPosition: session.endPosition,
+                    silenceGapTimeSavedSeconds: max(0, session.silenceGapTimeSavedSeconds ?? 0),
+                    playbackRateTimeSavedSeconds: max(0, PlaybackRateSavingsCalculator.secondsSaved(in: session)),
+                    endedCleanly: session.endedCleanly == true,
+                    updatedAt: startedAt
+                )
+                guard cachedLegacySessionMatches(cached, expected: expectedCached) else {
+                    outcome.error = "listening_history_verification_incomplete_cache_mismatch"
+                    outcome.delta.failed += 1
+                    outcome.processed = 0
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                outcome.delta.skipped += 1
+                continue
+            }
+
+            let recordID = ListeningHistoryIdentity.make(
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                startPosition: session.startPosition ?? 0,
+                endPosition: session.endPosition ?? 0
+            )
+
+            let actual: ListeningHistorySync?
+            do {
+                actual = try fetchListeningHistory(id: recordID, in: destinationContext)
+            } catch {
+                outcome.error = "listening_history_verification_destination_fetch_failed"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+            guard let actual else {
+                outcome.error = "listening_history_verification_missing_record"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+
+            // CloudKit may have delivered a later edit from another device.
+            // Preserve it and accept it as newer evidence; never rewrite it
+            // during verification. Equal or older rows must match the complete
+            // legacy projection, including device lineage and saved-time fields.
+            if actual.updatedAt > endedAt {
+                outcome.delta.skipped += 1
+                continue
+            }
+
+            let expected = ListeningHistorySync(
+                id: recordID,
+                feedURL: identity.feedURL,
+                episodeID: identity.episodeID,
+                podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                episodeTitle: episode.title,
+                sourceDeviceID: sourceDeviceID,
+                sourceDeviceName: sourceDeviceName,
+                deviceModel: session.deviceModel,
+                startedAt: startedAt,
+                endedAt: endedAt,
+                startPosition: session.startPosition ?? 0,
+                endPosition: session.endPosition ?? 0,
+                listenedSeconds: endedAt.timeIntervalSince(startedAt),
+                silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+                playbackRateTimeSavedSeconds: PlaybackRateSavingsCalculator.secondsSaved(in: session),
+                endedCleanly: session.endedCleanly == true,
+                isLegacyMigrated: true,
+                updatedAt: endedAt
+            )
+            guard listeningHistoryMatches(actual, expected: expected) else {
+                outcome.error = "listening_history_verification_semantic_mismatch"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+        }
+
+        outcome.boundaryKey = boundaryKey(of: sessions, processed: outcome.processed)
+        outcome.reachedEnd = sessions.count < pageSize
+        return outcome
+    }
+
+    private static func listeningHistoryMatches(
+        _ actual: ListeningHistorySync,
+        expected: ListeningHistorySync
+    ) -> Bool {
+        func equal(_ lhs: Double, _ rhs: Double) -> Bool {
+            abs(lhs - rhs) <= max(0.001, max(abs(lhs), abs(rhs)) * 0.000_001)
+        }
+        return actual.id == expected.id
+            && actual.feedURL == expected.feedURL
+            && actual.episodeID == expected.episodeID
+            && actual.podcastName == expected.podcastName
+            && actual.episodeTitle == expected.episodeTitle
+            && actual.sourceDeviceID == expected.sourceDeviceID
+            && actual.sourceDeviceName == expected.sourceDeviceName
+            && actual.deviceModel == expected.deviceModel
+            && actual.startedAt == expected.startedAt
+            && actual.endedAt == expected.endedAt
+            && equal(actual.listenedSeconds, expected.listenedSeconds)
+            && equal(actual.startPosition, expected.startPosition)
+            && equal(actual.endPosition, expected.endPosition)
+            && equal(actual.silenceGapTimeSavedSeconds, expected.silenceGapTimeSavedSeconds)
+            && equal(actual.playbackRateTimeSavedSeconds, expected.playbackRateTimeSavedSeconds)
+            && actual.endedCleanly == expected.endedCleanly
+            && actual.isLegacyMigrated == expected.isLegacyMigrated
+    }
+
+    private static func cachedLegacySessionMatches(
+        _ actual: CachedPlaySession,
+        expected: CachedPlaySession
+    ) -> Bool {
+        func equal(_ lhs: Double?, _ rhs: Double?) -> Bool {
+            guard let left = lhs, let right = rhs else {
+                return lhs == nil && rhs == nil
+            }
+            return abs(left - right) <= max(0.001, max(abs(left), abs(right)) * 0.000_001)
+        }
+        return actual.id == expected.id
+            && actual.feedURL == expected.feedURL
+            && actual.episodeID == expected.episodeID
+            && actual.podcastName == expected.podcastName
+            && actual.episodeTitle == expected.episodeTitle
+            && actual.sourceDeviceID == expected.sourceDeviceID
+            && actual.sourceDeviceName == expected.sourceDeviceName
+            && actual.deviceModel == expected.deviceModel
+            && actual.osVersion == expected.osVersion
+            && actual.appVersion == expected.appVersion
+            && actual.startedAt == expected.startedAt
+            && actual.endedAt == nil
+            && equal(actual.startPosition, expected.startPosition)
+            && equal(actual.endPosition, expected.endPosition)
+            && equal(actual.silenceGapTimeSavedSeconds, expected.silenceGapTimeSavedSeconds)
+            && equal(actual.playbackRateTimeSavedSeconds, expected.playbackRateTimeSavedSeconds)
+            && actual.endedCleanly == expected.endedCleanly
+    }
+
+    private static func cachedLegacySessionID(
+        _ session: PlaySession,
+        identity: EpisodeStableIdentity,
+        startedAt: Date
+    ) -> String {
+        session.id?.uuidString ?? StableIdentityKey.uuid(for:
+            StableIdentityKey.make(
+                identity.key,
+                String(Int(startedAt.timeIntervalSince1970))
+            )
+        ).uuidString
+    }
+
     private static func cacheLegacySession(
         _ session: PlaySession,
         episode: Episode,
@@ -2021,12 +2307,7 @@ actor StoreSplitMigrationService {
         in context: ModelContext,
         shouldContinue: @Sendable () -> Bool
     ) throws {
-        let sessionID = session.id?.uuidString ?? StableIdentityKey.uuid(for:
-            StableIdentityKey.make(
-                identity.key,
-                String(Int(startedAt.timeIntervalSince1970))
-            )
-        ).uuidString
+        let sessionID = cachedLegacySessionID(session, identity: identity, startedAt: startedAt)
         var descriptor = FetchDescriptor<CachedPlaySession>(
             predicate: #Predicate { $0.id == sessionID }
         )
@@ -2992,14 +3273,23 @@ actor StoreSplitMigrationService {
     }
 }
 
-/// Removes UserState rows that cannot exist in the current legacy library.
-///
-/// The split release is still in its legacy-authoritative phase, so the normal
-/// migration can safely publish deletions in this direction. This is separate
-/// from the normal paged upsert work: a completed upsert phase used to leave
-/// destination-only rows active forever, which made a completed migration look
-/// larger than its source.
+/// Describes the outcome of a reconciliation dry run. This release has not
+/// proven deletion authority or all-device CloudKit convergence, so this
+/// service must preserve destination-only rows and must not publish deletions.
+enum StoreSplitReconciliationStatus: String, Sendable, Equatable {
+    case notStarted
+    case dryRunInProgress
+    case dryRunCompleted
+    case blockedAuthorityEvidence
+    case fetchFailed
+}
+
 struct StoreSplitAuthoritativeReconciliationResult: Sendable, Equatable {
+    var status: StoreSplitReconciliationStatus = .notStarted
+    /// Nil means the dry run did not scan enough state to classify rows.
+    var destinationOnlyPreserved: Int?
+    var sourceOnly: Int?
+    var conflicts: Int?
     var subscriptionsRepublished = 0
     var episodeStatesRepublished = 0
     var preferencesRepublished = 0
@@ -3043,6 +3333,7 @@ enum StoreSplitAuthoritativeReconciliationService {
         // CloudKit convergence and timestamp/tombstone authority are recorded,
         // reconciliation is intentionally a non-destructive blocked stage.
         var result = StoreSplitAuthoritativeReconciliationResult()
+        result.status = .blockedAuthorityEvidence
         result.failed = 1
         result.error = "Destination-only records preserved: authoritative lineage and CloudKit convergence are not proven"
         CrashBreadcrumbs.shared.record(

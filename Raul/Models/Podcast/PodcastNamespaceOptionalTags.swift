@@ -327,10 +327,11 @@ struct PodcastNamespaceOptionalTags: Codable, Hashable, Sendable {
     }
 
     private static func localName(from qualifiedName: String) -> String {
-        if qualifiedName.hasPrefix("podcast:") {
-            return String(qualifiedName.dropFirst("podcast:".count))
-        }
-        return qualifiedName
+        // Optional-tag storage is keyed by the element's local name. RSS
+        // namespace prefixes vary between feeds (for example `itunes:`), so
+        // retaining the prefix here made known iTunes categories disappear
+        // from typed projections such as smart-playlist category matching.
+        String(qualifiedName.split(separator: ":").last ?? Substring(qualifiedName))
     }
 
     /// Typed live broadcasts retained by this feed.

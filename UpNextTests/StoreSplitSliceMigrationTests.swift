@@ -309,7 +309,11 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             userStateContainer: containers.userState
         )
 
+        XCTAssertEqual(result.status, .blockedAuthorityEvidence)
         XCTAssertEqual(result.failed, 1)
+        XCTAssertNil(result.destinationOnlyPreserved)
+        XCTAssertNil(result.sourceOnly)
+        XCTAssertNil(result.conflicts)
         XCTAssertNotNil(result.error)
 
         let subscription = try XCTUnwrap(

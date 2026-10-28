@@ -42,6 +42,14 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
 /// Bridges cancellation from a background operation to an unstructured worker
 /// that owns bounded store work.
 enum StoreSplitTaskCancellation {
+    /// Admission check for the next store operation after an asynchronous
+    /// boundary. BGProcessing expiration can cancel the caller while a remote
+    /// configuration request is suspended; callers must re-check before
+    /// opening stores or starting a new database operation.
+    static func shouldBeginStoreWork(isCancelled: Bool) -> Bool {
+        isCancelled == false
+    }
+
     static func awaitValue<Value: Sendable>(
         of task: Task<Value, Never>
     ) async -> Value {
@@ -603,7 +611,7 @@ class ModelContainerManager: ObservableObject {
     private var didBuildCompatibilityProjection = false
     private var isBuildingCompatibilityProjection = false
     private var migrationTask: Task<StoreSplitMigrationExecutionResult, Never>?
-    private var aiContentImportTask: Task<Void, Never>?
+    private var aiContentImportTask: Task<StoreSplitAIContentImportResult, Never>?
     private var userStateImportTask: Task<StoreSplitUserStateImportResult, Never>?
     private var missingFeedRefreshAttempts: [String: Date] = [:]
     private var lastMigrationCompletedAt: Date?
@@ -2006,7 +2014,10 @@ class ModelContainerManager: ObservableObject {
             guard self.isRunningBackgroundProcessingTask,
                   StoreSplitMigrationSchedulePolicy.isEligibleNight(.now),
                   Self.hasPendingStoreSplitBackgroundWork,
-                  Player.hasActivePlaybackInProcess == false else {
+                  Player.hasActivePlaybackInProcess == false,
+                  StoreSplitTaskCancellation.shouldBeginStoreWork(
+                      isCancelled: Task.isCancelled
+                  ) else {
                 CrashBreadcrumbs.shared.record(
                     "store_split_background_pass_skipped",
                     details: "pending=\(Self.hasPendingMigrationWork),playing=\(Player.hasActivePlaybackInProcess),night=\(StoreSplitMigrationSchedulePolicy.isEligibleNight(.now)),background=\(self.isRunningBackgroundProcessingTask)"
@@ -2014,6 +2025,18 @@ class ModelContainerManager: ObservableObject {
                 return
             }
             await StoreSplitRemoteConfigStore.refresh()
+            // The OS can revoke this task while the remote-config refresh is
+            // suspended. Do not open SwiftData stores or start migration work
+            // after that cancellation boundary.
+            guard StoreSplitTaskCancellation.shouldBeginStoreWork(
+                isCancelled: Task.isCancelled
+            ) else {
+                pendingSplitStoreWorkReason = "background processing task expired before store preparation"
+                CrashBreadcrumbs.shared.record(
+                    "store_split_background_pass_cancelled_before_store_preparation"
+                )
+                return
+            }
             guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
                 recordMigrationBlocker("Paused by the migration safety switch")
 #if DEBUG
@@ -4047,7 +4070,10 @@ class ModelContainerManager: ObservableObject {
             return
         }
         if let aiContentImportTask {
-            await aiContentImportTask.value
+            let result = await aiContentImportTask.value
+            if result.failed > 0 {
+                pendingSplitStoreWorkReason = "AI PodcastCache import has retryable failures"
+            }
             return
         }
         guard let legacyContainer = preparedContainer,
@@ -4060,15 +4086,22 @@ class ModelContainerManager: ObservableObject {
         }
 
         let task = Task {
-            _ = await StoreSplitAIContentImporter.apply(
+            await StoreSplitAIContentImporter.apply(
                 legacyContainer: legacyContainer,
                 cacheContainer: cacheContainer
             )
         }
         aiContentImportTask = task
-        await task.value
-        lastAIContentImportAt = .now
+        let result = await task.value
         aiContentImportTask = nil
+        if result.failed > 0 {
+            pendingSplitStoreWorkReason = "AI PodcastCache import has retryable failures"
+        } else {
+            lastAIContentImportAt = .now
+            if pendingSplitStoreWorkReason == "AI PodcastCache import has retryable failures" {
+                pendingSplitStoreWorkReason = nil
+            }
+        }
     }
 
     func updateSplitStoreCoordinatorState(

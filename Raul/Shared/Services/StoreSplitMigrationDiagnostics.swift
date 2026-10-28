@@ -643,7 +643,8 @@ enum StoreSplitMigrationDiagnostics {
         StoreSplitMigrationService.Phase.listeningSummaries: "Listening statistics",
         StoreSplitMigrationService.Phase.listeningHistory: "Listening history",
         StoreSplitMigrationService.Phase.aiTranscripts: "AI transcripts",
-        StoreSplitMigrationService.Phase.aiChapters: "AI chapters"
+        StoreSplitMigrationService.Phase.aiChapters: "AI chapters",
+        StoreSplitMigrationService.Phase.listeningHistoryVerification: "Listening history verification"
     ]
 
     private static let supplementalPhaseTitles: [String: String] = [:]
