@@ -4,6 +4,12 @@ struct PendingSharedEpisodeImportRequest: Codable, Hashable, Identifiable {
     let id: UUID
     let url: URL
     let playlistID: UUID?
+    let queuePosition: SharedEpisodeQueuePosition?
+}
+
+enum SharedEpisodeQueuePosition: String, Codable, Sendable {
+    case front
+    case end
 }
 
 enum PendingSharedEpisodeActionKind: String, Codable, Sendable {
@@ -19,17 +25,22 @@ struct PendingSharedEpisodeAction: Codable, Hashable, Identifiable, Sendable {
     let feedURL: URL?
     let query: String?
     let playlistID: UUID?
+    let queuePosition: SharedEpisodeQueuePosition?
 
-    static func importEpisode(url: URL, playlistID: UUID?) -> Self {
-        Self(id: UUID(), kind: .importEpisode, url: url, feedURL: nil, query: nil, playlistID: playlistID)
+    static func importEpisode(
+        url: URL,
+        playlistID: UUID?,
+        queuePosition: SharedEpisodeQueuePosition? = nil
+    ) -> Self {
+        Self(id: UUID(), kind: .importEpisode, url: url, feedURL: nil, query: nil, playlistID: playlistID, queuePosition: queuePosition)
     }
 
     static func subscribe(feedURL: URL, sharedURL: URL) -> Self {
-        Self(id: UUID(), kind: .subscribe, url: sharedURL, feedURL: feedURL, query: nil, playlistID: nil)
+        Self(id: UUID(), kind: .subscribe, url: sharedURL, feedURL: feedURL, query: nil, playlistID: nil, queuePosition: nil)
     }
 
     static func search(query: String, sharedURL: URL) -> Self {
-        Self(id: UUID(), kind: .search, url: sharedURL, feedURL: nil, query: query, playlistID: nil)
+        Self(id: UUID(), kind: .search, url: sharedURL, feedURL: nil, query: query, playlistID: nil, queuePosition: nil)
     }
 }
 
@@ -48,6 +59,8 @@ private struct SharedEpisodePlaylistSnapshot: Codable, Hashable {
     let id: UUID
     let title: String
     let symbolName: String
+    let isPreferred: Bool?
+    let isDefaultQueue: Bool?
 }
 
 enum PendingSharedEpisodeImportStore {
@@ -68,7 +81,7 @@ enum PendingSharedEpisodeImportStore {
         guard let legacy = try? JSONDecoder().decode([LegacyPendingSharedEpisodeRequest].self, from: data) else { return [] }
         let actions = legacy
             .filter { isSupportedSharedURL($0.url) }
-            .map { PendingSharedEpisodeAction(id: $0.id, kind: .importEpisode, url: $0.url, feedURL: nil, query: nil, playlistID: $0.playlistID) }
+            .map { PendingSharedEpisodeAction(id: $0.id, kind: .importEpisode, url: $0.url, feedURL: nil, query: nil, playlistID: $0.playlistID, queuePosition: nil) }
         save(actions, in: defaults)
         return actions
     }
@@ -76,7 +89,12 @@ enum PendingSharedEpisodeImportStore {
     static func pendingRequests() -> [PendingSharedEpisodeImportRequest] {
         pendingActions().compactMap { action in
             guard action.kind == .importEpisode else { return nil }
-            return PendingSharedEpisodeImportRequest(id: action.id, url: action.url, playlistID: action.playlistID)
+            return PendingSharedEpisodeImportRequest(
+                id: action.id,
+                url: action.url,
+                playlistID: action.playlistID,
+                queuePosition: action.queuePosition
+            )
         }
     }
 
@@ -94,10 +112,16 @@ enum PendingSharedEpisodeImportStore {
     }
 
     @MainActor
-    static func publish(playlists: [Playlist]) {
+    static func publish(playlists: [Playlist], preferredPlaylistID: String) {
         guard let defaults = UserDefaults(suiteName: appGroupID) else { return }
         let snapshots = Playlist.manualVisibleSorted(playlists).map {
-            SharedEpisodePlaylistSnapshot(id: $0.id, title: $0.displayTitle, symbolName: $0.displaySymbolName)
+            SharedEpisodePlaylistSnapshot(
+                id: $0.id,
+                title: $0.displayTitle,
+                symbolName: $0.displaySymbolName,
+                isPreferred: $0.id.uuidString == preferredPlaylistID,
+                isDefaultQueue: $0.title == Playlist.defaultQueueTitle
+            )
         }
         guard let data = try? JSONEncoder().encode(snapshots) else { return }
         defaults.set(data, forKey: playlistSnapshotKey)
@@ -123,7 +147,7 @@ enum PendingSharedEpisodeImportStore {
             return envelope.actions
         }
         guard let legacy = try? JSONDecoder().decode([LegacyPendingSharedEpisodeRequest].self, from: data) else { return [] }
-        return legacy.map { PendingSharedEpisodeAction(id: $0.id, kind: .importEpisode, url: $0.url, feedURL: nil, query: nil, playlistID: $0.playlistID) }
+        return legacy.map { PendingSharedEpisodeAction(id: $0.id, kind: .importEpisode, url: $0.url, feedURL: nil, query: nil, playlistID: $0.playlistID, queuePosition: nil) }
     }
 
     private static func save(_ actions: [PendingSharedEpisodeAction], in defaults: UserDefaults) {
@@ -137,7 +161,12 @@ enum PendingSharedEpisodeImportStore {
     }
 
     private static func equivalent(_ lhs: PendingSharedEpisodeAction, _ rhs: PendingSharedEpisodeAction) -> Bool {
-        lhs.kind == rhs.kind && lhs.url == rhs.url && lhs.feedURL == rhs.feedURL && lhs.query == rhs.query && lhs.playlistID == rhs.playlistID
+        lhs.kind == rhs.kind
+            && lhs.url == rhs.url
+            && lhs.feedURL == rhs.feedURL
+            && lhs.query == rhs.query
+            && lhs.playlistID == rhs.playlistID
+            && lhs.queuePosition == rhs.queuePosition
     }
 
     private static func isSupportedSharedURL(_ url: URL) -> Bool {

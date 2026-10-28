@@ -15,9 +15,11 @@ class CarPlayPlayNext {
     var template: CPListTemplate
     private var episodes: [EpisodeSummary] = []
     private var notificationObserver: CarPlayPlayNextNotificationObserver?
+    private var artworkSettingsObserver: CarPlayPlayNextNotificationObserver?
     private var refreshTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
     private var inbox: CarPlayInbox?
+    private var textChapterList: CarPlayChapterMarkList?
     private var generation = 0
     private var selectedPlaylistID: UUID?
     private var selectedPlaylistTitle: String = Playlist.defaultQueueDisplayName
@@ -46,8 +48,13 @@ class CarPlayPlayNext {
         artworkTask = nil
         inbox?.invalidate()
         inbox = nil
+        textChapterList?.invalidate()
+        textChapterList = nil
         notificationObserver = nil
+        artworkSettingsObserver = nil
     }
+
+    func refreshForArtworkPreferenceChange() { scheduleRefresh() }
 
     private func observeChanges() {
         let token = NotificationCenter.default.addObserver(
@@ -58,6 +65,14 @@ class CarPlayPlayNext {
             Task { @MainActor [weak self] in self?.scheduleRefresh() }
         }
         notificationObserver = CarPlayPlayNextNotificationObserver(token: token)
+        let artworkToken = NotificationCenter.default.addObserver(
+            forName: CarPlayArtworkSettings.didChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.scheduleRefresh() }
+        }
+        artworkSettingsObserver = CarPlayPlayNextNotificationObserver(token: artworkToken)
     }
 
     private func scheduleRefresh() {
@@ -82,8 +97,9 @@ class CarPlayPlayNext {
         }
         let totalLimit = max(1, CPListTemplate.maximumItemCount)
         let currentCount = current == nil ? 0 : 1
-        let needsMoreRow = currentCount + queueEpisodes.count > totalLimit
-        let availableQueueCount = max(0, totalLimit - currentCount - (needsMoreRow ? 1 : 0))
+        let playbackActionsCount = current != nil && CarPlayArtworkSettings.showArtwork == false ? 1 : 0
+        let needsMoreRow = currentCount + playbackActionsCount + queueEpisodes.count > totalLimit
+        let availableQueueCount = max(0, totalLimit - currentCount - playbackActionsCount - (needsMoreRow ? 1 : 0))
         let displayedEpisodes = Array(queueEpisodes.prefix(availableQueueCount))
         var sections: [CPListSection] = []
         var imageTargets: [(item: CPListItem, url: URL)] = []
@@ -107,7 +123,17 @@ class CarPlayPlayNext {
             if let url = current.summary.cover ?? current.summary.podcastCover {
                 imageTargets.append((currentItem, url))
             }
-            sections.append(CPListSection(items: [currentItem]))
+            var currentItems = [currentItem]
+            if CarPlayArtworkSettings.showArtwork == false {
+                let actionsItem = CPListItem(text: "Playback actions", detailText: "Chapters and bookmark", image: nil)
+                actionsItem.accessoryType = .disclosureIndicator
+                actionsItem.handler = { [weak self] _, completion in
+                    completion()
+                    self?.showTextPlaybackActions()
+                }
+                currentItems.append(actionsItem)
+            }
+            sections.append(CPListSection(items: currentItems))
         }
 
         let queueItems = displayedEpisodes.map { episode in
@@ -177,6 +203,32 @@ class CarPlayPlayNext {
                 targets[index].item.setImage(image)
             }
         }
+    }
+
+    private func showTextPlaybackActions() {
+        var actions: [CPListItem] = []
+        if Player.shared.currentEpisode?.preferredChapters.isEmpty == false {
+            let chaptersItem = CPListItem(text: "Chapters", detailText: nil, image: nil)
+            chaptersItem.accessoryType = .disclosureIndicator
+            chaptersItem.handler = { [weak self] _, completion in
+                completion()
+                guard let self else { return }
+                let chapterList = CarPlayChapterMarkList(interfaceController: self.interfaceController)
+                self.textChapterList?.invalidate()
+                self.textChapterList = chapterList
+                self.interfaceController.pushTemplate(chapterList.template, animated: true, completion: nil)
+            }
+            actions.append(chaptersItem)
+        }
+        let bookmarkItem = CPListItem(text: "Bookmark current position", detailText: nil, image: nil)
+        bookmarkItem.handler = { [weak self] _, completion in
+            completion()
+            Player.shared.createBookmark()
+            self?.interfaceController.popTemplate(animated: true, completion: nil)
+        }
+        actions.append(bookmarkItem)
+        let actionTemplate = CPListTemplate(title: "Playback actions", sections: [CPListSection(items: actions)])
+        interfaceController.pushTemplate(actionTemplate, animated: true, completion: nil)
     }
 
     private func configureNavigationButtons() {

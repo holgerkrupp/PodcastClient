@@ -1119,6 +1119,16 @@
         }
       }
     },
+    "Access revoked" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zugriff widerrufen"
+          }
+        }
+      }
+    },
     "Accessibility" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2557,6 +2567,9 @@
         }
       }
     },
+    "Artwork background blur" : {
+
+    },
     "Asia-Pacific" : {
       "localizations" : {
         "de" : {
@@ -2681,6 +2694,19 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Août"
+          }
+        }
+      }
+    },
+    "Authentication method" : {
+
+    },
+    "Authentication required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Authentifizierung erforderlich"
           }
         }
       }
@@ -3032,6 +3058,9 @@
           }
         }
       }
+    },
+    "Background blur" : {
+
     },
     "Background changes are applied to every share picture preview and export." : {
       "localizations" : {
@@ -3766,6 +3795,9 @@
         }
       }
     },
+    "Chapter Skip Rules" : {
+
+    },
     "Chapters" : {
       "localizations" : {
         "de" : {
@@ -4377,6 +4409,16 @@
         }
       }
     },
+    "Could not validate this podcast feed. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Podcast-Feed konnte nicht überprüft werden. Prüfe deine Verbindung und versuche es erneut."
+          }
+        }
+      }
+    },
     "Couldn’t Add Episode" : {
       "localizations" : {
         "de" : {
@@ -4710,6 +4752,16 @@
         }
       }
     },
+    "Credentials unavailable on this device" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldedaten auf diesem Gerät nicht verfügbar"
+          }
+        }
+      }
+    },
     "Current" : {
       "localizations" : {
         "de" : {
@@ -4840,6 +4892,9 @@
           }
         }
       }
+    },
+    "Currently Applied Rules" : {
+
     },
     "Currently live subscribed podcasts will appear here." : {
       "localizations" : {
@@ -5697,6 +5752,9 @@
           }
         }
       }
+    },
+    "Download failed" : {
+
     },
     "Download sort" : {
       "localizations" : {
@@ -6601,6 +6659,16 @@
         }
       }
     },
+    "Expired" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abgelaufen"
+          }
+        }
+      }
+    },
     "Export" : {
       "localizations" : {
         "de" : {
@@ -7074,6 +7142,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Erste fehlgeschlagene Prüfung"
+          }
+        }
+      }
+    },
+    "Fix Authentication" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldung reparieren"
           }
         }
       }
@@ -10071,6 +10149,16 @@
         }
       }
     },
+    "Login required" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anmeldung erforderlich"
+          }
+        }
+      }
+    },
     "Lunar New Year" : {
       "localizations" : {
         "de" : {
@@ -10512,6 +10600,9 @@
           }
         }
       }
+    },
+    "Method" : {
+
     },
     "Middle East" : {
       "localizations" : {
@@ -11429,6 +11520,9 @@
         }
       }
     },
+    "Next predicted release: Unavailable" : {
+
+    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -11559,6 +11653,9 @@
           }
         }
       }
+    },
+    "No download progress for over 90 seconds. Check the connection or retry." : {
+
     },
     "No Downloads" : {
       "localizations" : {
@@ -12326,6 +12423,9 @@
         }
       }
     },
+    "Nothing changes until you save. This podcast-specific rule will sync through iCloud." : {
+
+    },
     "Nothing is currently transcribing or queued." : {
       "localizations" : {
         "de" : {
@@ -12585,6 +12685,9 @@
           }
         }
       }
+    },
+    "Only the rules you save are synced. The listening patterns used to suggest this rule remain on this device." : {
+
     },
     "Only while charging" : {
       "localizations" : {
@@ -13095,6 +13198,9 @@
           }
         }
       }
+    },
+    "Open this podcast's settings to manage its chapter skip rules." : {
+
     },
     "Open transcript" : {
       "localizations" : {
@@ -15971,6 +16077,9 @@
         }
       }
     },
+    "Preview: Skip chapters whose title contains “%@”." : {
+
+    },
     "Previous chapter" : {
       "localizations" : {
         "de" : {
@@ -16349,6 +16458,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Lire tout l'épisode en texte"
+          }
+        }
+      }
+    },
+    "Ready" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereit"
           }
         }
       }
@@ -17462,6 +17581,9 @@
         }
       }
     },
+    "Reset to Standard" : {
+
+    },
     "Resolve a podcast page or feed URL and subscribe through Up Next." : {
       "localizations" : {
         "de" : {
@@ -18008,6 +18130,9 @@
         }
       }
     },
+    "Save Chapter Skip Rule" : {
+
+    },
     "Save Episode Filters" : {
       "localizations" : {
         "de" : {
@@ -18119,6 +18244,9 @@
           }
         }
       }
+    },
+    "Saving enables podcast-specific settings. Existing custom preferences may become active again; new settings inherit your global defaults. The rule will sync through iCloud." : {
+
     },
     "Saving transcript…" : {
       "localizations" : {
@@ -19059,6 +19187,9 @@
         }
       }
     },
+    "Show artwork in CarPlay" : {
+
+    },
     "Show captions" : {
       "localizations" : {
         "de" : {
@@ -19918,6 +20049,9 @@
           }
         }
       }
+    },
+    "Skip this chapter automatically?" : {
+
     },
     "Skip to the next chapter of the current episode." : {
       "localizations" : {
@@ -21148,6 +21282,12 @@
         }
       }
     },
+    "Suggested for %@" : {
+
+    },
+    "Suggestion Unavailable" : {
+
+    },
     "Summary" : {
       "localizations" : {
         "de" : {
@@ -21688,6 +21828,16 @@
         }
       }
     },
+    "The podcast could not be refreshed. Check your connection and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Podcast konnte nicht aktualisiert werden. Prüfe deine Verbindung und versuche es erneut."
+          }
+        }
+      }
+    },
     "The podcast library is unavailable." : {
       "localizations" : {
         "de" : {
@@ -21700,6 +21850,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La bibliothèque de podcasts est indisponible."
+          }
+        }
+      }
+    },
+    "The podcast server is temporarily unavailable. Try again later." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Podcast-Server ist vorübergehend nicht erreichbar. Versuche es später erneut."
           }
         }
       }
@@ -21732,6 +21892,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La barre de progression compare le nombre de registres SwiftData locaux de cet appareil avec une référence légère partagée via iCloud."
+          }
+        }
+      }
+    },
+    "The saved credentials were rejected. Check the username and password." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Anmeldedaten wurden abgelehnt. Prüfe Benutzername und Passwort."
+          }
+        }
+      }
+    },
+    "The saved credentials were rejected. Choose Fix Authentication to sign in again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die gespeicherten Anmeldedaten wurden abgelehnt. Wähle „Anmeldung reparieren“, um dich erneut anzumelden."
           }
         }
       }
@@ -22040,6 +22220,16 @@
         }
       }
     },
+    "This feed does not match the subscribed podcast." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Feed gehört nicht zum abonnierten Podcast."
+          }
+        }
+      }
+    },
     "This feed link is personal and will be stored securely. It is not included in sync or export." : {
       "localizations" : {
         "de" : {
@@ -22246,6 +22436,36 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce podcast ne nécessite pas de credentials."
+          }
+        }
+      }
+    },
+    "This podcast needs credentials to download new episodes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast benötigt Anmeldedaten, um neue Folgen zu laden."
+          }
+        }
+      }
+    },
+    "This podcast requires an updated access token. Choose Fix Authentication to update access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast benötigt ein aktualisiertes Zugriffstoken. Wähle „Anmeldung reparieren“, um den Zugriff zu aktualisieren."
+          }
+        }
+      }
+    },
+    "This podcast requires authentication. Choose Fix Authentication to update access." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Podcast erfordert eine Anmeldung. Wähle „Anmeldung reparieren“, um den Zugriff zu aktualisieren."
           }
         }
       }
@@ -23085,6 +23305,9 @@
     "Try it" : {
 
     },
+    "Turn off artwork if it causes instability. Playback and navigation remain available. The change applies when CarPlay refreshes or reconnects." : {
+
+    },
     "Turn off to skip this chapter" : {
       "localizations" : {
         "de" : {
@@ -23372,6 +23595,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Se désabonner"
+          }
+        }
+      }
+    },
+    "Unsupported" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht unterstützt"
           }
         }
       }
@@ -24029,6 +24262,9 @@
           }
         }
       }
+    },
+    "Username and Password" : {
+
     },
     "Uses Apple Intelligence on this device" : {
       "localizations" : {
@@ -24820,6 +25056,19 @@
         }
       }
     },
+    "You skipped matching chapters in %lld different episodes." : {
+
+    },
+    "You've skipped chapters containing “%@” in %lld episodes. Create a rule for this podcast?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "You've skipped chapters containing “%1$@” in %2$lld episodes. Create a rule for this podcast?"
+          }
+        }
+      }
+    },
     "Your %lld listening recap is ready. Open the share picture view to customize and export it." : {
       "localizations" : {
         "de" : {
@@ -24891,6 +25140,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Votre bibliothèque est vide"
+          }
+        }
+      }
+    },
+    "Your podcast credentials could not be accessed on this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Gerät konnte nicht auf die Podcast-Anmeldedaten zugegriffen werden."
           }
         }
       }

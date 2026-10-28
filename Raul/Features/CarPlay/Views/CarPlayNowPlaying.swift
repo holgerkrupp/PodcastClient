@@ -30,6 +30,7 @@ class CarPlayNowPlaying {
     
     var template: CPNowPlayingTemplate = CPNowPlayingTemplate.shared
     private var chapterDataObserver: CarPlayNotificationObserver?
+    private var artworkSettingsObserver: CarPlayNotificationObserver?
     private var chapterList: CarPlayChapterMarkList?
     
     init(interfaceController: CPInterfaceController) {
@@ -47,10 +48,23 @@ class CarPlayNowPlaying {
             }
         }
         chapterDataObserver = CarPlayNotificationObserver(token: observer)
+        let artworkObserver = NotificationCenter.default.addObserver(
+            forName: CarPlayArtworkSettings.didChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.setupTempate(interfaceController: self.interfaceController)
+                self.chapterList?.refreshForArtworkPreferenceChange()
+            }
+        }
+        artworkSettingsObserver = CarPlayNotificationObserver(token: artworkObserver)
     }
 
     func invalidate() {
         chapterDataObserver = nil
+        artworkSettingsObserver = nil
         chapterList?.invalidate()
         chapterList = nil
     }
@@ -67,7 +81,9 @@ class CarPlayNowPlaying {
     
         let preferredChapters = player.currentEpisode?.preferredChapters ?? []
         if preferredChapters.isEmpty == false {
-            if let image = UIImage(systemName: "list.bullet") {
+            if let image = CarPlayArtworkProvider.buttonImage(
+                systemName: "list.bullet", displayScale: interfaceController.carTraitCollection.displayScale
+            ) {
                 let listButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
                     guard let self else { return }
                     let chapterList = CarPlayChapterMarkList(interfaceController: interfaceController)
@@ -78,14 +94,18 @@ class CarPlayNowPlaying {
                 buttons.append(listButton)
             }
 
-            if let image = UIImage(systemName: "backward.end.alt") {
+            if let image = CarPlayArtworkProvider.buttonImage(
+                systemName: "backward.end.alt", displayScale: interfaceController.carTraitCollection.displayScale
+            ) {
                 let previousChapterButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
                     Task { await self?.skipToCurrentPreferredChapterStart() }
                 }
                 buttons.append(previousChapterButton)
             }
 
-            if let image = UIImage(systemName: "forward.end.alt") {
+            if let image = CarPlayArtworkProvider.buttonImage(
+                systemName: "forward.end.alt", displayScale: interfaceController.carTraitCollection.displayScale
+            ) {
                 let nextChapterButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
                     Task { await self?.skipToNextPreferredChapter() }
                 }
@@ -101,7 +121,9 @@ class CarPlayNowPlaying {
         
         buttons.append(rateButton)
         
-        if let image = UIImage(systemName: "bookmark") {
+        if let image = CarPlayArtworkProvider.buttonImage(
+            systemName: "bookmark", displayScale: interfaceController.carTraitCollection.displayScale
+        ) {
             let bookmarkButton = CPNowPlayingImageButton(image: image) { _ in
                 Task { player.createBookmark() }
             }

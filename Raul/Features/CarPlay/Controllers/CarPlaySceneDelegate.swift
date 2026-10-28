@@ -1,9 +1,12 @@
 #if os(iOS)
 import CarPlay
 import SwiftData
+import UIKit
+import os
 
 @MainActor
 class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UpNext", category: "CarPlayScene")
     var interfaceController: CPInterfaceController?
     var playNext: CarPlayPlayNext?
     var nowPlaying: CarPlayNowPlaying?
@@ -11,6 +14,10 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var connectionGeneration: UInt64 = 0
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
+        let icon = UIApplication.shared.alternateIconName ?? "primary"
+        logger.info("CarPlay connected; scene=UpNext template=queue artwork=\(CarPlayArtworkSettings.showArtwork ? "enabled" : "text-only", privacy: .public) app=\(version, privacy: .public)(\(build, privacy: .public)) iOS=\(UIDevice.current.systemVersion, privacy: .public) icon=\(icon, privacy: .public)")
         connectionTask?.cancel()
         playNext?.invalidate()
         nowPlaying?.invalidate()
@@ -58,6 +65,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
         guard self.interfaceController === interfaceController else { return }
+        logger.info("CarPlay disconnected")
         connectionGeneration &+= 1
         connectionTask?.cancel()
         connectionTask = nil

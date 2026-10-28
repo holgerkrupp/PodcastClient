@@ -42,6 +42,7 @@ struct WidgetPlaybackSnapshot: Codable, Equatable, Sendable {
     let title: String?
     let podcastTitle: String?
     let coverFileName: String?
+    let backgroundFileName: String?
     let skipBackSymbol: String?
     let skipForwardSymbol: String?
     let skipBackSeconds: Int?
@@ -56,6 +57,7 @@ struct WidgetPlaybackSnapshot: Codable, Equatable, Sendable {
         title == other.title &&
         podcastTitle == other.podcastTitle &&
         coverFileName == other.coverFileName &&
+        backgroundFileName == other.backgroundFileName &&
         skipBackSymbol == other.skipBackSymbol &&
         skipForwardSymbol == other.skipForwardSymbol &&
         skipBackSeconds == other.skipBackSeconds &&
@@ -210,7 +212,9 @@ enum PlayNextWidgetSync {
         lastPositionOnlyPublicationAt = .now
         let player = Player.shared
         let episode = player.currentEpisode
-        let artworkURL = episode?.imageURL ?? episode?.podcast?.imageURL ?? episode?.url
+        let podcastArtworkURL = episode?.imageURL ?? episode?.podcast?.imageURL
+        let artworkURL = podcastArtworkURL ?? episode?.url
+        let backgroundFileName = podcastArtworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
         let coverFileName: String?
         if let artwork = player.currentArtworkImage, let artworkURL {
             coverFileName = persistCurrentArtworkThumbnail(artwork, for: artworkURL)
@@ -228,6 +232,7 @@ enum PlayNextWidgetSync {
             title: episode?.title,
             podcastTitle: episode?.podcast?.title,
             coverFileName: coverFileName,
+            backgroundFileName: backgroundFileName,
             skipBackSymbol: player.skipBackStep.triangleBackString,
             skipForwardSymbol: player.skipForwardStep.triangleForwardString,
             skipBackSeconds: player.skipBackStep.rawValue,

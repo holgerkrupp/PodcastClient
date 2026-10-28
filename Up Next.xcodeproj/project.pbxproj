@@ -1599,6 +1599,7 @@
 		};
 		485AEE7A30737DD300E5A889 /* ESADesignKit */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = 485AEE7930737DD300E5A889 /* XCLocalSwiftPackageReference "../ESADesignKit" */;
 			productName = ESADesignKit;
 		};
 		485AEE7C30737E0900E5A889 /* ESADesignKit */ = {

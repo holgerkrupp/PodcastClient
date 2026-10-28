@@ -150,7 +150,10 @@ struct ContentView: View {
             refreshWidgetForSelectedPlaylist(newValue)
         }
         .task(id: sharedPlaylistSnapshotSignature) {
-            PendingSharedEpisodeImportStore.publish(playlists: playlists)
+            PendingSharedEpisodeImportStore.publish(
+                playlists: playlists,
+                preferredPlaylistID: selectedPlaylistID
+            )
         }
         .onChange(of: navigation.selectedSection) { _, newValue in
             restoredSelection = newValue.rawValue
@@ -409,7 +412,12 @@ struct ContentView: View {
 
         case .importEpisode:
             await importSharedEpisode(
-                PendingSharedEpisodeImportRequest(id: action.id, url: action.url, playlistID: action.playlistID)
+                PendingSharedEpisodeImportRequest(
+                    id: action.id,
+                    url: action.url,
+                    playlistID: action.playlistID,
+                    queuePosition: action.queuePosition
+                )
             )
         }
     }
@@ -439,7 +447,8 @@ struct ContentView: View {
            Playlist.manualVisibleSorted(playlists).contains(where: {
                $0.id == playlistID
            }) {
-            destination = .playlist(playlistID)
+            let position: Playlist.Position = request.queuePosition == .front ? .front : .end
+            destination = .playlist(playlistID, position: position)
             selectedPlaylistID = playlistID.uuidString
             navigation.select(.queue)
         } else {
@@ -506,7 +515,8 @@ struct ContentView: View {
                 $0.id.uuidString,
                 $0.displayTitle,
                 $0.displaySymbolName,
-                String($0.sortIndex)
+                String($0.sortIndex),
+                $0.id.uuidString == selectedPlaylistID ? "preferred" : ""
             ].joined(separator: "|")
         }.joined(separator: "||")
     }

@@ -18,7 +18,7 @@ enum PodcastEpisodeShareImportError: LocalizedError {
 
 enum SharedEpisodeImportDestination: Sendable, Equatable {
     case inbox
-    case playlist(UUID)
+    case playlist(UUID, position: Playlist.Position)
 }
 
 enum SharedURLResolution {
@@ -289,7 +289,7 @@ struct PodcastEpisodeShareImporter {
             modelContext.saveIfNeeded()
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
 
-        case .playlist(let playlistID):
+        case .playlist(let playlistID, let position):
             // The playlist actor uses its own model context, so the imported
             // episode must be durable before it can look it up by URL.
             modelContext.saveIfNeeded()
@@ -297,7 +297,7 @@ struct PodcastEpisodeShareImporter {
                 modelContainer: modelContext.container,
                 playlistID: playlistID
             )
-            try await playlistActor.add(episodeURL: episodeURL, to: .end)
+            try await playlistActor.add(episodeURL: episodeURL, to: position)
         }
     }
 

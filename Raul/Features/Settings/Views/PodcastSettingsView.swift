@@ -1710,6 +1710,19 @@ struct PodcastSettingsView: View {
 
     private var integrationsSection: some View {
         Section("Integrations") {
+#if os(iOS)
+            Toggle(isOn: Binding(
+                get: { CarPlayArtworkSettings.showArtwork },
+                set: { CarPlayArtworkSettings.setShowArtwork($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Show artwork in CarPlay")
+                    Text("Turn off artwork if it causes instability. Playback and navigation remain available. The change applies when CarPlay refreshes or reconnects.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+#endif
             Button {
 #if canImport(UIKit)
                 if let url = URL(string: UIApplication.openSettingsURLString) {

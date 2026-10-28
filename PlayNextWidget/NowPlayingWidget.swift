@@ -18,6 +18,7 @@ private struct NowPlayingSnapshot: Decodable {
     let title: String?
     let podcastTitle: String?
     let coverFileName: String?
+    let backgroundFileName: String?
     let skipBackSymbol: String?
     let skipForwardSymbol: String?
     let skipBackSeconds: Int?
@@ -101,6 +102,7 @@ private struct NowPlayingProvider: TimelineProvider {
                 title: item.title,
                 podcastTitle: item.podcast ?? item.subtitle,
                 coverFileName: item.coverFileName,
+                backgroundFileName: item.coverFileName,
                 skipBackSymbol: nil,
                 skipForwardSymbol: nil,
                 skipBackSeconds: nil,
@@ -117,12 +119,12 @@ struct UpNextNowPlayingWidget: Widget {
             NowPlayingWidgetView(entry: entry)
                 .widgetVisualDesign(
                     style: entry.visualStyle,
-                    artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.coverFileName)
+                    artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.backgroundFileName ?? entry.snapshot?.coverFileName)
                 )
                 .containerBackground(for: .widget) {
                     WidgetVisualDesignBackground(
                         style: entry.visualStyle,
-                        artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.coverFileName)
+                        artwork: WidgetVisualDesign.artwork(named: entry.snapshot?.backgroundFileName ?? entry.snapshot?.coverFileName)
                     )
                 }
         }
@@ -158,16 +160,18 @@ private struct NowPlayingWidgetView: View {
     }
 
     private var smallLayout: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .center, spacing: 4) {
             artwork(size: 58)
             episodeText(titleLineLimit: 1, showMetadata: false)
-            HStack(spacing: 2) {
+            HStack(spacing: 12) {
                 skipBackButton(size: 36)
                 transportButton(size: 30, hitTarget: 36)
                 skipForwardButton(size: 36)
             }
+            .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
     }
 
     private var mediumLayout: some View {
@@ -268,9 +272,10 @@ private struct NowPlayingWidgetView: View {
     private func skipBackButton(size: CGFloat) -> some View {
         Button(intent: WidgetSkipBackIntent()) {
             Image(systemName: snapshot?.skipBackSymbol ?? "15.arrow.trianglehead.counterclockwise")
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 16, weight: .semibold))
                 .frame(width: size, height: size)
                 .contentShape(Rectangle())
+                .background(palette.control.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Skip back \(snapshot?.skipBackSeconds ?? 15) seconds")
@@ -279,9 +284,10 @@ private struct NowPlayingWidgetView: View {
     private func skipForwardButton(size: CGFloat) -> some View {
         Button(intent: WidgetSkipForwardIntent()) {
             Image(systemName: snapshot?.skipForwardSymbol ?? "30.arrow.trianglehead.clockwise")
-                .font(.system(size: 17, weight: .medium))
+                .font(.system(size: 16, weight: .semibold))
                 .frame(width: size, height: size)
                 .contentShape(Rectangle())
+                .background(palette.control.opacity(0.10), in: Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Skip forward \(snapshot?.skipForwardSeconds ?? 30) seconds")

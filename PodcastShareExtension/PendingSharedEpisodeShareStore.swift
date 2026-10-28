@@ -4,6 +4,13 @@ struct SharedEpisodePlaylistSnapshot: Codable, Hashable, Identifiable {
     let id: UUID
     let title: String
     let symbolName: String
+    let isPreferred: Bool?
+    let isDefaultQueue: Bool?
+}
+
+enum SharedEpisodeQueuePosition: String, Codable, Sendable {
+    case front
+    case end
 }
 
 enum PendingSharedEpisodeActionKind: String, Codable, Sendable {
@@ -19,17 +26,30 @@ struct PendingSharedEpisodeAction: Codable, Hashable, Identifiable, Sendable {
     let feedURL: URL?
     let query: String?
     let playlistID: UUID?
+    let queuePosition: SharedEpisodeQueuePosition?
 
-    static func importEpisode(url: URL, playlistID: UUID?) -> Self {
-        Self(id: UUID(), kind: .importEpisode, url: url, feedURL: nil, query: nil, playlistID: playlistID)
+    static func importEpisode(
+        url: URL,
+        playlistID: UUID?,
+        queuePosition: SharedEpisodeQueuePosition? = nil
+    ) -> Self {
+        Self(
+            id: UUID(),
+            kind: .importEpisode,
+            url: url,
+            feedURL: nil,
+            query: nil,
+            playlistID: playlistID,
+            queuePosition: queuePosition
+        )
     }
 
     static func subscribe(feedURL: URL, sharedURL: URL) -> Self {
-        Self(id: UUID(), kind: .subscribe, url: sharedURL, feedURL: feedURL, query: nil, playlistID: nil)
+        Self(id: UUID(), kind: .subscribe, url: sharedURL, feedURL: feedURL, query: nil, playlistID: nil, queuePosition: nil)
     }
 
     static func search(query: String, sharedURL: URL) -> Self {
-        Self(id: UUID(), kind: .search, url: sharedURL, feedURL: nil, query: query, playlistID: nil)
+        Self(id: UUID(), kind: .search, url: sharedURL, feedURL: nil, query: query, playlistID: nil, queuePosition: nil)
     }
 }
 
@@ -76,10 +96,25 @@ enum PendingSharedEpisodeShareStore {
             return envelope.actions
         }
         guard let legacy = try? JSONDecoder().decode([LegacyPendingSharedEpisodeRequest].self, from: data) else { return [] }
-        return legacy.map { PendingSharedEpisodeAction(id: $0.id, kind: .importEpisode, url: $0.url, feedURL: nil, query: nil, playlistID: $0.playlistID) }
+        return legacy.map {
+            PendingSharedEpisodeAction(
+                id: $0.id,
+                kind: .importEpisode,
+                url: $0.url,
+                feedURL: nil,
+                query: nil,
+                playlistID: $0.playlistID,
+                queuePosition: nil
+            )
+        }
     }
 
     private static func equivalent(_ lhs: PendingSharedEpisodeAction, _ rhs: PendingSharedEpisodeAction) -> Bool {
-        lhs.kind == rhs.kind && lhs.url == rhs.url && lhs.feedURL == rhs.feedURL && lhs.query == rhs.query && lhs.playlistID == rhs.playlistID
+        lhs.kind == rhs.kind
+            && lhs.url == rhs.url
+            && lhs.feedURL == rhs.feedURL
+            && lhs.query == rhs.query
+            && lhs.playlistID == rhs.playlistID
+            && lhs.queuePosition == rhs.queuePosition
     }
 }
