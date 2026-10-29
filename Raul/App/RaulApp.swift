@@ -358,6 +358,7 @@ enum PredictedReleaseRefreshScheduler {
             )
             return
         }
+        guard Task.isCancelled == false else { return }
 
         guard Date().timeIntervalSince(snapshot.computedAt)
                 <= BackgroundTaskConfiguration.refreshScheduleSnapshotMaximumAge else {
@@ -778,6 +779,7 @@ struct RaulApp: App {
 #if os(iOS)
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
+            guard Task.isCancelled == false else { return }
             if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
                 // Re-arm without fetching subscription predictions or opening
                 // a CloudKit-backed container during active audio playback.
@@ -788,9 +790,13 @@ struct RaulApp: App {
                 )
                 return
             }
+            guard Task.isCancelled == false else { return }
             await scheduleFeedRefresh()
+            guard Task.isCancelled == false else { return }
             await schedulePredictedReleaseRefresh()
+            guard Task.isCancelled == false else { return }
             await modelContainerManager.prepareContainer()
+            guard Task.isCancelled == false else { return }
 
             guard let container = await MainActor.run(body: {
                 modelContainerManager.preparedContainer
@@ -803,6 +809,7 @@ struct RaulApp: App {
             }
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
+            guard Task.isCancelled == false else { return }
             await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
             let exportDrainStartedAt = Date()
             let exportSettled = await StoreCloudKitActivityMonitor.shared
@@ -821,7 +828,9 @@ struct RaulApp: App {
         }
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("predicted_release_refresh_background_task_started")
+            guard Task.isCancelled == false else { return }
             await modelContainerManager.prepareContainer()
+            guard Task.isCancelled == false else { return }
 
             guard let container = await MainActor.run(body: {
                 modelContainerManager.preparedContainer
@@ -830,6 +839,7 @@ struct RaulApp: App {
                     "predicted_release_refresh_background_task_aborted",
                     details: "reason=model_container_unavailable"
                 )
+                guard Task.isCancelled == false else { return }
                 await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
                 return
             }
@@ -840,6 +850,7 @@ struct RaulApp: App {
                     releaseDelay: BackgroundTaskConfiguration.predictedReleaseRefreshOffset
                 )
 
+            guard Task.isCancelled == false else { return }
             await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
             let exportDrainStartedAt = Date()
             let exportSettled = await StoreCloudKitActivityMonitor.shared

@@ -146,7 +146,7 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
         staleVerification.issues = []
         cacheContext.insert(staleVerification)
         try cacheContext.save()
-        XCTAssertTrue(StoreSplitMigrationService.isMigrationVerified(cacheContainer: stores.cache))
+        XCTAssertTrue(StoreSplitMigrationService.isDiagnosticVerificationPassed(cacheContainer: stores.cache))
 
         let first = await StoreSplitMigrationService.runSlice(
             legacyContainer: stores.legacy,
@@ -183,7 +183,7 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
         XCTAssertEqual(checkpoint.scannedCount, 141)
         XCTAssertEqual(checkpoint.failedCount, 0)
         XCTAssertEqual(StoreSplitMigrationService.cursorDisplay(checkpoint.cursor ?? ""), "141")
-        XCTAssertFalse(StoreSplitMigrationService.isMigrationVerified(cacheContainer: stores.cache))
+        XCTAssertFalse(StoreSplitMigrationService.isDiagnosticVerificationPassed(cacheContainer: stores.cache))
         let verificationID = StoreSplitMigrationVerifier.verificationID
         let invalidatedVerification = try XCTUnwrap(
             ModelContext(stores.cache).fetch(FetchDescriptor<StoreSplitMigrationVerification>(
@@ -235,7 +235,7 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
             }
         }
         verificationDefaults.set(false, forKey: invalidatedKey)
-        XCTAssertTrue(StoreSplitMigrationService.isMigrationVerified(cacheContainer: stores.cache))
+        XCTAssertTrue(StoreSplitMigrationService.isDiagnosticVerificationPassed(cacheContainer: stores.cache))
 
         let report = await StoreSplitMigrationService.runSlice(
             legacyContainer: stores.legacy,
@@ -244,7 +244,7 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
         )
         XCTAssertEqual(report.status, .failed)
         XCTAssertEqual(report.error, "listening_history_verification_missing_record")
-        XCTAssertFalse(StoreSplitMigrationService.isMigrationVerified(cacheContainer: stores.cache))
+        XCTAssertFalse(StoreSplitMigrationService.isDiagnosticVerificationPassed(cacheContainer: stores.cache))
         XCTAssertNil(StoreSplitMigrationVerifier.latestVerification(cacheContainer: stores.cache))
 
         let verificationCheckpointID = StoreSplitMigrationService.checkpointID(
@@ -335,8 +335,9 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
         let stores = try makeStores()
         let episode = makeEpisode(in: stores.legacy.mainContext)
         let startedAt = Date(timeIntervalSince1970: 1_700_300_000)
+        let sourceID = UUID(uuidString: "A35A72D4-3306-4C78-AD89-19A138AFE808")!
         let session = PlaySession(
-            id: nil,
+            id: sourceID,
             episode: episode,
             sourceDeviceID: "fixture-device",
             sourceDeviceName: "Fixture iPhone",
@@ -372,10 +373,7 @@ final class StoreSplitIncrementalListeningHistoryVerificationTests: XCTestCase {
         XCTAssertNil(checkpoint.completedAt)
 
         let identity = episode.stableEpisodeIdentity
-        let cachedID = StableIdentityKey.uuid(for: StableIdentityKey.make(
-            identity.key,
-            String(Int(startedAt.timeIntervalSince1970))
-        )).uuidString
+        let cachedID = sourceID.uuidString
         let cacheContext = ModelContext(stores.cache)
         cacheContext.insert(CachedPlaySession(
             id: cachedID,

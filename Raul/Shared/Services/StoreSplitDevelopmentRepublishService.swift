@@ -537,30 +537,30 @@ actor StoreSplitDevelopmentRepublishService {
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
         scope: StoreSplitDevelopmentRepublishScope
-    ) async -> StoreSplitDevelopmentRepublishResult {
+    ) async throws -> StoreSplitDevelopmentRepublishResult {
         let service = StoreSplitDevelopmentRepublishService(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer
         )
-        return await service.run(scope: scope)
+        return try await service.run(scope: scope)
     }
 
     private func run(
         scope: StoreSplitDevelopmentRepublishScope
-    ) async -> StoreSplitDevelopmentRepublishResult {
+    ) async throws -> StoreSplitDevelopmentRepublishResult {
         var result = StoreSplitDevelopmentRepublishResult()
         let now = Date()
         switch scope {
         case .subscriptions:
             await republishSubscriptions(now: now, result: &result)
         case .episodeStates:
-            await republishEpisodeStates(now: now, result: &result)
+            try await republishEpisodeStates(now: now, result: &result)
         case .playlists:
             await republishPlaylists(now: now, result: &result)
         case .bookmarks:
-            await republishBookmarks(now: now, result: &result)
+            try await republishBookmarks(now: now, result: &result)
         case .listeningHistory:
-            await republishListeningHistory(result: &result)
+            try await republishListeningHistory(result: &result)
         }
         result.storedCounts = StoreSplitDevelopmentStoreCounts.read(
             from: userStateContainer
@@ -591,7 +591,7 @@ actor StoreSplitDevelopmentRepublishService {
     private func republishEpisodeStates(
         now: Date,
         result: inout StoreSplitDevelopmentRepublishResult
-    ) async {
+    ) async throws {
         var episodeOffset = 0
         while true {
             let page = episodeStateSnapshots(
@@ -600,7 +600,7 @@ actor StoreSplitDevelopmentRepublishService {
             )
             guard page.fetchedCount > 0 else { break }
             if page.snapshots.isEmpty == false {
-                await StoreSplitEpisodeStateSyncWriter(
+                try await StoreSplitEpisodeStateSyncWriter(
                     modelContainer: userStateContainer
                 ).upsert(page.snapshots, at: now)
                 result.episodeStates += page.snapshots.count
@@ -646,7 +646,7 @@ actor StoreSplitDevelopmentRepublishService {
     private func republishBookmarks(
         now: Date,
         result: inout StoreSplitDevelopmentRepublishResult
-    ) async {
+    ) async throws {
         let context = ModelContext(legacyContainer)
         let bookmarkWriter = StoreSplitBookmarkSyncWriter(
             modelContainer: userStateContainer
@@ -654,7 +654,7 @@ actor StoreSplitDevelopmentRepublishService {
         for bookmark in (try? context.fetch(FetchDescriptor<Bookmark>())) ?? [] {
             guard let episode = bookmark.bookmarkEpisode,
                   let bookmarkID = bookmark.uuid?.uuidString else { continue }
-            await bookmarkWriter.upsert(
+            try await bookmarkWriter.upsert(
                 StoreSplitBookmarkSnapshot(
                     id: bookmarkID,
                     identity: episode.stableEpisodeIdentity,
@@ -670,7 +670,7 @@ actor StoreSplitDevelopmentRepublishService {
 
     private func republishListeningHistory(
         result: inout StoreSplitDevelopmentRepublishResult
-    ) async {
+    ) async throws {
         var historyOffset = 0
         while true {
             let page = listeningHistorySnapshots(
@@ -679,7 +679,7 @@ actor StoreSplitDevelopmentRepublishService {
             )
             guard page.fetchedCount > 0 else { break }
             if page.snapshots.isEmpty == false {
-                await StoreSplitListeningHistorySyncWriter(
+                try await StoreSplitListeningHistorySyncWriter(
                     modelContainer: userStateContainer
                 ).upsert(page.snapshots)
                 result.listeningSessions += page.snapshots.count

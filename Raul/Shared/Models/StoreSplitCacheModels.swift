@@ -1,6 +1,40 @@
 import Foundation
 import SwiftData
 
+/// Local retry work for a portable record whose episode is not yet available.
+/// The source record remains in UserState; this row only preserves its identity
+/// and revision until a bounded projection has committed successfully.
+@Model
+final class CachedMissingEpisodeReference: Identifiable {
+    #Index<CachedMissingEpisodeReference>([\.id], [\.nextAttemptAt, \.id])
+
+    var id: String = ""
+    var streamRawValue: String = ""
+    var sourceRecordID: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var sourceUpdatedAt: Date = Date.distantPast
+    var payloadDigest: String = ""
+    var generation: String = ""
+    var nextAttemptAt: Date = Date.distantPast
+    var attemptCount: Int = 0
+    var contentProjectionPending: Bool = false
+
+    init(id: String, streamRawValue: String, sourceRecordID: String,
+         feedURL: String, episodeID: String, sourceUpdatedAt: Date, payloadDigest: String,
+         generation: String, nextAttemptAt: Date = .distantPast) {
+        self.id = id
+        self.streamRawValue = streamRawValue
+        self.sourceRecordID = sourceRecordID
+        self.feedURL = feedURL
+        self.episodeID = episodeID
+        self.sourceUpdatedAt = sourceUpdatedAt
+        self.payloadDigest = payloadDigest
+        self.generation = generation
+        self.nextAttemptAt = nextAttemptAt
+    }
+}
+
 @Model
 final class StoreSplitMigrationCheckpoint: Identifiable {
     var id: String = ""

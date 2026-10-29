@@ -122,9 +122,9 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
             duration: 120
         )
 
-        await writer.upsert(first)
-        await writer.upsert(second)
-        await writer.upsert(first)
+        try await writer.upsert(first)
+        try await writer.upsert(second)
+        try await writer.upsert(first)
 
         let rows = try ModelContext(userState)
             .fetch(FetchDescriptor<ListeningHistorySync>())
@@ -162,7 +162,7 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
             hour: 23
         )))
 
-        await writer.upsert(historySnapshot(
+        try await writer.upsert(historySnapshot(
             id: "cross-midnight",
             feed: "https://example.com/feed.xml",
             deviceID: "phone",
@@ -201,7 +201,7 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
         try context.save()
 
         let writer = StoreSplitListeningHistorySyncWriter(modelContainer: userState)
-        await writer.upsert(historySnapshot(
+        try await writer.upsert(historySnapshot(
             id: "phone",
             feed: podcast.feed!.absoluteString,
             deviceID: "phone",
@@ -209,7 +209,7 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
             start: Date(timeIntervalSince1970: 1_000),
             duration: 60
         ))
-        await writer.upsert(historySnapshot(
+        try await writer.upsert(historySnapshot(
             id: "mac",
             feed: podcast.feed!.absoluteString,
             deviceID: "mac",
@@ -258,7 +258,7 @@ final class StoreSplitListeningAnalyticsTests: XCTestCase {
         try context.save()
 
         let writer = StoreSplitListeningHistorySyncWriter(modelContainer: userState)
-        await writer.upsert(historySnapshot(
+        try await writer.upsert(historySnapshot(
             id: "new",
             feed: migrated.feedURL,
             deviceID: "phone",

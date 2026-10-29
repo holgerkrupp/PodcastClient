@@ -97,7 +97,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
         ))
         try context.save()
 
-        await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
+        try await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
             StoreSplitListeningHistorySnapshot(
                 id: id,
                 identity: identity,
@@ -136,7 +136,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             episodeID: "episode-1"
         )
         let startedAt = Date(timeIntervalSince1970: 1_700_000_000)
-        await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
+        try await StoreSplitListeningHistorySyncWriter(modelContainer: userState).upsert(
             StoreSplitListeningHistorySnapshot(
                 id: "session-1",
                 identity: identity,
@@ -184,7 +184,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
         let baselines = try ModelContext(userState)
             .fetch(FetchDescriptor<ListeningBaselineSync>())
         XCTAssertEqual(baselines.count, 1)
-        XCTAssertEqual(baselines[0].totalSeconds, 5_400)
+        XCTAssertEqual(try XCTUnwrap(baselines.first).totalSeconds, 5_400)
     }
 
     /// The defect this design removes: a total that can be re-derived from data
@@ -215,7 +215,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             .fetch(FetchDescriptor<ListeningBaselineSync>())
         XCTAssertEqual(baselines.count, 1)
         XCTAssertEqual(
-            baselines[0].totalSeconds, 3_600,
+            try XCTUnwrap(baselines.first).totalSeconds, 3_600,
             "the baseline is a constant from the moment of capture; recapture must not move it"
         )
     }
@@ -240,7 +240,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
             .fetch(FetchDescriptor<ListeningBaselineSync>())
         XCTAssertEqual(baselines.count, 1)
         XCTAssertEqual(
-            baselines[0].totalSeconds, 600,
+            try XCTUnwrap(baselines.first).totalSeconds, 600,
             "the week tier is used and the day rows inside it are not added on top"
         )
     }

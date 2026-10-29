@@ -664,7 +664,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     }
 
     @MainActor
-    func testCompletedMigrationPreflightPromotesRolloutToNewStoreReads() throws {
+    func testCompletedCheckpointsDoNotPromoteWithoutProductionVerification() throws {
         StoreSplitRollout.resetForDevelopment()
         defer { StoreSplitRollout.resetForDevelopment() }
         let containers = try makeContainers()
@@ -676,8 +676,9 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                     id: StoreSplitMigrationService.checkpointID(for: phase),
                     migrationVersion: StoreSplitMigrationService.migrationVersion,
                     phase: phase,
+                    cursor: "0",
                     completedAt: Date(timeIntervalSince1970: 1_000),
-                    scannedCount: 1
+                    scannedCount: 0
                 )
             )
         }
@@ -691,18 +692,13 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         context.insert(verification)
         try context.save()
 
-        XCTAssertTrue(
+        XCTAssertFalse(
             ModelContainerManager.promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
                 cacheContainer: containers.cache
             )
         )
-        XCTAssertEqual(StoreSplitRollout.state, .newStoreReads)
-        XCTAssertEqual(
-            StoreSplitRollout.resolvedMode,
-            StoreSplitReleasePhase.current == .userStateAuthority
-                ? .splitStoreReads
-                : .splitStores
-        )
+        XCTAssertEqual(StoreSplitRollout.state, .unclassified)
+        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
     }
 
     @MainActor
@@ -865,7 +861,10 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                 cacheContainer: containers.cache,
                 shouldContinue: { true }
             )
-            XCTAssertNotEqual(report.status, .failed)
+            guard report.status != .failed else {
+                XCTFail("Migration failed before episode paging: \(report.error ?? "unknown error")")
+                return
+            }
             if report.phase == "episode_states", report.processed > 0 {
                 advancedEpisodePages += 1
             }
@@ -916,7 +915,10 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
                 cacheContainer: containers.cache,
                 shouldContinue: { true }
             )
-            XCTAssertNotEqual(report.status, .failed)
+            guard report.status != .failed else {
+                XCTFail("Migration failed before episode paging: \(report.error ?? "unknown error")")
+                return
+            }
             sawEpisodePage = report.phase == "episode_states" && report.processed > 0
         }
 
@@ -1200,9 +1202,10 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             allDevicesConverged: true,
             delayedCloudImportsSettled: true
         )
-        XCTAssertTrue(
+        XCTAssertFalse(
             StoreSplitReleasePhase.canSwitchToUserStateAuthority(gate: convergedGate),
-            "authority cutover requires both devices to finish the dual-sync backfill"
+            "counts and caller-supplied convergence cannot replace durable verification evidence"
         )
+        XCTAssertFalse(convergedGate.unresolvedEvidence.isEmpty)
     }
 }

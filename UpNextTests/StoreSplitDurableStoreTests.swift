@@ -609,7 +609,7 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
         }
 
         let first = Date()
-        let firstWrite = await writer.upsert(snapshot(playPosition: 100), at: first)
+        let firstWrite = try await writer.upsert(snapshot(playPosition: 100), at: first)
         XCTAssertTrue(firstWrite)
 
         let context = ModelContext(userState)
@@ -619,12 +619,12 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
         XCTAssertEqual(stored.updatedAt, first)
 
         // Identical state, and a sub-threshold nudge: neither is worth a write.
-        let identicalWrite = await writer.upsert(
+        let identicalWrite = try await writer.upsert(
             snapshot(playPosition: 100),
             at: first.addingTimeInterval(10)
         )
         XCTAssertFalse(identicalWrite)
-        let nudgeWrite = await writer.upsert(
+        let nudgeWrite = try await writer.upsert(
             snapshot(playPosition: 101),
             at: first.addingTimeInterval(20)
         )
@@ -639,7 +639,7 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
 
         // Real progress still gets through.
         let later = first.addingTimeInterval(30)
-        let progressWrite = await writer.upsert(snapshot(playPosition: 160), at: later)
+        let progressWrite = try await writer.upsert(snapshot(playPosition: 160), at: later)
         XCTAssertTrue(progressWrite)
         let movedContext = ModelContext(userState)
         let moved = try XCTUnwrap(

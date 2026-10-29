@@ -4008,14 +4008,13 @@ class Player {
         _ = RemoteCommandCenter.shared
     }
     
-    func createBookmark() {
-        Task {
-            if let currentEpisodeURL,
-               let container = ModelContainerManager.shared.preparedContainer {
-                await EpisodeActor(modelContainer: container)
-                    .createBookmark(for: currentEpisodeURL, at: playPosition)
-            }
+    func createBookmark() async throws {
+        guard let currentEpisodeURL,
+              let container = ModelContainerManager.shared.preparedContainer else {
+            throw BookmarkSaveError.episodeUnavailable
         }
+        try await EpisodeActor(modelContainer: container)
+            .createBookmark(for: currentEpisodeURL, at: playPosition)
     }
     
   

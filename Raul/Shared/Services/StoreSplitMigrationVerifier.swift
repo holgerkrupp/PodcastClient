@@ -20,6 +20,7 @@ struct LegacyStoreCleanupGate: Equatable, Sendable {
     let convergenceTelemetryPassed: Bool
     let supportedVersionGracePeriodEnded: Bool
     let cacheOrRSSRecoveryVerified: Bool
+    var verificationRevisionEvidenceProven = false
 
     var isSafe: Bool {
         migrationVerified
@@ -27,6 +28,7 @@ struct LegacyStoreCleanupGate: Equatable, Sendable {
             && convergenceTelemetryPassed
             && supportedVersionGracePeriodEnded
             && cacheOrRSSRecoveryVerified
+            && verificationRevisionEvidenceProven
     }
 }
 
@@ -36,6 +38,15 @@ struct LegacyStoreCleanupGate: Equatable, Sendable {
 enum StoreSplitMigrationVerifier {
     static let verificationID = "store-split-v\(StoreSplitMigrationService.migrationVersion)"
     private static let verificationInvalidatedKey = "storeSplit.verificationAttemptInvalidated.v1"
+    /// The diagnostic verifier is not yet a production proof tied to durable
+    /// revisions of every source and destination store. Keep these blockers in
+    /// the release decision until their corresponding stages and invalidation
+    /// evidence are implemented.
+    nonisolated static let unresolvedReleaseEvidence = [
+        "production verification does not yet cover all portable state and cache content",
+        "verification is not tied to durable store revisions across writes and imports",
+        "authoritative reconciliation and AI content recoverability are unresolved"
+    ]
 
     private static var verificationDefaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
@@ -71,7 +82,8 @@ enum StoreSplitMigrationVerifier {
                 cacheContext: ModelContext(cacheContainer)
             ).isSafeForCutover,
             allDevicesConverged: allDevicesConverged,
-            delayedCloudImportsSettled: delayedCloudImportsSettled
+            delayedCloudImportsSettled: delayedCloudImportsSettled,
+            unresolvedEvidence: unresolvedReleaseEvidence
         )
     }
 

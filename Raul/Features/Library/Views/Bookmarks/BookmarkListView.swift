@@ -29,6 +29,7 @@ struct BookmarkListView: View {
     @State private var isInlinePlaying = false
     @State private var inlinePlaybackEndObserver: NSObjectProtocol?
     @State private var exportingBookmark: Bookmark?
+    @State private var bookmarkError: String?
 
     @State private var searchText = ""
     @AppStorage("BookmarkListSort") private var sortRaw: String = Sort.newestFirst.rawValue
@@ -191,6 +192,14 @@ struct BookmarkListView: View {
         .onDisappear {
             stopInlinePlayback()
         }
+        .alert("Couldn’t Remove Bookmark", isPresented: Binding(
+            get: { bookmarkError != nil },
+            set: { if !$0 { bookmarkError = nil } }
+        )) {
+            Button("OK", role: .cancel) { bookmarkError = nil }
+        } message: {
+            Text(bookmarkError ?? "")
+        }
         .sheet(item: $exportingBookmark) { bookmark in
             if let episode = bookmark.bookmarkEpisode,
                let audioURL = resolvedAudioURL(for: episode) {
@@ -220,9 +229,13 @@ struct BookmarkListView: View {
 
     private func deleteMarker(_ marker: Marker) async {
         // print("archiveEpisode from PlaylistView - \(episode.title)")
-        guard let id = marker.uuid else { return }
+        guard let id = marker.uuid else {
+            bookmarkError = BookmarkSaveError.deleteFailed.localizedDescription
+            return
+        }
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
-        await episodeActor.deleteMarker(markerID: id)
+        do { try await episodeActor.deleteMarker(markerID: id) }
+        catch { bookmarkError = error.localizedDescription }
 
     }
 

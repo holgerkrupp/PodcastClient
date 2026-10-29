@@ -8,6 +8,7 @@ struct CloudSyncStatusView: View {
 
     @StateObject private var syncMonitor = SyncMonitor.default
     @StateObject private var storeMonitor = StoreCloudKitActivityMonitor.shared
+    @ObservedObject private var portableWriteFailures = PortableWriteFailureMonitor.shared
     @State private var localRecordCount = 0
     @State private var reference: CloudSyncProgressReference?
     @State private var isRefreshing = false
@@ -19,6 +20,7 @@ struct CloudSyncStatusView: View {
     }
 
     private var statusTitle: LocalizedStringKey {
+        if portableWriteFailures.needsRecovery { return "Playback Sync Needs Attention" }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
         if stores.contains(where: { $0.importStatus == .syncing }) {
             return "Syncing user data"
@@ -53,6 +55,7 @@ struct CloudSyncStatusView: View {
     }
 
     private var statusColor: Color {
+        if portableWriteFailures.needsRecovery { return .orange }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
         if stores.contains(where: { $0.importStatus == .syncing }) {
             return .secondary
@@ -80,6 +83,11 @@ struct CloudSyncStatusView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            if portableWriteFailures.needsRecovery {
+                Label("Some playback or listening history could not be queued for syncing. Keep Up Next installed, check device storage, and contact support if the warning persists.", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
             HStack(spacing: 12) {
                 Image(systemName: syncMonitor.syncStateSummary.symbolName)
                     .font(.title3)

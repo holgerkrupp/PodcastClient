@@ -144,7 +144,7 @@ struct BookmarkCurrentPlaybackIntent: AppIntent {
     
     func perform() async throws -> some IntentResult {
         let player = try await preparedIntentPlayer()
-        await player.createBookmark()
+        try await player.createBookmark()
         return .result()
     }
 }

@@ -16,6 +16,9 @@ struct StoreSplitUserStateImportResult: Sendable {
     var feedsAwaitingCredentials: [URL] = []
     var credentialRequiredProfileIDs: [String] = []
     var playlistFeedsToBootstrap: [URL] = []
+    /// Streams containing records that could not yet be projected. Their
+    /// cursors must stay eligible until targeted retry has durably completed.
+    var unresolvedStreams: Set<StoreSplitUserStateStream> = []
     var failed = 0
     var interruptedByPlayback = false
 }
@@ -29,6 +32,7 @@ actor StoreSplitUserStateImporter {
     private let episodeScanPageSize = 200
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
+    private let cacheContainer: ModelContainer?
     private let credentialStore: any PodcastCredentialStore
     private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
     private var legacyContext: ModelContext
@@ -61,10 +65,12 @@ actor StoreSplitUserStateImporter {
     private init(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
-        credentialStore: any PodcastCredentialStore
+        credentialStore: any PodcastCredentialStore,
+        cacheContainer: ModelContainer? = nil
     ) {
         self.legacyContainer = legacyContainer
         self.userStateContainer = userStateContainer
+        self.cacheContainer = cacheContainer
         self.credentialStore = credentialStore
         previousImportCursors = StoreSplitImportCursorStore.load()
         legacyContext = ModelContext(legacyContainer)
@@ -77,6 +83,7 @@ actor StoreSplitUserStateImporter {
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
         credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current,
+        cacheContainer: ModelContainer? = nil,
         authoritativePlaylists: Bool = false,
         projectListeningHistoryToLegacy: Bool = true,
         episodeStateProjectionRecencyCutoff: Date? = nil,
@@ -91,7 +98,8 @@ actor StoreSplitUserStateImporter {
         let importer = StoreSplitUserStateImporter(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
-            credentialStore: credentialStore
+            credentialStore: credentialStore,
+            cacheContainer: cacheContainer
         )
         var result = await importer.run(
             authoritativePlaylists: authoritativePlaylists,
@@ -168,15 +176,28 @@ actor StoreSplitUserStateImporter {
             .playlistEntries,
             .queueEntries,
             .bookmarks,
+            .preferences,
             .listeningHistory
         ]).isEmpty == false
         let podcasts = needsPodcastIndex ? buildPodcastIndex() : []
+        // A failed index read must not look like an empty library: doing so
+        // could create duplicate podcasts or commit incomplete projections.
+        guard sourceReadFailed == false else { return result }
 
-        let subscriptions = changedStreams.contains(.subscriptions)
-            ? deduplicatedSubscriptions(
-                (try? userStateContext.fetch(FetchDescriptor<SubscriptionSync>())) ?? []
-            )
-            : [:]
+        let subscriptions: [String: SubscriptionSync]
+        if changedStreams.contains(.subscriptions) {
+            do {
+                subscriptions = deduplicatedSubscriptions(
+                    try userStateContext.fetch(FetchDescriptor<SubscriptionSync>())
+                )
+            } catch {
+                sourceReadFailed = true
+                CrashBreadcrumbs.shared.record("store_split_import_subscriptions_fetch_failed")
+                return result
+            }
+        } else {
+            subscriptions = [:]
+        }
         let accessResolver = PodcastAccessResolver(credentialStore: credentialStore)
         if changedStreams.contains(.subscriptions) {
         for subscription in subscriptions.values {
@@ -281,6 +302,7 @@ actor StoreSplitUserStateImporter {
                 recencyCutoff: episodeStateProjectionRecencyCutoff,
                 result: &result
             )
+            guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         }
         if changedStreams.intersection([.playlists, .playlistEntries, .queueEntries]).isEmpty == false {
             await awaitIdleWindow()
@@ -288,12 +310,14 @@ actor StoreSplitUserStateImporter {
                 authoritative: authoritativePlaylists,
                 result: &result
             )
+            guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         }
         // Preferences store playlist sync identities. Project playlists first
         // so newly received targets can be resolved to this device's local UUID.
         if changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
             await awaitIdleWindow()
             await applyPreferences(result: &result)
+            guard result.failed == 0, sourceReadFailed == false else { return result }
             saveLegacyChanges(phase: "preferences", result: &result)
             refreshContexts()
             if await shouldStop() {
@@ -304,6 +328,7 @@ actor StoreSplitUserStateImporter {
         if changedStreams.contains(.bookmarks) {
             await awaitIdleWindow()
             await applyBookmarks(result: &result)
+            guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         }
         saveLegacyChanges(phase: "user_state", result: &result)
         if await shouldStop() {
@@ -319,10 +344,11 @@ actor StoreSplitUserStateImporter {
             await applyListeningHistory(
                 result: &result
             )
+            guard result.failed == 0, result.interruptedByPlayback == false else { return result }
             saveLegacyChanges(phase: "listening_history_final", result: &result)
-        } else if projectListeningHistoryToLegacy == false {
-            clearProjectedListeningHistory(result: &result)
         }
+        // Disabling projection does not prove the synchronized source is
+        // complete. Preserve all previously projected local sessions.
 
         if Task.isCancelled {
             result.interruptedByPlayback = true
@@ -371,7 +397,14 @@ actor StoreSplitUserStateImporter {
     /// entry point that projects episode-keyed rows has to build it first.
     @discardableResult
     private func buildPodcastIndex() -> [Podcast] {
-        let podcasts = (try? legacyContext.fetch(FetchDescriptor<Podcast>())) ?? []
+        let podcasts: [Podcast]
+        do {
+            podcasts = try legacyContext.fetch(FetchDescriptor<Podcast>())
+        } catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_import_podcast_index_fetch_failed")
+            return []
+        }
         // The fetch already handed us every podcast, so duplicate keys are
         // settled against that list rather than by asking the context to
         // resolve an identifier again.
@@ -411,7 +444,13 @@ actor StoreSplitUserStateImporter {
         var offset = 0
         var seenIDs = Set<String>()
         let decoder = JSONDecoder()
-        let playlists = (try? legacyContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        let playlists: [Playlist]
+        do { playlists = try legacyContext.fetch(FetchDescriptor<Playlist>()) }
+        catch {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record("store_split_preferences_destination_fetch_failed")
+            return
+        }
         let playlistsBySyncID = Dictionary(
             playlists.map { ($0.storeSplitSyncID, $0) },
             uniquingKeysWith: { first, _ in first }
@@ -428,8 +467,11 @@ actor StoreSplitUserStateImporter {
 
             for record in page where seenIDs.insert(record.id).inserted {
                 let settings: PodcastSettings
-                if let feedKey = record.feedURL,
-                   let feedURL = URL(string: feedKey) {
+                if let feedKey = record.feedURL {
+                    guard let feedURL = URL(string: feedKey) else {
+                        result.failed += 1
+                        continue
+                    }
                     guard let podcast = feedURL.podcastFeedComparisonKeys.compactMap({
                         podcastsByComparisonKey[$0].flatMap(indexedPodcast)
                     }).first else {
@@ -443,11 +485,19 @@ actor StoreSplitUserStateImporter {
                         predicate: #Predicate { $0.title == globalTitle }
                     )
                     descriptor.fetchLimit = 1
-                    settings = (try? legacyContext.fetch(descriptor).first) ?? {
-                        let created = PodcastSettings(defaultSettings: true)
-                        legacyContext.insert(created)
-                        return created
-                    }()
+                    do {
+                        if let existing = try legacyContext.fetch(descriptor).first {
+                            settings = existing
+                        } else {
+                            settings = PodcastSettings(defaultSettings: true)
+                            legacyContext.insert(settings)
+                        }
+                    } catch {
+                        legacyContext.rollback()
+                        result.failed += 1
+                        CrashBreadcrumbs.shared.record("store_split_preferences_destination_fetch_failed")
+                        return
+                    }
                 }
 
                 setIfChanged(settings, \.isEnabled, record.isEnabled)
@@ -543,6 +593,9 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
+            guard sourceReadFailed == false else { legacyContext.rollback(); return }
+            var missing: [StoreSplitMissingEpisodeReference] = []
+
 
             for state in freshStates {
                 let identityKey = stableIdentityKey(
@@ -551,9 +604,19 @@ actor StoreSplitUserStateImporter {
                 )
                 guard let episode = episodesByIdentity[identityKey] else {
                     appendMissingFeed(state.feedURL, to: &result)
+                    missing.append(.init(stream: .episodeState, sourceRecordID: state.id,
+                                         feedURL: state.feedURL, episodeID: state.episodeID,
+                                         sourceUpdatedAt: state.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.episodeState(state)))
                     continue
                 }
                 let metadata = ensureMetadata(for: episode)
+
+                if metadata.effectiveStateUpdatedAt == state.updatedAt,
+                   !StoreSplitEpisodeStateComparison.agrees(state, with: metadata) {
+                    result.unresolvedStreams.insert(.episodeState)
+                    continue
+                }
 
                 // Monotonic fields always merge upwards: the furthest point a
                 // user ever reached is not something a second device can undo.
@@ -601,10 +664,12 @@ actor StoreSplitUserStateImporter {
                 result.episodeStatesApplied += 1
             }
 
-            saveLegacyChanges(
+            guard persistMissingReferences(missing, result: &result) else { return }
+
+            guard saveLegacyChanges(
                 phase: "episode_states_batch_\(offset)",
                 result: &result
-            )
+            ) else { return }
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
@@ -756,12 +821,21 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
+            guard sourceReadFailed == false else { legacyContext.rollback(); return }
+            var missing: [StoreSplitMissingEpisodeReference] = []
+
             // Pages are newest-first. Deduplicate by the local logical playlist
             // and episode, rather than by the old remote record ID, so a recent
             // tombstone or reorder wins over stale aliases from another device.
             for record in freshEntries {
                 guard let playlist = localPlaylistBySyncedID[record.playlistID],
                       playlist.isSmartPlaylist == false else {
+                    if !record.isDeleted && record.deletedAt == nil {
+                        missing.append(.init(stream: .playlistEntries, sourceRecordID: record.id,
+                                             feedURL: record.feedURL, episodeID: record.episodeID,
+                                             sourceUpdatedAt: record.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.playlistEntry(record)))
+                    }
                     continue
                 }
                 let localPlaylistID = playlist.id.uuidString
@@ -816,6 +890,10 @@ actor StoreSplitUserStateImporter {
                     .insert(identityKey)
                 guard let episode = episodesByIdentity[identityKey] else {
                     appendMissingPlaylistFeed(record.feedURL, to: &result)
+                    missing.append(.init(stream: .playlistEntries, sourceRecordID: record.id,
+                                         feedURL: record.feedURL, episodeID: record.episodeID,
+                                         sourceUpdatedAt: record.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.playlistEntry(record)))
                     continue
                 }
                 // A queue record authored before the episode was finished must
@@ -851,10 +929,12 @@ actor StoreSplitUserStateImporter {
                 result.playlistEntriesApplied += 1
             }
 
-            saveLegacyChanges(
+            guard persistMissingReferences(missing, result: &result) else { return }
+
+            guard saveLegacyChanges(
                 phase: "playlist_entries_batch_\(entryOffset)",
                 result: &result
-            )
+            ) else { return }
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
@@ -929,6 +1009,9 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
+            guard sourceReadFailed == false else { legacyContext.rollback(); return }
+            var missing: [StoreSplitMissingEpisodeReference] = []
+
             for record in freshEntries {
                 let identityKey = stableIdentityKey(
                     feedURL: record.feedURL,
@@ -952,6 +1035,10 @@ actor StoreSplitUserStateImporter {
                     .insert(identityKey)
                 guard let episode = episodesByIdentity[identityKey] else {
                     appendMissingPlaylistFeed(record.feedURL, to: &result)
+                    missing.append(.init(stream: .queueEntries, sourceRecordID: record.id,
+                                         feedURL: record.feedURL, episodeID: record.episodeID,
+                                         sourceUpdatedAt: record.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.queueEntry(record)))
                     continue
                 }
                 // A queue record authored before the episode was finished must
@@ -987,10 +1074,12 @@ actor StoreSplitUserStateImporter {
                 result.playlistEntriesApplied += 1
             }
 
-            saveLegacyChanges(
+            guard persistMissingReferences(missing, result: &result) else { return }
+
+            guard saveLegacyChanges(
                 phase: "queue_entries_batch_\(offset)",
                 result: &result
-            )
+            ) else { return }
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
@@ -1015,7 +1104,13 @@ actor StoreSplitUserStateImporter {
     private func applyBookmarks(
         result: inout StoreSplitUserStateImportResult
     ) async {
-        let existingBookmarks = (try? legacyContext.fetch(FetchDescriptor<Bookmark>())) ?? []
+        let existingBookmarks: [Bookmark]
+        do { existingBookmarks = try legacyContext.fetch(FetchDescriptor<Bookmark>()) }
+        catch {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record("store_split_bookmarks_destination_fetch_failed")
+            return
+        }
         var bookmarksByID = existingBookmarks.reduce(into: [String: Bookmark]()) {
             guard let uuid = $1.uuid else { return }
             $0[uuid.uuidString] = $1
@@ -1038,6 +1133,9 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
+            guard sourceReadFailed == false else { legacyContext.rollback(); return }
+            var missing: [StoreSplitMissingEpisodeReference] = []
+
 
             for record in freshRecords {
                 let bookmarkUUID = UUID(uuidString: record.id) ?? stableUUID(record.id)
@@ -1055,6 +1153,10 @@ actor StoreSplitUserStateImporter {
                 )
                 guard let episode = episodesByIdentity[identityKey] else {
                     appendMissingFeed(record.feedURL, to: &result)
+                    missing.append(.init(stream: .bookmarks, sourceRecordID: record.id,
+                                         feedURL: record.feedURL, episodeID: record.episodeID,
+                                         sourceUpdatedAt: record.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.bookmark(record)))
                     continue
                 }
                 let bookmark = bookmarksByID[record.id]
@@ -1084,10 +1186,12 @@ actor StoreSplitUserStateImporter {
                 result.bookmarksApplied += 1
             }
 
-            saveLegacyChanges(
+            guard persistMissingReferences(missing, result: &result) else { return }
+
+            guard saveLegacyChanges(
                 phase: "bookmarks_batch_\(offset)",
                 result: &result
-            )
+            ) else { return }
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
@@ -1100,7 +1204,6 @@ actor StoreSplitUserStateImporter {
     private func applyListeningHistory(
         result: inout StoreSplitUserStateImportResult
     ) async {
-        var activeProjectedSessionIDs = Set<String>()
         var seenHistoryKeys = Set<String>()
         var offset = 0
 
@@ -1116,6 +1219,7 @@ actor StoreSplitUserStateImporter {
                     SortDescriptor(\ListeningHistorySync.sourceDeviceID, order: .forward)
                 ]
             )
+            guard sourceReadFailed == false else { return }
             guard page.isEmpty == false else { break }
 
             let freshRecords = page.filter {
@@ -1128,45 +1232,67 @@ actor StoreSplitUserStateImporter {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
                 }
             )
+            guard sourceReadFailed == false else { legacyContext.rollback(); return }
+            var missing: [StoreSplitMissingEpisodeReference] = []
+
             let deterministicIDs = freshRecords.map {
                 stableUUID(ListeningHistoryIdentity.canonicalAggregationKey(for: $0))
             }
-            var sessionsByUUID = fetchPlaySessions(ids: deterministicIDs)
-                .reduce(into: [UUID: PlaySession]()) { result, session in
+            var sessionsByUUID: [UUID: PlaySession]
+            do {
+                sessionsByUUID = try fetchPlaySessions(ids: deterministicIDs)
+                    .reduce(into: [UUID: PlaySession]()) { result, session in
                     guard let id = session.id else { return }
                     result[id] = session
                 }
+            } catch {
+                legacyContext.rollback()
+                result.failed += 1
+                CrashBreadcrumbs.shared.record("store_split_history_destination_fetch_failed")
+                return
+            }
 
             for record in freshRecords {
                 let identity = ListeningHistoryIdentity.canonicalAggregationKey(for: record)
                 let deterministicID = stableUUID(identity)
-                activeProjectedSessionIDs.insert(deterministicID.uuidString)
                 let episodeIdentity = stableIdentityKey(
                     feedURL: record.feedURL,
                     episodeID: record.episodeID
                 )
-                let episode = episodesByIdentity[episodeIdentity]
-                if episode == nil {
+                guard let episode = episodesByIdentity[episodeIdentity] else {
                     appendMissingFeed(record.feedURL, to: &result)
+                    missing.append(.init(stream: .listeningHistory, sourceRecordID: record.id,
+                                         feedURL: record.feedURL, episodeID: record.episodeID,
+                                         sourceUpdatedAt: record.updatedAt,
+                                         payloadDigest: StoreSplitMissingEpisodeFingerprint.history(record)))
+                    continue
                 }
 
-                let session = sessionsByUUID[deterministicID]
-                    ?? equivalentLocalSession(for: record, episode: episode)
-                    ?? {
-                    let session = PlaySession(id: deterministicID)
-                    legacyContext.insert(session)
-                    sessionsByUUID[deterministicID] = session
-                    return session
-                }()
+                let session: PlaySession
+                do {
+                    if let existing = sessionsByUUID[deterministicID] {
+                        session = existing
+                    } else if let equivalent = try equivalentLocalSession(for: record, episode: episode) {
+                        session = equivalent
+                    } else {
+                        session = PlaySession(id: deterministicID)
+                        legacyContext.insert(session)
+                    }
+                } catch {
+                    legacyContext.rollback()
+                    result.failed += 1
+                    CrashBreadcrumbs.shared.record("store_split_history_destination_fetch_failed")
+                    return
+                }
                 sessionsByUUID[deterministicID] = session
                 setIfChanged(session, \.id, deterministicID)
-                if session.episode?.persistentModelID != episode?.persistentModelID {
+                if session.episode?.persistentModelID != episode.persistentModelID {
                     session.episode = episode
                 }
                 setIfChanged(
                     session,
                     \.podcastName,
-                    record.podcastName ?? episode?.displayPodcastTitle
+                    record.podcastName ?? episode.displayPodcastTitle
                 )
                 setIfChanged(session, \.sourceDeviceID, record.sourceDeviceID)
                 setIfChanged(session, \.sourceDeviceName, record.sourceDeviceName)
@@ -1189,10 +1315,12 @@ actor StoreSplitUserStateImporter {
                 result.listeningHistoryApplied += 1
             }
 
-            saveLegacyChanges(
+            guard persistMissingReferences(missing, result: &result) else { return }
+
+            guard saveLegacyChanges(
                 phase: "listening_history_batch_\(offset)",
                 result: &result
-            )
+            ) else { return }
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
@@ -1202,46 +1330,14 @@ actor StoreSplitUserStateImporter {
             offset += page.count
         }
 
-        pruneStaleProjectedSessions(
-            activeProjectedSessionIDs: activeProjectedSessionIDs,
-            result: &result
-        )
-    }
-
-    private func clearProjectedListeningHistory(
-        result: inout StoreSplitUserStateImportResult
-    ) {
-        let projectionMarker: String? =
-            ListeningDeviceIdentity.splitStoreProjectionAppVersion
-
-        while true {
-            if Task.isCancelled { break }
-            var descriptor = FetchDescriptor<PlaySession>(
-                predicate: #Predicate<PlaySession> { session in
-                    session.appVersion == projectionMarker
-                },
-                sortBy: [SortDescriptor(\PlaySession.startTime, order: .reverse)]
-            )
-            descriptor.fetchLimit = historyPageSize
-            let page = (try? legacyContext.fetch(descriptor)) ?? []
-            guard page.isEmpty == false else { break }
-
-            for session in page {
-                legacyContext.delete(session)
-            }
-
-            saveLegacyChanges(
-                phase: "clear_projected_listening_history",
-                result: &result
-            )
-            refreshContexts()
-        }
+        // A local absence from a partial or delayed CloudKit delivery is not
+        // evidence of deletion. Never prune destination-only history here.
     }
 
     private func equivalentLocalSession(
         for record: ListeningHistorySync,
         episode: Episode?
-    ) -> PlaySession? {
+    ) throws -> PlaySession? {
         let startedAt = record.startedAt
         let endedAt = record.endedAt
         let descriptor = FetchDescriptor<PlaySession>(
@@ -1249,7 +1345,7 @@ actor StoreSplitUserStateImporter {
                 $0.startTime == startedAt && $0.endTime == endedAt
             }
         )
-        return ((try? legacyContext.fetch(descriptor)) ?? []).first { candidate in
+        return try legacyContext.fetch(descriptor).first { candidate in
             guard candidate.appVersion
                     != ListeningDeviceIdentity.splitStoreProjectionAppVersion else {
                 return false
@@ -1263,27 +1359,30 @@ actor StoreSplitUserStateImporter {
         }
     }
 
+    @discardableResult
     private func saveLegacyChanges(
         phase: String,
         result: inout StoreSplitUserStateImportResult
-    ) {
-        guard legacyContext.hasChanges else { return }
+    ) -> Bool {
+        guard legacyContext.hasChanges else { return true }
         do {
             try legacyContext.save()
+            return true
         } catch {
             result.failed += 1
             CrashBreadcrumbs.shared.record(
                 "store_split_user_state_import_save_failed",
-                details: "\(phase):\(error.localizedDescription)"
+                details: "phase=\(phase),error_type=\(String(describing: type(of: error)))"
             )
 #if DEBUG
             NSLog(
-                "[StoreSplitProjection] save failed phase=%@ error=%@",
+                "[StoreSplitProjection] save failed phase=%@ error_type=%@",
                 phase,
-                error.localizedDescription
+                String(describing: type(of: error))
             )
 #endif
             legacyContext.rollback()
+            return false
         }
     }
 
@@ -1356,6 +1455,36 @@ actor StoreSplitUserStateImporter {
         appendMissingFeed(feedURL, to: &result)
         guard let feed = URL(string: feedURL) else { return }
         result.playlistFeedsToBootstrap.append(feed)
+    }
+
+    /// The queue is written in small transactions before the caller can
+    /// advance a stream cursor. If no cache is available, the unresolved stream
+    /// still remains uncommitted and can be retried when storage returns.
+    private func persistMissingReferences(
+        _ references: [StoreSplitMissingEpisodeReference],
+        result: inout StoreSplitUserStateImportResult
+    ) -> Bool {
+        guard !references.isEmpty else { return true }
+        result.unresolvedStreams.formUnion(references.map(\.stream))
+        guard let cacheContainer else { return true }
+        do {
+            for start in stride(from: 0, to: references.count,
+                                by: StoreSplitMissingEpisodeLedger.maximumBatchSize) {
+                guard Task.isCancelled == false else {
+                    result.interruptedByPlayback = true
+                    return false
+                }
+                let end = min(start + StoreSplitMissingEpisodeLedger.maximumBatchSize, references.count)
+                try StoreSplitMissingEpisodeLedger.enqueue(
+                    Array(references[start..<end]), cacheContainer: cacheContainer
+                )
+            }
+            return true
+        } catch {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record("store_split_missing_episode_ledger_save_failed")
+            return false
+        }
     }
 
     private func stableUUID(_ value: String) -> UUID {
@@ -1503,8 +1632,8 @@ actor StoreSplitUserStateImporter {
     /// The runtime graph is a real store that the app writes to directly, so an
     /// older CloudKit record must not be projected over newer local truth. Rows
     /// written before `stateUpdatedAt` existed fall back to the newest playback
-    /// timestamp. The one-second tolerance keeps a record from losing to the very
-    /// local change that produced it.
+    /// timestamp. Equal timestamps preserve local state because no reliable
+    /// lineage tie-breaker is available.
     private func isRemoteStateNewer(
         _ state: EpisodeStateSync,
         than metadata: EpisodeMetaData
@@ -1512,7 +1641,7 @@ actor StoreSplitUserStateImporter {
         guard let localUpdatedAt = metadata.effectiveStateUpdatedAt else {
             return true
         }
-        return state.updatedAt >= localUpdatedAt.addingTimeInterval(-1)
+        return state.updatedAt > localUpdatedAt
     }
 
     private func shouldProjectEpisodeState(
@@ -1650,7 +1779,12 @@ actor StoreSplitUserStateImporter {
                 episode.guid != nil && guids.contains(episode.guid!)
             }
         )
-        return (try? legacyContext.fetch(descriptor)) ?? []
+        do { return try legacyContext.fetch(descriptor) }
+        catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_episode_destination_fetch_failed")
+            return []
+        }
     }
 
     private func fetchEpisodesMatchingURLs(_ urls: [URL]) -> [Episode] {
@@ -1660,7 +1794,12 @@ actor StoreSplitUserStateImporter {
                 episode.url != nil && urls.contains(episode.url!)
             }
         )
-        return (try? legacyContext.fetch(descriptor)) ?? []
+        do { return try legacyContext.fetch(descriptor) }
+        catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_episode_destination_fetch_failed")
+            return []
+        }
     }
 
     private func fetchEpisodesMatchingLinks(_ urls: [URL]) -> [Episode] {
@@ -1670,7 +1809,12 @@ actor StoreSplitUserStateImporter {
                 episode.link != nil && urls.contains(episode.link!)
             }
         )
-        return (try? legacyContext.fetch(descriptor)) ?? []
+        do { return try legacyContext.fetch(descriptor) }
+        catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_episode_destination_fetch_failed")
+            return []
+        }
     }
 
     private func cacheResolvedEpisodes(
@@ -1733,10 +1877,14 @@ actor StoreSplitUserStateImporter {
                 )
                 descriptor.fetchOffset = offset
                 descriptor.fetchLimit = episodeScanPageSize
-                guard let batch = try? legacyContext.fetch(descriptor),
-                      batch.isEmpty == false else {
+                let batch: [Episode]
+                do { batch = try legacyContext.fetch(descriptor) }
+                catch {
+                    sourceReadFailed = true
+                    CrashBreadcrumbs.shared.record("store_split_episode_destination_fetch_failed")
                     return true
                 }
+                guard batch.isEmpty == false else { return true }
 
                 for episode in batch {
                     let identity = episode.stableEpisodeIdentity
@@ -1787,7 +1935,7 @@ actor StoreSplitUserStateImporter {
         return (components[0], components[1])
     }
 
-    private func fetchPlaySessions(ids: [UUID]) -> [PlaySession] {
+    private func fetchPlaySessions(ids: [UUID]) throws -> [PlaySession] {
         guard ids.isEmpty == false else { return [] }
         var sessions: [PlaySession] = []
         for id in ids {
@@ -1798,61 +1946,11 @@ actor StoreSplitUserStateImporter {
                 }
             )
             descriptor.fetchLimit = 1
-            if let session = try? legacyContext.fetch(descriptor).first {
+            if let session = try legacyContext.fetch(descriptor).first {
                 sessions.append(session)
             }
         }
         return sessions
-    }
-
-    private func pruneStaleProjectedSessions(
-        activeProjectedSessionIDs: Set<String>,
-        result: inout StoreSplitUserStateImportResult
-    ) {
-        var offset = 0
-        var staleIDs: [UUID] = []
-        let projectionMarker: String? =
-            ListeningDeviceIdentity.splitStoreProjectionAppVersion
-
-        while true {
-            if Task.isCancelled { break }
-            var descriptor = FetchDescriptor<PlaySession>(
-                predicate: #Predicate<PlaySession> { session in
-                    session.appVersion == projectionMarker
-                },
-                sortBy: [SortDescriptor(\PlaySession.startTime, order: .reverse)]
-            )
-            descriptor.fetchOffset = offset
-            descriptor.fetchLimit = historyPageSize
-            let page = (try? legacyContext.fetch(descriptor)) ?? []
-            guard page.isEmpty == false else { break }
-
-            for session in page {
-                guard let id = session.id,
-                      activeProjectedSessionIDs.contains(id.uuidString) == false else {
-                    continue
-                }
-                staleIDs.append(id)
-            }
-
-            offset += page.count
-            if page.count < historyPageSize {
-                break
-            }
-        }
-
-        for chunkStart in stride(from: 0, to: staleIDs.count, by: historyPageSize) {
-            let chunk = Array(
-                staleIDs[chunkStart ..< min(chunkStart + historyPageSize, staleIDs.count)]
-            )
-            for session in fetchPlaySessions(ids: chunk) {
-                legacyContext.delete(session)
-            }
-            saveLegacyChanges(
-                phase: "stale_projected_sessions_\(chunkStart)",
-                result: &result
-            )
-        }
     }
 
     private func fetchPage<Model: PersistentModel>(
@@ -1887,7 +1985,13 @@ actor StoreSplitUserStateImporter {
         )
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = limit
-        return (try? userStateContext.fetch(descriptor)) ?? []
+        do {
+            return try userStateContext.fetch(descriptor)
+        } catch {
+            sourceReadFailed = true
+            CrashBreadcrumbs.shared.record("store_split_import_episode_state_fetch_failed")
+            return []
+        }
     }
 
     private func context<Model: PersistentModel>(

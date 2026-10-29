@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-struct StoreSplitListeningHistorySnapshot: Sendable {
+struct StoreSplitListeningHistorySnapshot: Codable, Sendable {
     let id: String
     let identity: EpisodeStableIdentity
     let podcastName: String
@@ -19,6 +19,15 @@ struct StoreSplitListeningHistorySnapshot: Sendable {
     let endedCleanly: Bool
 }
 
+struct StoreSplitListeningHistoryWriterIO: Sendable {
+    var fetch: @Sendable (ModelContext, String) throws -> ListeningHistorySync? = { context, id in
+        var descriptor = FetchDescriptor<ListeningHistorySync>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+    var save: @Sendable (ModelContext) throws -> Void = { try $0.save() }
+}
+
 @ModelActor
 actor StoreSplitListeningHistorySyncWriter {
     /// Sessions are the only thing this writer publishes.
@@ -28,26 +37,28 @@ actor StoreSplitListeningHistorySyncWriter {
     /// reader to reconcile an aggregate against the sessions it came from — and
     /// both double-counting defects lived in that reconciliation. Readers
     /// aggregate the sessions themselves now, so there is nothing to reconcile.
-    func upsert(_ snapshot: StoreSplitListeningHistorySnapshot) {
-        upsertWithoutSaving(snapshot)
-        modelContext.saveIfNeeded()
+    func upsert(_ snapshot: StoreSplitListeningHistorySnapshot, io: StoreSplitListeningHistoryWriterIO = .init()) throws {
+        try upsert([snapshot], io: io)
     }
 
-    func upsert(_ snapshots: [StoreSplitListeningHistorySnapshot]) {
-        for snapshot in snapshots {
-            upsertWithoutSaving(snapshot)
+    func upsert(_ snapshots: [StoreSplitListeningHistorySnapshot], io: StoreSplitListeningHistoryWriterIO = .init()) throws {
+        do {
+            for snapshot in snapshots {
+                try upsertWithoutSaving(snapshot, io: io)
+            }
+            if modelContext.hasChanges { try io.save(modelContext) }
+        } catch {
+            modelContext.rollback()
+            throw error
         }
-        modelContext.saveIfNeeded()
     }
 
     private func upsertWithoutSaving(
-        _ snapshot: StoreSplitListeningHistorySnapshot
-    ) {
+        _ snapshot: StoreSplitListeningHistorySnapshot,
+        io: StoreSplitListeningHistoryWriterIO
+    ) throws {
         let historyID = snapshot.id
-        let descriptor = FetchDescriptor<ListeningHistorySync>(
-            predicate: #Predicate<ListeningHistorySync> { $0.id == historyID }
-        )
-        if let record = try? modelContext.fetch(descriptor).first {
+        if let record = try io.fetch(modelContext, historyID) {
             guard snapshot.endedAt > record.updatedAt else { return }
             apply(snapshot, to: record)
         } else {

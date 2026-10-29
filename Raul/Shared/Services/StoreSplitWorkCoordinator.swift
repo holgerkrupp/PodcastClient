@@ -98,7 +98,9 @@ actor StoreSplitWorkCoordinator {
             return
         }
         if StoreDevelopmentConfiguration.userStateImportEnabled {
-            ModelContainerManager.requestBackgroundUserStateImport()
+            // Launch re-arms any pending import; it does not itself indicate
+            // new CloudKit content or require restarting the dry run.
+            ModelContainerManager.requestBackgroundUserStateImport(newGeneration: false)
         }
         // Bulk migration, reconciliation and feed-cache bootstrap are armed by
         // BGProcessingTask. Launch never starts a maintenance runner.

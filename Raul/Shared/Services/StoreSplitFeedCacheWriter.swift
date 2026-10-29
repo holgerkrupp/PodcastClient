@@ -177,6 +177,10 @@ enum StoreSplitFeedCacheWriter {
             refreshedEpisodeURLs: refreshedEpisodeURLs,
             requiresIdlePlayback: requiresIdlePlayback,
             preserveExistingAIRecords: isIncremental,
+            // The legacy feed is not a complete inventory of historical
+            // episodes. UserState or a local download may still reference a
+            // cached episode that has disappeared from that feed.
+            allowPruning: false,
             result: &result
         ) else {
             result.completed = false
@@ -225,21 +229,18 @@ enum StoreSplitFeedCacheWriter {
             return result
         }
 
-        let batches: [[ [String: Any] ]]
-        if episodeRows.isEmpty {
-            batches = [[]]
-        } else {
-            batches = stride(from: 0, to: episodeRows.count, by: 100).map { start in
-                Array(episodeRows[start..<min(start + 100, episodeRows.count)])
-            }
-        }
-
-        for (batchIndex, rows) in batches.enumerated() {
+        let batchSize = 100
+        let batchCount = max(1, (episodeRows.count + batchSize - 1) / batchSize)
+        for batchIndex in 0..<batchCount {
             guard shouldContinue(deadline: deadline, requiresIdlePlayback: false) else {
                 result.completed = false
                 result.failureReason = "cancelled_or_deadline"
                 return result
             }
+
+            let start = min(batchIndex * batchSize, episodeRows.count)
+            let end = min(start + batchSize, episodeRows.count)
+            let rows = episodeRows[start..<end]
 
             let draft = Podcast(feed: feedURL)
             applyParsedPodcastFields(parsedFeed, to: draft)
@@ -247,13 +248,24 @@ enum StoreSplitFeedCacheWriter {
             var episodes: [Episode] = []
             episodes.reserveCapacity(rows.count)
             for row in rows {
-                guard let episode = Episode(from: row, podcast: draft) else { continue }
+                guard let episode = Episode(from: row, podcast: draft) else {
+                    result.completed = false
+                    result.failureReason = "invalid_episode_payload"
+                    context.rollback()
+                    // An older successful projection must not make an invalid
+                    // refresh look complete. Preserve all existing rows while
+                    // leaving this feed eligible for a later repair.
+                    _ = invalidateFeedForBackgroundBootstrap(
+                        feedURL: feedURL, cacheContainer: cacheContainer
+                    )
+                    return result
+                }
                 episodes.append(episode)
             }
             draft.episodes = episodes
             let selectedGUIDs = Set(episodes.compactMap { $0.guid })
             let selectedURLs = Set(episodes.compactMap { $0.url })
-            let isFinalBatch = batchIndex == batches.count - 1
+            let isFinalBatch = batchIndex == batchCount - 1
 
             guard upsert(
                 podcast: draft,
@@ -435,7 +447,7 @@ enum StoreSplitFeedCacheWriter {
             context.rollback()
             CrashBreadcrumbs.shared.record(
                 "store_split_cache_invalidation_failed",
-                details: "source=feed_refresh,error=\(error.localizedDescription)"
+                details: "source=feed_refresh,error_type=\(String(describing: type(of: error)))"
             )
             return false
         }
@@ -829,7 +841,7 @@ enum StoreSplitFeedCacheWriter {
         requiresIdlePlayback: Bool = false,
         preserveExistingAIRecords: Bool = false,
         forceIncrementalRefresh: Bool = false,
-        allowPruning: Bool = true,
+        allowPruning: Bool = false,
         preserveExistingRefreshMetadata: Bool = false,
         markSchemaCurrent: Bool = true,
         result: inout FeedCacheProjectionResult
@@ -1077,6 +1089,10 @@ enum StoreSplitFeedCacheWriter {
         }
         if markSchemaCurrent {
             _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
+        } else {
+            // A partial feed or an unfinished multi-batch refresh cannot use
+            // an older complete schema marker as proof of the current write.
+            _ = assignIfChanged(cached, \.cacheSchemaVersion, 0)
         }
         return shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback)
     }

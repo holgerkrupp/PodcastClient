@@ -640,11 +640,17 @@ enum StoreSplitMigrationDiagnostics {
         StoreSplitMigrationService.Phase.bookmarks: "Bookmarks",
         StoreSplitMigrationService.Phase.preferences: "Podcast preferences",
         StoreSplitMigrationService.Phase.episodeStates: "Playback state",
+        StoreSplitMigrationService.Phase.listeningBaselinePrepareAggregates: "Checking earlier listening statistics",
+        StoreSplitMigrationService.Phase.listeningBaselinePrepareSources: "Checking earlier statistics sources",
         StoreSplitMigrationService.Phase.listeningSummaries: "Listening statistics",
+        StoreSplitMigrationService.Phase.listeningBaselinePublication: "Checking listening statistics",
         StoreSplitMigrationService.Phase.listeningHistory: "Listening history",
         StoreSplitMigrationService.Phase.aiTranscripts: "AI transcripts",
         StoreSplitMigrationService.Phase.aiChapters: "AI chapters",
-        StoreSplitMigrationService.Phase.listeningHistoryVerification: "Listening history verification"
+        StoreSplitMigrationService.Phase.listeningHistoryVerification: "Listening history verification",
+        StoreSplitMigrationService.Phase.listeningBaselineVerificationScan: "Listening statistics first pass",
+        StoreSplitMigrationService.Phase.listeningBaselineVerification: "Listening statistics second pass",
+        StoreSplitMigrationService.Phase.listeningBaselineVerificationComparison: "Listening statistics verification"
     ]
 
     private static let supplementalPhaseTitles: [String: String] = [:]

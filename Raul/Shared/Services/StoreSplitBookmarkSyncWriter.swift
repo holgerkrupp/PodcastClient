@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-struct StoreSplitBookmarkSnapshot: Sendable {
+struct StoreSplitBookmarkSnapshot: Codable, Sendable {
     let id: String
     let identity: EpisodeStableIdentity
     let time: Double
@@ -9,15 +9,47 @@ struct StoreSplitBookmarkSnapshot: Sendable {
     let createdAt: Date
 }
 
+enum StoreSplitBookmarkWriteError: Error {
+    case missingBookmark
+}
+
+enum BookmarkSaveError: LocalizedError {
+    case episodeUnavailable
+    case localSaveFailed
+    case portableRetryUnavailable
+    case deleteFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .episodeUnavailable:
+            String(localized: "No episode is available to bookmark.")
+        case .localSaveFailed:
+            String(localized: "The bookmark could not be saved. Check storage and try again.")
+        case .portableRetryUnavailable:
+            String(localized: "The bookmark was saved on this device but could not be queued for syncing. Check storage; do not add it again.")
+        case .deleteFailed:
+            String(localized: "The bookmark could not be removed. Check storage and try again.")
+        }
+    }
+}
+
+struct StoreSplitBookmarkWriterIO: Sendable {
+    var fetch: @Sendable (ModelContext, String) throws -> BookmarkSync? = { context, id in
+        var descriptor = FetchDescriptor<BookmarkSync>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+    var save: @Sendable (ModelContext) throws -> Void = { try $0.save() }
+}
+
 @ModelActor
 actor StoreSplitBookmarkSyncWriter {
-    func upsert(_ snapshot: StoreSplitBookmarkSnapshot, at date: Date = .now) {
+    func upsert(_ snapshot: StoreSplitBookmarkSnapshot, at date: Date = .now, io: StoreSplitBookmarkWriterIO = .init()) throws {
+        do {
         let bookmarkID = snapshot.id
-        let descriptor = FetchDescriptor<BookmarkSync>(
-            predicate: #Predicate<BookmarkSync> { $0.id == bookmarkID }
-        )
         let deviceID = ListeningDeviceIdentity.current().id
-        if let bookmark = try? modelContext.fetch(descriptor).first {
+        if let bookmark = try io.fetch(modelContext, bookmarkID) {
+            guard date > bookmark.updatedAt else { return }
             bookmark.feedURL = snapshot.identity.feedURL
             bookmark.episodeID = snapshot.identity.episodeID
             bookmark.time = snapshot.time
@@ -41,16 +73,18 @@ actor StoreSplitBookmarkSyncWriter {
                 )
             )
         }
-        modelContext.saveIfNeeded()
+        if modelContext.hasChanges { try io.save(modelContext) }
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
-    func tombstone(id: String, at date: Date = .now) {
+    func tombstone(id: String, at date: Date = .now, io: StoreSplitBookmarkWriterIO = .init()) throws {
+        do {
         let bookmarkID = id
-        let descriptor = FetchDescriptor<BookmarkSync>(
-            predicate: #Predicate<BookmarkSync> { $0.id == bookmarkID }
-        )
         let deviceID = ListeningDeviceIdentity.current().id
-        guard let bookmark = try? modelContext.fetch(descriptor).first else {
+        guard let bookmark = try io.fetch(modelContext, bookmarkID) else {
             // A delete without an existing sync row is ambiguous because the
             // logical episode key is unavailable. Creation writes the row first,
             // so record diagnostics rather than inventing a lossy identity.
@@ -58,23 +92,25 @@ actor StoreSplitBookmarkSyncWriter {
                 "store_split_bookmark_tombstone_missing_source",
                 details: id
             )
-            return
+            throw StoreSplitBookmarkWriteError.missingBookmark
         }
         guard date >= bookmark.updatedAt else { return }
         bookmark.isDeleted = true
         bookmark.deletedAt = date
         bookmark.updatedAt = date
         bookmark.sourceDeviceID = deviceID
-        modelContext.saveIfNeeded()
+        if modelContext.hasChanges { try io.save(modelContext) }
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
-    func tombstone(_ snapshot: StoreSplitBookmarkSnapshot, at date: Date = .now) {
+    func tombstone(_ snapshot: StoreSplitBookmarkSnapshot, at date: Date = .now, io: StoreSplitBookmarkWriterIO = .init()) throws {
+        do {
         let bookmarkID = snapshot.id
-        let descriptor = FetchDescriptor<BookmarkSync>(
-            predicate: #Predicate<BookmarkSync> { $0.id == bookmarkID }
-        )
         let deviceID = ListeningDeviceIdentity.current().id
-        if let bookmark = try? modelContext.fetch(descriptor).first {
+        if let bookmark = try io.fetch(modelContext, bookmarkID) {
             guard date >= bookmark.updatedAt else { return }
             bookmark.isDeleted = true
             bookmark.deletedAt = date
@@ -101,6 +137,10 @@ actor StoreSplitBookmarkSyncWriter {
             bookmark.deletedAt = date
             bookmark.updatedAt = date
         }
-        modelContext.saveIfNeeded()
+        if modelContext.hasChanges { try io.save(modelContext) }
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 }

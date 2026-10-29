@@ -4,6 +4,54 @@
     "" : {
 
     },
+    "Playback Sync Needs Attention" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wiedergabesynchronisierung erfordert Aufmerksamkeit" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "La synchronisation de la lecture nécessite votre attention" } }
+      }
+    },
+    "Some playback or listening history could not be queued for syncing. Keep Up Next installed, check device storage, and contact support if the warning persists." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Einige Wiedergabedaten oder Hörverläufe konnten nicht zur Synchronisierung vorgemerkt werden. Lassen Sie Up Next installiert, prüfen Sie den Gerätespeicher und wenden Sie sich an den Support, falls die Warnung bestehen bleibt." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Certaines données de lecture ou d’historique n’ont pas pu être mises en attente de synchronisation. Gardez Up Next installé, vérifiez le stockage de l’appareil et contactez l’assistance si l’avertissement persiste." } }
+      }
+    },
+    "Couldn’t Save Bookmark" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen konnte nicht gesichert werden" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible d’enregistrer le signet" } }
+      }
+    },
+    "Couldn’t Remove Bookmark" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen konnte nicht entfernt werden" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de supprimer le signet" } }
+      }
+    },
+    "No episode is available to bookmark." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es ist keine Episode für ein Lesezeichen verfügbar." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun épisode n’est disponible pour un signet." } }
+      }
+    },
+    "The bookmark could not be saved. Check storage and try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen konnte nicht gesichert werden. Prüfe den Speicher und versuche es erneut." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet n’a pas pu être enregistré. Vérifiez l’espace de stockage et réessayez." } }
+      }
+    },
+    "The bookmark could not be removed. Check storage and try again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen konnte nicht entfernt werden. Prüfe den Speicher und versuche es erneut." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet n’a pas pu être supprimé. Vérifiez l’espace de stockage et réessayez." } }
+      }
+    },
+    "The bookmark was saved on this device but could not be queued for syncing. Check storage; do not add it again." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen wurde auf diesem Gerät gesichert, konnte aber nicht für die Synchronisierung vorgemerkt werden. Prüfe den Speicher und füge es nicht erneut hinzu." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet est enregistré sur cet appareil, mais n’a pas pu être mis en attente de synchronisation. Vérifiez l’espace de stockage et ne l’ajoutez pas à nouveau." } }
+      }
+    },
     " - " : {
       "localizations" : {
         "de" : {

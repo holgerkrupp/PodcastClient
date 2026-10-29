@@ -243,7 +243,7 @@ final class StoreSplitRepositoryMigrationTests: XCTestCase {
             title: "Bookmark",
             createdAt: Date(timeIntervalSince1970: 10)
         )
-        await StoreSplitBookmarkSyncWriter(modelContainer: stores.user)
+        try await StoreSplitBookmarkSyncWriter(modelContainer: stores.user)
             .tombstone(snapshot, at: Date(timeIntervalSince1970: 20))
         let row = try XCTUnwrap(
             ModelContext(stores.user).fetch(FetchDescriptor<BookmarkSync>()).first
@@ -403,7 +403,8 @@ final class StoreSplitRepositoryMigrationTests: XCTestCase {
             legacyFallbackDisabled: true,
             convergenceTelemetryPassed: true,
             supportedVersionGracePeriodEnded: true,
-            cacheOrRSSRecoveryVerified: true
+            cacheOrRSSRecoveryVerified: true,
+            verificationRevisionEvidenceProven: true
         )
         XCTAssertThrowsError(try StoreSplitLegacyCleanupService.removeVerifiedLegacyStore(
             at: URL(fileURLWithPath: "/tmp/NotTheLegacyStore.sqlite"),

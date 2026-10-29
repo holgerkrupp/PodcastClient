@@ -223,6 +223,7 @@ struct MacMenuBarPlayerView: View {
 private struct MacMenuBarActionsMenu: View {
     @Environment(\.openWindow) private var openWindow
     @Bindable private var player = Player.shared
+    @State private var bookmarkError: String?
 
     let hideMenuBarPlayer: () -> Void
 
@@ -233,7 +234,10 @@ private struct MacMenuBarActionsMenu: View {
     var body: some View {
         Menu {
             Button("Add Bookmark", systemImage: "bookmark") {
-                player.createBookmark()
+                Task {
+                    do { try await player.createBookmark() }
+                    catch { bookmarkError = error.localizedDescription }
+                }
             }
             .disabled(player.currentEpisode == nil)
 
@@ -289,6 +293,14 @@ private struct MacMenuBarActionsMenu: View {
         }
         .menuStyle(.borderlessButton)
         .help("More playback actions")
+        .alert("Couldn’t Save Bookmark", isPresented: Binding(
+            get: { bookmarkError != nil },
+            set: { if !$0 { bookmarkError = nil } }
+        )) {
+            Button("OK", role: .cancel) { bookmarkError = nil }
+        } message: {
+            Text(bookmarkError ?? "")
+        }
     }
 
     private var hasChapters: Bool {

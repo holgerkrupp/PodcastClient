@@ -82,9 +82,14 @@ struct StoreSplitMigrationResult: Sendable {
     var preferences = StoreSplitMigrationPhaseResult()
     var listeningHistory = StoreSplitMigrationPhaseResult()
     var listeningSummaries = StoreSplitMigrationPhaseResult()
+    var listeningBaselinePreparation = StoreSplitMigrationPhaseResult()
+    var listeningBaselinePublication = StoreSplitMigrationPhaseResult()
     var aiTranscripts = StoreSplitMigrationPhaseResult()
     var aiChapters = StoreSplitMigrationPhaseResult()
     var listeningHistoryVerification = StoreSplitMigrationPhaseResult()
+    var listeningBaselineVerificationScan = StoreSplitMigrationPhaseResult()
+    var listeningBaselineVerification = StoreSplitMigrationPhaseResult()
+    var listeningBaselineVerificationComparison = StoreSplitMigrationPhaseResult()
 
     var failedCount: Int {
         subscriptions.failed
@@ -96,7 +101,12 @@ struct StoreSplitMigrationResult: Sendable {
             + preferences.failed
             + listeningHistory.failed
             + listeningHistoryVerification.failed
+            + listeningBaselineVerificationScan.failed
+            + listeningBaselineVerification.failed
+            + listeningBaselineVerificationComparison.failed
             + listeningSummaries.failed
+            + listeningBaselinePreparation.failed
+            + listeningBaselinePublication.failed
             + aiTranscripts.failed
             + aiChapters.failed
     }
@@ -253,9 +263,15 @@ actor StoreSplitMigrationService {
     /// bookmarks, so the old offsets mean nothing in the new coordinate space.
     private static let phaseRevisions: [String: Int] = [
         Phase.bookmarks: 1,
-        Phase.listeningSummaries: 1,
+        Phase.listeningSummaries: 3,
+        Phase.listeningBaselinePrepareAggregates: 1,
+        Phase.listeningBaselinePrepareSources: 1,
+        Phase.listeningBaselinePublication: 2,
         Phase.listeningHistory: 1,
-        Phase.listeningHistoryVerification: 1
+        Phase.listeningHistoryVerification: 2,
+        Phase.listeningBaselineVerificationScan: 1,
+        Phase.listeningBaselineVerification: 1,
+        Phase.listeningBaselineVerificationComparison: 1
     ]
 
     /// The checkpoint row identity for a phase at its current revision. Rows
@@ -270,6 +286,14 @@ actor StoreSplitMigrationService {
         return "v\(migrationVersion).\(phase).r\(revision)"
     }
 
+    private static var baselineAggregateNamespace: String {
+        "listening-baseline-\(checkpointID(for: Phase.listeningSummaries))"
+    }
+
+    private static var baselineSourceNamespace: String {
+        "listening-baseline-source-\(checkpointID(for: Phase.listeningSummaries))"
+    }
+
     /// Per-slice record budget for the light phases. Heavier phases override this
     /// with smaller pages because each record faults a larger object graph.
     // The page size is derived from the mutation budget rather than being an
@@ -279,7 +303,7 @@ actor StoreSplitMigrationService {
     // logical row count remains deliberately conservative.
     private static let defaultPageSize = StoreWorkBudget.migrationSlice.maximumMutations
     private static let episodePageSize = 100
-    private static let listeningSummaryPageSize = 200
+    private static let listeningSummaryPageSize = 60
     private static let listeningHistoryPageSize = 40
     private static let listeningHistoryVerificationPageSize = 40
     private static let aiContentPageSize = 10
@@ -294,12 +318,18 @@ actor StoreSplitMigrationService {
         Phase.playlistEntries,
         Phase.bookmarks,
         Phase.preferences,
-        Phase.listeningSummaries,
         Phase.listeningHistory,
         Phase.episodeStates,
         Phase.aiTranscripts,
         Phase.aiChapters,
-        Phase.listeningHistoryVerification
+        Phase.listeningHistoryVerification,
+        Phase.listeningBaselinePrepareAggregates,
+        Phase.listeningBaselinePrepareSources,
+        Phase.listeningSummaries,
+        Phase.listeningBaselinePublication,
+        Phase.listeningBaselineVerificationScan,
+        Phase.listeningBaselineVerification,
+        Phase.listeningBaselineVerificationComparison
     ]
 
     enum Phase {
@@ -310,11 +340,17 @@ actor StoreSplitMigrationService {
         static let bookmarks = "bookmarks"
         static let preferences = "preferences"
         static let episodeStates = "episode_states"
+        static let listeningBaselinePrepareAggregates = "baseline_prepare_aggregates"
+        static let listeningBaselinePrepareSources = "baseline_prepare_sources"
         static let listeningSummaries = "listening_summaries"
+        static let listeningBaselinePublication = "baseline_publish"
         static let listeningHistory = "listening_history"
         static let aiTranscripts = "ai_transcripts"
         static let aiChapters = "ai_chapters"
         static let listeningHistoryVerification = "verification_listening_history"
+        static let listeningBaselineVerificationScan = "verification_baseline_scan"
+        static let listeningBaselineVerification = "verification_listening_baselines"
+        static let listeningBaselineVerificationComparison = "verification_baseline_comparison"
     }
 
     /// The paging order of every sliced phase, in one place. `resolvedOffset`
@@ -403,7 +439,8 @@ actor StoreSplitMigrationService {
     /// The human-readable form of a stored cursor: the row position, without the
     /// boundary key that pins it. Used by the migration debug readout.
     nonisolated static func cursorDisplay(_ raw: String) -> String {
-        SliceCursor.decode(raw).map { String($0.offset) } ?? raw
+        if let history = HistoryVerificationCursor.decode(raw) { return String(history.scanned) }
+        return SliceCursor.decode(raw).map { String($0.offset) } ?? raw
     }
 
     /// How far either side of the recorded offset the engine looks for the
@@ -469,9 +506,9 @@ actor StoreSplitMigrationService {
     }
 
 #if DEBUG
-    /// Development helper: re-runs only the baseline-capture phase against the
-    /// live stores. Idempotent because the capture is write-once — a baseline that
-    /// already exists is left alone, so repeated runs cannot move a total.
+    /// Development helper: re-reads baseline candidates against the live
+    /// stores. Existing baselines are preserved; a missing baseline remains
+    /// unresolved until a source-revision fence is available.
     nonisolated static func rebuildListeningSummaries(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer
@@ -484,6 +521,7 @@ actor StoreSplitMigrationService {
         let cacheContext = makeContext(for: cacheContainer)
         var result = StoreSplitMigrationPhaseResult()
         var offset = 0
+        var scanComplete = false
         while Task.isCancelled == false {
             let page = processListeningSummaries(
                 offset: offset,
@@ -507,7 +545,37 @@ actor StoreSplitMigrationService {
                 break
             }
             offset += page.processed
-            if page.reachedEnd || page.processed == 0 { break }
+            if page.reachedEnd {
+                scanComplete = true
+                break
+            }
+            if page.processed == 0 { break }
+        }
+        guard scanComplete, result.failed == 0, !Task.isCancelled else { return result }
+        while !Task.isCancelled {
+            let context = makeContext(for: cacheContainer)
+            let report = runBaselineMaintenanceSlice(
+                phase: Phase.listeningBaselinePublication,
+                destinationContext: makeContext(for: userStateContainer),
+                cacheContext: context,
+                budget: .migrationSlice,
+                footprintBefore: MemoryFootprint.current(),
+                shouldContinue: { !Task.isCancelled }
+            )
+            if report.status == .failed {
+                result.failed += 1
+                break
+            }
+            if report.status != .advanced {
+                let id = checkpointID(for: Phase.listeningBaselinePublication)
+                var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+                descriptor.fetchLimit = 1
+                if let checkpoint = try? context.fetch(descriptor).first {
+                    result.inserted += checkpoint.insertedCount
+                    result.skipped += checkpoint.skippedCount
+                }
+                break
+            }
         }
         return result
     }
@@ -538,6 +606,45 @@ actor StoreSplitMigrationService {
             )
         }
 
+        if Self.isBaselineMaintenancePhase(phase) {
+            return Self.runBaselineMaintenanceSlice(
+                phase: phase,
+                destinationContext: Self.makeContext(for: userStateContainer),
+                cacheContext: cacheContext,
+                budget: budget,
+                footprintBefore: footprintBefore,
+                shouldContinue: shouldContinue
+            )
+        }
+
+        if phase == Phase.listeningHistoryVerification {
+            return Self.runHistoryVerificationSlice(
+                legacyContext: Self.makeContext(for: legacyContainer),
+                destinationContext: Self.makeContext(for: userStateContainer),
+                cacheContext: cacheContext,
+                budget: budget,
+                footprintBefore: footprintBefore,
+                shouldContinue: shouldContinue
+            )
+        }
+
+        if phase == Phase.listeningBaselineVerificationScan
+            || phase == Phase.listeningBaselineVerification
+            || phase == Phase.listeningBaselineVerificationComparison {
+            let handler = phase == Phase.listeningBaselineVerificationComparison
+                ? Self.runBaselineAggregateVerificationSlice
+                : Self.runBaselineVerificationSlice
+            return handler(
+                phase,
+                Self.makeContext(for: legacyContainer),
+                Self.makeContext(for: userStateContainer),
+                cacheContext,
+                budget,
+                footprintBefore,
+                shouldContinue
+            )
+        }
+
         let resume = Self.resumeProgress(phase: phase, context: cacheContext)
         let legacyContext = Self.makeContext(for: legacyContainer)
         let userStateContext = Self.makeContext(for: userStateContainer)
@@ -553,11 +660,14 @@ actor StoreSplitMigrationService {
         let offset = resolved.offset
 
         let basePageSize = Self.basePageSize(for: phase)
-        let pageSize = StoreSplitAdaptiveBatchSizer.shared.pageSize(
+        let adaptivePageSize = StoreSplitAdaptiveBatchSizer.shared.pageSize(
             for: phase,
             base: basePageSize,
             footprint: footprintBefore
         )
+        let pageSize = phase == Phase.listeningSummaries
+            ? min(adaptivePageSize, max(1, (budget.maximumMutations - 1) / 2))
+            : adaptivePageSize
 
         let deadline = ContinuousClock.now + budget.maximumWallTime
         let boundedShouldContinue: @Sendable () -> Bool = {
@@ -579,12 +689,7 @@ actor StoreSplitMigrationService {
             duration: Double(pageDuration.seconds) + Double(pageDuration.attoseconds) / 1e18
         )
 
-        var combined = resume.result + outcome.delta
-        if phase == Phase.listeningHistoryVerification {
-            // For this verification phase, failedCount represents unresolved
-            // failure on the current page. A repaired page clears it on retry.
-            combined.failed = outcome.error == nil ? 0 : max(1, resume.result.failed)
-        }
+        let combined = resume.result + outcome.delta
         let nextCursor = SliceCursor(
             offset: outcome.error == nil ? offset + outcome.processed : resume.cursor.offset,
             boundaryKey: outcome.error == nil
@@ -668,6 +773,36 @@ actor StoreSplitMigrationService {
         for phase in Self.slicePhaseOrder
         where includeAIContent || (phase != Phase.aiTranscripts && phase != Phase.aiChapters) {
             guard Task.isCancelled == false else { return result }
+            if Self.isBaselineMaintenancePhase(phase) {
+                let phaseResult = processBaselineMaintenanceFully(phase)
+                if phase == Phase.listeningBaselinePublication {
+                    result.listeningBaselinePublication = phaseResult
+                } else {
+                    result.listeningBaselinePreparation = result.listeningBaselinePreparation + phaseResult
+                }
+                if phaseResult.failed > 0 { break }
+                continue
+            }
+            if phase == Phase.listeningHistoryVerification {
+                let phaseResult = processHistoryVerificationFully()
+                result.listeningHistoryVerification = phaseResult
+                if phaseResult.failed > 0 { break }
+                continue
+            }
+            if phase == Phase.listeningBaselineVerificationScan
+                || phase == Phase.listeningBaselineVerification
+                || phase == Phase.listeningBaselineVerificationComparison {
+                let phaseResult = processBaselineVerificationFully(phase)
+                if phase == Phase.listeningBaselineVerificationScan {
+                    result.listeningBaselineVerificationScan = phaseResult
+                } else if phase == Phase.listeningBaselineVerification {
+                    result.listeningBaselineVerification = phaseResult
+                } else {
+                    result.listeningBaselineVerificationComparison = phaseResult
+                }
+                if phaseResult.failed > 0 { break }
+                continue
+            }
             let phaseResult = processPhaseFully(phase)
             switch phase {
             case Phase.subscriptions: result.subscriptions = phaseResult.primary
@@ -682,8 +817,6 @@ actor StoreSplitMigrationService {
             case Phase.listeningHistory: result.listeningHistory = phaseResult.primary
             case Phase.aiTranscripts: result.aiTranscripts = phaseResult.primary
             case Phase.aiChapters: result.aiChapters = phaseResult.primary
-            case Phase.listeningHistoryVerification:
-                result.listeningHistoryVerification = phaseResult.primary
             default: break
             }
             await Task.yield()
@@ -699,6 +832,1035 @@ actor StoreSplitMigrationService {
             details: "failed=\(result.failedCount),subscriptions=\(result.subscriptions.scanned),episodes=\(result.episodeStates.scanned),playlists=\(result.playlists.scanned),bookmarks=\(result.bookmarks.scanned),history=\(result.listeningHistory.scanned),history_verified=\(result.listeningHistoryVerification.scanned),summaries=\(result.listeningSummaries.scanned),ai_transcripts=\(result.aiTranscripts.scanned),ai_chapters=\(result.aiChapters.scanned)"
         )
         return result
+    }
+
+    private struct HistoryVerificationCursor: Codable {
+        var afterID: UUID?
+        var sourceCount: Int
+        var scanned: Int
+
+        var encoded: String? {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            guard let data = try? encoder.encode(self) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+
+        static func decode(_ value: String?) -> Self? {
+            guard let value, let data = value.data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode(Self.self, from: data)
+        }
+    }
+
+    /// A UUID keyset is used for independent history verification. A deleted
+    /// boundary or changed source count fails the phase instead of falling back
+    /// to an offset that can silently skip a session.
+    private static func runHistoryVerificationSlice(
+        legacyContext: ModelContext,
+        destinationContext: ModelContext,
+        cacheContext: ModelContext,
+        budget: StoreWorkBudget,
+        footprintBefore: UInt64,
+        shouldContinue: @Sendable () -> Bool,
+        forceStart: Bool = false
+    ) -> StoreSplitSliceReport {
+        let phase = Phase.listeningHistoryVerification
+        let id = checkpointID(for: phase)
+        let deadline = ContinuousClock.now + budget.maximumWallTime
+        var cursor: HistoryVerificationCursor
+        var progress = StoreSplitMigrationPhaseResult()
+        do {
+            var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+            descriptor.fetchLimit = 2
+            let checkpoints = try cacheContext.fetch(descriptor)
+            guard checkpoints.count <= 1 else {
+                return StoreSplitSliceReport(status: .failed, phase: phase, error: "listening_history_verification_checkpoint_invalid")
+            }
+            if !forceStart, let checkpoint = checkpoints.first {
+                guard let saved = HistoryVerificationCursor.decode(checkpoint.cursor),
+                      saved.scanned >= 0, saved.sourceCount >= saved.scanned else {
+                    return StoreSplitSliceReport(status: .failed, phase: phase, error: "listening_history_verification_checkpoint_invalid")
+                }
+                cursor = saved
+                progress = StoreSplitMigrationPhaseResult(
+                    scanned: checkpoint.scannedCount, inserted: checkpoint.insertedCount,
+                    updated: checkpoint.updatedCount, skipped: checkpoint.skippedCount,
+                    failed: checkpoint.failedCount
+                )
+                guard progress.scanned == saved.scanned else {
+                    return StoreSplitSliceReport(status: .failed, phase: phase, error: "listening_history_verification_checkpoint_invalid")
+                }
+            } else {
+                let count = try legacyContext.fetchCount(FetchDescriptor<PlaySession>())
+                cursor = HistoryVerificationCursor(afterID: nil, sourceCount: count, scanned: 0)
+            }
+        } catch {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "listening_history_verification_source_or_checkpoint_read_failed")
+        }
+        guard shouldContinue(), ContinuousClock.now < deadline else {
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        var failure: String?
+        if let afterID = cursor.afterID {
+            var descriptor = FetchDescriptor<PlaySession>(predicate: #Predicate { $0.id == afterID })
+            descriptor.fetchLimit = 2
+            do {
+                let boundary = try legacyContext.fetch(descriptor)
+                if boundary.count != 1 { failure = "listening_history_verification_source_boundary_lost" }
+            } catch { failure = "listening_history_verification_source_fetch_failed" }
+        }
+        var outcome = PageOutcome()
+        if failure == nil {
+            outcome = verifyListeningHistoryPage(
+                afterID: cursor.afterID,
+                pageSize: max(1, min(listeningHistoryVerificationPageSize, budget.maximumMutations)),
+                legacyContext: legacyContext,
+                destinationContext: destinationContext,
+                cacheContext: cacheContext,
+                deadline: deadline,
+                shouldContinue: shouldContinue
+            )
+            failure = outcome.error
+        }
+        guard shouldContinue() else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        if failure == nil, outcome.reachedEnd {
+            do {
+                let count = try legacyContext.fetchCount(FetchDescriptor<PlaySession>())
+                if count != cursor.sourceCount || cursor.scanned + outcome.processed != count {
+                    failure = "listening_history_verification_source_changed"
+                }
+            } catch { failure = "listening_history_verification_source_fetch_failed" }
+        }
+        if let failure {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: failure)
+        }
+        if let boundary = outcome.boundaryKey, let afterID = UUID(uuidString: boundary) {
+            cursor.afterID = afterID
+        }
+        cursor.scanned += outcome.processed
+        progress.scanned += outcome.delta.scanned
+        progress.skipped += outcome.delta.skipped
+        progress.failed = 0
+        guard let encoded = cursor.encoded,
+              recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: outcome.reachedEnd, context: cacheContext) else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+        }
+        let status: StoreSplitSliceReport.Status = outcome.reachedEnd
+            ? (currentPhase(cache: cacheContext) == nil ? .completed : .phaseCompleted)
+            : .advanced
+        return StoreSplitSliceReport(status: status, phase: phase, processed: outcome.processed, saveCount: 1, footprintBefore: footprintBefore, footprintAfter: MemoryFootprint.current())
+    }
+
+    private func processHistoryVerificationFully() -> StoreSplitMigrationPhaseResult {
+        var forceStart = true
+        while !Task.isCancelled {
+            let cacheContext = Self.makeContext(for: cacheContainer)
+            let report = Self.runHistoryVerificationSlice(
+                legacyContext: Self.makeContext(for: legacyContainer),
+                destinationContext: Self.makeContext(for: userStateContainer),
+                cacheContext: cacheContext,
+                budget: .migrationSlice,
+                footprintBefore: MemoryFootprint.current(),
+                shouldContinue: { !Task.isCancelled },
+                forceStart: forceStart
+            )
+            forceStart = false
+            if report.status != .advanced {
+                let id = Self.checkpointID(for: Phase.listeningHistoryVerification)
+                var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+                descriptor.fetchLimit = 2
+                guard let checkpoints = try? cacheContext.fetch(descriptor),
+                      checkpoints.count == 1, let checkpoint = checkpoints.first else {
+                    return StoreSplitMigrationPhaseResult(failed: report.status == .failed ? 1 : 0)
+                }
+                return StoreSplitMigrationPhaseResult(scanned: checkpoint.scannedCount, skipped: checkpoint.skippedCount, failed: max(checkpoint.failedCount, report.status == .failed ? 1 : 0))
+            }
+        }
+        return StoreSplitMigrationPhaseResult()
+    }
+
+    private struct BaselineMaintenanceCursor: Codable {
+        var afterID: String?
+
+        var encoded: String? {
+            guard let data = try? JSONEncoder().encode(self) else { return nil }
+            return String(data: data, encoding: .utf8)
+        }
+
+        static func decode(_ value: String?) -> Self? {
+            guard let value, let data = value.data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode(Self.self, from: data)
+        }
+    }
+
+    private enum BaselineMaintenanceError: String, Error {
+        case checkpoint = "baseline_maintenance_checkpoint_invalid"
+        case scratchFetch = "baseline_maintenance_scratch_fetch_failed"
+        case legacyScratch = "baseline_legacy_partial_scratch_unresolved"
+        case scratchConflict = "baseline_maintenance_scratch_identity_conflict"
+        case invalidAggregate = "baseline_maintenance_invalid_aggregate"
+        case destinationFetch = "baseline_maintenance_destination_fetch_failed"
+        case destinationConflict = "baseline_maintenance_destination_identity_conflict"
+        case sourceEvidence = "baseline_publication_source_evidence_unresolved"
+    }
+
+    private static func isBaselineMaintenancePhase(_ phase: String) -> Bool {
+        phase == Phase.listeningBaselinePrepareAggregates
+            || phase == Phase.listeningBaselinePrepareSources
+            || phase == Phase.listeningBaselinePublication
+    }
+
+    private static func legacyBaselineScratchPresent(in context: ModelContext) throws -> Bool {
+        let aggregatePrefix = StableIdentityKey.make("listening-baseline")
+        var aggregates = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: aggregatePrefix) })
+        aggregates.fetchLimit = 1
+        if try !context.fetch(aggregates).isEmpty { return true }
+        let sourcePrefix = StableIdentityKey.make("listening-baseline-source")
+        var sources = FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id.starts(with: sourcePrefix) })
+        sources.fetchLimit = 1
+        return try !context.fetch(sources).isEmpty
+    }
+
+    /// Old partial scratch is recovery evidence and is never discarded here.
+    /// Publication currently verifies that each candidate already has a
+    /// destination baseline. Creating a missing write-once baseline requires a
+    /// durable source-revision fence, which the legacy store cannot yet prove.
+    private static func runBaselineMaintenanceSlice(
+        phase: String,
+        destinationContext: ModelContext,
+        cacheContext: ModelContext,
+        budget: StoreWorkBudget,
+        footprintBefore: UInt64,
+        shouldContinue: @Sendable () -> Bool,
+        forceStart: Bool = false
+    ) -> StoreSplitSliceReport {
+        let deadline = ContinuousClock.now + budget.maximumWallTime
+        let phaseID = checkpointID(for: phase)
+        let isPublication = phase == Phase.listeningBaselinePublication
+        let prefix = StableIdentityKey.make(baselineAggregateNamespace)
+        var cursor = BaselineMaintenanceCursor(afterID: nil)
+        var progress = StoreSplitMigrationPhaseResult()
+        do {
+            var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == phaseID })
+            descriptor.fetchLimit = 2
+            let checkpoints = try cacheContext.fetch(descriptor)
+            guard checkpoints.count <= 1 else { throw BaselineMaintenanceError.checkpoint }
+            if !forceStart, let checkpoint = checkpoints.first {
+                guard let saved = BaselineMaintenanceCursor.decode(checkpoint.cursor),
+                      saved.afterID == nil || saved.afterID?.hasPrefix(prefix) == true else {
+                    throw BaselineMaintenanceError.checkpoint
+                }
+                cursor = saved
+                progress = StoreSplitMigrationPhaseResult(
+                    scanned: checkpoint.scannedCount, inserted: checkpoint.insertedCount,
+                    updated: checkpoint.updatedCount, skipped: checkpoint.skippedCount,
+                    failed: checkpoint.failedCount
+                )
+            }
+        } catch let error as BaselineMaintenanceError {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: error.rawValue)
+        } catch {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: BaselineMaintenanceError.checkpoint.rawValue)
+        }
+        let originalCursor = cursor
+        var processed = 0
+        var skipped = 0
+        var reachedEnd = false
+        var failure: BaselineMaintenanceError?
+        let pageSize = max(1, min(40, budget.maximumMutations - 1))
+        do {
+            guard shouldContinue(), ContinuousClock.now < deadline else {
+                return StoreSplitSliceReport(status: .cancelled, phase: phase)
+            }
+            if !isPublication {
+                if phase == Phase.listeningBaselinePrepareAggregates {
+                    let oldPrefix = StableIdentityKey.make("listening-baseline")
+                    var descriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: oldPrefix) })
+                    descriptor.fetchLimit = 1
+                    do {
+                        guard try cacheContext.fetch(descriptor).isEmpty else { throw BaselineMaintenanceError.legacyScratch }
+                    } catch let error as BaselineMaintenanceError { throw error }
+                    catch { throw BaselineMaintenanceError.scratchFetch }
+                } else {
+                    let oldPrefix = StableIdentityKey.make("listening-baseline-source")
+                    var descriptor = FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id.starts(with: oldPrefix) })
+                    descriptor.fetchLimit = 1
+                    do {
+                        guard try cacheContext.fetch(descriptor).isEmpty else { throw BaselineMaintenanceError.legacyScratch }
+                    } catch let error as BaselineMaintenanceError { throw error }
+                    catch { throw BaselineMaintenanceError.scratchFetch }
+                }
+                reachedEnd = true
+            } else {
+                do {
+                    if try legacyBaselineScratchPresent(in: cacheContext) { throw BaselineMaintenanceError.legacyScratch }
+                } catch let error as BaselineMaintenanceError { throw error }
+                catch { throw BaselineMaintenanceError.scratchFetch }
+                var descriptor: FetchDescriptor<CachedListeningBaselineAggregate>
+                if let after = cursor.afterID {
+                    descriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
+                        predicate: #Predicate { $0.id.starts(with: prefix) && $0.id > after },
+                        sortBy: [SortDescriptor(\CachedListeningBaselineAggregate.id)]
+                    )
+                } else {
+                    descriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
+                        predicate: #Predicate { $0.id.starts(with: prefix) },
+                        sortBy: [SortDescriptor(\CachedListeningBaselineAggregate.id)]
+                    )
+                }
+                descriptor.fetchLimit = pageSize
+                let rows: [CachedListeningBaselineAggregate]
+                do { rows = try cacheContext.fetch(descriptor) }
+                catch { throw BaselineMaintenanceError.scratchFetch }
+                for aggregate in rows {
+                    guard shouldContinue() else {
+                        destinationContext.rollback()
+                        cacheContext.rollback()
+                        return StoreSplitSliceReport(status: .cancelled, phase: phase)
+                    }
+                    if ContinuousClock.now >= deadline { break }
+                    let aggregateID = aggregate.id
+                    var duplicateDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == aggregateID })
+                    duplicateDescriptor.fetchLimit = 2
+                    let duplicates: [CachedListeningBaselineAggregate]
+                    do { duplicates = try cacheContext.fetch(duplicateDescriptor) }
+                    catch { throw BaselineMaintenanceError.scratchFetch }
+                    guard duplicates.count == 1,
+                          aggregate.id == StableIdentityKey.make(baselineAggregateNamespace, aggregate.feedURL) else {
+                        throw BaselineMaintenanceError.scratchConflict
+                    }
+                    guard aggregate.totalSeconds.isFinite, aggregate.totalSeconds >= 0,
+                          aggregate.silenceGapTimeSavedSeconds.isFinite, aggregate.silenceGapTimeSavedSeconds >= 0,
+                          aggregate.playbackRateTimeSavedSeconds.isFinite, aggregate.playbackRateTimeSavedSeconds >= 0 else {
+                        throw BaselineMaintenanceError.invalidAggregate
+                    }
+                    if aggregate.totalSeconds > 0 {
+                        let feedURL = aggregate.feedURL
+                        var baselineDescriptor = FetchDescriptor<ListeningBaselineSync>(predicate: #Predicate { $0.id == feedURL })
+                        baselineDescriptor.fetchLimit = 2
+                        let existing: [ListeningBaselineSync]
+                        do { existing = try destinationContext.fetch(baselineDescriptor) }
+                        catch { throw BaselineMaintenanceError.destinationFetch }
+                        guard existing.count <= 1 else { throw BaselineMaintenanceError.destinationConflict }
+                        guard !existing.isEmpty else { throw BaselineMaintenanceError.sourceEvidence }
+                        skipped += 1
+                    } else { skipped += 1 }
+                    cursor.afterID = aggregate.id
+                    processed += 1
+                }
+                reachedEnd = processed == rows.count && rows.count < pageSize
+            }
+
+            guard shouldContinue() else {
+                destinationContext.rollback()
+                cacheContext.rollback()
+                return StoreSplitSliceReport(status: .cancelled, phase: phase)
+            }
+            guard shouldContinue() else {
+                cacheContext.rollback()
+                return StoreSplitSliceReport(status: .cancelled, phase: phase)
+            }
+        } catch let error as BaselineMaintenanceError {
+            failure = error
+        } catch {
+            failure = .scratchFetch
+        }
+        if let failure {
+            destinationContext.rollback()
+            cacheContext.rollback()
+            progress.failed = 1
+            guard let encoded = originalCursor.encoded,
+                  recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: false, error: failure.rawValue, context: cacheContext) else {
+                return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+            }
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: failure.rawValue)
+        }
+        progress.scanned += processed
+        progress.skipped += skipped
+        progress.failed = 0
+        guard let encoded = cursor.encoded,
+              recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: reachedEnd, context: cacheContext) else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+        }
+        let status: StoreSplitSliceReport.Status = reachedEnd
+            ? (currentPhase(cache: cacheContext) == nil ? .completed : .phaseCompleted)
+            : .advanced
+        return StoreSplitSliceReport(status: status, phase: phase, processed: processed, saveCount: 1, footprintBefore: footprintBefore, footprintAfter: MemoryFootprint.current())
+    }
+
+    private func processBaselineMaintenanceFully(_ phase: String) -> StoreSplitMigrationPhaseResult {
+        var forceStart = true
+        while !Task.isCancelled {
+            let cacheContext = Self.makeContext(for: cacheContainer)
+            let report = Self.runBaselineMaintenanceSlice(
+                phase: phase,
+                destinationContext: Self.makeContext(for: userStateContainer),
+                cacheContext: cacheContext,
+                budget: .migrationSlice,
+                footprintBefore: MemoryFootprint.current(),
+                shouldContinue: { !Task.isCancelled },
+                forceStart: forceStart
+            )
+            forceStart = false
+            if report.status != .advanced {
+                let id = Self.checkpointID(for: phase)
+                var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+                descriptor.fetchLimit = 2
+                guard let checkpoints = try? cacheContext.fetch(descriptor),
+                      checkpoints.count == 1, let checkpoint = checkpoints.first else {
+                    return StoreSplitMigrationPhaseResult(failed: report.status == .failed ? 1 : 0)
+                }
+                return StoreSplitMigrationPhaseResult(scanned: checkpoint.scannedCount, inserted: checkpoint.insertedCount, updated: checkpoint.updatedCount, skipped: checkpoint.skippedCount, failed: max(checkpoint.failedCount, report.status == .failed ? 1 : 0))
+            }
+        }
+        return StoreSplitMigrationPhaseResult()
+    }
+
+    // The source summary UUID is the only indexed, immutable paging key in
+    // the legacy model. An absent or duplicate UUID is an unresolved identity,
+    // not permission to skip an otherwise eligible summary.
+    private struct BaselineVerificationCursor: Codable {
+        var runID: UUID
+        var lastID: UUID?
+        var lastAggregateID: String? = nil
+        /// Empty represents a source with no supported summary tier.
+        var tier: String
+
+        var encoded: String? {
+            guard let bytes = try? JSONEncoder().encode(self) else { return nil }
+            return String(data: bytes, encoding: .utf8)
+        }
+
+        static func decode(_ value: String?) -> Self? {
+            guard let value, let bytes = value.data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode(Self.self, from: bytes)
+        }
+    }
+
+    private enum BaselineVerificationError: String, Error {
+        case checkpointRead = "baseline_verification_checkpoint_read_failed"
+        case checkpointInvalid = "baseline_verification_checkpoint_invalid"
+        case scanNotComplete = "baseline_verification_scan_not_complete"
+        case tierChanged = "baseline_verification_source_tier_changed"
+        case sourceRead = "baseline_verification_source_read_failed"
+        case sourceIdentity = "baseline_verification_source_identity_unresolved"
+        case duplicateSource = "baseline_verification_duplicate_source_identity"
+        case sourceChanged = "baseline_verification_source_changed"
+        case invalidValues = "baseline_verification_invalid_values"
+        case cacheRead = "baseline_verification_cache_read_failed"
+        case destinationRead = "baseline_verification_destination_read_failed"
+        case missingBaseline = "baseline_verification_missing_baseline"
+        case duplicateBaseline = "baseline_verification_duplicate_baseline"
+        case sourceLineage = "baseline_verification_source_lineage_unresolved"
+        case aggregateMismatch = "baseline_verification_aggregate_mismatch"
+        case fields = "baseline_verification_semantic_mismatch"
+    }
+
+    /// Runs the two local baseline checks with UUID keyset paging. Cache
+    /// aggregates and the source receipt are committed with the cursor in one
+    /// transaction. A second source pass checks the receipts before comparing
+    /// the baseline. This is local evidence only; the global verification and
+    /// CloudKit convergence gates remain separate.
+    private static func runBaselineVerificationSlice(
+        phase: String,
+        legacyContext: ModelContext,
+        destinationContext: ModelContext,
+        cacheContext: ModelContext,
+        budget: StoreWorkBudget,
+        footprintBefore: UInt64,
+        shouldContinue: @Sendable () -> Bool
+    ) -> StoreSplitSliceReport {
+        let deadline = ContinuousClock.now + budget.maximumWallTime
+        let isScan = phase == Phase.listeningBaselineVerificationScan
+        let phaseCheckpointID = checkpointID(for: phase)
+        var progress = StoreSplitMigrationPhaseResult()
+        var cursor: BaselineVerificationCursor?
+        var checkpoint: StoreSplitMigrationCheckpoint?
+        do {
+            var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+                predicate: #Predicate { $0.id == phaseCheckpointID }
+            )
+            descriptor.fetchLimit = 2
+            let checkpoints = try cacheContext.fetch(descriptor)
+            guard checkpoints.count <= 1 else { throw BaselineVerificationError.checkpointInvalid }
+            checkpoint = checkpoints.first
+            if let checkpoint {
+                guard let saved = BaselineVerificationCursor.decode(checkpoint.cursor) else {
+                    throw BaselineVerificationError.checkpointInvalid
+                }
+                cursor = saved
+                progress = StoreSplitMigrationPhaseResult(
+                    scanned: checkpoint.scannedCount,
+                    inserted: checkpoint.insertedCount,
+                    updated: checkpoint.updatedCount,
+                    skipped: checkpoint.skippedCount,
+                    failed: checkpoint.failedCount
+                )
+            } else if isScan {
+                let tier: String?
+                do { tier = try selectedBaselinePeriodKind(in: legacyContext) }
+                catch { throw BaselineVerificationError.sourceRead }
+                cursor = BaselineVerificationCursor(runID: UUID(), lastID: nil, tier: tier ?? "")
+            } else {
+                let scanID = checkpointID(for: Phase.listeningBaselineVerificationScan)
+                var scanDescriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+                    predicate: #Predicate { $0.id == scanID }
+                )
+                scanDescriptor.fetchLimit = 2
+                let scans = try cacheContext.fetch(scanDescriptor)
+                guard scans.count == 1, let scan = scans.first,
+                      scan.completedAt != nil,
+                      let saved = BaselineVerificationCursor.decode(scan.cursor) else {
+                    throw BaselineVerificationError.scanNotComplete
+                }
+                cursor = BaselineVerificationCursor(runID: saved.runID, lastID: nil, tier: saved.tier)
+            }
+            if !isScan {
+                let scanID = checkpointID(for: Phase.listeningBaselineVerificationScan)
+                var scanDescriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == scanID })
+                scanDescriptor.fetchLimit = 2
+                let scans = try cacheContext.fetch(scanDescriptor)
+                guard scans.count == 1, let scan = scans.first, scan.completedAt != nil,
+                      let saved = BaselineVerificationCursor.decode(scan.cursor) else {
+                    throw BaselineVerificationError.scanNotComplete
+                }
+                if saved.runID != cursor?.runID || saved.tier != cursor?.tier {
+                    // Only verification scratch progress is reset; old ledger
+                    // rows are namespaced by run ID and cannot enter this pass.
+                    cursor = BaselineVerificationCursor(runID: saved.runID, lastID: nil, tier: saved.tier)
+                    progress = StoreSplitMigrationPhaseResult()
+                }
+            }
+        } catch let error as BaselineVerificationError {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: error.rawValue)
+        } catch {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: BaselineVerificationError.checkpointRead.rawValue)
+        }
+
+        guard var cursor else {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: BaselineVerificationError.checkpointInvalid.rawValue)
+        }
+        guard shouldContinue(), ContinuousClock.now < deadline else {
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        guard StoreSplitMigrationVerifier.invalidateForMigrationStage(in: cacheContext) else {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "baseline_verification_invalidation_failed")
+        }
+
+        let committedCursor = cursor
+        var processed = 0
+        var mutations = 0
+        var newFeeds = 0
+        var reachedEnd = false
+        var failure: BaselineVerificationError?
+        do {
+            let kind = cursor.tier.isEmpty ? nil : cursor.tier
+            guard kind == nil || ["year", "month", "week", "day"].contains(cursor.tier) else {
+                throw BaselineVerificationError.checkpointInvalid
+            }
+            let markerID = StableIdentityKey.make("baseline-verification-tier", cursor.runID.uuidString)
+            var markerDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
+                predicate: #Predicate { $0.id == markerID }
+            )
+            markerDescriptor.fetchLimit = 2
+            let markers: [CachedListeningBaselineAggregate]
+            do { markers = try cacheContext.fetch(markerDescriptor) }
+            catch { throw BaselineVerificationError.cacheRead }
+            guard markers.count <= 1 else { throw BaselineVerificationError.cacheRead }
+            let marker = markers.first
+            let tier = kind ?? ""
+            if let marker {
+                guard marker.feedURL == tier else { throw BaselineVerificationError.tierChanged }
+            } else if isScan {
+                cacheContext.insert(CachedListeningBaselineAggregate(id: markerID, feedURL: tier, podcastName: nil))
+                mutations += 1
+            } else {
+                throw BaselineVerificationError.checkpointInvalid
+            }
+
+            let rows: [PlaySessionSummary]
+            let pageSize = max(1, min(40, budget.maximumMutations / 3))
+            if let kind {
+                var descriptor: FetchDescriptor<PlaySessionSummary>
+                if let lastID = cursor.lastID {
+                    descriptor = FetchDescriptor<PlaySessionSummary>(
+                        predicate: #Predicate<PlaySessionSummary> { summary in
+                            if let id = summary.id { summary.periodKind == kind && id > lastID } else { false }
+                        },
+                        sortBy: [SortDescriptor(\PlaySessionSummary.id)]
+                    )
+                } else {
+                    descriptor = FetchDescriptor<PlaySessionSummary>(
+                        predicate: #Predicate { $0.periodKind == kind },
+                        sortBy: [SortDescriptor(\PlaySessionSummary.id)]
+                    )
+                }
+                descriptor.fetchLimit = pageSize
+                do { rows = try legacyContext.fetch(descriptor) }
+                catch { throw BaselineVerificationError.sourceRead }
+            } else {
+                rows = []
+            }
+
+            for summary in rows {
+                guard shouldContinue() else {
+                    cacheContext.rollback()
+                    return StoreSplitSliceReport(status: .cancelled, phase: phase)
+                }
+                if ContinuousClock.now >= deadline { break }
+                guard let id = summary.id, let kind else { throw BaselineVerificationError.sourceIdentity }
+                var duplicateDescriptor = FetchDescriptor<PlaySessionSummary>(
+                    predicate: #Predicate { $0.periodKind == kind && $0.id == id }
+                )
+                duplicateDescriptor.fetchLimit = 2
+                do {
+                    guard try legacyContext.fetch(duplicateDescriptor).count == 1 else {
+                        throw BaselineVerificationError.duplicateSource
+                    }
+                } catch let error as BaselineVerificationError { throw error }
+                catch { throw BaselineVerificationError.sourceRead }
+
+                let feedURL = summary.podcastFeed.map(PodcastFeedIdentity.normalizedFeedURLString)
+                    ?? ListeningBaselineSync.allPodcastsFeedURL
+                let seconds = summary.totalSeconds ?? 0
+                let silence = summary.silenceGapTimeSavedSeconds ?? 0
+                let rate = summary.playbackRateTimeSavedSeconds ?? 0
+                guard seconds.isFinite, silence.isFinite, rate.isFinite else {
+                    throw BaselineVerificationError.invalidValues
+                }
+                let payload = StableIdentityKey.make(
+                    kind, summary.periodStart.map { String($0.timeIntervalSince1970.bitPattern) } ?? "nil",
+                    feedURL, summary.podcastName.map { "value:\($0)" } ?? "nil", String(seconds.bitPattern),
+                    String(silence.bitPattern), String(rate.bitPattern)
+                )
+                let logicalID = StableIdentityKey.make("baseline-verification-source", cursor.runID.uuidString, id.uuidString)
+                let payloadID = StableIdentityKey.make("baseline-verification-payload", cursor.runID.uuidString, id.uuidString, AIContentSyncCodec.sha256Hex(Data(payload.utf8)))
+                func hasReceipt(_ id: String) throws -> Bool {
+                    var descriptor = FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id == id })
+                    descriptor.fetchLimit = 2
+                    do {
+                        let receipts = try cacheContext.fetch(descriptor)
+                        guard receipts.count <= 1 else { throw BaselineVerificationError.cacheRead }
+                        return receipts.first != nil
+                    }
+                    catch let error as BaselineVerificationError { throw error }
+                    catch { throw BaselineVerificationError.cacheRead }
+                }
+                let logicalExists = try hasReceipt(logicalID)
+                let payloadExists = try hasReceipt(payloadID)
+                if isScan {
+                    if logicalExists {
+                        guard payloadExists else { throw BaselineVerificationError.sourceChanged }
+                    } else {
+                        cacheContext.insert(CachedListeningBaselineSource(id: logicalID))
+                        cacheContext.insert(CachedListeningBaselineSource(id: payloadID))
+                        mutations += 2
+                        if summary.periodStart != nil {
+                            let aggregateID = StableIdentityKey.make("baseline-verification-aggregate", cursor.runID.uuidString, feedURL)
+                            var aggregateDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == aggregateID })
+                            aggregateDescriptor.fetchLimit = 2
+                            let aggregate: CachedListeningBaselineAggregate
+                            do {
+                                let aggregates = try cacheContext.fetch(aggregateDescriptor)
+                                guard aggregates.count <= 1 else { throw BaselineVerificationError.cacheRead }
+                                if let existing = aggregates.first {
+                                    aggregate = existing
+                                } else {
+                                    aggregate = CachedListeningBaselineAggregate(id: aggregateID, feedURL: feedURL, podcastName: summary.podcastName)
+                                    cacheContext.insert(aggregate)
+                                }
+                            } catch { throw BaselineVerificationError.cacheRead }
+                            aggregate.totalSeconds += max(0, seconds)
+                            aggregate.silenceGapTimeSavedSeconds += max(0, silence)
+                            aggregate.playbackRateTimeSavedSeconds += max(0, rate)
+                            mutations += 1
+                        }
+                    }
+                } else {
+                    guard logicalExists, payloadExists else { throw BaselineVerificationError.sourceChanged }
+                    let recheckID = StableIdentityKey.make("baseline-verification-recheck", cursor.runID.uuidString, id.uuidString)
+                    let rechecked = try hasReceipt(recheckID)
+                    if summary.periodStart != nil {
+                        let firstID = StableIdentityKey.make("baseline-verification-aggregate", cursor.runID.uuidString, feedURL)
+                        var firstDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == firstID })
+                        firstDescriptor.fetchLimit = 2
+                        let firstMatches: [CachedListeningBaselineAggregate]
+                        do { firstMatches = try cacheContext.fetch(firstDescriptor) }
+                        catch { throw BaselineVerificationError.cacheRead }
+                        guard firstMatches.count == 1, firstMatches[0].feedURL == feedURL else {
+                            throw BaselineVerificationError.cacheRead
+                        }
+                        let feedReceiptID = StableIdentityKey.make("baseline-verification-recheck-feed", cursor.runID.uuidString, feedURL)
+                        let feedSeen = try hasReceipt(feedReceiptID)
+                        let aggregateID = StableIdentityKey.make("baseline-verification-second-aggregate", cursor.runID.uuidString, feedURL)
+                        var aggregateDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == aggregateID })
+                        aggregateDescriptor.fetchLimit = 2
+                        let aggregate: CachedListeningBaselineAggregate
+                        do {
+                            let aggregates = try cacheContext.fetch(aggregateDescriptor)
+                            guard aggregates.count <= 1 else { throw BaselineVerificationError.cacheRead }
+                            if feedSeen {
+                                guard let value = aggregates.first, value.feedURL == feedURL else { throw BaselineVerificationError.cacheRead }
+                                aggregate = value
+                            } else {
+                                guard aggregates.isEmpty, !rechecked else { throw BaselineVerificationError.cacheRead }
+                                cacheContext.insert(CachedListeningBaselineSource(id: feedReceiptID))
+                                aggregate = CachedListeningBaselineAggregate(id: aggregateID, feedURL: feedURL, podcastName: summary.podcastName)
+                                cacheContext.insert(aggregate)
+                                newFeeds += 1
+                                mutations += 1
+                            }
+                        } catch let error as BaselineVerificationError { throw error }
+                        catch { throw BaselineVerificationError.cacheRead }
+                        if !rechecked {
+                            aggregate.totalSeconds += max(0, seconds)
+                            aggregate.silenceGapTimeSavedSeconds += max(0, silence)
+                            aggregate.playbackRateTimeSavedSeconds += max(0, rate)
+                            mutations += 1
+                        }
+                    }
+                    if !rechecked {
+                        cacheContext.insert(CachedListeningBaselineSource(id: recheckID))
+                        mutations += 1
+                    }
+                }
+                cursor.lastID = id
+                processed += 1
+            }
+            reachedEnd = processed == rows.count && rows.count < pageSize
+            if reachedEnd {
+                let latestKind: String?
+                do { latestKind = try selectedBaselinePeriodKind(in: legacyContext) }
+                catch { throw BaselineVerificationError.sourceRead }
+                guard latestKind == kind else { throw BaselineVerificationError.tierChanged }
+            }
+            if reachedEnd && !isScan {
+                let scanID = checkpointID(for: Phase.listeningBaselineVerificationScan)
+                var scanDescriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == scanID })
+                scanDescriptor.fetchLimit = 2
+                let scans: [StoreSplitMigrationCheckpoint]
+                do { scans = try cacheContext.fetch(scanDescriptor) }
+                catch { throw BaselineVerificationError.checkpointRead }
+                guard scans.count == 1, let scan = scans.first else { throw BaselineVerificationError.checkpointInvalid }
+                let sourceCount: Int
+                do {
+                    if let kind {
+                        sourceCount = try legacyContext.fetchCount(FetchDescriptor<PlaySessionSummary>(predicate: #Predicate { $0.periodKind == kind }))
+                    } else { sourceCount = 0 }
+                } catch { throw BaselineVerificationError.sourceRead }
+                guard scan.scannedCount == progress.scanned + processed,
+                      scan.scannedCount == sourceCount else { throw BaselineVerificationError.sourceChanged }
+                let runID = cursor.runID.uuidString
+                let firstPrefix = StableIdentityKey.make("baseline-verification-aggregate", runID)
+                let secondPrefix = StableIdentityKey.make("baseline-verification-second-aggregate", runID)
+                let feedPrefix = StableIdentityKey.make("baseline-verification-recheck-feed", runID)
+                do {
+                    let firstCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: firstPrefix) }))
+                    let secondCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: secondPrefix) }))
+                    let feedCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id.starts(with: feedPrefix) }))
+                    guard firstCount == secondCount, secondCount == feedCount,
+                          feedCount == progress.updated + newFeeds else { throw BaselineVerificationError.aggregateMismatch }
+                } catch let error as BaselineVerificationError { throw error }
+                catch { throw BaselineVerificationError.cacheRead }
+            }
+        } catch let error as BaselineVerificationError {
+            failure = error
+        } catch {
+            failure = .sourceRead
+        }
+
+        if let failure {
+            cacheContext.rollback()
+            progress.failed = 1
+            guard let encoded = committedCursor.encoded,
+                  recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: false, error: failure.rawValue, context: cacheContext) else {
+                return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+            }
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: failure.rawValue)
+        }
+        guard shouldContinue() else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        progress.scanned += processed
+        progress.updated += newFeeds
+        progress.failed = 0
+        guard let encoded = cursor.encoded,
+              recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: reachedEnd, context: cacheContext) else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+        }
+        let status: StoreSplitSliceReport.Status = reachedEnd
+            ? (currentPhase(cache: cacheContext) == nil ? .completed : .phaseCompleted)
+            : .advanced
+        return StoreSplitSliceReport(status: status, phase: phase, processed: processed, mutations: mutations, saveCount: 1, footprintBefore: footprintBefore, footprintAfter: MemoryFootprint.current())
+    }
+
+    /// Compare the independently accumulated feed totals and the portable
+    /// baseline in bounded keyset pages. The earlier summary passes are only
+    /// local evidence; delayed imports still require a fresh verification.
+    private static func runBaselineAggregateVerificationSlice(
+        phase: String,
+        legacyContext: ModelContext,
+        destinationContext: ModelContext,
+        cacheContext: ModelContext,
+        budget: StoreWorkBudget,
+        footprintBefore: UInt64,
+        shouldContinue: @Sendable () -> Bool
+    ) -> StoreSplitSliceReport {
+        let deadline = ContinuousClock.now + budget.maximumWallTime
+        let phaseID = checkpointID(for: phase)
+        let secondID = checkpointID(for: Phase.listeningBaselineVerification)
+        let scanID = checkpointID(for: Phase.listeningBaselineVerificationScan)
+        func readCheckpoint(_ id: String) throws -> StoreSplitMigrationCheckpoint? {
+            var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+            descriptor.fetchLimit = 2
+            do {
+                let rows = try cacheContext.fetch(descriptor)
+                guard rows.count <= 1 else { throw BaselineVerificationError.checkpointInvalid }
+                return rows.first
+            } catch let error as BaselineVerificationError { throw error }
+            catch { throw BaselineVerificationError.checkpointRead }
+        }
+
+        var progress = StoreSplitMigrationPhaseResult()
+        let scan: StoreSplitMigrationCheckpoint
+        let expectedFeedCount: Int
+        let cursorAtStart: BaselineVerificationCursor
+        do {
+            guard let sourceScan = try readCheckpoint(scanID), sourceScan.completedAt != nil,
+                  let sourceCursor = BaselineVerificationCursor.decode(sourceScan.cursor),
+                  let second = try readCheckpoint(secondID), second.completedAt != nil,
+                  let secondCursor = BaselineVerificationCursor.decode(second.cursor),
+                  sourceCursor.runID == secondCursor.runID,
+                  sourceCursor.tier == secondCursor.tier,
+                  sourceScan.scannedCount == second.scannedCount else {
+                throw BaselineVerificationError.scanNotComplete
+            }
+            scan = sourceScan
+            expectedFeedCount = second.updatedCount
+            if let checkpoint = try readCheckpoint(phaseID) {
+                guard let saved = BaselineVerificationCursor.decode(checkpoint.cursor),
+                      saved.lastID == nil else { throw BaselineVerificationError.checkpointInvalid }
+                if saved.runID == sourceCursor.runID && saved.tier == sourceCursor.tier {
+                    cursorAtStart = saved
+                    progress = StoreSplitMigrationPhaseResult(
+                        scanned: checkpoint.scannedCount, inserted: checkpoint.insertedCount,
+                        updated: checkpoint.updatedCount, skipped: checkpoint.skippedCount,
+                        failed: checkpoint.failedCount
+                    )
+                } else {
+                    cursorAtStart = BaselineVerificationCursor(runID: sourceCursor.runID, lastID: nil, tier: sourceCursor.tier)
+                }
+            } else {
+                cursorAtStart = BaselineVerificationCursor(runID: sourceCursor.runID, lastID: nil, tier: sourceCursor.tier)
+            }
+        } catch let error as BaselineVerificationError {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: error.rawValue)
+        } catch {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: BaselineVerificationError.checkpointRead.rawValue)
+        }
+
+        guard shouldContinue(), ContinuousClock.now < deadline else {
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        guard StoreSplitMigrationVerifier.invalidateForMigrationStage(in: cacheContext) else {
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "baseline_verification_invalidation_failed")
+        }
+        var cursor = cursorAtStart
+        var processed = 0
+        var reachedEnd = false
+        var failure: BaselineVerificationError?
+        do {
+            let runID = cursor.runID.uuidString
+            let firstPrefix = StableIdentityKey.make("baseline-verification-aggregate", runID)
+            let secondPrefix = StableIdentityKey.make("baseline-verification-second-aggregate", runID)
+            if let last = cursor.lastAggregateID, !last.hasPrefix(firstPrefix) {
+                throw BaselineVerificationError.checkpointInvalid
+            }
+            let markerID = StableIdentityKey.make("baseline-verification-tier", runID)
+            var markerDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == markerID })
+            markerDescriptor.fetchLimit = 2
+            let markers: [CachedListeningBaselineAggregate]
+            do { markers = try cacheContext.fetch(markerDescriptor) }
+            catch { throw BaselineVerificationError.cacheRead }
+            guard markers.count == 1, markers[0].feedURL == cursor.tier else {
+                throw BaselineVerificationError.cacheRead
+            }
+
+            var descriptor: FetchDescriptor<CachedListeningBaselineAggregate>
+            if let last = cursor.lastAggregateID {
+                descriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
+                    predicate: #Predicate { $0.id.starts(with: firstPrefix) && $0.id > last },
+                    sortBy: [SortDescriptor(\CachedListeningBaselineAggregate.id)]
+                )
+            } else {
+                descriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
+                    predicate: #Predicate { $0.id.starts(with: firstPrefix) },
+                    sortBy: [SortDescriptor(\CachedListeningBaselineAggregate.id)]
+                )
+            }
+            let pageSize = max(1, min(40, budget.maximumMutations))
+            descriptor.fetchLimit = pageSize
+            let aggregates: [CachedListeningBaselineAggregate]
+            do { aggregates = try cacheContext.fetch(descriptor) }
+            catch { throw BaselineVerificationError.cacheRead }
+            func equal(_ a: Double, _ b: Double) -> Bool {
+                a.isFinite && b.isFinite && abs(a - b) <= max(0.001, max(abs(a), abs(b)) * 0.000_001)
+            }
+            for first in aggregates {
+                guard shouldContinue() else {
+                    cacheContext.rollback()
+                    return StoreSplitSliceReport(status: .cancelled, phase: phase)
+                }
+                if ContinuousClock.now >= deadline { break }
+                let feedURL = first.feedURL
+                guard first.id == StableIdentityKey.make("baseline-verification-aggregate", runID, feedURL) else {
+                    throw BaselineVerificationError.cacheRead
+                }
+                let firstID = first.id
+                var firstDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == firstID })
+                firstDescriptor.fetchLimit = 2
+                let secondID = StableIdentityKey.make("baseline-verification-second-aggregate", runID, feedURL)
+                var secondDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id == secondID })
+                secondDescriptor.fetchLimit = 2
+                let firstMatches: [CachedListeningBaselineAggregate]
+                let secondMatches: [CachedListeningBaselineAggregate]
+                do {
+                    firstMatches = try cacheContext.fetch(firstDescriptor)
+                    secondMatches = try cacheContext.fetch(secondDescriptor)
+                } catch { throw BaselineVerificationError.cacheRead }
+                guard firstMatches.count == 1, secondMatches.count == 1,
+                      let second = secondMatches.first, second.feedURL == feedURL else {
+                    throw BaselineVerificationError.cacheRead
+                }
+                let feedReceiptID = StableIdentityKey.make("baseline-verification-recheck-feed", runID, feedURL)
+                var feedReceiptDescriptor = FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id == feedReceiptID })
+                feedReceiptDescriptor.fetchLimit = 2
+                do {
+                    guard try cacheContext.fetch(feedReceiptDescriptor).count == 1 else {
+                        throw BaselineVerificationError.cacheRead
+                    }
+                } catch let error as BaselineVerificationError { throw error }
+                catch { throw BaselineVerificationError.cacheRead }
+                guard equal(first.totalSeconds, second.totalSeconds),
+                      equal(first.silenceGapTimeSavedSeconds, second.silenceGapTimeSavedSeconds),
+                      equal(first.playbackRateTimeSavedSeconds, second.playbackRateTimeSavedSeconds) else {
+                    throw BaselineVerificationError.aggregateMismatch
+                }
+                if first.totalSeconds > 0 {
+                    var baselineDescriptor = FetchDescriptor<ListeningBaselineSync>(predicate: #Predicate { $0.id == feedURL })
+                    baselineDescriptor.fetchLimit = 2
+                    let baselines: [ListeningBaselineSync]
+                    do { baselines = try destinationContext.fetch(baselineDescriptor) }
+                    catch { throw BaselineVerificationError.destinationRead }
+                    guard baselines.count <= 1 else { throw BaselineVerificationError.duplicateBaseline }
+                    guard let baseline = baselines.first else { throw BaselineVerificationError.missingBaseline }
+                    guard baseline.capturedByDeviceID == ListeningDeviceIdentity.current().id else {
+                        throw BaselineVerificationError.sourceLineage
+                    }
+                    guard baseline.feedURL == feedURL,
+                          equal(baseline.totalSeconds, first.totalSeconds),
+                          equal(baseline.silenceGapTimeSavedSeconds, first.silenceGapTimeSavedSeconds),
+                          equal(baseline.playbackRateTimeSavedSeconds, first.playbackRateTimeSavedSeconds) else {
+                        throw BaselineVerificationError.fields
+                    }
+                }
+                cursor.lastAggregateID = first.id
+                processed += 1
+            }
+            reachedEnd = processed == aggregates.count && aggregates.count < pageSize
+            if reachedEnd {
+                let firstCount: Int
+                let secondCount: Int
+                let feedCount: Int
+                let feedPrefix = StableIdentityKey.make("baseline-verification-recheck-feed", runID)
+                do {
+                    firstCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: firstPrefix) }))
+                    secondCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: secondPrefix) }))
+                    feedCount = try cacheContext.fetchCount(FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id.starts(with: feedPrefix) }))
+                } catch { throw BaselineVerificationError.cacheRead }
+                guard firstCount == secondCount, secondCount == feedCount,
+                      feedCount == expectedFeedCount, firstCount == progress.scanned + processed else {
+                    throw BaselineVerificationError.aggregateMismatch
+                }
+                let kind = cursor.tier.isEmpty ? nil : cursor.tier
+                let latestKind: String?
+                let sourceCount: Int
+                do {
+                    latestKind = try selectedBaselinePeriodKind(in: legacyContext)
+                    if let kind {
+                        sourceCount = try legacyContext.fetchCount(FetchDescriptor<PlaySessionSummary>(predicate: #Predicate { $0.periodKind == kind }))
+                    } else { sourceCount = 0 }
+                } catch { throw BaselineVerificationError.sourceRead }
+                guard latestKind == kind else { throw BaselineVerificationError.tierChanged }
+                guard sourceCount == scan.scannedCount else { throw BaselineVerificationError.sourceChanged }
+            }
+        } catch let error as BaselineVerificationError {
+            failure = error
+        } catch {
+            failure = .cacheRead
+        }
+        if let failure {
+            cacheContext.rollback()
+            progress.failed = 1
+            guard let encoded = cursorAtStart.encoded,
+                  recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: false, error: failure.rawValue, context: cacheContext) else {
+                return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+            }
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: failure.rawValue)
+        }
+        guard shouldContinue() else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .cancelled, phase: phase)
+        }
+        progress.scanned += processed
+        progress.failed = 0
+        guard let encoded = cursor.encoded,
+              recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: reachedEnd, context: cacheContext) else {
+            cacheContext.rollback()
+            return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+        }
+        let status: StoreSplitSliceReport.Status = reachedEnd
+            ? (currentPhase(cache: cacheContext) == nil ? .completed : .phaseCompleted)
+            : .advanced
+        return StoreSplitSliceReport(status: status, phase: phase, processed: processed, saveCount: 1, footprintBefore: footprintBefore, footprintAfter: MemoryFootprint.current())
+    }
+
+    private func processBaselineVerificationFully(_ phase: String) -> StoreSplitMigrationPhaseResult {
+        while !Task.isCancelled {
+            let context = Self.makeContext(for: cacheContainer)
+            let handler = phase == Phase.listeningBaselineVerificationComparison
+                ? Self.runBaselineAggregateVerificationSlice
+                : Self.runBaselineVerificationSlice
+            let report: StoreSplitSliceReport = handler(
+                phase,
+                Self.makeContext(for: legacyContainer),
+                Self.makeContext(for: userStateContainer),
+                context,
+                .migrationSlice,
+                MemoryFootprint.current(),
+                { !Task.isCancelled }
+            )
+            if report.status != .advanced {
+                let id = Self.checkpointID(for: phase)
+                var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })
+                descriptor.fetchLimit = 2
+                guard let checkpoints = try? context.fetch(descriptor),
+                      checkpoints.count == 1,
+                      let checkpoint = checkpoints.first else {
+                    return StoreSplitMigrationPhaseResult(failed: report.status == .failed ? 1 : 0)
+                }
+                return StoreSplitMigrationPhaseResult(scanned: checkpoint.scannedCount, inserted: checkpoint.insertedCount, updated: checkpoint.updatedCount, skipped: checkpoint.skippedCount, failed: max(checkpoint.failedCount, report.status == .failed ? 1 : 0))
+            }
+        }
+        return StoreSplitMigrationPhaseResult()
     }
 
     private struct PhaseRunResult {
@@ -857,15 +2019,6 @@ actor StoreSplitMigrationService {
                 cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
-        case Phase.listeningHistoryVerification:
-            return Self.verifyListeningHistoryPage(
-                offset: offset,
-                pageSize: pageSize,
-                legacyContext: legacyContext,
-                destinationContext: userStateContext,
-                cacheContext: cacheContext,
-                shouldContinue: shouldContinue
-            )
         case Phase.aiTranscripts:
             return Self.processAITranscriptPage(
                 offset: offset,
@@ -997,12 +2150,6 @@ actor StoreSplitMigrationService {
                 FetchDescriptor<PlaySession>(sortBy: SourceOrder.playSessions),
                 boundaryKey: boundaryKey, offset: offset,
                 pageSize: listeningHistoryPageSize, context: legacyContext
-            )
-        case Phase.listeningHistoryVerification:
-            return relocate(
-                FetchDescriptor<PlaySession>(sortBy: SourceOrder.verificationPlaySessions),
-                boundaryKey: boundaryKey, offset: offset,
-                pageSize: listeningHistoryVerificationPageSize, context: legacyContext
             )
         case Phase.listeningSummaries:
             guard let kind = (try? selectedBaselinePeriodKind(in: legacyContext)) ?? nil else {
@@ -1893,6 +3040,20 @@ actor StoreSplitMigrationService {
             let sourceDeviceName = session.sourceDeviceName
                 ?? session.deviceModel
                 ?? "Legacy device"
+            guard historyIdentityValuesAreValid(
+                startedAt: startedAt,
+                endedAt: session.endTime,
+                startPosition: session.startPosition ?? 0,
+                endPosition: session.endPosition ?? 0
+            ) else {
+                outcome.error = "listening_history_invalid_source"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                destinationContext.rollback()
+                cacheContext.rollback()
+                return outcome
+            }
             guard let endedAt = session.endTime, endedAt > startedAt else {
                 do { try cacheLegacySession(
                     session,
@@ -2042,15 +3203,15 @@ actor StoreSplitMigrationService {
         return outcome
     }
 
-    /// Rechecks one bounded source page after backfill. The cursor is managed by
-    /// the normal phase checkpoint machinery and advances only when every
-    /// eligible completed session in the page has a matching UserState row.
+    /// Rechecks one UUID-keyset page after backfill. The cursor advances only
+    /// when every eligible completed session has a matching UserState row.
     private static func verifyListeningHistoryPage(
-        offset: Int,
+        afterID: UUID?,
         pageSize: Int,
         legacyContext: ModelContext,
         destinationContext: ModelContext,
         cacheContext: ModelContext,
+        deadline: ContinuousClock.Instant,
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
@@ -2060,8 +3221,17 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
-        var descriptor = FetchDescriptor<PlaySession>(sortBy: SourceOrder.verificationPlaySessions)
-        descriptor.fetchOffset = offset
+        var descriptor: FetchDescriptor<PlaySession>
+        if let afterID {
+            descriptor = FetchDescriptor<PlaySession>(
+                predicate: #Predicate<PlaySession> { session in
+                    if let id = session.id { id > afterID } else { false }
+                },
+                sortBy: SourceOrder.verificationPlaySessions
+            )
+        } else {
+            descriptor = FetchDescriptor<PlaySession>(sortBy: SourceOrder.verificationPlaySessions)
+        }
         descriptor.fetchLimit = pageSize
 
         let sessions: [PlaySession]
@@ -2080,14 +3250,42 @@ actor StoreSplitMigrationService {
                 outcome.reachedEnd = false
                 return outcome
             }
+            if ContinuousClock.now >= deadline { break }
+            guard let sessionID = session.id else {
+                outcome.error = "listening_history_verification_source_identity_unresolved"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+            var duplicateDescriptor = FetchDescriptor<PlaySession>(predicate: #Predicate { $0.id == sessionID })
+            duplicateDescriptor.fetchLimit = 2
+            do {
+                guard try legacyContext.fetch(duplicateDescriptor).count == 1 else {
+                    outcome.error = "listening_history_verification_duplicate_source_identity"
+                    outcome.delta.failed += 1
+                    outcome.processed = 0
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+            } catch {
+                outcome.error = "listening_history_verification_source_fetch_failed"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
             outcome.processed += 1
             outcome.delta.scanned += 1
 
             guard let episode = session.episode,
                   episode.podcast?.feed != nil,
                   let startedAt = session.startTime else {
-                outcome.delta.skipped += 1
-                continue
+                outcome.error = "listening_history_verification_source_identity_unresolved"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
             }
 
             let identity = episode.stableEpisodeIdentity
@@ -2099,6 +3297,18 @@ actor StoreSplitMigrationService {
                 ?? session.deviceModel
                 ?? "Legacy device"
 
+            guard historyIdentityValuesAreValid(
+                startedAt: startedAt,
+                endedAt: session.endTime,
+                startPosition: session.startPosition ?? 0,
+                endPosition: session.endPosition ?? 0
+            ) else {
+                outcome.error = "listening_history_verification_invalid_source"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
             guard let endedAt = session.endTime, endedAt > startedAt else {
                 let cacheID = cachedLegacySessionID(
                     session,
@@ -2110,8 +3320,16 @@ actor StoreSplitMigrationService {
                     var cachedDescriptor = FetchDescriptor<CachedPlaySession>(
                         predicate: #Predicate { $0.id == cacheID }
                     )
-                    cachedDescriptor.fetchLimit = 1
-                    cached = try cacheContext.fetch(cachedDescriptor).first
+                    cachedDescriptor.fetchLimit = 2
+                    let records = try cacheContext.fetch(cachedDescriptor)
+                    guard records.count <= 1 else {
+                        outcome.error = "listening_history_verification_duplicate_cache_identity"
+                        outcome.delta.failed += 1
+                        outcome.processed = 0
+                        outcome.reachedEnd = false
+                        return outcome
+                    }
+                    cached = records.first
                 } catch {
                     outcome.error = "listening_history_verification_cache_fetch_failed"
                     outcome.delta.failed += 1
@@ -2168,7 +3386,17 @@ actor StoreSplitMigrationService {
 
             let actual: ListeningHistorySync?
             do {
-                actual = try fetchListeningHistory(id: recordID, in: destinationContext)
+                var historyDescriptor = FetchDescriptor<ListeningHistorySync>(predicate: #Predicate { $0.id == recordID })
+                historyDescriptor.fetchLimit = 2
+                let records = try destinationContext.fetch(historyDescriptor)
+                guard records.count <= 1 else {
+                    outcome.error = "listening_history_verification_duplicate_destination_identity"
+                    outcome.delta.failed += 1
+                    outcome.processed = 0
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                actual = records.first
             } catch {
                 outcome.error = "listening_history_verification_destination_fetch_failed"
                 outcome.delta.failed += 1
@@ -2178,6 +3406,21 @@ actor StoreSplitMigrationService {
             }
             guard let actual else {
                 outcome.error = "listening_history_verification_missing_record"
+                outcome.delta.failed += 1
+                outcome.processed = 0
+                outcome.reachedEnd = false
+                return outcome
+            }
+
+            // The ID must still describe the destination row. A later update
+            // is preserved, but cannot turn a mismatched episode or session
+            // into evidence for this source identity.
+            guard historyIdentityValuesAreValid(
+                    startedAt: actual.startedAt, endedAt: actual.endedAt,
+                    startPosition: actual.startPosition, endPosition: actual.endPosition
+                  ),
+                  ListeningHistoryIdentity.make(for: actual) == recordID else {
+                outcome.error = "listening_history_verification_semantic_mismatch"
                 outcome.delta.failed += 1
                 outcome.processed = 0
                 outcome.reachedEnd = false
@@ -2222,9 +3465,25 @@ actor StoreSplitMigrationService {
             }
         }
 
-        outcome.boundaryKey = boundaryKey(of: sessions, processed: outcome.processed)
-        outcome.reachedEnd = sessions.count < pageSize
+        if outcome.processed > 0 {
+            outcome.boundaryKey = sessions[outcome.processed - 1].id?.uuidString
+        }
+        outcome.reachedEnd = outcome.processed == sessions.count && sessions.count < pageSize
         return outcome
+    }
+
+    private static func historyIdentityValuesAreValid(
+        startedAt: Date,
+        endedAt: Date?,
+        startPosition: Double,
+        endPosition: Double
+    ) -> Bool {
+        // Identity construction rounds timestamps and decisecond positions to
+        // Int. Invalid legacy data must fail verification rather than trap.
+        let limit = Double(Int.max) / 20
+        let values = [startedAt.timeIntervalSince1970, startPosition, endPosition]
+            + (endedAt.map { [$0.timeIntervalSince1970] } ?? [])
+        return values.allSatisfy { $0.isFinite && abs($0) < limit }
     }
 
     private static func listeningHistoryMatches(
@@ -2519,7 +3778,7 @@ actor StoreSplitMigrationService {
         return nil
     }
 
-    /// Captures the pre-split listening baseline: one frozen row per feed.
+    /// Builds local candidate totals for the pre-split listening baseline.
     ///
     /// Raw `PlaySession` rows are pruned after 30 days, so the era before the
     /// split survives only as legacy `PlaySessionSummary` aggregates. Summing the
@@ -2527,10 +3786,9 @@ actor StoreSplitMigrationService {
     /// partition all time, so summing them never double-counts, and it is the
     /// same derivation the legacy statistics screen has always used.
     ///
-    /// Write-once. A row that already exists is left exactly as it is, including
-    /// one that arrived from another device. Re-deriving or max-merging it is how
-    /// a single wrong total previously became the account's permanent total; a
-    /// constant cannot ratchet.
+    /// UserState baselines are write-once. Publication preserves existing rows
+    /// and blocks a missing row until a durable source-revision fence proves
+    /// that a candidate is complete; the retained cache is recovery evidence.
     private static func processListeningSummaries(
         offset: Int,
         pageSize: Int,
@@ -2540,6 +3798,40 @@ actor StoreSplitMigrationService {
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
+        if offset == 0 {
+            let checkpointID = checkpointID(for: Phase.listeningSummaries)
+            var checkpointDescriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == checkpointID })
+            checkpointDescriptor.fetchLimit = 2
+            let aggregatePrefix = StableIdentityKey.make(baselineAggregateNamespace)
+            let sourcePrefix = StableIdentityKey.make(baselineSourceNamespace)
+            var aggregateDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(predicate: #Predicate { $0.id.starts(with: aggregatePrefix) })
+            aggregateDescriptor.fetchLimit = 1
+            var sourceDescriptor = FetchDescriptor<CachedListeningBaselineSource>(predicate: #Predicate { $0.id.starts(with: sourcePrefix) })
+            sourceDescriptor.fetchLimit = 1
+            do {
+                if try legacyBaselineScratchPresent(in: cacheContext) {
+                    outcome.error = "baseline_legacy_partial_scratch_unresolved"
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                let checkpoints = try cacheContext.fetch(checkpointDescriptor)
+                guard checkpoints.count <= 1 else {
+                    outcome.error = "baseline_scan_checkpoint_ambiguous"
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+                if (checkpoints.isEmpty || checkpoints[0].scannedCount == 0),
+                   try !cacheContext.fetch(aggregateDescriptor).isEmpty || !cacheContext.fetch(sourceDescriptor).isEmpty {
+                    outcome.error = "baseline_scan_orphaned_scratch_unresolved"
+                    outcome.reachedEnd = false
+                    return outcome
+                }
+            } catch {
+                outcome.error = "baseline_scan_scratch_fetch_failed"
+                outcome.reachedEnd = false
+                return outcome
+            }
+        }
         var baselineKind: String?
         do {
             baselineKind = try selectedBaselinePeriodKind(in: legacyContext)
@@ -2549,18 +3841,7 @@ actor StoreSplitMigrationService {
             return outcome
         }
 
-        guard let baselineKind else {
-            // No eligible source tier means the snapshot is empty. Destination
-            // read failures remain errors and can never be interpreted as zero.
-            do {
-                _ = try destinationContext.fetch(FetchDescriptor<ListeningBaselineSync>())
-            } catch {
-                outcome.error = "baseline_destination_fetch_failed: \(error.localizedDescription)"
-                outcome.reachedEnd = false
-                return outcome
-            }
-            return outcome
-        }
+        guard let baselineKind else { return outcome }
 
         let periodPredicate = #Predicate<PlaySessionSummary> { $0.periodKind == baselineKind }
         var descriptor = FetchDescriptor<PlaySessionSummary>(
@@ -2599,12 +3880,19 @@ actor StoreSplitMigrationService {
                 String(periodStart.timeIntervalSince1970),
                 summary.podcastName ?? ""
             )
-            let sourceKey = StableIdentityKey.make("listening-baseline-source", sourceID)
-            let sourceDescriptor = FetchDescriptor<CachedListeningBaselineSource>(
+            let sourceKey = StableIdentityKey.make(baselineSourceNamespace, sourceID)
+            var sourceDescriptor = FetchDescriptor<CachedListeningBaselineSource>(
                 predicate: #Predicate { $0.id == sourceKey }
             )
+            sourceDescriptor.fetchLimit = 2
             do {
-                if try cacheContext.fetch(sourceDescriptor).first != nil {
+                let existing = try cacheContext.fetch(sourceDescriptor)
+                guard existing.count <= 1 else {
+                    outcome.error = "summary_source_ledger_identity_conflict"
+                    outcome.reachedEnd = false
+                    break
+                }
+                if existing.first != nil {
                     outcome.delta.skipped += 1
                     continue
                 }
@@ -2613,14 +3901,20 @@ actor StoreSplitMigrationService {
                 outcome.reachedEnd = false
                 break
             }
-            let aggregateID = StableIdentityKey.make("listening-baseline", feedURL)
+            let aggregateID = StableIdentityKey.make(baselineAggregateNamespace, feedURL)
             var aggregateDescriptor = FetchDescriptor<CachedListeningBaselineAggregate>(
                 predicate: #Predicate { $0.id == aggregateID }
             )
-            aggregateDescriptor.fetchLimit = 1
+            aggregateDescriptor.fetchLimit = 2
             let aggregate: CachedListeningBaselineAggregate
             do {
-                if let existing = try cacheContext.fetch(aggregateDescriptor).first {
+                let aggregates = try cacheContext.fetch(aggregateDescriptor)
+                guard aggregates.count <= 1 else {
+                    outcome.error = "summary_aggregate_identity_conflict"
+                    outcome.reachedEnd = false
+                    break
+                }
+                if let existing = aggregates.first {
                     aggregate = existing
                 } else {
                     aggregate = CachedListeningBaselineAggregate(
@@ -2654,61 +3948,6 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = summaries.count < pageSize
         }
 
-        if outcome.reachedEnd {
-            let aggregates: [CachedListeningBaselineAggregate]
-            do {
-                aggregates = try cacheContext.fetch(FetchDescriptor<CachedListeningBaselineAggregate>())
-            } catch {
-                outcome.error = "summary_aggregate_read_failed: \(error.localizedDescription)"
-                outcome.reachedEnd = false
-                cacheContext.rollback()
-                return outcome
-            }
-            let existing: [ListeningBaselineSync]
-            do {
-                existing = try destinationContext.fetch(FetchDescriptor<ListeningBaselineSync>())
-            } catch {
-                outcome.error = "baseline_destination_fetch_failed: \(error.localizedDescription)"
-                outcome.reachedEnd = false
-                cacheContext.rollback()
-                return outcome
-            }
-            let existingIDs = Set(existing.map(\.id))
-            let deviceID = ListeningDeviceIdentity.current().id
-            for value in aggregates where value.totalSeconds > 0 {
-                guard existingIDs.contains(value.feedURL) == false else {
-                    outcome.delta.skipped += 1
-                    continue
-                }
-                destinationContext.insert(ListeningBaselineSync(
-                    feedURL: value.feedURL,
-                    podcastName: value.podcastName,
-                    totalSeconds: value.totalSeconds,
-                    silenceGapTimeSavedSeconds: value.silenceGapTimeSavedSeconds,
-                    playbackRateTimeSavedSeconds: value.playbackRateTimeSavedSeconds,
-                    capturedByDeviceID: deviceID
-                ))
-                outcome.delta.inserted += 1
-            }
-            guard save(destinationContext, result: &outcome.delta, shouldContinue: shouldContinue) else {
-                outcome.error = shouldContinue() ? "destination_save_failed" : nil
-                outcome.processed = 0
-                outcome.reachedEnd = false
-                cacheContext.rollback()
-                return outcome
-            }
-            for aggregate in aggregates { cacheContext.delete(aggregate) }
-            let sources: [CachedListeningBaselineSource]
-            do {
-                sources = try cacheContext.fetch(FetchDescriptor<CachedListeningBaselineSource>())
-            } catch {
-                outcome.error = "summary_source_ledger_read_failed: \(error.localizedDescription)"
-                outcome.reachedEnd = false
-                cacheContext.rollback()
-                return outcome
-            }
-            for source in sources { cacheContext.delete(source) }
-        }
         return outcome
     }
 
@@ -3018,6 +4257,15 @@ actor StoreSplitMigrationService {
     nonisolated static func isMigrationVerified(
         cacheContainer: ModelContainer
     ) -> Bool {
+        guard StoreSplitMigrationVerifier.unresolvedReleaseEvidence.isEmpty else { return false }
+        return isDiagnosticVerificationPassed(cacheContainer: cacheContainer)
+    }
+
+    /// A local diagnostic result is useful for finding discrepancies, but it
+    /// does not by itself prove current production coverage or convergence.
+    nonisolated static func isDiagnosticVerificationPassed(
+        cacheContainer: ModelContainer
+    ) -> Bool {
         guard let record = StoreSplitMigrationVerifier.latestVerification(
             cacheContainer: cacheContainer
         ) else { return false }
@@ -3055,12 +4303,33 @@ actor StoreSplitMigrationService {
                 $0.migrationVersion == migrationVersion
                     && $0.id == checkpointID(for: $0.phase)
             }
-            .reduce(into: [String: StoreSplitMigrationCheckpoint]()) { $0[$1.phase] = $1 }
+            .reduce(into: [String: [StoreSplitMigrationCheckpoint]]()) { $0[$1.phase, default: []].append($1) }
         for phase in slicePhaseOrder {
-            let checkpoint = checkpoints[phase]
-            if checkpoint == nil || checkpoint?.completedAt == nil {
+            guard let phaseCheckpoints = checkpoints[phase],
+                  phaseCheckpoints.count == 1,
+                  phaseCheckpoints[0].completedAt != nil else {
                 return phase
             }
+        }
+        // A reset or partial ledger repair must not combine completed phases
+        // from different verification runs. Fresh installs intentionally use
+        // the explicit no-source cursor for all three phases.
+        let first = checkpoints[Phase.listeningBaselineVerificationScan]![0]
+        let second = checkpoints[Phase.listeningBaselineVerification]![0]
+        let third = checkpoints[Phase.listeningBaselineVerificationComparison]![0]
+        if first.cursor == "0", second.cursor == "0", third.cursor == "0" { return nil }
+        guard let firstCursor = BaselineVerificationCursor.decode(first.cursor) else {
+            return Phase.listeningBaselineVerificationScan
+        }
+        guard let secondCursor = BaselineVerificationCursor.decode(second.cursor),
+              secondCursor.runID == firstCursor.runID,
+              secondCursor.tier == firstCursor.tier else {
+            return Phase.listeningBaselineVerification
+        }
+        guard let thirdCursor = BaselineVerificationCursor.decode(third.cursor),
+              thirdCursor.runID == firstCursor.runID,
+              thirdCursor.tier == firstCursor.tier else {
+            return Phase.listeningBaselineVerificationComparison
         }
         return nil
     }
@@ -3158,13 +4427,21 @@ actor StoreSplitMigrationService {
         context: ModelContext
     ) -> Bool {
         let checkpointID = checkpointID(for: phase)
-        let descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+        var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
             predicate: #Predicate { $0.id == checkpointID }
         )
+        descriptor.fetchLimit = 2
         let existing: StoreSplitMigrationCheckpoint?
         do {
-            existing = try context.fetch(descriptor).first
+            let matches = try context.fetch(descriptor)
+            guard matches.count <= 1 else {
+                context.rollback()
+                CrashBreadcrumbs.shared.record("store_split_checkpoint_duplicate", details: "phase=\(phase)")
+                return false
+            }
+            existing = matches.first
         } catch {
+            context.rollback()
             CrashBreadcrumbs.shared.record(
                 "store_split_checkpoint_fetch_failed",
                 details: "phase=\(phase),error=\(error.localizedDescription)"

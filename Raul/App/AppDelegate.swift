@@ -171,7 +171,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             request.requiresExternalPower = true
             request.requiresNetworkConnectivity = false
             guard let earliestBeginDate = StoreSplitMigrationSchedulePolicy
-                .nextEligibleNightStart(after: .now) else { return }
+                .nextEligibleNightStart(
+                    after: ModelContainerManager.nextStoreSplitBackgroundOpportunity
+                ) else { return }
             request.earliestBeginDate = earliestBeginDate
 
             do {
@@ -323,8 +325,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             )
             return
         }
+        guard Task.isCancelled == false else { return }
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
         let transcriptionsEnabled = await settingsActor.getTranscriptionsEnabled()
+        guard Task.isCancelled == false else { return }
 
         guard transcriptionsEnabled else {
             BGTaskScheduler.shared.cancel(
@@ -338,10 +342,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         let automaticTranscriptionsEnabled = await settingsActor.getAutomaticOnDeviceTranscriptionsEnabled()
+        guard Task.isCancelled == false else { return }
         // Without the analyzer the pass only imports feed-provided transcripts,
         // which is a small download and does not need external power.
         let chargingRequiredForOnDeviceTranscriptions =
             await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging()
+        guard Task.isCancelled == false else { return }
         let requiresCharging = automaticTranscriptionsEnabled
             && chargingRequiredForOnDeviceTranscriptions
 
@@ -352,6 +358,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let pendingRequest = await BGTaskScheduler.shared.pendingTaskRequests().first {
             $0.identifier == BackgroundTaskConfiguration.automaticTranscriptionIdentifier
         }
+        guard Task.isCancelled == false else { return }
         if let pendingRequest {
             let pendingRequiresExternalPower = (pendingRequest as? BGProcessingTaskRequest)?
                 .requiresExternalPower
@@ -417,17 +424,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
               let cacheContainer = await MainActor.run(body: {
                   ModelContainerManager.shared.preparedCacheContainer
         }) else { return }
+        guard Task.isCancelled == false else { return }
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
         let queue = TranscriptAlignmentCacheActor(modelContainer: cacheContainer)
-        guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else {
+        let enabled = await settingsActor.getPublisherTranscriptSynchronizationEnabled()
+        guard Task.isCancelled == false else { return }
+        guard enabled else {
             await queue.clearPendingJobs()
+            guard Task.isCancelled == false else { return }
             BGTaskScheduler.shared.cancel(
                 taskRequestWithIdentifier: BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
             )
             return
         }
 
-        guard await queue.hasPendingJobs() else {
+        let hasPendingJobs = await queue.hasPendingJobs()
+        guard Task.isCancelled == false else { return }
+        guard hasPendingJobs else {
             BGTaskScheduler.shared.cancel(
                 taskRequestWithIdentifier: BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
             )
@@ -438,6 +451,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         let alreadyPending = await BGTaskScheduler.shared.pendingTaskRequests().contains {
             $0.identifier == identifier
         }
+        guard Task.isCancelled == false else { return }
         guard alreadyPending == false else { return }
 
         let request = BGProcessingTaskRequest(identifier: identifier)
@@ -478,7 +492,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 .prepareContainerForExternalEntryPoint(),
                   let cacheContainer = await MainActor.run(body: {
                       ModelContainerManager.shared.preparedCacheContainer
-                  }) else {
+                  }), Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
                     task,
                     operation: "publisher_transcript_sync",
@@ -489,7 +503,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
             let settingsActor = PodcastSettingsModelActor(modelContainer: episodeContainer)
-            guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else {
+            let enabled = await settingsActor.getPublisherTranscriptSynchronizationEnabled()
+            guard Task.isCancelled == false else {
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_settings=true"
+                )
+                return
+            }
+            guard enabled else {
                 await self.finishBackgroundProcessingTask(
                     task,
                     operation: "publisher_transcript_sync",
@@ -500,7 +525,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
             await Self.schedulePublisherTranscriptSynchronizationIfNeeded()
+            guard Task.isCancelled == false else {
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_schedule=true"
+                )
+                return
+            }
             await TranscriptSynchronizationService.shared.setEnabled(true)
+            guard Task.isCancelled == false else {
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "publisher_transcript_sync",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_before_jobs=true"
+                )
+                return
+            }
             let completedCount = await TranscriptSynchronizationService.shared.runQueuedBackgroundJobs(
                 episodeContainer: episodeContainer,
                 cacheContainer: cacheContainer,
@@ -572,7 +617,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
             await ModelContainerManager.shared.prepareContainer()
-            guard let container = ModelContainerManager.shared.preparedContainer else {
+            guard let container = ModelContainerManager.shared.preparedContainer,
+                  Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
                     task,
                     operation: "feed_processing",
@@ -584,7 +630,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             }
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .processing)
-            await PredictedReleaseRefreshScheduler.schedule(using: container)
             guard Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
                     task,
@@ -592,6 +637,17 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     requestedSuccess: false,
                     waitForExportQuiescence: true,
                     details: "cancelled_after_feed_refresh=true"
+                )
+                return
+            }
+            await PredictedReleaseRefreshScheduler.schedule(using: container)
+            guard Task.isCancelled == false else {
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "feed_processing",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_after_release_schedule=true"
                 )
                 return
             }
@@ -607,6 +663,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 importedTranscriptCount = 0
             } else {
                 let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+                guard Task.isCancelled == false else {
+                    await self.finishBackgroundProcessingTask(
+                        task,
+                        operation: "feed_processing",
+                        requestedSuccess: false,
+                        waitForExportQuiescence: true,
+                        details: "cancelled_before_transcript_import=true"
+                    )
+                    return
+                }
                 importedTranscriptCount = await transcriptionManager
                     .runAutomaticTranscriptionsFromPlaylists(
                         allowOnDeviceFallback: false,
@@ -661,7 +727,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
             await ModelContainerManager.shared.prepareContainer()
-            guard ModelContainerManager.shared.preparedContainer != nil else {
+            guard ModelContainerManager.shared.preparedContainer != nil,
+                  Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
                     task,
                     operation: "automatic_transcription",
@@ -688,6 +755,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             // out these windows sparingly, and a single episode left most of the
             // granted time unused.
             let transcriptionManager = await MainActor.run { TranscriptionManager.shared }
+            guard Task.isCancelled == false else {
+                await self.finishBackgroundProcessingTask(
+                    task,
+                    operation: "automatic_transcription",
+                    requestedSuccess: false,
+                    waitForExportQuiescence: true,
+                    details: "cancelled_before_transcription=true"
+                )
+                return
+            }
             let processedCount = await transcriptionManager
                 .runAutomaticTranscriptionsFromPlaylists(
                     allowOnDeviceFallback: true,

@@ -386,6 +386,49 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
+    func testInvalidParsedEpisodeLeavesCheckpointIncompleteAndCanRetry() throws {
+        let (_, cache) = try makeContainers()
+        let feed = try XCTUnwrap(URL(string: "https://example.com/invalid-direct-cache"))
+        var rows: [[String: Any]] = (0..<100).map { index in
+            [
+                "guid": "episode-\(index)",
+                "title": "Episode \(index)",
+                "enclosure": [["url": "https://cdn.example.com/\(index).mp3", "type": "audio/mpeg"]]
+            ]
+        }
+        rows.append(["guid": "invalid", "title": "Missing enclosure"])
+        let first = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed, parsedFeed: ["title": "Podcast"], episodeRows: rows,
+            isCompleteFeed: true, cacheContainer: cache
+        )
+        XCTAssertFalse(first.completed)
+        XCTAssertEqual(first.failureReason, "invalid_episode_payload")
+        XCTAssertEqual(cacheCounts(cache).episodes, 100)
+        let partial = try XCTUnwrap(ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first)
+        XCTAssertLessThan(partial.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+
+        rows[100]["enclosure"] = [["url": "https://cdn.example.com/fixed.mp3", "type": "audio/mpeg"]]
+        let retry = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed, parsedFeed: ["title": "Podcast"], episodeRows: rows,
+            isCompleteFeed: true, cacheContainer: cache
+        )
+        XCTAssertTrue(retry.completed)
+        XCTAssertEqual(cacheCounts(cache).episodes, 101)
+        let completed = try XCTUnwrap(ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first)
+        XCTAssertEqual(completed.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+
+        let invalidRefresh = StoreSplitFeedCacheWriter.projectParsedFeed(
+            feedURL: feed, parsedFeed: ["title": "Podcast"],
+            episodeRows: [["title": "Missing enclosure"]],
+            isCompleteFeed: true, cacheContainer: cache
+        )
+        XCTAssertFalse(invalidRefresh.completed)
+        let invalidated = try XCTUnwrap(ModelContext(cache).fetch(FetchDescriptor<CachedPodcast>()).first)
+        XCTAssertLessThan(invalidated.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
+        XCTAssertEqual(cacheCounts(cache).episodes, 101)
+    }
+
+    @MainActor
     func testPartialParsedFeedNeverPrunesOlderCacheEpisodesOrMarksFeedComplete() throws {
         let (_, cache) = try makeContainers()
         let feed = try XCTUnwrap(URL(string: "https://example.com/partial-direct-cache"))
@@ -882,8 +925,9 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
-    func testUpsertPrunesRemovedEpisodes() throws {
+    func testFullProjectionPreservesHistoricalEpisodeAndContent() async throws {
         let (legacy, cache) = try makeContainers()
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
         let feed = "https://example.com/b"
         let podcast = try makePodcast(in: legacy, feed: feed, episodeGUIDs: ["e1", "e2", "e3"])
 
@@ -891,6 +935,15 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
             feedURL: podcast.feed!, legacyContainer: legacy, cacheContainer: cache
         )
         XCTAssertEqual(cacheCounts(cache).episodes, 3)
+
+        let cacheContext = ModelContext(cache)
+        let historical = try XCTUnwrap(cacheContext.fetch(FetchDescriptor<CachedEpisode>()).first { $0.guid == "e2" })
+        let identity = EpisodeStableIdentity(feedURL: historical.feedURL, episodeID: historical.episodeID)
+        cacheContext.insert(CachedChapter(id: "old-chapter", feedURL: historical.feedURL, episodeID: historical.id, title: "Chapter"))
+        cacheContext.insert(CachedTranscriptLine(id: "old-line", feedURL: historical.feedURL, episodeID: historical.id, text: "Transcript"))
+        try cacheContext.save()
+        userState.mainContext.insert(QueueEntrySync(feedURL: identity.feedURL, episodeID: identity.episodeID, sortIndex: 0))
+        try userState.mainContext.save()
 
         // Remove one episode from the legacy feed, then re-run the dual-write.
         let context = legacy.mainContext
@@ -904,11 +957,17 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         )
         let counts = cacheCounts(cache)
         XCTAssertEqual(counts.podcasts, 1)
-        XCTAssertEqual(counts.episodes, 2, "Stale cache episode should be pruned")
+        XCTAssertEqual(counts.episodes, 3)
         XCTAssertEqual(
             try ModelContext(cache).fetchCount(FetchDescriptor<CachedDownloadRecord>()),
-            2,
-            "Supplemental cache rows for removed episodes should also be pruned"
+            3
         )
+        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedChapter>()), 1)
+        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedTranscriptLine>()), 1)
+        let repository = PodcastCacheRepository(cacheContainer: cache, userStateContainer: userState)
+        let restored = await repository.episode(identity: identity)
+        XCTAssertEqual(restored?.title, "Title e2")
+        XCTAssertEqual(restored?.chapters.first?.title, "Chapter")
+        XCTAssertEqual(restored?.transcript.first?.text, "Transcript")
     }
 }

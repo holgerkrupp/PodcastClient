@@ -275,6 +275,10 @@ struct StoreSplitCutoverGate: Equatable, Sendable {
     let podcastCacheReady: Bool
     let allDevicesConverged: Bool
     let delayedCloudImportsSettled: Bool
+    /// Evidence that the current implementation cannot yet establish. An empty
+    /// list must be earned by durable verification, not supplied by a count or
+    /// a completed schema marker.
+    let unresolvedEvidence: [String]
 
     var isSatisfied: Bool {
         localBackfillComplete
@@ -282,6 +286,7 @@ struct StoreSplitCutoverGate: Equatable, Sendable {
             && podcastCacheReady
             && allDevicesConverged
             && delayedCloudImportsSettled
+            && unresolvedEvidence.isEmpty
     }
 
     var blockers: [String] {
@@ -291,6 +296,7 @@ struct StoreSplitCutoverGate: Equatable, Sendable {
         if podcastCacheReady == false { result.append("PodcastCache is not ready") }
         if allDevicesConverged == false { result.append("devices have not converged") }
         if delayedCloudImportsSettled == false { result.append("delayed CloudKit imports are unsettled") }
+        result.append(contentsOf: unresolvedEvidence)
         return result
     }
 }

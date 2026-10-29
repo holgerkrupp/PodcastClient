@@ -765,6 +765,7 @@ actor EpisodeActor {
     }
 
     private func publishSplitEpisodeState(_ episode: Episode) async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
         guard let metadata = episode.metaData else { return }
         // Stamp before publishing so the local row and the UserState record carry
         // the same generation. The importer compares the two and refuses to
@@ -796,17 +797,46 @@ actor EpisodeActor {
             ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
         }
         guard mayPublish else {
-            CrashBreadcrumbs.shared.record(
-                "store_split_episode_state_write_deferred",
-                details: "reason=cloudkit_export_or_lifecycle_gate"
-            )
-            return
-        }
-        guard let writer = await episodeStateWriter() else { return }
-        let didChange = await writer.upsert(snapshot, at: publishedAt)
-        if didChange {
+            await enqueuePortableWrite(.episodeState(snapshot, publishedAt))
+            // This is local recency, not proof of a portable commit. Keep a
+            // delayed older import from overwriting the local position.
             metadata.stateUpdatedAt = publishedAt
             modelContext.saveIfNeeded()
+            return
+        }
+        guard let writer = await episodeStateWriter() else {
+            await enqueuePortableWrite(.episodeState(snapshot, publishedAt))
+            metadata.stateUpdatedAt = publishedAt
+            modelContext.saveIfNeeded()
+            return
+        }
+        do {
+            let didChange = try await writer.upsert(snapshot, at: publishedAt)
+            if didChange {
+                metadata.stateUpdatedAt = publishedAt
+                modelContext.saveIfNeeded()
+            }
+        } catch {
+            await enqueuePortableWrite(.episodeState(snapshot, publishedAt))
+            metadata.stateUpdatedAt = publishedAt
+            modelContext.saveIfNeeded()
+        }
+    }
+
+    /// Returns false when even the retry record cannot be persisted. Existing
+    /// callers retain their local source and do not mark the portable write as
+    /// committed in that case.
+    @discardableResult
+    private func enqueuePortableWrite(_ operation: StoreSplitPortableWriteOutbox.Operation) async -> Bool {
+        do {
+            try await StoreSplitPortableWriteOutbox.shared.enqueue(operation)
+            return true
+        } catch {
+            CrashBreadcrumbs.shared.record("store_split_portable_write_retry_enqueue_failed")
+            if case .episodeState = operation {
+                await MainActor.run { PortableWriteFailureMonitor.shared.reportFailure() }
+            }
+            return false
         }
     }
 
@@ -1388,14 +1418,19 @@ actor EpisodeActor {
         await applyAutoSkipWords(episodeURL: episodeURL)
     }
     
-    func createBookmark(for episodeURL: URL, at playPosition: Double) async{
-        guard let episode = await fetchEpisode(byURL: episodeURL) else { return }
+    func createBookmark(for episodeURL: URL, at playPosition: Double) async throws {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { throw BookmarkSaveError.episodeUnavailable }
 
         let bookmarkTitle = episode.transcriptLines?.sorted(by: { $0.startTime < $1.startTime }).last(where: { $0.startTime < playPosition })?.text ?? episode.title
         let bookmark = Bookmark(start: playPosition, title: bookmarkTitle, type: .bookmark)
         episode.bookmarks?.append(bookmark)
-        modelContext.saveIfNeeded()
-        guard let bookmarkID = bookmark.uuid?.uuidString else { return }
+        do {
+            try modelContext.commitChangesIfNeeded()
+        } catch {
+            modelContext.rollback()
+            throw BookmarkSaveError.localSaveFailed
+        }
+        guard let bookmarkID = bookmark.uuid?.uuidString else { throw BookmarkSaveError.localSaveFailed }
         let snapshot = StoreSplitBookmarkSnapshot(
             id: bookmarkID,
             identity: episode.stableEpisodeIdentity,
@@ -1403,9 +1438,25 @@ actor EpisodeActor {
             title: bookmarkTitle,
             createdAt: bookmark.creationtime ?? .now
         )
-        if let userStateContainer = await preparedUserStateContainer() {
-            await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
-                .upsert(snapshot)
+        let publishedAt = Date()
+        if StoreDevelopmentConfiguration.splitStoresEnabled {
+            let mayPublish = await MainActor.run {
+                ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
+            }
+            if mayPublish, let userStateContainer = await preparedUserStateContainer() {
+                do {
+                    try await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
+                        .upsert(snapshot, at: publishedAt)
+                } catch {
+                    guard await enqueuePortableWrite(.bookmarkUpsert(snapshot, publishedAt)) else {
+                        throw BookmarkSaveError.portableRetryUnavailable
+                    }
+                }
+            } else {
+                guard await enqueuePortableWrite(.bookmarkUpsert(snapshot, publishedAt)) else {
+                    throw BookmarkSaveError.portableRetryUnavailable
+                }
+            }
         }
     }
     
@@ -1636,25 +1687,35 @@ actor EpisodeActor {
         }
     }
     
-    func deleteMarker(markerID: UUID) async{
-        guard let marker = await fetchMarker(byID: markerID) else { return}
-        if let episode = marker.bookmarkEpisode,
-           let userStateContainer = await preparedUserStateContainer() {
-            await StoreSplitBookmarkSyncWriter(modelContainer: userStateContainer)
-                .tombstone(
-                    StoreSplitBookmarkSnapshot(
-                        id: markerID.uuidString,
-                        identity: episode.stableEpisodeIdentity,
-                        time: marker.start ?? 0,
-                        title: marker.title,
-                        createdAt: marker.creationtime ?? .now
-                    )
-                )
+    func deleteMarker(markerID: UUID) async throws {
+        guard let marker = await fetchMarker(byID: markerID) else { throw BookmarkSaveError.deleteFailed }
+        if let episode = marker.bookmarkEpisode {
+            let snapshot = StoreSplitBookmarkSnapshot(
+                id: markerID.uuidString, identity: episode.stableEpisodeIdentity,
+                time: marker.start ?? 0, title: marker.title,
+                createdAt: marker.creationtime ?? .now
+            )
+            let publishedAt = Date()
+            if StoreDevelopmentConfiguration.splitStoresEnabled {
+                // Persist the intent before the local deletion. The worker
+                // confirms the durable local bookmark is absent before it
+                // publishes the UserState tombstone.
+                guard await enqueuePortableWrite(.bookmarkDeletionAfterLocalCommit(snapshot, publishedAt)) else {
+                    throw BookmarkSaveError.deleteFailed
+                }
+            }
+        } else if StoreDevelopmentConfiguration.splitStoresEnabled {
+            throw BookmarkSaveError.deleteFailed
         }
         marker.episode = nil
         marker.bookmarkEpisode = nil
         modelContext.delete(marker)
-        modelContext.saveIfNeeded()
+        do {
+            try modelContext.commitChangesIfNeeded()
+        } catch {
+            modelContext.rollback()
+            throw BookmarkSaveError.deleteFailed
+        }
     }
 
     @discardableResult

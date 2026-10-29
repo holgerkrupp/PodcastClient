@@ -338,8 +338,33 @@ actor PlaySessionTrackerActor {
     }
 
     private func publishListeningHistory(_ snapshot: StoreSplitListeningHistorySnapshot) async {
-        guard let writer = await listeningHistoryWriter() else { return }
-        await writer.upsert(snapshot)
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else { return }
+        let mayPublish = await MainActor.run {
+            ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
+        }
+        guard mayPublish else {
+            await enqueueListeningHistoryRetry(snapshot)
+            return
+        }
+        guard let writer = await listeningHistoryWriter() else {
+            await enqueueListeningHistoryRetry(snapshot)
+            return
+        }
+        do {
+            try await writer.upsert(snapshot)
+        } catch {
+            await enqueueListeningHistoryRetry(snapshot)
+        }
+    }
+
+    private func enqueueListeningHistoryRetry(_ snapshot: StoreSplitListeningHistorySnapshot) async {
+        do {
+            try await StoreSplitPortableWriteOutbox.shared.enqueue(.listeningHistory(snapshot))
+        } catch {
+            // The completed local session remains available for recovery.
+            CrashBreadcrumbs.shared.record("store_split_listening_history_retry_enqueue_failed")
+            await MainActor.run { PortableWriteFailureMonitor.shared.reportFailure() }
+        }
     }
 
     private func listeningHistorySnapshot(from session: PlaySession) -> StoreSplitListeningHistorySnapshot? {
@@ -1275,6 +1300,10 @@ actor PlaySessionTrackerActor {
     }
 
     private func pruneOldSessionsIfNeeded() {
+        // The portable write or its retry can fail. Until each session has
+        // been independently verified in UserState, its local raw record is
+        // the only recovery source and must not be removed for age alone.
+        guard !StoreDevelopmentConfiguration.splitStoresEnabled else { return }
         guard let cutoff = Calendar.current.date(byAdding: .day, value: -rawSessionRetentionDays, to: Date()) else { return }
         let descriptor = FetchDescriptor<PlaySession>(
             predicate: #Predicate<PlaySession> {

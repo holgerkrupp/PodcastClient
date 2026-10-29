@@ -1372,18 +1372,25 @@ actor SubscriptionManager:NSObject{
         defer {
             os_signpost(.end, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
         }
-        guard await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
+        guard Task.isCancelled == false,
+              await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
             return
         }
-        guard await MainActor.run(body: {
+        guard Task.isCancelled == false,
+              await MainActor.run(body: {
             ModelContainerManager.shared.isCloudKitExportInProgress == false
         }) else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=cloudkit_export")
             return
         }
-        guard await FeedRefreshRunCoordinator.shared.begin() else {
+        guard Task.isCancelled == false,
+              await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
+            return
+        }
+        guard Task.isCancelled == false else {
+            await FeedRefreshRunCoordinator.shared.finish()
             return
         }
 
@@ -1440,6 +1447,7 @@ actor SubscriptionManager:NSObject{
                 )
                 break
             }
+            if Task.isCancelled { break }
 
             let elapsed = Date().timeIntervalSince(startedAt)
             if elapsed >= policy.maxRuntime {
@@ -1525,6 +1533,10 @@ actor SubscriptionManager:NSObject{
             "bgupdate_feeds_completed",
             details: "processed=\(processed),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
+        guard Task.isCancelled == false else {
+            await FeedRefreshRunCoordinator.shared.finish()
+            return
+        }
         // A sweep that did not actually start a feed leaves the ordinary
         // cadence eligible for the next grant.
         if stoppedForPlayback == false, stoppedForExporter == false,
@@ -1542,6 +1554,10 @@ actor SubscriptionManager:NSObject{
             )
         )
 #endif
+        guard Task.isCancelled == false else {
+            await FeedRefreshRunCoordinator.shared.finish()
+            return
+        }
         WatchSyncCoordinator.refreshSoon()
         await FeedRefreshRunCoordinator.shared.finish()
     }

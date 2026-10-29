@@ -306,7 +306,7 @@ final class StableIdentityTests: XCTestCase {
             episodeID: "guid:state"
         )
         let writer = StoreSplitEpisodeStateSyncWriter(modelContainer: container)
-        await writer.upsert(
+        try await writer.upsert(
             StoreSplitEpisodeStateSnapshot(
                 identity: identity,
                 playPosition: 30,
@@ -322,7 +322,7 @@ final class StableIdentityTests: XCTestCase {
             ),
             at: Date(timeIntervalSince1970: 1_000)
         )
-        await writer.upsert(
+        try await writer.upsert(
             StoreSplitEpisodeStateSnapshot(
                 identity: identity,
                 playPosition: 90,
@@ -676,7 +676,7 @@ final class StableIdentityTests: XCTestCase {
         legacyContainer.mainContext.insert(playlist)
         try legacyContainer.mainContext.save()
 
-        let result = await StoreSplitDevelopmentRepublishService.republish(
+        let result = try await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             scope: .playlists
@@ -721,7 +721,7 @@ final class StableIdentityTests: XCTestCase {
         try legacyContainer.mainContext.save()
 
         for _ in 0..<2 {
-            _ = await StoreSplitDevelopmentRepublishService.republish(
+            _ = try await StoreSplitDevelopmentRepublishService.republish(
                 legacyContainer: legacyContainer,
                 userStateContainer: userStateContainer,
                 scope: .playlists
@@ -783,12 +783,12 @@ final class StableIdentityTests: XCTestCase {
         }
         try legacyContainer.mainContext.save()
 
-        let stateResult = await StoreSplitDevelopmentRepublishService.republish(
+        let stateResult = try await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             scope: .episodeStates
         )
-        let historyResult = await StoreSplitDevelopmentRepublishService.republish(
+        let historyResult = try await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             scope: .listeningHistory

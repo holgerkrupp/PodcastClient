@@ -650,6 +650,7 @@ struct PlayerPrimaryTransportControlsView: View {
     @ScaledMetric(relativeTo: .body) private var skipIconOpticalOffset: CGFloat = 2
     @ScaledMetric(relativeTo: .body) private var playIconOpticalOffset: CGFloat = 2
     @State private var showClipExport = false
+    @State private var bookmarkError: String?
 
     var body: some View {
         ZStack {
@@ -756,7 +757,12 @@ struct PlayerPrimaryTransportControlsView: View {
                 Spacer()
 
                 if includeBookmark {
-                    Button(action: player.createBookmark) {
+                    Button {
+                        Task {
+                            do { try await player.createBookmark() }
+                            catch { bookmarkError = error.localizedDescription }
+                        }
+                    } label: {
                         Label {
                             Text("Bookmark")
                         } icon: {
@@ -778,6 +784,14 @@ struct PlayerPrimaryTransportControlsView: View {
         }
         .frame(height: 50)
         .zIndex(3)
+        .alert("Couldn’t Save Bookmark", isPresented: Binding(
+            get: { bookmarkError != nil },
+            set: { if !$0 { bookmarkError = nil } }
+        )) {
+            Button("OK", role: .cancel) { bookmarkError = nil }
+        } message: {
+            Text(bookmarkError ?? "")
+        }
     }
 }
 

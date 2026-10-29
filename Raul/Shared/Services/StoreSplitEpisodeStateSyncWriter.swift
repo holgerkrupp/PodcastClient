@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-struct StoreSplitEpisodeStateSnapshot: Sendable {
+struct StoreSplitEpisodeStateSnapshot: Codable, Sendable {
     let identity: EpisodeStableIdentity
     let playPosition: Double
     let maxPlayPosition: Double
@@ -15,6 +15,15 @@ struct StoreSplitEpisodeStateSnapshot: Sendable {
     let lastPlayedAt: Date?
 }
 
+struct StoreSplitEpisodeStateWriterIO: Sendable {
+    var fetch: @Sendable (ModelContext, String) throws -> EpisodeStateSync? = { context, id in
+        var descriptor = FetchDescriptor<EpisodeStateSync>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+    var save: @Sendable (ModelContext) throws -> Void = { try $0.save() }
+}
+
 @ModelActor
 actor StoreSplitEpisodeStateSyncWriter {
     /// Returns whether the stored record actually changed, so callers can avoid
@@ -22,34 +31,44 @@ actor StoreSplitEpisodeStateSyncWriter {
     @discardableResult
     func upsert(
         _ snapshot: StoreSplitEpisodeStateSnapshot,
-        at date: Date = .now
-    ) -> Bool {
-        let didChange = upsertWithoutSaving(snapshot, at: date)
-        modelContext.saveIfNeeded()
-        return didChange
+        at date: Date = .now,
+        io: StoreSplitEpisodeStateWriterIO = .init()
+    ) throws -> Bool {
+        do {
+            let didChange = try upsertWithoutSaving(snapshot, at: date, io: io)
+            if modelContext.hasChanges { try io.save(modelContext) }
+            return didChange
+        } catch {
+            modelContext.rollback()
+            throw error
+        }
     }
 
     func upsert(
         _ snapshots: [StoreSplitEpisodeStateSnapshot],
-        at date: Date = .now
-    ) {
-        for snapshot in snapshots {
-            upsertWithoutSaving(snapshot, at: date)
+        at date: Date = .now,
+        io: StoreSplitEpisodeStateWriterIO = .init()
+    ) throws {
+        do {
+            for snapshot in snapshots {
+                try upsertWithoutSaving(snapshot, at: date, io: io)
+            }
+            if modelContext.hasChanges { try io.save(modelContext) }
+        } catch {
+            modelContext.rollback()
+            throw error
         }
-        modelContext.saveIfNeeded()
     }
 
     @discardableResult
     private func upsertWithoutSaving(
         _ snapshot: StoreSplitEpisodeStateSnapshot,
-        at date: Date
-    ) -> Bool {
+        at date: Date,
+        io: StoreSplitEpisodeStateWriterIO
+    ) throws -> Bool {
         let stateID = snapshot.identity.key
-        let descriptor = FetchDescriptor<EpisodeStateSync>(
-            predicate: #Predicate<EpisodeStateSync> { $0.id == stateID }
-        )
         let deviceID = ListeningDeviceIdentity.current().id
-        if let state = try? modelContext.fetch(descriptor).first {
+        if let state = try io.fetch(modelContext, stateID) {
             guard date >= state.updatedAt else { return false }
             guard isMaterialChange(snapshot, from: state) else { return false }
             apply(snapshot, to: state, at: date, deviceID: deviceID)

@@ -222,13 +222,28 @@ class CarPlayPlayNext {
         }
         let bookmarkItem = CPListItem(text: "Bookmark current position", detailText: nil, image: nil)
         bookmarkItem.handler = { [weak self] _, completion in
-            completion()
-            Player.shared.createBookmark()
-            self?.interfaceController.popTemplate(animated: true, completion: nil)
+            guard let self else { completion(); return }
+            Task {
+                do {
+                    try await Player.shared.createBookmark()
+                    self.interfaceController.popTemplate(animated: true, completion: nil)
+                } catch {
+                    self.showBookmarkError(error.localizedDescription)
+                }
+                completion()
+            }
         }
         actions.append(bookmarkItem)
         let actionTemplate = CPListTemplate(title: "Playback actions", sections: [CPListSection(items: actions)])
         interfaceController.pushTemplate(actionTemplate, animated: true, completion: nil)
+    }
+
+    private func showBookmarkError(_ message: String) {
+        let ok = CPAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in
+            self?.interfaceController.dismissTemplate(animated: true, completion: nil)
+        }
+        let alert = CPAlertTemplate(titleVariants: [message], actions: [ok])
+        interfaceController.presentTemplate(alert, animated: true, completion: nil)
     }
 
     private func configureNavigationButtons() {

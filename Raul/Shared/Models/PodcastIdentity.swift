@@ -36,7 +36,7 @@ enum PodcastFeedIdentity {
     }
 }
 
-struct EpisodeStableIdentity: Hashable, Sendable {
+struct EpisodeStableIdentity: Codable, Hashable, Sendable {
     let feedURL: String
     let episodeID: String
 

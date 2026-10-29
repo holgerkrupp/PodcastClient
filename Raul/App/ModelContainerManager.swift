@@ -61,6 +61,39 @@ enum StoreSplitTaskCancellation {
     }
 }
 
+/// Keeps an import request made while a previous pass is running from being
+/// cleared by that pass. The generation also lets the reconciliation dry run
+/// restart after a later CloudKit import.
+enum StoreSplitPendingImportLedger {
+    private static let lock = NSLock()
+    private static let pendingKey = "storeSplit.userStateImportPending.v1"
+    private static let generationKey = "storeSplit.userStateImportGeneration.v1"
+
+    static func request(in defaults: UserDefaults, newGeneration: Bool = true) {
+        lock.lock()
+        defer { lock.unlock() }
+        if newGeneration || defaults.string(forKey: generationKey) == nil {
+            defaults.set(UUID().uuidString, forKey: generationKey)
+        }
+        defaults.set(true, forKey: pendingKey)
+    }
+
+    static func snapshot(in defaults: UserDefaults) -> (pending: Bool, generation: String?) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (defaults.bool(forKey: pendingKey), defaults.string(forKey: generationKey))
+    }
+
+    @discardableResult
+    static func acknowledge(_ generation: String?, in defaults: UserDefaults) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard defaults.string(forKey: generationKey) == generation else { return false }
+        defaults.set(false, forKey: pendingKey)
+        return true
+    }
+}
+
 /// Absence must be established by a successful directory read, not fileExists
 /// (which also returns false for protected/unavailable storage).
 enum StoreLineage {
@@ -660,8 +693,14 @@ class ModelContainerManager: ObservableObject {
     // marker may have been written after reaching only the batch limit.
     nonisolated private static let cacheBootstrapCompletionAuditKey =
         "storeSplit.cacheBootstrapCompletionAudit.v1"
-    nonisolated private static let userStateImportPendingKey =
-        "storeSplit.userStateImportPending.v1"
+    nonisolated private static let reconciliationImportGenerationKey =
+        "storeSplit.reconciliationPlaylistImportGeneration.v1"
+    nonisolated private static let reconciliationSubscriptionImportGenerationKey =
+        "storeSplit.reconciliationSubscriptionImportGeneration.v1"
+    nonisolated private static let reconciliationScanFinishedKey =
+        "storeSplit.reconciliationDryRunFinished.v1"
+    nonisolated private static let reconciliationScanGenerationKey =
+        "storeSplit.reconciliationDryRunGeneration.v1"
     nonisolated private static let cacheBootstrapCompletedVersionKey =
         "storeSplit.cacheBootstrapCompletedVersion.v1"
     nonisolated private static let cachePriorityCompletedVersionKey =
@@ -1288,11 +1327,26 @@ class ModelContainerManager: ObservableObject {
     }
 
     nonisolated static var hasPendingStoreSplitBackgroundWork: Bool {
+        hasOtherPendingStoreSplitBackgroundWork
+            || StoreSplitPortableWriteOutbox.earliestDueOnDisk() != nil
+    }
+
+    private nonisolated static var hasOtherPendingStoreSplitBackgroundWork: Bool {
         hasPendingMigrationWork
-            || hasPendingLegacyAuthoritativeReconciliationWork
+            || hasRunnableLegacyReconciliationWork
             || ((UserDefaults(suiteName: appGroupID) ?? .standard)
                 .bool(forKey: cacheBootstrapPendingKey))
             || hasPendingBackgroundUserStateImport
+    }
+
+    /// A retry-only background request should not repeatedly launch before the
+    /// oldest postponed item is due. Unknown or inaccessible markers remain
+    /// immediately eligible so the background pass can report the failure.
+    nonisolated static var nextStoreSplitBackgroundOpportunity: Date {
+        guard hasOtherPendingStoreSplitBackgroundWork == false else { return .now }
+        var dates: [Date] = []
+        if let outbox = StoreSplitPortableWriteOutbox.earliestDueOnDisk() { dates.append(outbox) }
+        return max(.now, dates.min() ?? .now)
     }
 
     /// A feed refresh may change data after the initial PodcastCache bootstrap.
@@ -1316,9 +1370,11 @@ class ModelContainerManager: ObservableObject {
     /// Persists cloud-import work and arms the metered maintenance executor.
     /// Callers may run during launch or a foreground CloudKit callback, but
     /// they must not start the whole-library projection themselves.
-    nonisolated static func requestBackgroundUserStateImport() {
-        (UserDefaults(suiteName: appGroupID) ?? .standard)
-            .set(true, forKey: userStateImportPendingKey)
+    nonisolated static func requestBackgroundUserStateImport(newGeneration: Bool = true) {
+        StoreSplitPendingImportLedger.request(
+            in: UserDefaults(suiteName: appGroupID) ?? .standard,
+            newGeneration: newGeneration
+        )
 #if canImport(UIKit)
         Task { @MainActor in
             shared.updateSplitStoreCoordinatorState(
@@ -1331,13 +1387,17 @@ class ModelContainerManager: ObservableObject {
     }
 
     private nonisolated static var hasPendingBackgroundUserStateImport: Bool {
-        (UserDefaults(suiteName: appGroupID) ?? .standard)
-            .bool(forKey: userStateImportPendingKey)
+        StoreSplitPendingImportLedger.snapshot(
+            in: UserDefaults(suiteName: appGroupID) ?? .standard
+        ).pending
     }
 
-    private nonisolated static func clearPendingBackgroundUserStateImport() {
-        (UserDefaults(suiteName: appGroupID) ?? .standard)
-            .set(false, forKey: userStateImportPendingKey)
+    private nonisolated static func clearPendingBackgroundUserStateImport(
+        generation: String?
+    ) {
+        StoreSplitPendingImportLedger.acknowledge(
+            generation, in: UserDefaults(suiteName: appGroupID) ?? .standard
+        )
     }
 
     /// Whether the one-time cleanup that makes the legacy source authoritative
@@ -1350,6 +1410,17 @@ class ModelContainerManager: ObservableObject {
         let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
         return defaults.integer(forKey: authoritativeReconciliationVersionKey)
             != authoritativeReconciliationVersion
+    }
+
+    /// Once the available local dry runs finish, unresolved authority evidence
+    /// cannot be repaired by spinning another background task. A later import
+    /// generation makes the bounded scans runnable again.
+    private nonisolated static var hasRunnableLegacyReconciliationWork: Bool {
+        guard hasPendingLegacyAuthoritativeReconciliationWork else { return false }
+        let defaults = UserDefaults(suiteName: appGroupID) ?? .standard
+        guard defaults.bool(forKey: reconciliationScanFinishedKey) else { return true }
+        return StoreSplitPendingImportLedger.snapshot(in: defaults).generation
+            != defaults.string(forKey: reconciliationScanGenerationKey)
     }
 
     /// Whether this install has ever rendered from the in-memory cache
@@ -2057,7 +2128,9 @@ class ModelContainerManager: ObservableObject {
                 pendingSplitStoreWorkReason = "waiting for CloudKit export to settle"
                 return
             }
+            guard Task.isCancelled == false else { return }
             await prepareSplitStores()
+            guard Task.isCancelled == false else { return }
             guard StoreDevelopmentConfiguration.splitStoresEnabled else {
                 recordMigrationBlocker("Split-store work is disabled by the active configuration")
 #if DEBUG
@@ -2068,17 +2141,43 @@ class ModelContainerManager: ObservableObject {
 #endif
                 return
             }
-            await resolveStoreSplitRolloutIfNeeded()
-            if Self.hasPendingMigrationWork == false,
-               Self.hasPendingLegacyAuthoritativeReconciliationWork {
-                if let permit = acquireMaintenancePermit(
-                    operation: "legacy_authoritative_reconciliation"
-                ) {
-                    _ = await runLegacyAuthoritativeReconciliationIfNeeded()
-                    permit.release()
+            if let due = StoreSplitPortableWriteOutbox.earliestDueOnDisk(), due <= .now,
+               let userStateContainer = preparedUserStateContainer,
+               let permit = acquireMaintenancePermit(operation: "portable_write_retry") {
+                do {
+                    let result = try await StoreSplitPortableWriteOutbox.shared.drain(
+                        userStateContainer: userStateContainer,
+                        legacyContainer: runtimeProjectsFromCache ? nil : legacyMigrationSourceContainer,
+                        shouldContinue: {
+                            Task.isCancelled == false
+                                && permit.yieldReason(
+                                    playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                                    cloudKitExportActive: false
+                                ) == nil
+                        }
+                    )
+                    CrashBreadcrumbs.shared.record(
+                        "store_split_portable_write_retry",
+                        details: "attempted=\(result.attempted),succeeded=\(result.succeeded),failed=\(result.failed),pending=\(result.hasPending)"
+                    )
+                    if result.failed > 0 { pendingSplitStoreWorkReason = "Portable writes need retry" }
+                } catch {
+                    pendingSplitStoreWorkReason = "Portable write retry is unavailable"
+                    CrashBreadcrumbs.shared.record("store_split_portable_write_retry_failed")
                 }
+                permit.release()
             }
-            if Self.hasPendingBackgroundUserStateImport,
+            guard Task.isCancelled == false else { return }
+            await resolveStoreSplitRolloutIfNeeded()
+            guard Task.isCancelled == false else { return }
+            if Self.hasPendingMigrationWork == false,
+               Self.hasRunnableLegacyReconciliationWork {
+                _ = await runLegacyAuthoritativeReconciliationIfNeeded()
+            }
+            let importRequest = StoreSplitPendingImportLedger.snapshot(
+                in: UserDefaults(suiteName: Self.appGroupID) ?? .standard
+            )
+            if importRequest.pending,
                Player.hasActivePlaybackInProcess == false,
                Task.isCancelled == false {
                 if let permit = acquireMaintenancePermit(operation: "user_state_reconciliation") {
@@ -2090,10 +2189,16 @@ class ModelContainerManager: ObservableObject {
                     )
                     permit.release()
                     if result == .completed {
-                        Self.clearPendingBackgroundUserStateImport()
+                        Self.clearPendingBackgroundUserStateImport(
+                            generation: importRequest.generation
+                        )
                     }
                 }
             }
+            // Missing references remain durable but are not replayed until a
+            // fence can protect them against live and CloudKit writers. They
+            // must not repeatedly schedule background work in the meantime.
+            guard Task.isCancelled == false else { return }
             if StoreDevelopmentConfiguration.feedCachePrewarmingEnabled,
                Self.hasPendingStoreSplitBackgroundWork,
                Player.hasActivePlaybackInProcess == false,
@@ -2133,6 +2238,7 @@ class ModelContainerManager: ObservableObject {
     /// playlists that still exist in SharedDatabase.
     private func resumeMigrationAfterVersionUpgradeIfNeeded() async {
         await prepareSplitStores()
+        guard Task.isCancelled == false else { return }
         guard let cacheContainer = preparedCacheContainer else {
             recordMigrationBlocker("Migration cache store is unavailable")
             return
@@ -2183,6 +2289,7 @@ class ModelContainerManager: ObservableObject {
     /// classify whether an existing local legacy source still needs backfill.
     private func classifyStoreSplitRollout() async {
         await prepareSplitStores()
+        guard Task.isCancelled == false else { return }
 
         let legacyHasData: Bool
         if let legacyContainer = legacyMigrationSourceContainer {
@@ -2221,6 +2328,7 @@ class ModelContainerManager: ObservableObject {
         // devices stuck behind a single unmigratable row forever.
         let migrationComplete = !legacyHasData || (preparedCacheContainer.map {
             StoreSplitMigrationService.isSliceMigrationComplete(cacheContainer: $0)
+                && StoreSplitMigrationService.isMigrationVerified(cacheContainer: $0)
         } ?? false)
 
         // Prefer split reads whenever it is safe: the split store has data and
@@ -2274,6 +2382,7 @@ class ModelContainerManager: ObservableObject {
 
     private func advanceStoreSplitRolloutAfterMigration() async {
         await prepareSplitStores()
+        guard Task.isCancelled == false else { return }
         guard let cacheContainer = preparedCacheContainer else {
             recordMigrationBlocker("Migration cache store is unavailable")
             return
@@ -2384,6 +2493,8 @@ class ModelContainerManager: ObservableObject {
         }
 
         guard StoreSplitMigrationService.isSliceMigrationComplete(
+            cacheContainer: cacheContainer
+        ), StoreSplitMigrationService.isMigrationVerified(
             cacheContainer: cacheContainer
         ) else {
             return false
@@ -2767,6 +2878,8 @@ class ModelContainerManager: ObservableObject {
             return .skipped
         }
         await prepareSplitStores()
+        guard Task.isCancelled == false,
+              StoreDevelopmentConfiguration.userStateImportEnabled else { return .skipped }
         guard let legacyContainer = preparedContainer,
               let userStateContainer = preparedUserStateContainer,
               let cacheContainer = preparedCacheContainer else {
@@ -2790,10 +2903,23 @@ class ModelContainerManager: ObservableObject {
         lastSplitStoreReconcileAt = .now
         lastSplitStoreReconcileSummary =
             "Reconciled subscriptions \(result.subscriptionsApplied), states \(result.episodeStatesApplied), playlists \(result.playlistsApplied), bookmarks \(result.bookmarksApplied), history \(result.listeningHistoryApplied)"
+        if Task.isCancelled || result.failed > 0 || result.interruptedByPlayback {
+            lastSplitStoreReconcileSummary = "User State import was interrupted or failed"
+            pendingSplitStoreWorkReason = "User State import needs retry"
+            if reason.contains("cloud_import") || authoritativePlaylists {
+                StoreCloudKitActivityMonitor.shared.recordReconciliation(
+                    for: .userState,
+                    succeeded: false,
+                    summary: "User State import was interrupted or failed"
+                )
+            }
+            return result.interruptedByPlayback ? .deferredForPlayback : .skipped
+        }
         // An import is the one moment when playlist entries authored elsewhere —
         // including records that predate the tombstone rules — land in the local
         // queue. Re-assert "a played episode is not a queue member" right after.
         await prunePlayedPlaylistEntries()
+        guard Task.isCancelled == false else { return .skipped }
         if reason.contains("cloud_import") || authoritativePlaylists {
             let summary = lastSplitStoreReconcileSummary
                 ?? "User State import completed"
@@ -2942,7 +3068,7 @@ class ModelContainerManager: ObservableObject {
               let userStateContainer = preparedUserStateContainer else {
             throw StoreSplitDevelopmentResetError.storesUnavailable
         }
-        return await StoreSplitDevelopmentRepublishService.republish(
+        return try await StoreSplitDevelopmentRepublishService.republish(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             scope: scope
@@ -3060,6 +3186,7 @@ class ModelContainerManager: ObservableObject {
             return .blocked("Paused by the migration safety switch")
         }
         await prepareSplitStores()
+        guard Task.isCancelled == false else { return .deferred("Migration cancelled") }
         guard StoreDevelopmentConfiguration.legacyMigrationEnabled else {
             let reason = "Automatic migration is disabled by the active configuration"
             recordMigrationBlocker(reason)
@@ -3136,10 +3263,119 @@ class ModelContainerManager: ObservableObject {
             return .deferred("Waiting for CloudKit export to drain")
         }
 
+        guard Task.isCancelled == false,
+              let cacheContainer = preparedCacheContainer else {
+            return .deferred("Reconciliation cache is unavailable or the task expired")
+        }
+        guard let permit = acquireMaintenancePermit(operation: "legacy_authoritative_reconciliation") else {
+            return .deferred("Reconciliation is waiting for the maintenance budget")
+        }
+        defer { permit.release() }
+        let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        let importGeneration = StoreSplitPendingImportLedger.snapshot(in: defaults).generation
+        let subscriptionGeneration = defaults.string(
+            forKey: Self.reconciliationSubscriptionImportGenerationKey
+        )
+        let restartSubscriptions = importGeneration != subscriptionGeneration
+        let subscriptionPage = await StoreSplitSubscriptionReconciliationDryRun.runPage(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer,
+            restart: restartSubscriptions,
+            shouldContinue: {
+                Task.isCancelled == false
+                    && permit.yieldReason(
+                        playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                        cloudKitExportActive: false
+                    ) == nil
+            }
+        )
+        guard Task.isCancelled == false else { return .deferred("Reconciliation cancelled") }
+        switch subscriptionPage.status {
+        case .advanced, .traversalCompleted:
+            if restartSubscriptions {
+                if let importGeneration {
+                    defaults.set(importGeneration, forKey: Self.reconciliationSubscriptionImportGenerationKey)
+                } else {
+                    defaults.removeObject(forKey: Self.reconciliationSubscriptionImportGenerationKey)
+                }
+            }
+            lastSplitStoreReconcileSummary =
+                "Subscription dry run: \(subscriptionPage.progress.scanned) rows, \(subscriptionPage.progress.semanticConflicts) conflicts, \(subscriptionPage.progress.unresolvedLineage) unresolved"
+            if subscriptionPage.status == .advanced { return .progressed }
+        case .cancelled:
+            return .deferred("Reconciliation cancelled")
+        case .blockedDuplicateIdentity, .failed:
+            let reason = subscriptionPage.error ?? "Subscription reconciliation dry run failed"
+            recordMigrationBlocker(reason)
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return .failed(reason)
+        }
+
+        // Recheck after the first page; the exporter or playback may have
+        // become active while the subscription traversal was in flight.
+        guard Task.isCancelled == false,
+              permit.yieldReason(
+                  playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                  cloudKitExportActive: cloudKitExportInProgress()
+              ) == nil else {
+            return .deferred("Reconciliation yielded to playback or CloudKit export")
+        }
+        let priorGeneration = defaults.string(forKey: Self.reconciliationImportGenerationKey)
+        let restart = importGeneration != priorGeneration
+        let page = await StoreSplitReconciliationDryRun.runPlaylistPage(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer,
+            restart: restart,
+            shouldContinue: {
+                Task.isCancelled == false
+                    && permit.yieldReason(
+                        playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                        cloudKitExportActive: false
+                    ) == nil
+            }
+        )
+        guard Task.isCancelled == false else { return .deferred("Reconciliation cancelled") }
+        switch page.status {
+        case .advanced, .traversalCompleted:
+            // Save this only after the reset/page checkpoint has committed. If a
+            // newer import arrives during the page its generation differs on
+            // the next pass, which restarts the traversal.
+            if restart {
+                if let importGeneration {
+                    defaults.set(importGeneration, forKey: Self.reconciliationImportGenerationKey)
+                } else {
+                    defaults.removeObject(forKey: Self.reconciliationImportGenerationKey)
+                }
+            }
+            lastSplitStoreReconcileSummary =
+                "Playlist dry run: \(page.progress.scanned) rows, \(page.progress.semanticConflicts) conflicts, \(page.progress.unresolvedLineage) unresolved"
+            if page.status == .advanced { return .progressed }
+        case .cancelled:
+            return .deferred("Reconciliation cancelled")
+        case .blockedDuplicateIdentity, .failed:
+            let reason = page.error ?? "Playlist reconciliation dry run failed"
+            recordMigrationBlocker(reason)
+            scheduleMigrationRetry(after: Self.exportBackpressureRetryDelay)
+            return .failed(reason)
+        }
+
         let result = await StoreSplitAuthoritativeReconciliationService.reconcile(
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer
         )
+        if result.status == .blockedAuthorityEvidence {
+            defaults.set(true, forKey: Self.reconciliationScanFinishedKey)
+            if let importGeneration {
+                defaults.set(importGeneration, forKey: Self.reconciliationScanGenerationKey)
+            } else {
+                defaults.removeObject(forKey: Self.reconciliationScanGenerationKey)
+            }
+            let reason = result.error ?? "Reconciliation authority is unresolved"
+            recordMigrationBlocker(reason)
+            return .blocked(reason)
+        }
         guard result.failed == 0 else {
             let reason = result.error ?? "Authoritative UserState reconciliation failed"
             recordMigrationBlocker(reason)
@@ -3147,7 +3383,6 @@ class ModelContainerManager: ObservableObject {
             return .failed(reason)
         }
 
-        let defaults = UserDefaults(suiteName: Self.appGroupID) ?? .standard
         defaults.set(
             Self.authoritativeReconciliationVersion,
             forKey: Self.authoritativeReconciliationVersionKey
@@ -3681,7 +3916,8 @@ class ModelContainerManager: ObservableObject {
         guard runtimeProjectsFromCache,
               runtimeStoreReadiness == .ready,
               let runtime = preparedContainer,
-              let userState = preparedUserStateContainer else { return }
+              let userState = preparedUserStateContainer,
+              let cache = preparedCacheContainer else { return }
         await buildCompatibilityProjectionIfNeeded()
         if let userStateImportTask {
             _ = await userStateImportTask.value
@@ -3692,6 +3928,7 @@ class ModelContainerManager: ObservableObject {
             await StoreSplitUserStateImporter.apply(
                 legacyContainer: runtime,
                 userStateContainer: userState,
+                cacheContainer: cache,
                 authoritativePlaylists: false,
                 projectListeningHistoryToLegacy: false,
                 changedStreams: [.playlists]
@@ -3709,29 +3946,45 @@ class ModelContainerManager: ObservableObject {
         refreshMissingFeeds: Bool = false
     ) async -> StoreSplitUserStateImportResult {
         let emptyResult = StoreSplitUserStateImportResult()
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
-            return emptyResult
+        func deferredResult() -> StoreSplitUserStateImportResult {
+            var result = emptyResult
+            result.failed = 1
+            return result
         }
-        guard StoreDevelopmentConfiguration.userStateImportEnabled else { return emptyResult }
+        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
+            return deferredResult()
+        }
+        guard StoreDevelopmentConfiguration.userStateImportEnabled else { return deferredResult() }
         guard StoreSplitMaintenancePolicy.shouldYieldForCloudKitExport(
             exportInProgress: cloudKitExportInProgress()
         ) == false else {
             pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
-            return emptyResult
+            return deferredResult()
         }
         if let userStateImportTask {
             _ = await userStateImportTask.value
         }
+        guard Task.isCancelled == false,
+              cloudKitExportInProgress() == false else { return deferredResult() }
         guard let legacyContainer = preparedContainer,
-              let userStateContainer = preparedUserStateContainer else {
-            return emptyResult
+              let userStateContainer = preparedUserStateContainer,
+              let cacheContainer = preparedCacheContainer else {
+            return deferredResult()
         }
 
         // Each synchronized stream has its own cursor. Playback progress must
         // not unlock subscription, playlist, bookmark, preference, or history
         // projections, and a no-op CloudKit notification must not walk the whole
         // library again.
-        let changeStamps = latestUserStateChangeStamps(userStateContainer)
+        let changeStamps: [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot]
+        do {
+            changeStamps = try latestUserStateChangeStamps(userStateContainer)
+        } catch {
+            var result = emptyResult
+            result.failed = 1
+            CrashBreadcrumbs.shared.record("store_split_import_change_snapshot_failed")
+            return result
+        }
         let changedStreams = StoreSplitImportCursorStore.changedStreams(
             current: changeStamps,
             force: authoritativePlaylists
@@ -3750,7 +4003,6 @@ class ModelContainerManager: ObservableObject {
             return emptyResult
         }
 
-        lastUserStateImportAt = .now
         CrashBreadcrumbs.shared.record(
             "store_split_user_state_import_started",
             details: "streams=\(changedStreams.map(\.rawValue).sorted().joined(separator: ",")),authoritative_playlists=\(authoritativePlaylists),refresh_missing_feeds=\(refreshMissingFeeds)"
@@ -3768,6 +4020,7 @@ class ModelContainerManager: ObservableObject {
                     await StoreSplitUserStateImporter.apply(
                         legacyContainer: legacyContainer,
                         userStateContainer: userStateContainer,
+                        cacheContainer: cacheContainer,
                         authoritativePlaylists: authoritativePlaylists,
                         projectListeningHistoryToLegacy: StoreDevelopmentConfiguration
                             .projectsListeningHistoryToLegacy,
@@ -3787,7 +4040,8 @@ class ModelContainerManager: ObservableObject {
             // feed so the referenced episode can be projected before the user
             // sees the membership as hydrated.
             let hasPlaylistEpisodeMisses = result.playlistFeedsToBootstrap.isEmpty == false
-            guard (refreshMissingFeeds || hasPlaylistEpisodeMisses),
+            guard result.failed == 0, result.interruptedByPlayback == false,
+                  (refreshMissingFeeds || hasPlaylistEpisodeMisses),
                   result.feedsToBootstrap.isEmpty == false,
                   Task.isCancelled == false else {
                 return result
@@ -3836,8 +4090,13 @@ class ModelContainerManager: ObservableObject {
             return result
         }
         userStateImportTask = task
-        let result = await task.value
+        var result = await StoreSplitTaskCancellation.awaitValue(of: task)
         userStateImportTask = nil
+        guard Task.isCancelled == false else {
+            result.failed += 1
+            return result
+        }
+        guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         // Only rebuild the hourly statistics when history actually moved.
         // Rebuilding after every reconcile rewrote the whole stats table for no
         // reason and was a large part of the write volume.
@@ -3845,19 +4104,28 @@ class ModelContainerManager: ObservableObject {
             await PlaySessionTrackerActor(
                 modelContainer: legacyContainer
             ).rebuildListeningStats()
+            guard Task.isCancelled == false else {
+                result.failed += 1
+                return result
+            }
         }
         await StoreSplitPlaylistPresenceStore.publish(
             modelContainer: userStateContainer
         )
+        guard Task.isCancelled == false else {
+            result.failed += 1
+            return result
+        }
         if result.failed == 0, result.interruptedByPlayback == false {
             let streamsToCommit = StoreSplitImportCursorStore.streamsEligibleForCommit(
                 changedStreams: changedStreams,
                 hasUnresolvedPlaylistEpisodes: result.playlistFeedsToBootstrap.isEmpty == false
-            )
+            ).subtracting(result.unresolvedStreams)
             StoreSplitImportCursorStore.commit(
-                latestUserStateChangeStamps(userStateContainer),
+                changeStamps,
                 streams: streamsToCommit
             )
+            lastUserStateImportAt = .now
         }
 #if DEBUG
         StoreSplitMigrationDebugLog.record(
@@ -3871,96 +4139,110 @@ class ModelContainerManager: ObservableObject {
     /// Newest timestamp for each synchronized stream. Keeping these separate is
     /// important: a two-second episode-position update must not invalidate the
     /// cursor for every other stream.
-    private func latestUserStateChangeStamps(
+    func latestUserStateChangeStamps(
         _ container: ModelContainer
-    ) -> [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot] {
+    ) throws -> [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot] {
         let context = ModelContext(container)
         func snapshot<Model>(
-            latest: () -> Model?,
+            latest: () throws -> Model?,
             date: (Model) -> Date,
-            idsAtDate: (Date) -> [String]
-        ) -> StoreSplitUserStateChangeSnapshot {
-            guard let latest = latest() else {
+            idsAtDate: (Date) throws -> [String]
+        ) throws -> StoreSplitUserStateChangeSnapshot {
+            guard let latest = try latest() else {
                 return StoreSplitUserStateChangeSnapshot(date: nil, recordIDsAtTimestamp: [])
             }
             let latestDate = date(latest)
             return StoreSplitUserStateChangeSnapshot(
                 date: latestDate,
-                recordIDsAtTimestamp: idsAtDate(latestDate).sorted()
+                recordIDsAtTimestamp: try idsAtDate(latestDate).sorted()
             )
         }
 
         func latest<Model: PersistentModel>(
             _ type: Model.Type,
             sort: SortDescriptor<Model>
-        ) -> Model? {
+        ) throws -> Model? {
             var descriptor = FetchDescriptor<Model>(sortBy: [sort])
             descriptor.fetchLimit = 1
-            return try? context.fetch(descriptor).first
+            return try context.fetch(descriptor).first
+        }
+
+        // A timestamp shared by an unusually large number of records cannot
+        // be safely represented by the existing cursor without loading the
+        // whole group. Leave the import pending instead of recording a partial
+        // boundary that could hide later arrivals.
+        func idsAtDate<Model: PersistentModel>(
+            _ descriptor: FetchDescriptor<Model>, id: KeyPath<Model, String>
+        ) throws -> [String] {
+            var bounded = descriptor
+            bounded.fetchLimit = 501
+            let rows = try context.fetch(bounded)
+            guard rows.count <= 500 else { throw PlaylistPersistenceError.storageUnavailable }
+            return rows.map { $0[keyPath: id] }
         }
 
         return [
-            .subscriptions: snapshot(
-                latest: { latest(SubscriptionSync.self, sort: SortDescriptor(\SubscriptionSync.updatedAt, order: .reverse)) },
+            .subscriptions: try snapshot(
+                latest: { try latest(SubscriptionSync.self, sort: SortDescriptor(\SubscriptionSync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .episodeState: snapshot(
-                latest: { latest(EpisodeStateSync.self, sort: SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse)) },
+            .episodeState: try snapshot(
+                latest: { try latest(EpisodeStateSync.self, sort: SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<EpisodeStateSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<EpisodeStateSync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .playlists: snapshot(
-                latest: { latest(PlaylistSync.self, sort: SortDescriptor(\PlaylistSync.updatedAt, order: .reverse)) },
+            .playlists: try snapshot(
+                latest: { try latest(PlaylistSync.self, sort: SortDescriptor(\PlaylistSync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<PlaylistSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<PlaylistSync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .playlistEntries: snapshot(
-                latest: { latest(PlaylistEntrySync.self, sort: SortDescriptor(\PlaylistEntrySync.updatedAt, order: .reverse)) },
+            .playlistEntries: try snapshot(
+                latest: { try latest(PlaylistEntrySync.self, sort: SortDescriptor(\PlaylistEntrySync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<PlaylistEntrySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<PlaylistEntrySync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .queueEntries: snapshot(
-                latest: { latest(QueueEntrySync.self, sort: SortDescriptor(\QueueEntrySync.updatedAt, order: .reverse)) },
+            .queueEntries: try snapshot(
+                latest: { try latest(QueueEntrySync.self, sort: SortDescriptor(\QueueEntrySync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<QueueEntrySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<QueueEntrySync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .bookmarks: snapshot(
-                latest: { latest(BookmarkSync.self, sort: SortDescriptor(\BookmarkSync.updatedAt, order: .reverse)) },
+            .bookmarks: try snapshot(
+                latest: { try latest(BookmarkSync.self, sort: SortDescriptor(\BookmarkSync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<BookmarkSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<BookmarkSync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .preferences: snapshot(
-                latest: { latest(PodcastPreferenceSync.self, sort: SortDescriptor(\PodcastPreferenceSync.updatedAt, order: .reverse)) },
+            .preferences: try snapshot(
+                latest: { try latest(PodcastPreferenceSync.self, sort: SortDescriptor(\PodcastPreferenceSync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<PodcastPreferenceSync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<PodcastPreferenceSync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .listeningHistory: snapshot(
-                latest: { latest(ListeningHistorySync.self, sort: SortDescriptor(\ListeningHistorySync.updatedAt, order: .reverse)) },
+            .listeningHistory: try snapshot(
+                latest: { try latest(ListeningHistorySync.self, sort: SortDescriptor(\ListeningHistorySync.updatedAt, order: .reverse)) },
                 date: { $0.updatedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<ListeningHistorySync>(predicate: #Predicate { $0.updatedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<ListeningHistorySync>(predicate: #Predicate { $0.updatedAt == date }), id: \.id)
                 }
             ),
-            .listeningBaseline: snapshot(
-                latest: { latest(ListeningBaselineSync.self, sort: SortDescriptor(\ListeningBaselineSync.capturedAt, order: .reverse)) },
+            .listeningBaseline: try snapshot(
+                latest: { try latest(ListeningBaselineSync.self, sort: SortDescriptor(\ListeningBaselineSync.capturedAt, order: .reverse)) },
                 date: { $0.capturedAt },
                 idsAtDate: { date in
-                    (try? context.fetch(FetchDescriptor<ListeningBaselineSync>(predicate: #Predicate { $0.capturedAt == date })))?.map(\.id) ?? []
+                    try idsAtDate(FetchDescriptor<ListeningBaselineSync>(predicate: #Predicate { $0.capturedAt == date }), id: \.id)
                 }
             )
         ]
@@ -4284,6 +4566,7 @@ class ModelContainerManager: ObservableObject {
     ) throws -> ModelContainer {
         let schema = Schema([
             StoreSplitMigrationCheckpoint.self,
+            CachedMissingEpisodeReference.self,
             CachedListeningBaselineAggregate.self,
             CachedListeningBaselineSource.self,
             StoreSplitMigrationVerification.self,

@@ -31,8 +31,8 @@ enum StoreSplitImportCursorStore {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     }
 
-    static func load() -> [StoreSplitUserStateStream: StoreSplitImportCursor] {
-        guard let data = defaults().data(forKey: key),
+    static func load(defaults suppliedDefaults: UserDefaults? = nil) -> [StoreSplitUserStateStream: StoreSplitImportCursor] {
+        guard let data = (suppliedDefaults ?? defaults()).data(forKey: key),
               let raw = try? JSONDecoder().decode(
                   [String: StoreSplitImportCursor].self,
                   from: data
@@ -45,18 +45,19 @@ enum StoreSplitImportCursorStore {
         }
     }
 
-    static func save(_ cursors: [StoreSplitUserStateStream: StoreSplitImportCursor]) {
+    static func save(_ cursors: [StoreSplitUserStateStream: StoreSplitImportCursor], defaults suppliedDefaults: UserDefaults? = nil) {
         let raw = Dictionary(uniqueKeysWithValues: cursors.map { ($0.key.rawValue, $0.value) })
         guard let data = try? JSONEncoder().encode(raw) else { return }
-        defaults().set(data, forKey: key)
+        (suppliedDefaults ?? defaults()).set(data, forKey: key)
     }
 
     static func changedStreams(
         current: [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot],
-        force: Bool
+        force: Bool,
+        defaults suppliedDefaults: UserDefaults? = nil
     ) -> Set<StoreSplitUserStateStream> {
         if force { return Set(StoreSplitUserStateStream.allCases) }
-        let cursors = load()
+        let cursors = load(defaults: suppliedDefaults)
         return Set(StoreSplitUserStateStream.allCases.filter { stream in
             guard let currentSnapshot = current[stream], currentSnapshot.date != nil else {
                 return false
@@ -82,9 +83,10 @@ enum StoreSplitImportCursorStore {
 
     static func commit(
         _ current: [StoreSplitUserStateStream: StoreSplitUserStateChangeSnapshot],
-        streams: Set<StoreSplitUserStateStream>
+        streams: Set<StoreSplitUserStateStream>,
+        defaults suppliedDefaults: UserDefaults? = nil
     ) {
-        var cursors = load()
+        var cursors = load(defaults: suppliedDefaults)
         for stream in streams {
             guard let snapshot = current[stream], let date = snapshot.date else { continue }
             cursors[stream] = StoreSplitImportCursor(
@@ -92,6 +94,6 @@ enum StoreSplitImportCursorStore {
                 recordIDsAtTimestamp: snapshot.recordIDsAtTimestamp
             )
         }
-        save(cursors)
+        save(cursors, defaults: suppliedDefaults)
     }
 }

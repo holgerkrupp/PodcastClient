@@ -124,14 +124,26 @@ class CarPlayNowPlaying {
         if let image = CarPlayArtworkProvider.buttonImage(
             systemName: "bookmark", displayScale: interfaceController.carTraitCollection.displayScale
         ) {
-            let bookmarkButton = CPNowPlayingImageButton(image: image) { _ in
-                Task { player.createBookmark() }
+            let bookmarkButton = CPNowPlayingImageButton(image: image) { [weak self] _ in
+                guard let self else { return }
+                Task {
+                    do { try await self.player.createBookmark() }
+                    catch { self.showBookmarkError(error.localizedDescription) }
+                }
             }
             buttons.append(bookmarkButton)
         }
 
         
         template.updateNowPlayingButtons(buttons)
+    }
+
+    private func showBookmarkError(_ message: String) {
+        let ok = CPAlertAction(title: String(localized: "OK"), style: .default) { [weak self] _ in
+            self?.interfaceController.dismissTemplate(animated: true, completion: nil)
+        }
+        let alert = CPAlertTemplate(titleVariants: [message], actions: [ok])
+        interfaceController.presentTemplate(alert, animated: true, completion: nil)
     }
 
     private func preferredChapters() -> [Marker] {

@@ -8,6 +8,8 @@ The bundled, searchable help entry point is `Raul/Features/Help/UserGuideView.sw
 
 Every user-visible behavior change must review and maintain the corresponding guide topic in the same change. Keep the topic's actual entry point, steps, example, settings/availability limits, related links, and action in sync with the shipped UI. Do not claim DEBUG-only or planned behavior as available. See `AGENTS.md` for the full maintenance rule.
 
+If a playback or listening-history update cannot be queued for portable synchronization, the main app presents **Playback Sync Needs Attention** once per foreground session. Settings → iCloud Sync retains the warning. Dismissing the alert does not assert that missing data has synced; the user guide describes the storage check and support guidance.
+
 Screenshot examples must come from repeatable preview or UI-test fixtures using sample podcast titles and transcripts. Never capture account state, private feed URLs, credentials, personal history, or other sensitive data. Keep capture metadata with each image: source screen, platform/OS, locale, and last verified app version. Do not use fabricated mockups as current UI examples. When adding a screenshot pipeline, document how to regenerate it and validate compact iPhone, regular-width/iPad, and macOS variants where behavior differs.
 
 Guide validation should check stable topic ID uniqueness, related-topic resolution, search across title/aliases/keywords/article text, action destination availability, accessibility text for images, and packaged resources. Add platform UI smoke coverage for Settings → guide → topic → action → back when a fixture-based harness is available. Avoid screenshot recapture for unrelated changes.
@@ -74,3 +76,7 @@ All subscriptions, including OPML imports, admit only episodes released strictly
 - New Playlist stays open with **Could Not Save Playlist** if the local persistent write fails. Retry after storage is available. Other playlist edits/deletions surface the same error at the app root.
 - Up Next membership/order is acknowledged after the local UserState commit; CloudKit delivery is asynchronous. Split-only runtimes hydrate later imports additively; only explicit tombstones remove membership.
 - **Downloads → More → Rescan** refreshes the local file inventory. Files decide visibility even when reconstructed metadata is stale. No navigation action performs a replacement download.
+
+### Bookmark persistence
+
+The player, macOS menu, CarPlay and bookmark App Intent wait for a local save and either a portable save or a durable retry before reporting success. If the bookmark was saved locally but could not be queued for syncing, the error says it already exists on the device. Bookmark removal stages a retry before deleting locally; an error leaves the bookmark visible. The retry publishes a deletion only after the durable library confirms the local bookmark is absent.
