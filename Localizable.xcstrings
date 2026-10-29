@@ -25199,6 +25199,201 @@
           }
         }
       }
+    },
+    "%d %@ + %d collateral batch failures" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "%d %@ + %d weitere Fehler im atomaren Stapel" } }
+      }
+    },
+    "%d %@ failure(s)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "%d Fehler des Typs %@" } }
+      }
+    },
+    "Capture a snapshot while Up Next is empty, then capture another when the entries return. The report contains local counts and recent sync events." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind. Der Bericht enthält lokale Zähler und letzte Synchronisierungsereignisse." } }
+      }
+    },
+    "Capture Snapshot" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme erstellen" } }
+      }
+    },
+    "Capturing Snapshot…" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme wird erstellt …" } }
+      }
+    },
+    "Copy Report" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bericht kopieren" } }
+      }
+    },
+    "Review per-store sync status and capture a local support report." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Synchronisierungsstatus je Store prüfen und einen lokalen Supportbericht erstellen." } }
+      }
+    },
+    "Share Report" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bericht teilen" } }
+      }
+    },
+    "Support Diagnostics" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Supportdiagnose" } }
+      }
+    },
+    "Support diagnostics report preview" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Vorschau des Supportberichts" } }
+      }
+    },
+    "Up Next Support Diagnostics" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Up Next Supportdiagnose" } }
+      }
+    },
+    "Generated locally. This report contains local counts and categorized sync errors; no data was uploaded." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Bericht wurde lokal erstellt. Er enthält lokale Zähler und kategorisierte Synchronisierungsfehler; es wurden keine Daten hochgeladen." } }
+      }
+    },
+    "Capture a snapshot while Up Next is empty and another after its entries return." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind." } }
+      }
+    },
+    "Recent event timeline (last five minutes)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Letzte Ereignisse (fünf Minuten)" } }
+      }
+    },
+    "CloudKit store events (local observation; not server record counts):" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "CloudKit-Store-Ereignisse (lokale Beobachtung, keine Serverzähler):" } }
+      }
+    },
+    "Snapshot %d · %@ · %d seconds since app session start" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme %d · %@ · %d Sekunden seit Sitzungsbeginn" } }
+      }
+    },
+    "App %@ (%@) · %@ · %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "App %@ (%@) · %@ · %@" } }
+      }
+    },
+    "Runtime: bootstrap=%@, read authority=%@, %@, readiness=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufzeit: Startmodus=%@, maßgeblicher Speicher=%@, %@, Bereitschaft=%@" } }
+      }
+    },
+    "Stores: runtime=%@, legacy=%@, user state=%@, cache=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Stores: Laufzeit=%@, Legacy=%@, Benutzerstatus=%@, Cache=%@" } }
+      }
+    },
+    "Migration: version=%d, phase=%@, progress=%@, pending=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Migration: Version=%d, Phase=%@, Fortschritt=%@, ausstehend=%@" } }
+      }
+    },
+    "Runtime-visible Up Next (local snapshot): playlists=%@, entries=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "In der Laufzeit sichtbares Up Next (lokale Momentaufnahme): Playlists=%@, Einträge=%@" } }
+      }
+    },
+    "Legacy local snapshot: playlists=%@, playlist entries=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Legacy lokal: Playlists=%@, Playlist-Einträge=%@" } }
+      }
+    },
+    "User State local snapshot: PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Benutzerstatus lokal: PlaylistSync aktiv/gelöscht=%@/%@, PlaylistEntrySync aktiv/gelöscht=%@/%@, QueueEntrySync aktiv/gelöscht=%@/%@, offene Episodenverweise=%@" } }
+      }
+    },
+    "Network=%@, iCloud account=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Netzwerk=%@, iCloud-Account=%@" } }
+      }
+    },
+    "Aggregate monitor attribution=unknown · errors=%@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gesamtmonitor-Zuordnung=unbekannt · Fehler=%@" } }
+      }
+    },
+    "Additional nested errors were omitted from this bounded report." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Weitere verschachtelte Fehler wurden in diesem begrenzten Bericht ausgelassen." } }
+      }
+    },
+    "Error categories" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerkategorien" } }
+      }
+    },
+    "Error details unavailable" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerdetails nicht verfügbar" } }
+      }
+    },
+    "Import complete" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Import abgeschlossen" } }
+      }
+    },
+    "Last upload failed: %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Letzter Upload fehlgeschlagen: %@" } }
+      }
+    },
+    "No CloudKit error details were available." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es sind keine CloudKit-Fehlerdetails verfügbar." } }
+      }
+    },
+    "No completed upload event observed in this session/history. This does not confirm synchronization." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "In dieser Sitzung oder im Verlauf wurde kein abgeschlossener Upload beobachtet. Das bestätigt keine Synchronisierung." } }
+      }
+    },
+    "No import event observed" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kein Importereignis beobachtet" } }
+      }
+    },
+    "Only batch failures were reported; the root cause is not present in the diagnostics." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es wurden nur Stapelfehler gemeldet; die Ursache ist in den Diagnosedaten nicht enthalten." } }
+      }
+    },
+    "Show error categories" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerkategorien anzeigen" } }
+      }
+    },
+    "Store Imports Complete" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Store-Importe abgeschlossen" } }
+      }
+    },
+    "Store: unknown (aggregate sync monitor)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Store: unbekannt (Gesamtsynchronisierung)" } }
+      }
+    },
+    "Store-attributed failure · %lld failed upload event(s) in recent history" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diesem Store zugeordneter Fehler · %lld fehlgeschlagene Uploads im aktuellen Verlauf" } }
+      }
+    },
+    "Waiting for saved Up Next episodes to restore from iCloud…" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gespeicherte Up-Next-Episoden werden aus iCloud wiederhergestellt …" } }
+      }
     }
   },
   "version" : "1.1"

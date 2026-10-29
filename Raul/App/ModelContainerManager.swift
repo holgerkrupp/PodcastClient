@@ -163,6 +163,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
         let endedAt: Date
         let succeeded: Bool
         let errorCode: Int?
+        let failureReport: CloudKitFailureAnalyzer.Report?
         let countsBefore: StoreCounts?
         let countsAfter: StoreCounts?
     }
@@ -189,6 +190,8 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
         let lastExportEndedAt: Date?
         let lastSuccessfulExportAt: Date?
         let lastExportErrorCode: Int?
+        let lastExportFailureReport: CloudKitFailureAnalyzer.Report?
+        let failedExportCount: Int
         let lastReconciliation: Reconciliation?
 
         var id: String { storeKind.rawValue }
@@ -198,6 +201,11 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
             guard let lastImportEndedAt else { return .notObserved }
             if lastSuccessfulImportAt == lastImportEndedAt { return .complete }
             return .failed
+        }
+
+        var hasUnresolvedExportFailure: Bool {
+            guard let lastExportEndedAt else { return false }
+            return lastSuccessfulExportAt != lastExportEndedAt
         }
     }
 
@@ -209,6 +217,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
         let endDate: Date?
         let succeeded: Bool
         let errorCode: Int?
+        let failureReport: CloudKitFailureAnalyzer.Report?
     }
 
     static let shared = StoreCloudKitActivityMonitor()
@@ -348,7 +357,8 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
             startDate: event.startDate,
             endDate: event.endDate,
             succeeded: event.succeeded,
-            errorCode: event.error.map { ($0 as NSError).code }
+            errorCode: event.error.map { ($0 as NSError).code },
+            failureReport: event.error.map(CloudKitFailureAnalyzer.analyze)
         )
     }
 
@@ -396,8 +406,15 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 endedAt: endedAt,
                 succeeded: event.succeeded,
                 errorCode: event.errorCode,
+                failureReport: event.failureReport,
                 countsBefore: countsBefore,
                 countsAfter: countsAfter
+            )
+            SupportDiagnosticsRecorder.shared.record(
+                "CloudKit \(storeKind.title) \(eventKind.rawValue)",
+                detail: event.succeeded
+                    ? "completed"
+                    : "failed" + (event.failureReport.map { ": \($0.summary)" } ?? "")
             )
             lastCompletedEvents = ([completed] + lastCompletedEvents).prefix(20).map { $0 }
             if eventKind == .importEvent {
@@ -447,6 +464,10 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 startedAt: event.startDate
             )
             activeByID[id] = active
+            SupportDiagnosticsRecorder.shared.record(
+                "CloudKit \(storeKind.title) \(eventKind.rawValue)",
+                detail: "started"
+            )
             if eventKind == .importEvent {
                 importCountsByID[id] = ModelContainerManager.shared
                     .cloudKitStoreCounts(for: storeKind)
@@ -493,7 +514,8 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 storeKind: storeKind(for: event.storeIdentifier),
                 type: event.type, startedAt: event.startedAt,
                 endedAt: event.endedAt, succeeded: event.succeeded,
-                errorCode: event.errorCode, countsBefore: event.countsBefore,
+                errorCode: event.errorCode, failureReport: event.failureReport,
+                countsBefore: event.countsBefore,
                 countsAfter: event.countsAfter
             )
         }
@@ -528,6 +550,9 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                     && $0.type == .export
                     && $0.succeeded
             }
+            let failedExports = lastCompletedEvents.filter {
+                $0.storeKind == kind && $0.type == .export && !$0.succeeded
+            }
             return StoreDiagnostics(
                 storeKind: kind,
                 storeIdentifier: lastImport?.storeIdentifier
@@ -549,6 +574,10 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 lastExportErrorCode: lastExport?.succeeded == false
                     ? lastExport?.errorCode
                     : nil,
+                lastExportFailureReport: lastExport?.succeeded == false
+                    ? lastExport?.failureReport
+                    : nil,
+                failedExportCount: failedExports.count,
                 lastReconciliation: reconciliations[kind]
             )
         }
@@ -1026,6 +1055,7 @@ class ModelContainerManager: ObservableObject {
                 self.preparedContainer = preparedContainer
                 StoreCloudKitActivityMonitor.shared.refreshStoreIdentifiers()
                 self.runtimeStoreReadiness = .settling
+                SupportDiagnosticsRecorder.shared.record("Runtime library store opened")
                 CrashBreadcrumbs.shared.record("model_container_initialization_completed")
             }
             if runtimeProjectsFromCache {
@@ -1132,6 +1162,10 @@ class ModelContainerManager: ObservableObject {
                 storeName: "user_state"
             )
             StoreCloudKitActivityMonitor.shared.refreshStoreIdentifiers()
+            SupportDiagnosticsRecorder.shared.record(
+                "User State store preparation",
+                detail: preparedUserStateContainer == nil ? "open failed" : "opened"
+            )
         }
         if let cache = result.cache {
             apply(
@@ -1139,6 +1173,10 @@ class ModelContainerManager: ObservableObject {
                 to: \.preparedCacheContainer,
                 error: \.cacheInitializationError,
                 storeName: "cache"
+            )
+            SupportDiagnosticsRecorder.shared.record(
+                "Podcast cache store preparation",
+                detail: preparedCacheContainer == nil ? "open failed" : "opened"
             )
         }
 
@@ -1162,6 +1200,7 @@ class ModelContainerManager: ObservableObject {
         }
         await buildRuntimeGraphIfNeeded()
         runtimeStoreReadiness = .ready
+        SupportDiagnosticsRecorder.shared.record("Runtime store ready")
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         updateMigrationReadiness()
         CrashBreadcrumbs.shared.record("runtime_store_ready")
@@ -1586,9 +1625,11 @@ class ModelContainerManager: ObservableObject {
                 try Self.makeLegacyContainer(allowsSave: false)
             }.value
             preparedLegacyMigrationContainer = source
+            SupportDiagnosticsRecorder.shared.record("Legacy Library migration source opened")
             CrashBreadcrumbs.shared.record("store_split_legacy_migration_source_ready")
         } catch {
             migrationError = error.localizedDescription
+            SupportDiagnosticsRecorder.shared.record("Legacy Library migration source", detail: "open failed")
             CrashBreadcrumbs.shared.record(
                 "store_split_legacy_migration_source_failed",
                 details: error.localizedDescription
@@ -3918,6 +3959,7 @@ class ModelContainerManager: ObservableObject {
               let runtime = preparedContainer,
               let userState = preparedUserStateContainer,
               let cache = preparedCacheContainer else { return }
+        SupportDiagnosticsRecorder.shared.record("Playlist hydration started")
         await buildCompatibilityProjectionIfNeeded()
         if let userStateImportTask {
             _ = await userStateImportTask.value
@@ -3938,6 +3980,10 @@ class ModelContainerManager: ObservableObject {
         let result = await task.value
         userStateImportTask = nil
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
+        SupportDiagnosticsRecorder.shared.record(
+            "Playlist hydration finished",
+            detail: result.failed == 0 ? "completed" : "deferred (local operation failed)"
+        )
         CrashBreadcrumbs.shared.record("split_runtime_playlist_import", details: "failed=\(result.failed),pending_feeds=\(result.playlistFeedsToBootstrap.count)")
     }
 

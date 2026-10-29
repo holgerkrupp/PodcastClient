@@ -1,6 +1,9 @@
 import SwiftUI
 import SwiftData
 import CloudKit
+#if canImport(UIKit)
+import UIKit
+#endif
 import CloudKitSyncMonitor
 
 struct CloudSyncStatusView: View {
@@ -22,6 +25,9 @@ struct CloudSyncStatusView: View {
     private var statusTitle: LocalizedStringKey {
         if portableWriteFailures.needsRecovery { return "Playback Sync Needs Attention" }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
+        if stores.contains(where: { $0.hasUnresolvedExportFailure }) {
+            return "Sync Error"
+        }
         if stores.contains(where: { $0.importStatus == .syncing }) {
             return "Syncing user data"
         }
@@ -32,7 +38,7 @@ struct CloudSyncStatusView: View {
             return "Waiting for Store Import"
         }
         if stores.isEmpty == false {
-            return "Stores Synced"
+            return "Store Imports Complete"
         }
         switch syncMonitor.syncStateSummary {
         case .noNetwork:
@@ -57,6 +63,9 @@ struct CloudSyncStatusView: View {
     private var statusColor: Color {
         if portableWriteFailures.needsRecovery { return .orange }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
+        if stores.contains(where: { $0.hasUnresolvedExportFailure }) {
+            return .red
+        }
         if stores.contains(where: { $0.importStatus == .syncing }) {
             return .secondary
         }
@@ -210,8 +219,11 @@ struct CloudSyncStatusDetailView: View {
 
     @StateObject private var syncMonitor = SyncMonitor.default
     @StateObject private var storeMonitor = StoreCloudKitActivityMonitor.shared
+    @StateObject private var supportDiagnostics = SupportDiagnosticsRecorder.shared
     @State private var showLegacyRecoveryConfirmation = false
     @State private var legacyRecoveryScheduled = false
+    @State private var expandedErrorDetails = false
+    @State private var isCapturingSupportSnapshot = false
 
     private var canOfferLegacyRecovery: Bool {
         StoreSplitReleasePhase.current == .dualSyncBackfill
@@ -244,82 +256,12 @@ struct CloudSyncStatusDetailView: View {
         return errors
     }
 
-    /// Flattens a sync error into something a human can read. CloudKit reports
-    /// a bulk export rejection as `CKError.partialFailure` (CKErrorDomain 2),
-    /// which hides the real reason inside `partialErrorsByItemID`. CoreData also
-    /// tends to wrap the `CKError` under `NSUnderlyingErrorKey`, so we dig for it.
     private func describe(_ error: Error) -> CloudKitErrorDetail {
-        let ckError = Self.firstCKError(in: error as NSError)
-        var partials: [CloudKitErrorDetail.PartialFailure] = []
-
-        if let map = ckError?.userInfo[CKPartialErrorsByItemIDKey] as? [AnyHashable: Error] {
-            for (itemID, subError) in map {
-                partials.append(
-                    CloudKitErrorDetail.PartialFailure(
-                        itemID: String(describing: itemID),
-                        reason: subError.localizedDescription,
-                        code: Self.ckCodeDescription(for: subError as NSError)
-                    )
-                )
-            }
-            partials.sort { $0.itemID < $1.itemID }
-        }
-
+        let report = CloudKitFailureAnalyzer.analyze(error)
         return CloudKitErrorDetail(
             summary: error.localizedDescription,
-            code: Self.ckCodeDescription(for: ckError ?? error as NSError),
-            partialFailures: partials
+            report: report
         )
-    }
-
-    /// Walks the `NSUnderlyingErrorKey` chain to find the first CloudKit error.
-    private static func firstCKError(in nsError: NSError) -> NSError? {
-        if nsError.domain == CKErrorDomain {
-            return nsError
-        }
-        if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
-            return firstCKError(in: underlying)
-        }
-        return nil
-    }
-
-    private static func ckCodeDescription(for nsError: NSError) -> String? {
-        guard nsError.domain == CKErrorDomain else { return nil }
-
-        let name: String
-        switch CKError.Code(rawValue: nsError.code) {
-        case .internalError: name = "internalError"
-        case .partialFailure: name = "partialFailure"
-        case .networkUnavailable: name = "networkUnavailable"
-        case .networkFailure: name = "networkFailure"
-        case .badContainer: name = "badContainer"
-        case .serviceUnavailable: name = "serviceUnavailable"
-        case .requestRateLimited: name = "requestRateLimited"
-        case .missingEntitlement: name = "missingEntitlement"
-        case .notAuthenticated: name = "notAuthenticated"
-        case .permissionFailure: name = "permissionFailure"
-        case .unknownItem: name = "unknownItem"
-        case .invalidArguments: name = "invalidArguments"
-        case .serverRecordChanged: name = "serverRecordChanged"
-        case .serverRejectedRequest: name = "serverRejectedRequest"
-        case .assetFileNotFound: name = "assetFileNotFound"
-        case .assetFileModified: name = "assetFileModified"
-        case .incompatibleVersion: name = "incompatibleVersion"
-        case .constraintViolation: name = "constraintViolation"
-        case .operationCancelled: name = "operationCancelled"
-        case .changeTokenExpired: name = "changeTokenExpired"
-        case .batchRequestFailed: name = "batchRequestFailed"
-        case .zoneBusy: name = "zoneBusy"
-        case .badDatabase: name = "badDatabase"
-        case .quotaExceeded: name = "quotaExceeded"
-        case .zoneNotFound: name = "zoneNotFound"
-        case .limitExceeded: name = "limitExceeded"
-        case .userDeletedZone: name = "userDeletedZone"
-        case .accountTemporarilyUnavailable: name = "accountTemporarilyUnavailable"
-        default: name = "code \(nsError.code)"
-        }
-
-        return "CKError \(nsError.code) — \(name)"
     }
 
     var body: some View {
@@ -439,6 +381,68 @@ struct CloudSyncStatusDetailView: View {
                 )
             }
 
+            Section("Support Diagnostics") {
+                Text("Capture a snapshot while Up Next is empty, then capture another when the entries return. The report contains local counts and recent sync events.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    guard isCapturingSupportSnapshot == false else { return }
+                    isCapturingSupportSnapshot = true
+                    Task { @MainActor in
+                        await supportDiagnostics.capture(
+                            manager: ModelContainerManager.shared,
+                            modelContainer: modelContainer,
+                            networkStatus: networkDescription,
+                            accountStatus: accountDescription,
+                            aggregateErrorCategories: reportedErrors.flatMap { item in
+                                CloudKitFailureAnalyzer.analyze(item.error).groups.prefix(6).map {
+                                    "\(item.title): \($0.name) × \($0.count)"
+                                }
+                            },
+                            storeMonitor: storeMonitor
+                        )
+                        isCapturingSupportSnapshot = false
+                    }
+                } label: {
+                    if isCapturingSupportSnapshot {
+                        Label("Capturing Snapshot…", systemImage: "hourglass")
+                    } else {
+                        Label("Capture Snapshot", systemImage: "camera")
+                    }
+                }
+                .disabled(isCapturingSupportSnapshot)
+                .accessibilityHint("Adds a timestamped local-state snapshot to the support report")
+
+                HStack {
+                    Button("Copy Report", systemImage: "doc.on.doc") {
+#if canImport(UIKit)
+                        UIPasteboard.general.string = supportDiagnostics.reportText
+#endif
+                    }
+                    .disabled(supportDiagnostics.snapshots.isEmpty)
+
+                    ShareLink(
+                        item: supportDiagnostics.reportText,
+                        subject: Text("Up Next Support Diagnostics")
+                    ) {
+                        Label("Share Report", systemImage: "square.and.arrow.up")
+                    }
+                    .disabled(supportDiagnostics.snapshots.isEmpty)
+                }
+
+                ScrollView {
+                    Text(supportDiagnostics.reportText)
+                        .font(.system(.caption2, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(8)
+                }
+                .frame(maxHeight: 280)
+                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                .accessibilityLabel("Support diagnostics report preview")
+            }
+
             if reportedErrors.isEmpty == false {
                 Section("Errors") {
                     ForEach(Array(reportedErrors.enumerated()), id: \.offset) { _, item in
@@ -453,46 +457,44 @@ struct CloudSyncStatusDetailView: View {
                                 .font(.callout)
                                 .textSelection(.enabled)
 
-                            if let code = detail.code {
-                                Text(code)
-                                    .font(.caption.monospaced())
-                                    .foregroundStyle(.secondary)
-                                    .textSelection(.enabled)
-                            }
+                            Text("Store: unknown (aggregate sync monitor)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
 
-                            if detail.partialFailures.isEmpty == false {
-                                Divider()
+                            Text(detail.report.summary)
+                                .font(.subheadline.weight(.medium))
+                                .textSelection(.enabled)
 
-                                Text("\(detail.partialFailures.count) rejected record(s):")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-
-                                ForEach(detail.partialFailures.prefix(25)) { failure in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(failure.itemID)
-                                            .font(.caption2.monospaced())
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
-                                            .truncationMode(.middle)
-
-                                        Text(failure.reason)
-                                            .font(.caption2)
-                                            .textSelection(.enabled)
-
-                                        if let code = failure.code {
-                                            Text(code)
-                                                .font(.caption2.monospaced())
-                                                .foregroundStyle(.tertiary)
+                            if detail.report.groups.isEmpty == false {
+                                DisclosureGroup(
+                                    expandedErrorDetails ? "Error categories" : "Show error categories",
+                                    isExpanded: $expandedErrorDetails
+                                ) {
+                                    ForEach(detail.report.groups) { group in
+                                        VStack(alignment: .leading, spacing: 3) {
+                                            Text("\(group.count) × \(group.displayName)")
+                                                .font(.caption.monospaced())
+                                                .textSelection(.enabled)
+                                            if let reason = group.reason {
+                                                Text(reason)
+                                                    .font(.caption)
+                                                    .textSelection(.enabled)
+                                            }
+                                            if let retryAfter = group.retryAfterSeconds {
+                                                Text("Retry after \(retryAfter.formatted(.number.precision(.fractionLength(0...1)))) seconds")
+                                                    .font(.caption2)
+                                                    .foregroundStyle(.secondary)
+                                            }
                                         }
+                                        .padding(.vertical, 3)
                                     }
-                                    .padding(.leading, 8)
+                                    if detail.report.wasTruncated {
+                                        Text("Additional nested errors were omitted from this bounded report.")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
-
-                                if detail.partialFailures.count > 25 {
-                                    Text("+ \(detail.partialFailures.count - 25) more")
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                }
+                                .font(.caption.weight(.semibold))
                             }
                         }
                         .padding(.vertical, 4)
@@ -564,9 +566,9 @@ private struct StoreCloudKitDiagnosticRow: View {
     private var statusText: String {
         guard diagnostic.isAttached else { return "Not attached" }
         switch diagnostic.importStatus {
-        case .notObserved: return "Waiting for first import event"
+        case .notObserved: return "No import event observed"
         case .syncing: return "Syncing…"
-        case .complete: return "Complete"
+        case .complete: return "Import complete"
         case .failed:
             if let code = diagnostic.lastImportErrorCode {
                 return "Failed (error \(code))"
@@ -607,11 +609,35 @@ private struct StoreCloudKitDiagnosticRow: View {
             }
 
             if diagnostic.activeExportCount > 0 {
-                Text("Upload: (diagnostic.activeExportCount) active")
+                Text("Upload: \(diagnostic.activeExportCount) active")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             } else if let lastSuccessfulExportAt = diagnostic.lastSuccessfulExportAt {
                 Text("Last successful upload \(lastSuccessfulExportAt, format: .relative(presentation: .named))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if diagnostic.hasUnresolvedExportFailure {
+                Label(
+                    "Last upload failed: \(diagnostic.lastExportFailureReport?.summary ?? "Error details unavailable")",
+                    systemImage: "exclamationmark.triangle.fill"
+                )
+                    .font(.caption2)
+                    .foregroundStyle(.red)
+                    .textSelection(.enabled)
+                Text("Store-attributed failure · \(diagnostic.failedExportCount) failed upload event(s) in recent history")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                if let primary = diagnostic.lastExportFailureReport?.groups.first {
+                    Text(primary.displayName + (primary.reason.map { ": \($0)" } ?? ""))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else if diagnostic.activeExportCount == 0,
+                      diagnostic.lastExportEndedAt == nil {
+                Text("No completed upload event observed in this session/history. This does not confirm synchronization.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -656,15 +682,7 @@ private struct StoreCloudKitDiagnosticRow: View {
 
 private struct CloudKitErrorDetail {
     let summary: String
-    let code: String?
-    let partialFailures: [PartialFailure]
-
-    struct PartialFailure: Identifiable {
-        let id = UUID()
-        let itemID: String
-        let reason: String
-        let code: String?
-    }
+    let report: CloudKitFailureAnalyzer.Report
 }
 
 private struct SyncPhaseDetailRow: View {

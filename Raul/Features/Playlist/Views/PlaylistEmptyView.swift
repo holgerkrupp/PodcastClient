@@ -9,6 +9,16 @@ import SwiftUI
 import SwiftData
 
 enum PlaylistSilentRecoveryDecision {
+    static func shouldShowRecoveringState(
+        initializationError: String?,
+        localRecordCount: Int,
+        cloudReferenceCount: Int?
+    ) -> Bool {
+        initializationError == nil
+            && localRecordCount == 0
+            && (cloudReferenceCount ?? 0) > 0
+    }
+
     static func shouldReconcile(
         initializationError: String?,
         localRecordCount: Int,
@@ -32,10 +42,30 @@ struct PlaylistEmptyView: View {
     @State private var cloudReferenceCount: Int?
     @State private var localSplitRecordCount = 0
     @State private var didRequestAutomaticReconcile = false
+
+    private var shouldShowRecoveringState: Bool {
+        isDefaultQueue && PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+            initializationError: modelContainerManager.userStateInitializationError,
+            localRecordCount: localSplitRecordCount,
+            cloudReferenceCount: cloudReferenceCount
+        )
+    }
     
     var body: some View {
         Group {
-            if allPodcasts.isEmpty {
+            if shouldShowRecoveringState {
+                VStack(spacing: 10) {
+                    ProgressView()
+                        .controlSize(.regular)
+                    Text("Waiting for saved Up Next episodes to restore from iCloud…")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityElement(children: .combine)
+            } else if allPodcasts.isEmpty {
                 PodcastsEmptyView()
             } else {
                 VStack {

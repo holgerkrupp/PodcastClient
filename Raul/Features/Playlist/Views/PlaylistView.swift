@@ -337,101 +337,112 @@ private struct ManualPlaylistPageView: View {
     }
 
     var body: some View {
-        if hasRenderableEpisodes == false {
-            PlaylistEmptyView(
-                title: playlist.displayTitle,
-                isSmartPlaylist: false,
-                isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
-                playlistID: playlist.id
-            )
-        } else {
-            List {
-                TipView(reorderTip, arrowEdge: .none)
-                    .listRowSeparator(.hidden)
-                
-                ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
-                    if episode.url != nil {
-                        ZStack {
-                            EpisodeRowView(
-                                episode: episode,
-                                showsRemoveFromPlaylistAction: true,
-                                usesLivePlaybackProgress: index == 0
-                            )
-                            NavigationLink(destination: EpisodeDetailView(episode: episode)) {
-                                EmptyView()
-                            }
-                            .opacity(0)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel("Open episode \(episode.title)")
-                        .accessibilityHint("Opens this episode details screen")
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                Task {
-                                    await removeEpisodeFromPlaylist(episode)
-                                }
-                            } label: {
-                                Label("Remove from Playlist", systemImage: "minus.circle")
-                            }
-
-                            Button(role: .none) {
-                                Task {
-                                    await archiveEpisode(episode)
-                                }
-                            } label: {
-                                Label("Mark Archived", systemImage: "archivebox.fill")
-                            }
-                            .tint(.orange)
-                        }
-                        .listRowSeparator(.hidden)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                    }
-                }
-                .onMove { indices, newOffset in
-                    guard let fromIndex = indices.first else { return }
-                    Task {
-                        if let actor = try? PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlist.id) {
-                            try? await actor.moveEntry(from: fromIndex, to: newOffset)
-                        }
-                    }
-                    ReorderPlaylistTip.hasUserReorderedBefore = true
-                    reorderTip.invalidate(reason: .actionPerformed)
-                }
-                // `initial: true` so the rule sees the current count, not just later changes;
-                // otherwise a playlist that never changes size never becomes eligible.
-                .onChange(of: episodes.count, initial: true) { _, newCount in
-                    ReorderPlaylistTip.playlistItemCount = newCount
-                }
-            }
-            .listStyle(.plain)
-            .toolbar {
-                if episodes.count > 1 {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button(action: smartShuffle) {
-                            if isSmartShuffling {
-                                Label("Shuffling…", systemImage: "shuffle")
-                            } else {
-                                Label("Smart Shuffle", systemImage: "shuffle")
-                            }
-                        }
-                        .disabled(isSmartShuffling)
-                        .accessibilityHint("Balances episodes across podcasts while keeping the playing episode in place")
-                    }
-                }
-            }
-            .alert(
-                "Smart Shuffle",
-                isPresented: Binding(
-                    get: { smartShuffleMessage != nil },
-                    set: { if $0 == false { smartShuffleMessage = nil } }
+        Group {
+            if hasRenderableEpisodes == false {
+                PlaylistEmptyView(
+                    title: playlist.displayTitle,
+                    isSmartPlaylist: false,
+                    isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
+                    playlistID: playlist.id
                 )
-            ) {
-                Button("OK", role: .cancel) { smartShuffleMessage = nil }
-            } message: {
-                Text(smartShuffleMessage ?? "")
+            } else {
+                List {
+                    TipView(reorderTip, arrowEdge: .none)
+                        .listRowSeparator(.hidden)
+
+                    ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
+                        if episode.url != nil {
+                            ZStack {
+                                EpisodeRowView(
+                                    episode: episode,
+                                    showsRemoveFromPlaylistAction: true,
+                                    usesLivePlaybackProgress: index == 0
+                                )
+                                NavigationLink(destination: EpisodeDetailView(episode: episode)) {
+                                    EmptyView()
+                                }
+                                .opacity(0)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Open episode \(episode.title)")
+                            .accessibilityHint("Opens this episode details screen")
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    Task {
+                                        await removeEpisodeFromPlaylist(episode)
+                                    }
+                                } label: {
+                                    Label("Remove from Playlist", systemImage: "minus.circle")
+                                }
+
+                                Button(role: .none) {
+                                    Task {
+                                        await archiveEpisode(episode)
+                                    }
+                                } label: {
+                                    Label("Mark Archived", systemImage: "archivebox.fill")
+                                }
+                                .tint(.orange)
+                            }
+                            .listRowSeparator(.hidden)
+                            .listRowBackground(Color.clear)
+                            .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                        }
+                    }
+                    .onMove { indices, newOffset in
+                        guard let fromIndex = indices.first else { return }
+                        Task {
+                            if let actor = try? PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlist.id) {
+                                try? await actor.moveEntry(from: fromIndex, to: newOffset)
+                            }
+                        }
+                        ReorderPlaylistTip.hasUserReorderedBefore = true
+                        reorderTip.invalidate(reason: .actionPerformed)
+                    }
+                    // `initial: true` so the rule sees the current count, not just later changes;
+                    // otherwise a playlist that never changes size never becomes eligible.
+                    .onChange(of: episodes.count, initial: true) { _, newCount in
+                        ReorderPlaylistTip.playlistItemCount = newCount
+                    }
+                }
+                .listStyle(.plain)
+                .toolbar {
+                    if episodes.count > 1 {
+                        ToolbarItem(placement: .primaryAction) {
+                            Button(action: smartShuffle) {
+                                if isSmartShuffling {
+                                    Label("Shuffling…", systemImage: "shuffle")
+                                } else {
+                                    Label("Smart Shuffle", systemImage: "shuffle")
+                                }
+                            }
+                            .disabled(isSmartShuffling)
+                            .accessibilityHint("Balances episodes across podcasts while keeping the playing episode in place")
+                        }
+                    }
+                }
+                .alert(
+                    "Smart Shuffle",
+                    isPresented: Binding(
+                        get: { smartShuffleMessage != nil },
+                        set: { if $0 == false { smartShuffleMessage = nil } }
+                    )
+                ) {
+                    Button("OK", role: .cancel) { smartShuffleMessage = nil }
+                } message: {
+                    Text(smartShuffleMessage ?? "")
+                }
             }
         }
+        .onAppear { recordVisibleEntryCount() }
+        .onChange(of: episodes.count) { _, _ in recordVisibleEntryCount() }
+    }
+
+    private func recordVisibleEntryCount() {
+        SupportDiagnosticsRecorder.shared.recordPlaylistVisibleCount(
+            episodes.filter { $0.url != nil }.count,
+            isDefaultQueue: playlist.title == Playlist.defaultQueueTitle
+        )
     }
 
     private func smartShuffle() {

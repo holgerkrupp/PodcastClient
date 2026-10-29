@@ -75,6 +75,7 @@ All subscriptions, including OPML imports, admit only episodes released strictly
 
 - New Playlist stays open with **Could Not Save Playlist** if the local persistent write fails. Retry after storage is available. Other playlist edits/deletions surface the same error at the app root.
 - Up Next membership/order is acknowledged after the local UserState commit; CloudKit delivery is asynchronous. Split-only runtimes hydrate later imports additively; only explicit tombstones remove membership.
+- If the default queue has no local active entries while the shared presence reference reports saved entries, show a recovery state and reconcile additively instead of presenting the queue as empty. Presence counts indicate that recovery may be needed; they do not prove account-wide sync completion.
 - **Downloads → More → Rescan** refreshes the local file inventory. Files decide visibility even when reconstructed metadata is stale. No navigation action performs a replacement download.
 
 ### Bookmark persistence

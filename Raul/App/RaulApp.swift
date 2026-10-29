@@ -545,6 +545,7 @@ struct RaulApp: App {
         // mirrored container. The aggregate CloudKitSyncMonitor is UI-only and
         // can lose the legacy export when two stores overlap.
         _ = StoreCloudKitActivityMonitor.shared
+        SupportDiagnosticsRecorder.shared.record("App session started")
         SiriShortcutVocabularyCoordinator.start()
         CrashBreadcrumbs.shared.record("raul_app_init_start")
         CrashBreadcrumbs.shared.record("raul_app_init_completed")
@@ -1086,6 +1087,7 @@ struct RaulApp: App {
                 return
             }
             guard Task.isCancelled == false else { return }
+            SupportDiagnosticsRecorder.shared.record("Playlist reconciliation scheduled")
             await ModelContainerManager.shared.reconcileSplitRuntimePlaylists()
             if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
@@ -1106,6 +1108,10 @@ struct RaulApp: App {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               storeKind != .other else { return }
         cloudImportReconciliationTask?.cancel()
+        SupportDiagnosticsRecorder.shared.record(
+            "CloudKit reconciliation scheduled",
+            detail: storeKind == .legacy ? "store=Legacy Library" : "store=User State"
+        )
         cloudImportReconciliationTask = Task {
             do {
                 // Coalesce the setup/import bursts emitted while two mirrored

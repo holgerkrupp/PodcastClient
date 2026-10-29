@@ -1780,7 +1780,7 @@ struct PodcastSettingsView: View {
                         && StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false
                         ? "Legacy sync recovery available"
                         : "Database status and progress",
-                    detail: "Review CloudKit setup, download, upload, and approximate record progress.",
+                    detail: "Review per-store sync status and capture a local support report.",
                     systemImage: "icloud"
                 )
             }

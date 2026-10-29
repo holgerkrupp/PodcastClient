@@ -97,6 +97,29 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
         ))
     }
 
+    func testPlaylistShowsRecoveringStateOnlyWhenRemoteQueueHasEntries() {
+        XCTAssertFalse(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+            initializationError: nil,
+            localRecordCount: 0,
+            cloudReferenceCount: 0
+        ))
+        XCTAssertTrue(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+            initializationError: nil,
+            localRecordCount: 0,
+            cloudReferenceCount: 3
+        ))
+        XCTAssertFalse(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+            initializationError: nil,
+            localRecordCount: 2,
+            cloudReferenceCount: 3
+        ))
+        XCTAssertFalse(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+            initializationError: "User State failed to open",
+            localRecordCount: 0,
+            cloudReferenceCount: 3
+        ))
+    }
+
     @MainActor
     func testDefaultQueueUsesTheSameSplitStoreIdentityOnEveryDevice() {
         let firstQueue = Playlist()
