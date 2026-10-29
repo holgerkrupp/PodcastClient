@@ -363,7 +363,11 @@ actor PlaySessionTrackerActor {
         } catch {
             // The completed local session remains available for recovery.
             CrashBreadcrumbs.shared.record("store_split_listening_history_retry_enqueue_failed")
-            await MainActor.run { PortableWriteFailureMonitor.shared.reportFailure() }
+            await MainActor.run {
+                _ = PortableWriteFailureMonitor.shared.reportFailure(
+                    operation: .listeningHistory(snapshot), error: error
+                )
+            }
         }
     }
 

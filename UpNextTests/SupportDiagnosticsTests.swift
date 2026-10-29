@@ -112,7 +112,14 @@ final class SupportDiagnosticsTests: XCTestCase {
             appBuild: "100",
             osVersion: "iOS test",
             deviceClass: "iPhone",
+            releasePhase: "dualSyncBackfill",
             bootstrapMode: "legacyUpgrade",
+            installationClassification: "existing installation",
+            onboardingCompleted: true,
+            appGroupAvailable: true,
+            storeFiles: [],
+            legacyCloudAttachmentConfigured: true,
+            legacyCloudMirrorQuarantined: false,
             readAuthority: "Legacy Library",
             runtimeKind: "durable library store",
             runtimeStoreStatus: "open",
@@ -126,6 +133,10 @@ final class SupportDiagnosticsTests: XCTestCase {
             pendingWork: "none observed",
             runtimeQueuePlaylistCount: runtimeQueueCount ?? .available(1),
             runtimeQueueEntryCount: queueCount,
+            runtimeSubscriptionCount: .available(1),
+            legacySubscriptionCount: .available(1),
+            userStateSubscriptionActiveCount: .available(1),
+            userStateSubscriptionTombstoneCount: zero,
             legacyPlaylistCount: .available(1),
             legacyPlaylistEntryCount: queueCount,
             userStatePlaylistActiveCount: .available(1),
@@ -138,6 +149,9 @@ final class SupportDiagnosticsTests: XCTestCase {
             networkStatus: "Available",
             accountStatus: "Available",
             aggregateErrorCategories: [],
+            portableRecovery: SupportDiagnosticPortableRecovery(
+                state: PortableWriteFailureMonitor.State()
+            ),
             cloudStores: cloudStores
         )
     }

@@ -22,8 +22,21 @@ struct CloudSyncStatusView: View {
         return min(progress, syncMonitor.syncStateSummary.isInProgress ? 0.95 : 1)
     }
 
+    private var showsRecentPortableRecovery: Bool {
+        guard portableWriteFailures.state.status == .recovered,
+              let recoveredAt = portableWriteFailures.state.lastSuccessfulRepairAt else { return false }
+        return Date().timeIntervalSince(recoveredAt) < 15
+    }
+
     private var statusTitle: LocalizedStringKey {
-        if portableWriteFailures.needsRecovery { return "Playback Sync Needs Attention" }
+        switch portableWriteFailures.state.status {
+        case .pending: return "Playback Sync Pending"
+        case .recovering: return "Recovering Playback Data"
+        case .requiresAttention: return "Playback Recovery Needs Attention"
+        case .recovered:
+            if showsRecentPortableRecovery { return "Playback Data Recovered" }
+        case .idle: break
+        }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
         if stores.contains(where: { $0.hasUnresolvedExportFailure }) {
             return "Sync Error"
@@ -61,7 +74,14 @@ struct CloudSyncStatusView: View {
     }
 
     private var statusColor: Color {
-        if portableWriteFailures.needsRecovery { return .orange }
+        switch portableWriteFailures.state.status {
+        case .pending: return .orange
+        case .recovering: return .secondary
+        case .requiresAttention: return .orange
+        case .recovered:
+            if showsRecentPortableRecovery { return .green }
+        case .idle: break
+        }
         let stores = storeMonitor.storeDiagnostics.filter(\.isAttached)
         if stores.contains(where: { $0.hasUnresolvedExportFailure }) {
             return .red
@@ -92,10 +112,23 @@ struct CloudSyncStatusView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if portableWriteFailures.needsRecovery {
-                Label("Some playback or listening history could not be queued for syncing. Keep Up Next installed, check device storage, and contact support if the warning persists.", systemImage: "exclamationmark.triangle")
+            if portableWriteFailures.state.repairNeeded || showsRecentPortableRecovery {
+                Label(
+                    showsRecentPortableRecovery
+                        ? "Playback data was recovered on this device. iCloud may still be syncing."
+                        : (portableWriteFailures.state.requiresReconstruction
+                        ? "Playback data needs attention. Keep Up Next installed and contact support from this screen."
+                        : (portableWriteFailures.state.pendingOperations.isEmpty
+                            ? "Up Next is retrying a playback data update. Keep using the app; check back here if this status persists."
+                            : "Playback data is being recovered on this device. Keep Up Next installed while recovery finishes.")),
+                    systemImage: showsRecentPortableRecovery
+                        ? "checkmark.circle"
+                        : (portableWriteFailures.state.requiresReconstruction
+                            ? "exclamationmark.triangle"
+                            : "arrow.triangle.2.circlepath")
+                )
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(statusColor)
             }
             HStack(spacing: 12) {
                 Image(systemName: syncMonitor.syncStateSummary.symbolName)

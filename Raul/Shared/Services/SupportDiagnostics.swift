@@ -18,6 +18,18 @@ struct SupportDiagnosticCount: Codable, Hashable, Sendable {
     }
 }
 
+struct SupportDiagnosticStoreFile: Codable, Hashable, Sendable {
+    let name: String
+    let status: String
+    let approximateBytes: Int64?
+
+    var displayValue: String {
+        guard status == "present" else { return "\(name)=\(status)" }
+        let size = approximateBytes.map { "\($0) bytes" } ?? "size unavailable"
+        return "\(name)=present (\(size))"
+    }
+}
+
 struct SupportDiagnosticEvent: Codable, Hashable, Sendable, Identifiable {
     let at: Date
     let category: String
@@ -51,7 +63,14 @@ struct SupportDiagnosticSnapshot: Codable, Hashable, Sendable, Identifiable {
     let appBuild: String
     let osVersion: String
     let deviceClass: String
+    let releasePhase: String
     let bootstrapMode: String
+    let installationClassification: String
+    let onboardingCompleted: Bool
+    let appGroupAvailable: Bool
+    let storeFiles: [SupportDiagnosticStoreFile]
+    let legacyCloudAttachmentConfigured: Bool
+    let legacyCloudMirrorQuarantined: Bool
     let readAuthority: String
     let runtimeKind: String
     let runtimeStoreStatus: String
@@ -65,6 +84,10 @@ struct SupportDiagnosticSnapshot: Codable, Hashable, Sendable, Identifiable {
     let pendingWork: String
     let runtimeQueuePlaylistCount: SupportDiagnosticCount
     let runtimeQueueEntryCount: SupportDiagnosticCount
+    let runtimeSubscriptionCount: SupportDiagnosticCount
+    let legacySubscriptionCount: SupportDiagnosticCount
+    let userStateSubscriptionActiveCount: SupportDiagnosticCount
+    let userStateSubscriptionTombstoneCount: SupportDiagnosticCount
     let legacyPlaylistCount: SupportDiagnosticCount
     let legacyPlaylistEntryCount: SupportDiagnosticCount
     let userStatePlaylistActiveCount: SupportDiagnosticCount
@@ -77,9 +100,52 @@ struct SupportDiagnosticSnapshot: Codable, Hashable, Sendable, Identifiable {
     let networkStatus: String
     let accountStatus: String
     let aggregateErrorCategories: [String]
+    let portableRecovery: SupportDiagnosticPortableRecovery
     let cloudStores: [SupportDiagnosticCloudStore]
 
     var id: Date { capturedAt }
+}
+
+struct SupportDiagnosticPortableRecovery: Codable, Hashable, Sendable {
+    let status: String
+    let outboxCount: Int?
+    let outboxCapacity: Int
+    let oldestOutboxAgeSeconds: Int?
+    let fallbackWriteCount: Int
+    let incidentCount: Int
+    let operationKinds: [String]
+    let failureStages: [String]
+    let failureCategories: [String]
+    let firstRetryAt: Date?
+    let lastRetryAt: Date?
+    let lastDrainAttemptAt: Date?
+    let lastDrainSucceededAt: Date?
+    let lastDrainFailedAt: Date?
+    let lastSuccessfulRepairAt: Date?
+    let lastDrainFailureCategory: String?
+
+    init(
+        state: PortableWriteFailureMonitor.State,
+        queue: StoreSplitPortableWriteOutbox.QueueDiagnostics? = nil
+    ) {
+        status = state.status.rawValue
+        outboxCount = queue?.count ?? state.latestQueueCount
+        outboxCapacity = queue?.capacity ?? state.latestQueueCapacity
+        oldestOutboxAgeSeconds = queue?.oldestAge.map { max(0, Int($0)) }
+            ?? state.latestQueueOldestAgeSeconds
+        fallbackWriteCount = state.pendingOperations.count
+        incidentCount = state.incidents.count
+        operationKinds = Array(Set(state.incidents.map(\.operationKind))).sorted()
+        failureStages = Array(Set(state.incidents.map(\.failureStage))).sorted()
+        failureCategories = Array(Set(state.incidents.map(\.errorCategory))).sorted()
+        firstRetryAt = state.firstRetryAt
+        lastRetryAt = state.lastRetryAt
+        lastDrainAttemptAt = state.lastDrainAttemptAt
+        lastDrainSucceededAt = state.lastDrainSucceededAt
+        lastDrainFailedAt = state.lastDrainFailedAt
+        lastSuccessfulRepairAt = state.lastSuccessfulRepairAt
+        lastDrainFailureCategory = state.latestDrainFailureCategory
+    }
 }
 
 @MainActor
@@ -147,6 +213,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             userStateContainer: manager.preparedUserStateContainer,
             cacheContainer: manager.preparedCacheContainer
         ).snapshot()
+        let portableOutboxQueue = try? await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
 
         let snapshot = SupportDiagnosticSnapshot(
             capturedAt: now,
@@ -155,7 +222,14 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             appBuild: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unavailable",
             osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
             deviceClass: Self.deviceClass,
+            releasePhase: Self.releasePhase,
             bootstrapMode: manager.bootstrapMode.rawValue,
+            installationClassification: Self.installationClassification(manager.bootstrapMode),
+            onboardingCompleted: UserDefaults.standard.bool(forKey: "didCompleteOnboarding"),
+            appGroupAvailable: ModelContainerManager.sharedContainerURL != nil,
+            storeFiles: Self.storeFiles(),
+            legacyCloudAttachmentConfigured: StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
+            legacyCloudMirrorQuarantined: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined,
             readAuthority: manager.bootstrapMode == .legacyUpgrade
                 ? "Legacy Library"
                 : "User State",
@@ -173,6 +247,10 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             pendingWork: Self.safePendingWork(manager.pendingSplitStoreWorkReason),
             runtimeQueuePlaylistCount: countSnapshot.runtimeQueuePlaylistCount,
             runtimeQueueEntryCount: countSnapshot.runtimeQueueEntryCount,
+            runtimeSubscriptionCount: countSnapshot.runtimeSubscriptionCount,
+            legacySubscriptionCount: countSnapshot.legacySubscriptionCount,
+            userStateSubscriptionActiveCount: countSnapshot.userStateSubscriptionActiveCount,
+            userStateSubscriptionTombstoneCount: countSnapshot.userStateSubscriptionTombstoneCount,
             legacyPlaylistCount: countSnapshot.legacyPlaylistCount,
             legacyPlaylistEntryCount: countSnapshot.legacyPlaylistEntryCount,
             userStatePlaylistActiveCount: countSnapshot.userStatePlaylistActiveCount,
@@ -185,6 +263,10 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             networkStatus: networkStatus,
             accountStatus: accountStatus,
             aggregateErrorCategories: Array(aggregateErrorCategories.prefix(12)),
+            portableRecovery: SupportDiagnosticPortableRecovery(
+                state: PortableWriteFailureMonitor.shared.state,
+                queue: portableOutboxQueue
+            ),
             cloudStores: Self.cloudStoreSnapshots(storeMonitor)
         )
         append(snapshot)
@@ -209,6 +291,69 @@ final class SupportDiagnosticsRecorder: ObservableObject {
 #else
         "Mac"
 #endif
+    }
+
+    private static var releasePhase: String {
+        switch StoreSplitReleasePhase.current {
+        case .dualSyncBackfill: "dualSyncBackfill"
+        case .userStateAuthority: "userStateAuthority"
+        }
+    }
+
+    private static func installationClassification(_ mode: StoreBootstrapMode) -> String {
+        switch mode {
+        case .freshSplitInstall: "new split install"
+        case .legacyUpgrade, .postCutoverSplitInstall: "existing installation"
+        case .existingLibraryUnavailable: "existing installation; library unavailable"
+        }
+    }
+
+    private static func storeFiles() -> [SupportDiagnosticStoreFile] {
+        let names = [
+            "SharedDatabase.sqlite", "SharedDatabase.sqlite-wal", "SharedDatabase.sqlite-shm",
+            "UserState.sqlite", "UserState.sqlite-wal", "UserState.sqlite-shm",
+            "PodcastCache.sqlite", "PodcastCache.sqlite-wal", "PodcastCache.sqlite-shm"
+        ]
+        guard let directory = ModelContainerManager.sharedContainerURL else {
+            return names.map { SupportDiagnosticStoreFile(name: $0, status: "unknown (App Group unavailable)", approximateBytes: nil) }
+        }
+        return names.map { name in
+            let url = directory.appendingPathComponent(name)
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? NSNumber else {
+                return SupportDiagnosticStoreFile(name: name, status: "not found or unreadable", approximateBytes: nil)
+            }
+            return SupportDiagnosticStoreFile(name: name, status: "present", approximateBytes: size.int64Value)
+        }
+    }
+
+    /// Safe to call from the launch recovery screen. Reads metadata and
+    /// defaults only; it never opens a model container or changes sync state.
+    static func launchReport() -> String {
+        let fileSummary = storeFiles().map(\.displayValue).joined(separator: ", ")
+        let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
+        let quarantined = defaults?.bool(forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey) ?? false
+        let configured = StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+        let onboarding = UserDefaults.standard.bool(forKey: "didCompleteOnboarding")
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unavailable"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unavailable"
+        let releasePhase: String
+        switch StoreSplitReleasePhase.current {
+        case .dualSyncBackfill: releasePhase = "dualSyncBackfill"
+        case .userStateAuthority: releasePhase = "userStateAuthority"
+        }
+        return """
+        Up Next Data Recovery Diagnostics
+        App version/build: \(version) (\(build))
+        Release phase: \(releasePhase)
+        Runtime/bootstrap mode: unavailable (store did not open)
+        App Group available: \(ModelContainerManager.sharedContainerURL != nil)
+        Onboarding previously completed: \(onboarding)
+        Installation evidence: \(onboarding ? "existing installation" : "unknown/new installation")
+        Legacy CloudKit attachment configured: \(configured)
+        Legacy CloudKit mirror quarantined: \(quarantined)
+        SQLite files: \(fileSummary)
+        """
     }
 
     private static func safePendingWork(_ value: String?) -> String {
@@ -313,14 +458,17 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         return """
         \(formatted("Snapshot %d · %@ · %d seconds since app session start", index, date, snapshot.elapsedSeconds))
         \(formatted("App %@ (%@) · %@ · %@", snapshot.appVersion, snapshot.appBuild, snapshot.osVersion, snapshot.deviceClass))
-        \(formatted("Runtime: bootstrap=%@, read authority=%@, %@, readiness=%@", snapshot.bootstrapMode, snapshot.readAuthority, snapshot.runtimeKind, snapshot.runtimeReadiness))
+        \(formatted("Runtime: release phase=%@, bootstrap=%@, classification=%@, onboarding completed=%@, read authority=%@, %@, readiness=%@", snapshot.releasePhase, snapshot.bootstrapMode, snapshot.installationClassification, snapshot.onboardingCompleted ? "yes" : "no", snapshot.readAuthority, snapshot.runtimeKind, snapshot.runtimeReadiness))
+        \(formatted("App Group available=%@ · legacy CloudKit attachment configured=%@ · legacy mirror quarantined=%@", snapshot.appGroupAvailable ? "yes" : "no", snapshot.legacyCloudAttachmentConfigured ? "yes" : "no", snapshot.legacyCloudMirrorQuarantined ? "yes" : "no"))
+        \(formatted("SQLite files (approximate bytes): %@", snapshot.storeFiles.map(\.displayValue).joined(separator: ", ")))
         \(formatted("Stores: runtime=%@, legacy=%@, user state=%@, cache=%@", snapshot.runtimeStoreStatus, snapshot.legacyStoreStatus, snapshot.userStateStoreStatus, snapshot.cacheStoreStatus))
         \(formatted("Migration: version=%d, phase=%@, progress=%@, pending=%@", snapshot.migrationVersion, snapshot.migrationPhase, snapshot.migrationProgress, snapshot.pendingWork))
-        \(formatted("Runtime-visible Up Next (local snapshot): playlists=%@, entries=%@", snapshot.runtimeQueuePlaylistCount.displayValue, snapshot.runtimeQueueEntryCount.displayValue))
-        \(formatted("Legacy local snapshot: playlists=%@, playlist entries=%@", snapshot.legacyPlaylistCount.displayValue, snapshot.legacyPlaylistEntryCount.displayValue))
-        \(formatted("User State local snapshot: PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@", snapshot.userStatePlaylistActiveCount.displayValue, snapshot.userStatePlaylistTombstoneCount.displayValue, snapshot.userStatePlaylistEntryActiveCount.displayValue, snapshot.userStatePlaylistEntryTombstoneCount.displayValue, snapshot.userStateQueueActiveCount.displayValue, snapshot.userStateQueueTombstoneCount.displayValue, snapshot.unresolvedEpisodeReferenceCount.displayValue))
+        \(formatted("Runtime-visible local snapshot: subscriptions=%@, Up Next playlists=%@, entries=%@", snapshot.runtimeSubscriptionCount.displayValue, snapshot.runtimeQueuePlaylistCount.displayValue, snapshot.runtimeQueueEntryCount.displayValue))
+        \(formatted("Legacy local snapshot: subscriptions=%@, playlists=%@, playlist entries=%@", snapshot.legacySubscriptionCount.displayValue, snapshot.legacyPlaylistCount.displayValue, snapshot.legacyPlaylistEntryCount.displayValue))
+        \(formatted("User State local snapshot: subscriptions active/tombstones=%@/%@, PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@", snapshot.userStateSubscriptionActiveCount.displayValue, snapshot.userStateSubscriptionTombstoneCount.displayValue, snapshot.userStatePlaylistActiveCount.displayValue, snapshot.userStatePlaylistTombstoneCount.displayValue, snapshot.userStatePlaylistEntryActiveCount.displayValue, snapshot.userStatePlaylistEntryTombstoneCount.displayValue, snapshot.userStateQueueActiveCount.displayValue, snapshot.userStateQueueTombstoneCount.displayValue, snapshot.unresolvedEpisodeReferenceCount.displayValue))
         \(formatted("Network=%@, iCloud account=%@", snapshot.networkStatus, snapshot.accountStatus))
         \(formatted("Aggregate monitor attribution=unknown · errors=%@", snapshot.aggregateErrorCategories.isEmpty ? "none observed" : snapshot.aggregateErrorCategories.joined(separator: ", ")))
+        \(formatted("Portable playback/history recovery: status=%@ · outbox=%@/%d · oldest age=%@ seconds · fallback writes=%d · retained incidents=%d · operations=%@ · stages=%@ · categories=%@ · first retry=%@ · last retry=%@ · drain attempted=%@ · succeeded=%@ · failed=%@ · last successful repair=%@ · latest drain failure=%@", snapshot.portableRecovery.status, snapshot.portableRecovery.outboxCount.map(String.init) ?? "unknown", snapshot.portableRecovery.outboxCapacity, snapshot.portableRecovery.oldestOutboxAgeSeconds.map(String.init) ?? "unknown", snapshot.portableRecovery.fallbackWriteCount, snapshot.portableRecovery.incidentCount, snapshot.portableRecovery.operationKinds.isEmpty ? "none observed" : snapshot.portableRecovery.operationKinds.joined(separator: ", "), snapshot.portableRecovery.failureStages.isEmpty ? "none observed" : snapshot.portableRecovery.failureStages.joined(separator: ", "), snapshot.portableRecovery.failureCategories.isEmpty ? "none observed" : snapshot.portableRecovery.failureCategories.joined(separator: ", "), snapshot.portableRecovery.firstRetryAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastRetryAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastDrainAttemptAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastDrainSucceededAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastDrainFailedAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastSuccessfulRepairAt?.formatted(date: .numeric, time: .standard) ?? "n/a", snapshot.portableRecovery.lastDrainFailureCategory ?? "none observed"))
         \(NSLocalizedString("CloudKit store events (local observation; not server record counts):", comment: "Heading for per-store CloudKit event information"))
         \(cloud)
         """
@@ -330,6 +478,10 @@ final class SupportDiagnosticsRecorder: ObservableObject {
 private struct SupportDiagnosticStoreCounts: Sendable {
     let runtimeQueuePlaylistCount: SupportDiagnosticCount
     let runtimeQueueEntryCount: SupportDiagnosticCount
+    let runtimeSubscriptionCount: SupportDiagnosticCount
+    let legacySubscriptionCount: SupportDiagnosticCount
+    let userStateSubscriptionActiveCount: SupportDiagnosticCount
+    let userStateSubscriptionTombstoneCount: SupportDiagnosticCount
     let legacyPlaylistCount: SupportDiagnosticCount
     let legacyPlaylistEntryCount: SupportDiagnosticCount
     let userStatePlaylistActiveCount: SupportDiagnosticCount
@@ -367,12 +519,24 @@ private actor SupportDiagnosticsStoreCounter {
         let playlists = userStateContainer == nil ? unavailable : playlistCounts()
         let entries = userStateContainer == nil ? unavailable : playlistEntryCounts()
         let queue = userStateContainer == nil ? unavailable : queueEntryCounts()
+        let subscriptions = userStateContainer == nil
+            ? unavailable
+            : tombstoneCounts(
+                active: FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.isSubscribed }),
+                tombstones: FetchDescriptor<SubscriptionSync>(predicate: #Predicate { !$0.isSubscribed })
+            )
         let unresolved = cacheContainer.map {
             readCount(in: $0, FetchDescriptor<CachedMissingEpisodeReference>())
         } ?? .storeNotOpen
         return SupportDiagnosticStoreCounts(
             runtimeQueuePlaylistCount: runtimeQueue.0,
             runtimeQueueEntryCount: runtimeQueue.1,
+            runtimeSubscriptionCount: count(in: ModelContext(runtimeContainer), FetchDescriptor<Podcast>()),
+            legacySubscriptionCount: legacyContainer.map {
+                count(in: ModelContext($0), FetchDescriptor<Podcast>())
+            } ?? .storeNotOpen,
+            userStateSubscriptionActiveCount: subscriptions.0,
+            userStateSubscriptionTombstoneCount: subscriptions.1,
             legacyPlaylistCount: legacy.0,
             legacyPlaylistEntryCount: legacy.1,
             userStatePlaylistActiveCount: playlists.0,

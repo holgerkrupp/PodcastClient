@@ -22,6 +22,14 @@ actor StoreSplitPortableWriteOutbox {
         var succeeded = 0
         var failed = 0
         var hasPending = false
+        var failureOperationKinds: [String] = []
+        var failureCategories: [String] = []
+    }
+
+    struct QueueDiagnostics: Sendable {
+        let count: Int
+        let capacity: Int
+        let oldestAge: TimeInterval?
     }
 
     enum OutboxError: Error {
@@ -41,6 +49,7 @@ actor StoreSplitPortableWriteOutbox {
 
     static let shared = StoreSplitPortableWriteOutbox()
     private static let capacity = 512
+    private static let pressureThreshold = 448
     private static let maximumBatch = 32
     private static let maximumEntryBytes = 256 * 1024
     private let directoryOverride: URL?
@@ -160,6 +169,12 @@ actor StoreSplitPortableWriteOutbox {
             }
         }
         guard committed else { throw OutboxError.busy }
+        if let count = try? queueCount(), count >= Self.pressureThreshold {
+            CrashBreadcrumbs.shared.record(
+                "store_split_portable_outbox_pressure",
+                details: "queue=\(count)/\(Self.capacity)"
+            )
+        }
 #if canImport(UIKit)
         if directoryOverride == nil {
             Task { @MainActor in
@@ -227,6 +242,34 @@ actor StoreSplitPortableWriteOutbox {
         try withFileLock { try !entryURLs(in: $0).isEmpty }
     }
 
+    func queueCount() throws -> Int {
+        try withFileLock { try entryURLs(in: $0).count }
+    }
+
+    func queueDiagnostics(now: Date = .now) throws -> QueueDiagnostics {
+        try withFileLock { directory in
+            let urls = try entryURLs(in: directory)
+            let oldestOperation = urls.compactMap { url -> Date? in
+                guard let data = try? Data(contentsOf: url),
+                      data.count <= Self.maximumEntryBytes,
+                      let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+                return Self.operationDate(entry.operation)
+            }.min()
+            return QueueDiagnostics(
+                count: urls.count, capacity: Self.capacity,
+                oldestAge: oldestOperation.map { max(0, now.timeIntervalSince($0)) }
+            )
+        }
+    }
+
+    private static func operationDate(_ operation: Operation) -> Date {
+        switch operation {
+        case let .episodeState(_, date), let .bookmarkUpsert(_, date),
+             let .bookmarkDeletionAfterLocalCommit(_, date): date
+        case let .listeningHistory(snapshot): snapshot.endedAt
+        }
+    }
+
     /// Caller supplies an admitted maintenance window and stops it on export,
     /// suspension or expiration. Each invocation attempts at most 32 rows.
     func drain(
@@ -277,6 +320,10 @@ actor StoreSplitPortableWriteOutbox {
         }
         var result = DrainResult()
         result.failed = invalidEntries
+        if invalidEntries > 0 {
+            result.failureOperationKinds = Array(repeating: "unknown", count: min(invalidEntries, 32))
+            result.failureCategories = Array(repeating: "outbox_invalid_entry", count: min(invalidEntries, 32))
+        }
         for (url, original) in due {
             guard shouldContinue() else { result.hasPending = true; return result }
             result.attempted += 1
@@ -329,6 +376,8 @@ actor StoreSplitPortableWriteOutbox {
                 result.succeeded += 1
             } catch {
                 result.failed += 1
+                result.failureOperationKinds.append(Self.operationKind(original.operation))
+                result.failureCategories.append(Self.errorCategory(error))
                 guard shouldContinue() else { result.hasPending = true; return result }
                 var retry = original
                 retry.attempts = min(original.attempts + 1, 10)
@@ -355,5 +404,30 @@ actor StoreSplitPortableWriteOutbox {
         guard shouldContinue() else { result.hasPending = true; return result }
         result.hasPending = try withFileLock { try !entryURLs(in: $0).isEmpty }
         return result
+    }
+
+    private static func operationKind(_ operation: Operation) -> String {
+        switch operation {
+        case .episodeState: "episode_state"
+        case .bookmarkUpsert: "bookmark_upsert"
+        case .bookmarkDeletionAfterLocalCommit: "bookmark_deletion"
+        case .listeningHistory: "listening_history"
+        }
+    }
+
+    private static func errorCategory(_ error: Error) -> String {
+        if let error = error as? OutboxError {
+            return switch error {
+            case .storageUnavailable: "outbox_storage_unavailable"
+            case .busy: "outbox_lock_busy"
+            case .full: "outbox_capacity_reached"
+            case .invalidEntry: "outbox_invalid_entry"
+            case .localDeletionPending: "bookmark_local_delete_unconfirmed"
+            }
+        }
+        let error = error as NSError
+        if error.domain == NSCocoaErrorDomain { return "cocoa_\(error.code)" }
+        if error.domain == NSPOSIXErrorDomain { return "posix_\(error.code)" }
+        return "other_\(error.code)"
     }
 }

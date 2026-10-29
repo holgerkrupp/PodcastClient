@@ -6,6 +6,34 @@ import XCTest
 /// the app's library graph stays on disk, and only user-owned state travels
 /// through `UserState.sqlite`.
 final class StoreSplitDurableStoreTests: XCTestCase {
+    @MainActor
+    func testFreshSplitInstallCanSubscribeAndInterruptedInitializationDoesNotEarnFreshMarker() throws {
+        let suiteName = "StoreBootstrapSafety-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let emptyFiles: Set<String> = []
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: false,
+                installationWasPreviouslyInitialized: StoreBootstrapEvidence.mayHaveExistingLibrary(
+                    standardDefaults: defaults,
+                    appGroupDefaults: nil,
+                    files: emptyFiles
+                ),
+                legacyCloudCutoverCompleted: false,
+                releasePhaseIsPostCutover: false
+            ),
+            .freshSplitInstall
+        )
+
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: URL(string: "https://example.com/fresh-fixture.xml")!)
+        runtime.mainContext.insert(podcast)
+        try runtime.mainContext.save()
+        XCTAssertEqual(try runtime.mainContext.fetchCount(FetchDescriptor<Podcast>()), 1)
+        XCTAssertFalse(defaults.bool(forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey))
+    }
+
     func testBootstrapModeUsesPersistedLegacyAndCutoverFacts() {
         XCTAssertEqual(
             StoreBootstrapMode.resolve(

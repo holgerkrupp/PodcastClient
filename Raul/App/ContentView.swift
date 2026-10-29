@@ -37,9 +37,6 @@ struct ContentView: View {
     @State private var sharedEpisodeRecovery: SharedEpisodeRecovery?
     @State private var sharedSubscriptionError: String?
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
-    @ObservedObject private var portableWriteFailures = PortableWriteFailureMonitor.shared
-    @State private var showPortableWriteWarning = false
-    @State private var didShowPortableWriteWarning = false
     
     @State private var search:String = ""
     @StateObject private var incomingPodcastSubscription = IncomingPodcastSubscriptionController()
@@ -89,24 +86,6 @@ struct ContentView: View {
         }
         .environment(\.episodeControlPlaylists, episodeControlPlaylists)
         .environment(\.userGuideNavigation, navigation)
-        .onAppear {
-            portableWriteFailures.refresh()
-            if portableWriteFailures.needsRecovery && !didShowPortableWriteWarning {
-                didShowPortableWriteWarning = true
-                showPortableWriteWarning = true
-            }
-        }
-        .onChange(of: portableWriteFailures.needsRecovery) { _, needsRecovery in
-            if needsRecovery && !didShowPortableWriteWarning {
-                didShowPortableWriteWarning = true
-                showPortableWriteWarning = true
-            }
-        }
-        .alert("Playback Sync Needs Attention", isPresented: $showPortableWriteWarning) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Some playback or listening history could not be queued for syncing. Keep Up Next installed, check device storage, and contact support if the warning persists.")
-        }
         .hostsPlayerPresentation(navigation: navigation)
 #if os(macOS) || targetEnvironment(macCatalyst)
         .focusedSceneValue(\.appNavigationModel, navigation)
@@ -130,7 +109,6 @@ struct ContentView: View {
         }
         .onChange(of: phase, {
             SystemPressureGate.shared.setSceneActive(phase == .active)
-            if phase == .active { portableWriteFailures.refresh() }
             if phase == .active, didCompleteInitialContentLoad {
                 Task { await importPendingSharedEpisodeIfNeeded() }
                 schedulePendingEpisodeImportRetries()

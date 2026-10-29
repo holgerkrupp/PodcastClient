@@ -20,6 +20,33 @@ final class StoreSplitPortableWriteSafetyTests: XCTestCase {
         XCTAssertTrue(PortableWriteFailureMonitor(defaults: defaults).needsRecovery)
     }
 
+    @MainActor
+    func testFallbackPortableWriteClearsOnlyAfterVerifiedLocalRepair() throws {
+        let suite = "PortableWriteRecoveryTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let first = PortableWriteFailureMonitor(defaults: defaults)
+        let operation = StoreSplitPortableWriteOutbox.Operation.episodeState(state("repair"), .now)
+
+        XCTAssertTrue(first.reportFailure(
+            operation: operation,
+            error: StoreSplitPortableWriteOutbox.OutboxError.full
+        ))
+        XCTAssertEqual(first.state.status, .recovering)
+
+        let reopened = PortableWriteFailureMonitor(defaults: defaults)
+        let fallback = try XCTUnwrap(reopened.pendingOperations().first)
+        XCTAssertEqual(PortableWriteFailureMonitor.operationKind(fallback.operation), "episode_state")
+        reopened.acknowledgeFallbackOperation(fallback.id)
+        reopened.recordDrainAttempt(queueCount: 1, oldestAge: 5)
+        XCTAssertTrue(reopened.needsRecovery)
+
+        reopened.recordDrainSuccess(succeeded: 1, failed: 0, hasPending: false, queueCount: 0)
+        XCTAssertFalse(reopened.needsRecovery)
+        XCTAssertEqual(reopened.state.status, .recovered)
+        XCTAssertNotNil(reopened.state.lastSuccessfulRepairAt)
+    }
+
     private func state(_ id: String, position: Double = 10) -> StoreSplitEpisodeStateSnapshot {
         StoreSplitEpisodeStateSnapshot(
             identity: EpisodeStableIdentity(feedURL: "https://example.com/feed", episodeID: "guid:\(id)"),
@@ -253,14 +280,22 @@ final class StoreSplitPortableWriteSafetyTests: XCTestCase {
         try userState.mainContext.save()
         try await outbox.enqueue(.bookmarkDeletionAfterLocalCommit(snapshot, date), now: date)
 
-        let blocked = try await outbox.drain(userStateContainer: userState, legacyContainer: legacy, now: date)
+        let unavailableSource = try await outbox.drain(
+            userStateContainer: userState, legacyContainer: nil, now: date
+        )
+        XCTAssertEqual(unavailableSource.failed, 1)
+        XCTAssertTrue(unavailableSource.hasPending)
+
+        let blocked = try await outbox.drain(
+            userStateContainer: userState, legacyContainer: legacy, now: date.addingTimeInterval(31)
+        )
         XCTAssertEqual(blocked.failed, 1)
         XCTAssertTrue(blocked.hasPending)
         XCTAssertNil(try ModelContext(userState).fetch(FetchDescriptor<BookmarkSync>()).first?.deletedAt)
 
         legacy.mainContext.delete(bookmark)
         try legacy.mainContext.save()
-        let retried = try await outbox.drain(userStateContainer: userState, legacyContainer: legacy, now: date.addingTimeInterval(31))
+        let retried = try await outbox.drain(userStateContainer: userState, legacyContainer: legacy, now: date.addingTimeInterval(92))
         XCTAssertEqual(retried.succeeded, 1)
         XCTAssertFalse(retried.hasPending)
         XCTAssertEqual(try ModelContext(userState).fetch(FetchDescriptor<BookmarkSync>()).first?.deletedAt, date)

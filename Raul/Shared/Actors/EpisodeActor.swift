@@ -833,10 +833,9 @@ actor EpisodeActor {
             return true
         } catch {
             CrashBreadcrumbs.shared.record("store_split_portable_write_retry_enqueue_failed")
-            if case .episodeState = operation {
-                await MainActor.run { PortableWriteFailureMonitor.shared.reportFailure() }
+            return await MainActor.run {
+                PortableWriteFailureMonitor.shared.reportFailure(operation: operation, error: error)
             }
-            return false
         }
     }
 

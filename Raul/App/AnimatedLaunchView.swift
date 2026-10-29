@@ -2,11 +2,14 @@ import SwiftUI
 import SwiftData
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 struct ModelContainerLaunchView: View {
     let errorMessage: String?
     let retry: () -> Void
+    @State private var copiedDiagnostics = false
 
     var body: some View {
         ZStack {
@@ -22,12 +25,34 @@ struct ModelContainerLaunchView: View {
                         .foregroundStyle(.secondary)
                     Button("Try Again", action: retry)
                         .buttonStyle(.borderedProminent)
+                    HStack {
+                        Button(copiedDiagnostics ? "Diagnostics Copied" : "Copy Diagnostics") {
+                            Self.copyDiagnostics()
+                            copiedDiagnostics = true
+                        }
+                        ShareLink(
+                            item: SupportDiagnosticsRecorder.launchReport(),
+                            subject: Text("Up Next Data Recovery Diagnostics")
+                        ) {
+                            Label("Share Diagnostics", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 }
                 .padding(24)
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
                 .padding()
             }
         }
+    }
+
+    private static func copyDiagnostics() {
+        let report = SupportDiagnosticsRecorder.launchReport()
+#if canImport(UIKit)
+        UIPasteboard.general.string = report
+#elseif canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(report, forType: .string)
+#endif
     }
 }
 

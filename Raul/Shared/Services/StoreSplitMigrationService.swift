@@ -43,6 +43,28 @@ final class StoreSplitPlaybackGate: @unchecked Sendable {
     }
 }
 
+/// Thread-safe export signal for bounded maintenance loops that must not cross
+/// CloudKit admission gates after they have started.
+final class StoreSplitCloudKitExportGate: @unchecked Sendable {
+    static let shared = StoreSplitCloudKitExportGate()
+    private let lock = NSLock()
+    private var active = false
+
+    private init() {}
+
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
+    }
+
+    func setActive(_ value: Bool) {
+        lock.lock()
+        active = value
+        lock.unlock()
+    }
+}
+
 final class StoreSplitAdaptiveBatchSizer: @unchecked Sendable {
     static let shared = StoreSplitAdaptiveBatchSizer()
     private let lock = NSLock()

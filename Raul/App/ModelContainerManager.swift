@@ -11,20 +11,28 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
     case freshSplitInstall
     case legacyUpgrade
     case postCutoverSplitInstall
+    case existingLibraryUnavailable
 
     var usesInMemoryRuntimeProjection: Bool {
-        self != .legacyUpgrade
+        switch self {
+        case .freshSplitInstall, .postCutoverSplitInstall: true
+        case .legacyUpgrade, .existingLibraryUnavailable: false
+        }
     }
 
     static func resolve(
         legacyStoreExists: Bool,
+        installationWasPreviouslyInitialized: Bool = false,
         legacyCloudCutoverCompleted: Bool,
         releasePhaseIsPostCutover: Bool
     ) -> StoreBootstrapMode {
         if legacyCloudCutoverCompleted || releasePhaseIsPostCutover {
             return .postCutoverSplitInstall
         }
-        return legacyStoreExists ? .legacyUpgrade : .freshSplitInstall
+        if legacyStoreExists { return .legacyUpgrade }
+        return installationWasPreviouslyInitialized
+            ? .existingLibraryUnavailable
+            : .freshSplitInstall
     }
 
     static func requiresLegacyBackfill(
@@ -36,6 +44,50 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
         legacyStoreExists
             && legacyCloudCutoverCompleted == false
             && completedVersion != currentVersion
+    }
+}
+
+enum StoreBootstrapEvidence {
+    static let persistentLibraryOpenedKey = "storeSplit.persistentLibraryOpened.v1"
+    static let freshSplitInstallReadyKey = "storeSplit.freshSplitInstallReady.v1"
+
+    static func hasFreshSplitInstallRecord(defaults: UserDefaults) -> Bool {
+        defaults.bool(forKey: freshSplitInstallReadyKey)
+    }
+
+    static func mayHaveExistingLibrary(
+        standardDefaults: UserDefaults,
+        appGroupDefaults: UserDefaults?,
+        files: Set<String>
+    ) -> Bool {
+        if standardDefaults.bool(forKey: persistentLibraryOpenedKey)
+            || standardDefaults.bool(forKey: "didCompleteOnboarding") {
+            return true
+        }
+        if appGroupDefaults?.object(
+            forKey: StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey
+        ) != nil {
+            return true
+        }
+        return files.contains {
+            $0 == "SharedDatabase.sqlite" || $0 == "SharedDatabase.sqlite-wal"
+                || $0 == "SharedDatabase.sqlite-shm" || $0 == "UserState.sqlite"
+                || $0 == "PodcastCache.sqlite"
+        }
+    }
+}
+
+enum StoreBootstrapError: LocalizedError {
+    case existingLibraryUnavailable
+    case persistentStoreUnavailable
+
+    var errorDescription: String? {
+        switch self {
+        case .existingLibraryUnavailable:
+            return "Up Next could not access this installation’s existing library. Startup did not delete or replace it. Keep Up Next installed and try again when storage is available."
+        case .persistentStoreUnavailable:
+            return "Up Next could not access persistent storage. Startup did not reset or replace a store. Keep Up Next installed and try again when storage is available."
+        }
     }
 }
 
@@ -99,14 +151,43 @@ enum StoreSplitPendingImportLedger {
 enum StoreLineage {
     static let key = "storeSplit.openedPersistentStores.v1"
 
+    static func directoryContentsWithRetry(
+        directory: () -> URL?,
+        expected: [String],
+        attempts: Int = 3
+    ) throws -> Set<String> {
+        var lastError: Error = PlaylistPersistenceError.storageUnavailable
+        for attempt in 0..<max(1, attempts) {
+            do {
+                guard let directory = directory() else { throw PlaylistPersistenceError.storageUnavailable }
+                let files = Set(try FileManager.default.contentsOfDirectory(atPath: directory.path))
+                try validate(files: files, expected: expected)
+                return files
+            } catch {
+                lastError = error
+                guard attempt + 1 < max(1, attempts) else { break }
+                // Startup already runs off the main actor. Keep this short and
+                // bounded to absorb transient App Group/filesystem availability.
+                Thread.sleep(forTimeInterval: attempt == 0 ? 0.12 : 0.28)
+            }
+        }
+        throw lastError
+    }
+
     static func validate(directory: URL?, expected: [String]) throws {
         guard let directory else { throw PlaylistPersistenceError.storageUnavailable }
-        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
+        try validate(
+            files: Set(FileManager.default.contentsOfDirectory(atPath: directory.path)),
+            expected: expected
+        )
+    }
+
+    private static func validate(files: Set<String>, expected: [String]) throws {
         for name in expected where !files.contains(name) {
             throw PlaylistPersistenceError.storageUnavailable
         }
         if !files.contains("SharedDatabase.sqlite"),
-           files.contains(where: { $0 == "SharedDatabase.sqlite-wal" || $0 == "SharedDatabase.sqlite-shm" }) {
+           files.contains("SharedDatabase.sqlite-wal") || files.contains("SharedDatabase.sqlite-shm") {
             throw PlaylistPersistenceError.storageUnavailable
         }
     }
@@ -494,6 +575,9 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
             )
         }
         activeEvents = activeByID.values.sorted { $0.startedAt < $1.startedAt }
+        StoreSplitCloudKitExportGate.shared.setActive(
+            activeEvents.contains { $0.type == .export }
+        )
         rebuildDiagnostics()
     }
 
@@ -988,35 +1072,57 @@ class ModelContainerManager: ObservableObject {
                !expectedStores.contains("SharedDatabase.sqlite") {
                 expectedStores.append("SharedDatabase.sqlite")
             }
-            try StoreLineage.validate(directory: Self.sharedContainerURL, expected: expectedStores)
-            let requiresInitialCloudImport =
-                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-                && (Self.sharedStoreURL.map {
-                    !FileManager.default.fileExists(atPath: $0.path)
-                } ?? false)
-            let legacyStoreExists = Self.sharedStoreURL.map {
-                FileManager.default.fileExists(atPath: $0.path)
-            } ?? false
+            // Read the App Group directory successfully before making any
+            // store-selection decision. `fileExists` returns false for several
+            // inaccessible-storage cases, so it cannot establish a fresh install.
+            let files: Set<String>
+            do {
+                files = try StoreLineage.directoryContentsWithRetry(
+                    directory: { Self.sharedContainerURL },
+                    expected: expectedStores
+                )
+            } catch {
+                throw StoreBootstrapError.persistentStoreUnavailable
+            }
+            let appGroupDefaults = UserDefaults(suiteName: Self.appGroupID)
+            let hasFreshSplitInstallRecord = StoreBootstrapEvidence.hasFreshSplitInstallRecord(
+                defaults: .standard
+            )
+            let hasExistingLibraryEvidence = StoreBootstrapEvidence.mayHaveExistingLibrary(
+                standardDefaults: .standard,
+                appGroupDefaults: appGroupDefaults,
+                files: files
+            )
+            let legacyStoreExists = files.contains("SharedDatabase.sqlite")
             let bootstrapMode = StoreBootstrapMode.resolve(
                 legacyStoreExists: legacyStoreExists,
+                installationWasPreviouslyInitialized: hasExistingLibraryEvidence
+                    && !hasFreshSplitInstallRecord,
                 legacyCloudCutoverCompleted: StoreDevelopmentConfiguration.legacyCloudCutoverCompleted,
                 releasePhaseIsPostCutover: StoreSplitReleasePhase.current == .userStateAuthority
             )
-            CrashBreadcrumbs.shared.record("store_bootstrap_classified", details: "mode=\(bootstrapMode.rawValue),legacy_present=\(legacyStoreExists),known_stores=\(expectedStores.count)")
+            CrashBreadcrumbs.shared.record("store_bootstrap_classified", details: "mode=\(bootstrapMode.rawValue),legacy_present=\(legacyStoreExists),existing_evidence=\(hasExistingLibraryEvidence),fresh_split_record=\(hasFreshSplitInstallRecord),known_stores=\(expectedStores.count)")
+            guard bootstrapMode != .existingLibraryUnavailable else {
+                throw StoreBootstrapError.existingLibraryUnavailable
+            }
+            let requiresInitialCloudImport =
+                StoreDevelopmentConfiguration.legacyCloudSyncEnabled
+                && !legacyStoreExists
             let runtimeProjectsFromCache = Self.runtimeUsesCacheProjection
                 || (StoreDevelopmentConfiguration.splitStoresEnabled
                     && bootstrapMode.usesInMemoryRuntimeProjection)
             // A projection is usable only after its durable backing stores
             // opened. Never expose a writable empty runtime on opening failure.
-            let userState = runtimeProjectsFromCache ? try Self.makeUserStateContainer() : nil
-            let cache = runtimeProjectsFromCache ? try Self.makeCacheContainer() : nil
-            let runtimeContainer = try Self.makeLegacyContainer(
+            let userState = runtimeProjectsFromCache ? try Self.makeUserStateContainerWithRetry() : nil
+            let cache = runtimeProjectsFromCache ? try Self.makeCacheContainerWithRetry() : nil
+            let runtimeContainer = try Self.makeLegacyContainerWithRetry(
                 isStoredInMemoryOnly: runtimeProjectsFromCache
             )
             if !runtimeProjectsFromCache {
                 var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
                 if !expected.contains("SharedDatabase.sqlite") { expected.append("SharedDatabase.sqlite") }
                 UserDefaults.standard.set(expected, forKey: StoreLineage.key)
+                UserDefaults.standard.set(true, forKey: StoreBootstrapEvidence.persistentLibraryOpenedKey)
             }
             StoreSplitLaunchHealth.markRuntimeReady()
             return RuntimeContainerPreparation(
@@ -1156,10 +1262,10 @@ class ModelContainerManager: ObservableObject {
             let newTask = Task.detached(priority: .utility) {
                 SplitStoreContainers(
                     userState: needsUserStateContainer
-                        ? Result { try Self.makeUserStateContainer() }
+                        ? Result { try Self.makeUserStateContainerWithRetry() }
                         : nil,
                     cache: needsCacheContainer
-                        ? Result { try Self.makeCacheContainer() }
+                        ? Result { try Self.makeCacheContainerWithRetry() }
                         : nil
                 )
             }
@@ -1206,6 +1312,14 @@ class ModelContainerManager: ObservableObject {
                 initializationError = "Persistent storage is unavailable. Please try again."
                 return
             }
+            if bootstrapMode == .freshSplitInstall {
+                // Write only after both durable split stores opened. A process
+                // interrupted before then must repeat fresh-install validation.
+                UserDefaults.standard.set(
+                    true,
+                    forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey
+                )
+            }
             var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
             for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
                 expected.append(name)
@@ -1218,11 +1332,71 @@ class ModelContainerManager: ObservableObject {
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         updateMigrationReadiness()
         CrashBreadcrumbs.shared.record("runtime_store_ready")
+        // This bounded repair is detached from launch readiness and yields to
+        // playback, CloudKit export, cancellation, and resource pressure.
+        Task { [weak self] in await self?.retryPortableWritesIfSafe() }
 
         CrashBreadcrumbs.shared.record(
             "store_split_container_initialization_completed",
             details: "user_state=\(preparedUserStateContainer != nil),cache=\(preparedCacheContainer != nil)"
         )
+    }
+
+    private func retryPortableWritesIfSafe() async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              let userStateContainer = preparedUserStateContainer,
+              StoreSplitPlaybackGate.shared.isActive == false,
+              StoreSplitCloudKitExportGate.shared.isActive == false else { return }
+#if canImport(UIKit)
+        guard UIApplication.shared.applicationState == .active else { return }
+#endif
+        let monitor = PortableWriteFailureMonitor.shared
+        let fallbackWrites = monitor.pendingOperations()
+        let due = StoreSplitPortableWriteOutbox.earliestDueOnDisk()
+        guard !fallbackWrites.isEmpty || (due.map { $0 <= .now } ?? false),
+              let permit = acquireMaintenancePermit(operation: "portable_write_retry_foreground") else { return }
+        defer { permit.release() }
+
+        do {
+            for item in fallbackWrites {
+                do {
+                    try await StoreSplitPortableWriteOutbox.shared.enqueue(item.operation)
+                    monitor.acknowledgeFallbackOperation(item.id)
+                } catch {
+                    monitor.recordDrainFailure(error)
+                    return
+                }
+            }
+            let before = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+            monitor.recordDrainAttempt(queueCount: before.count, oldestAge: before.oldestAge)
+            let result = try await StoreSplitPortableWriteOutbox.shared.drain(
+                userStateContainer: userStateContainer,
+                legacyContainer: legacyMigrationSourceContainer,
+                limit: 8,
+                shouldContinue: {
+                    Task.isCancelled == false
+                        && permit.yieldReason(
+                            playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                            cloudKitExportActive: StoreSplitCloudKitExportGate.shared.isActive
+                        ) == nil
+                }
+            )
+            if result.failed > 0 {
+                monitor.recordDrainFailures(
+                    operationKinds: result.failureOperationKinds,
+                    categories: result.failureCategories
+                )
+            }
+            let after = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+            monitor.recordDrainSuccess(
+                succeeded: result.succeeded, failed: result.failed,
+                hasPending: result.hasPending, queueCount: after.count
+            )
+            if result.hasPending { AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded() }
+        } catch {
+            monitor.recordDrainFailure(error)
+        }
     }
 
     /// Application queries wait here instead of racing CloudKit metadata setup
@@ -1382,6 +1556,7 @@ class ModelContainerManager: ObservableObject {
     nonisolated static var hasPendingStoreSplitBackgroundWork: Bool {
         hasOtherPendingStoreSplitBackgroundWork
             || StoreSplitPortableWriteOutbox.earliestDueOnDisk() != nil
+            || PortableWriteFailureMonitor.hasPendingRepairOnDisk
     }
 
     private nonisolated static var hasOtherPendingStoreSplitBackgroundWork: Bool {
@@ -2196,27 +2371,63 @@ class ModelContainerManager: ObservableObject {
 #endif
                 return
             }
-            if let due = StoreSplitPortableWriteOutbox.earliestDueOnDisk(), due <= .now,
+            let recoveryMonitor = PortableWriteFailureMonitor.shared
+            let fallbackWrites = recoveryMonitor.pendingOperations()
+            let outboxDue = StoreSplitPortableWriteOutbox.earliestDueOnDisk()
+            if (!fallbackWrites.isEmpty || (outboxDue.map { $0 <= .now } ?? false)),
                let userStateContainer = preparedUserStateContainer,
                let permit = acquireMaintenancePermit(operation: "portable_write_retry") {
                 do {
+                    // Move fallback payloads into the file-backed outbox before
+                    // acknowledging them in the compact recovery journal.
+                    for item in fallbackWrites {
+                        do {
+                            try await StoreSplitPortableWriteOutbox.shared.enqueue(item.operation)
+                            recoveryMonitor.acknowledgeFallbackOperation(item.id)
+                        } catch {
+                            recoveryMonitor.recordDrainFailure(error)
+                            break
+                        }
+                    }
+                    let queueBeforeDrain = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+                    recoveryMonitor.recordDrainAttempt(
+                        queueCount: queueBeforeDrain.count,
+                        oldestAge: queueBeforeDrain.oldestAge
+                    )
                     let result = try await StoreSplitPortableWriteOutbox.shared.drain(
                         userStateContainer: userStateContainer,
-                        legacyContainer: runtimeProjectsFromCache ? nil : legacyMigrationSourceContainer,
+                        // Bookmark deletion intents require checking the durable
+                        // local source. In cache-projection mode that is the
+                        // prepared legacy migration container, not the cache.
+                        legacyContainer: legacyMigrationSourceContainer,
                         shouldContinue: {
                             Task.isCancelled == false
                                 && permit.yieldReason(
                                     playbackActive: StoreSplitPlaybackGate.shared.isActive,
-                                    cloudKitExportActive: false
+                                    cloudKitExportActive: StoreSplitCloudKitExportGate.shared.isActive
                                 ) == nil
                         }
                     )
+                    if result.failed > 0 {
+                        recoveryMonitor.recordDrainFailures(
+                            operationKinds: result.failureOperationKinds,
+                            categories: result.failureCategories
+                        )
+                    }
                     CrashBreadcrumbs.shared.record(
                         "store_split_portable_write_retry",
-                        details: "attempted=\(result.attempted),succeeded=\(result.succeeded),failed=\(result.failed),pending=\(result.hasPending)"
+                        details: "attempted=\(result.attempted),succeeded=\(result.succeeded),failed=\(result.failed),pending=\(result.hasPending),queue=\(queueBeforeDrain.count)/\(queueBeforeDrain.capacity)"
+                    )
+                    let queueAfterDrain = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+                    recoveryMonitor.recordDrainSuccess(
+                        succeeded: result.succeeded,
+                        failed: result.failed,
+                        hasPending: result.hasPending,
+                        queueCount: queueAfterDrain.count
                     )
                     if result.failed > 0 { pendingSplitStoreWorkReason = "Portable writes need retry" }
                 } catch {
+                    recoveryMonitor.recordDrainFailure(error)
                     pendingSplitStoreWorkReason = "Portable write retry is unavailable"
                     CrashBreadcrumbs.shared.record("store_split_portable_write_retry_failed")
                 }
@@ -4475,7 +4686,8 @@ class ModelContainerManager: ObservableObject {
 
     nonisolated static func makeLegacyContainer(
         isStoredInMemoryOnly: Bool = false,
-        allowsSave: Bool = true
+        allowsSave: Bool = true,
+        storageURL: URL? = nil
     ) throws -> ModelContainer {
         let configuration: ModelConfiguration
         // Only a container that actually opened tells us what the store is
@@ -4487,6 +4699,13 @@ class ModelContainerManager: ObservableObject {
             configuration = ModelConfiguration(
                 "Legacy",
                 isStoredInMemoryOnly: true,
+                allowsSave: allowsSave,
+                cloudKitDatabase: .none
+            )
+        } else if let storageURL {
+            configuration = ModelConfiguration(
+                "Legacy",
+                url: storageURL,
                 allowsSave: allowsSave,
                 cloudKitDatabase: .none
             )
@@ -4559,6 +4778,47 @@ class ModelContainerManager: ObservableObject {
             )
         }
         return container
+    }
+
+    nonisolated private static func makeLegacyContainerWithRetry(
+        isStoredInMemoryOnly: Bool
+    ) throws -> ModelContainer {
+        let attempts = isStoredInMemoryOnly ? 1 : 3
+        return try makeContainerWithRetry(store: "legacy", attempts: attempts) {
+            try makeLegacyContainer(isStoredInMemoryOnly: isStoredInMemoryOnly)
+        }
+    }
+
+    nonisolated private static func makeUserStateContainerWithRetry() throws -> ModelContainer {
+        try makeContainerWithRetry(store: "user_state", attempts: 3) {
+            try makeUserStateContainer()
+        }
+    }
+
+    nonisolated private static func makeCacheContainerWithRetry() throws -> ModelContainer {
+        try makeContainerWithRetry(store: "cache", attempts: 3) {
+            try makeCacheContainer()
+        }
+    }
+
+    nonisolated private static func makeContainerWithRetry(
+        store: String,
+        attempts: Int,
+        open: () throws -> ModelContainer
+    ) throws -> ModelContainer {
+        for attempt in 0..<max(1, attempts) {
+            do { return try open() }
+            catch {
+                guard attempt + 1 < max(1, attempts) else { break }
+                CrashBreadcrumbs.shared.record(
+                    "model_container_open_retry",
+                    details: "store=\(store),attempt=\(attempt + 1)"
+                )
+                Thread.sleep(forTimeInterval: attempt == 0 ? 0.12 : 0.28)
+            }
+        }
+        AppDiagnostics.log("model_container_open_exhausted store=\(store)")
+        throw StoreBootstrapError.persistentStoreUnavailable
     }
 
     nonisolated static func makeRuntimeContainer() throws -> ModelContainer {

@@ -4,54 +4,6 @@
     "" : {
 
     },
-    "Playback Sync Needs Attention" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wiedergabesynchronisierung erfordert Aufmerksamkeit" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "La synchronisation de la lecture nécessite votre attention" } }
-      }
-    },
-    "Some playback or listening history could not be queued for syncing. Keep Up Next installed, check device storage, and contact support if the warning persists." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Einige Wiedergabedaten oder Hörverläufe konnten nicht zur Synchronisierung vorgemerkt werden. Lassen Sie Up Next installiert, prüfen Sie den Gerätespeicher und wenden Sie sich an den Support, falls die Warnung bestehen bleibt." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Certaines données de lecture ou d’historique n’ont pas pu être mises en attente de synchronisation. Gardez Up Next installé, vérifiez le stockage de l’appareil et contactez l’assistance si l’avertissement persiste." } }
-      }
-    },
-    "Couldn’t Save Bookmark" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen konnte nicht gesichert werden" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible d’enregistrer le signet" } }
-      }
-    },
-    "Couldn’t Remove Bookmark" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Lesezeichen konnte nicht entfernt werden" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Impossible de supprimer le signet" } }
-      }
-    },
-    "No episode is available to bookmark." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es ist keine Episode für ein Lesezeichen verfügbar." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun épisode n’est disponible pour un signet." } }
-      }
-    },
-    "The bookmark could not be saved. Check storage and try again." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen konnte nicht gesichert werden. Prüfe den Speicher und versuche es erneut." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet n’a pas pu être enregistré. Vérifiez l’espace de stockage et réessayez." } }
-      }
-    },
-    "The bookmark could not be removed. Check storage and try again." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen konnte nicht entfernt werden. Prüfe den Speicher und versuche es erneut." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet n’a pas pu être supprimé. Vérifiez l’espace de stockage et réessayez." } }
-      }
-    },
-    "The bookmark was saved on this device but could not be queued for syncing. Check storage; do not add it again." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Das Lesezeichen wurde auf diesem Gerät gesichert, konnte aber nicht für die Synchronisierung vorgemerkt werden. Prüfe den Speicher und füge es nicht erneut hinzu." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Le signet est enregistré sur cet appareil, mais n’a pas pu être mis en attente de synchronisation. Vérifiez l’espace de stockage et ne l’ajoutez pas à nouveau." } }
-      }
-    },
     " - " : {
       "localizations" : {
         "de" : {
@@ -166,6 +118,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ · %@"
+          }
+        }
+      }
+    },
+    "%@ · setup %@ at %@ · import %@ at %@ · latest export %@ (event %@, %@–%@) · last successful export %@ · last failed export at %@ (event %@) · failed exports in retained history %@ · retry hint %@ seconds · failure categories %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Einrichtung %@ um %@ · Import %@ um %@ · letzter Export %@ (Ereignis %@, %@–%@) · letzter erfolgreicher Export %@ · letzter fehlgeschlagener Export um %@ (Ereignis %@) · fehlgeschlagene Exporte im gespeicherten Verlauf %@ · Wiederholungshinweis %@ Sekunden · Fehlerkategorien %@"
           }
         }
       }
@@ -474,6 +436,28 @@
         }
       }
     },
+    "%d %@ + %d collateral batch failures" : {
+      "comment" : "Summary of a primary CloudKit error and collateral atomic batch failures",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d %@ + %d weitere Fehler im atomaren Stapel"
+          }
+        }
+      }
+    },
+    "%d %@ failure(s)" : {
+      "comment" : "Summary of a grouped CloudKit error",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%d Fehler des Typs %@"
+          }
+        }
+      }
+    },
     "%lld" : {
       "localizations" : {
         "de" : {
@@ -486,6 +470,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld"
+          }
+        }
+      }
+    },
+    "%lld × %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld × %2$@"
           }
         }
       }
@@ -811,6 +805,7 @@
       }
     },
     "%lld rejected record(s):" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -880,6 +875,7 @@
 
     },
     "+ %lld more" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1855,6 +1851,16 @@
         }
       }
     },
+    "Additional nested errors were omitted from this bounded report." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weitere verschachtelte Fehler wurden in diesem begrenzten Bericht ausgelassen."
+          }
+        }
+      }
+    },
     "Adds a new playlist" : {
       "localizations" : {
         "de" : {
@@ -1870,6 +1876,9 @@
           }
         }
       }
+    },
+    "Adds a timestamped local-state snapshot to the support report" : {
+
     },
     "Adds this episode to %@ and downloads it when available" : {
       "localizations" : {
@@ -2031,6 +2040,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Moniteur d'agrégat"
+          }
+        }
+      }
+    },
+    "Aggregate monitor attribution=unknown · errors=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gesamtmonitor-Zuordnung=unbekannt · Fehler=%@"
           }
         }
       }
@@ -2287,6 +2306,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Un épisode que vous terminez ailleurs quitte également cette playlist. Terminer un épisode ici le supprime toujours de cette playlist."
+          }
+        }
+      }
+    },
+    "App %@ (%@) · %@ · %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "App %@ (%@) · %@ · %@"
           }
         }
       }
@@ -3546,6 +3575,37 @@
         }
       }
     },
+    "Capture a snapshot while Up Next is empty and another after its entries return, or after waiting at least three minutes. Install the build without reinstalling or resetting data." : {
+      "comment" : "Instruction shown before the first diagnostic snapshot",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind oder du mindestens drei Minuten gewartet hast. Installiere die Version, ohne die App neu zu installieren oder Daten zurückzusetzen."
+          }
+        }
+      }
+    },
+    "Capture Snapshot" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Momentaufnahme erstellen"
+          }
+        }
+      }
+    },
+    "Capturing Snapshot…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Momentaufnahme wird erstellt …"
+          }
+        }
+      }
+    },
     "Carnival" : {
       "localizations" : {
         "de" : {
@@ -4250,6 +4310,27 @@
         }
       }
     },
+    "CloudKit retry hint: %lld seconds" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CloudKit-Wiederholungshinweis: %lld Sekunden"
+          }
+        }
+      }
+    },
+    "CloudKit store events (local observation; not server record counts):" : {
+      "comment" : "Heading for per-store CloudKit event information",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "CloudKit-Store-Ereignisse (lokale Beobachtung, keine Serverzähler):"
+          }
+        }
+      }
+    },
     "Companion Links" : {
       "localizations" : {
         "de" : {
@@ -4403,6 +4484,16 @@
     "Controls the current episode." : {
 
     },
+    "Copy Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht kopieren"
+          }
+        }
+      }
+    },
     "Could Not Open Podcast" : {
       "localizations" : {
         "de" : {
@@ -4472,6 +4563,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podcast konnte nicht über die URL hinzugefügt werden"
+          }
+        }
+      }
+    },
+    "Couldn’t Remove Bookmark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen konnte nicht entfernt werden"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de supprimer le signet"
+          }
+        }
+      }
+    },
+    "Couldn’t Save Bookmark" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen konnte nicht gesichert werden"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’enregistrer le signet"
           }
         }
       }
@@ -6607,6 +6730,26 @@
         }
       }
     },
+    "Error categories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlerkategorien"
+          }
+        }
+      }
+    },
+    "Error details unavailable" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlerdetails nicht verfügbar"
+          }
+        }
+      }
+    },
     "Errors" : {
       "localizations" : {
         "de" : {
@@ -7669,6 +7812,17 @@
         }
       }
     },
+    "Generated locally. This report contains local counts and categorized sync errors; no data was uploaded." : {
+      "comment" : "Privacy note at the top of the support report",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Bericht wurde lokal erstellt. Er enthält lokale Zähler und kategorisierte Synchronisierungsfehler; es wurden keine Daten hochgeladen."
+          }
+        }
+      }
+    },
     "Generating chapters, section %@…" : {
       "localizations" : {
         "de" : {
@@ -8484,6 +8638,16 @@
         }
       }
     },
+    "Import complete" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Import abgeschlossen"
+          }
+        }
+      }
+    },
     "Import Error" : {
       "localizations" : {
         "de" : {
@@ -8748,6 +8912,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Installer un raccourci Apple Podcasts"
+          }
+        }
+      }
+    },
+    "Install this build without reinstalling or resetting data. Capture a snapshot as soon as Up Next is empty, wait for entries to return or at least three minutes, then capture again. Review the preview before sharing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Installiere diese Version, ohne die App neu zu installieren oder Daten zurückzusetzen. Erstelle sofort eine Momentaufnahme, wenn „Up Next“ leer ist. Warte, bis die Einträge zurück sind, oder mindestens drei Minuten, und erstelle dann eine weitere. Prüfe die Vorschau, bevor du sie teilst."
           }
         }
       }
@@ -9214,6 +9388,16 @@
     "Last updated: %@" : {
 
     },
+    "Last upload failed: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzter Upload fehlgeschlagen: %@"
+          }
+        }
+      }
+    },
     "Last visible" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -9296,6 +9480,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La synchronisation de la bibliothèque Legacy s'arrêtera après que vous ayez fermé et rouvert Up Next. Votre bibliothèque locale reste sur cet appareil ; l'état de l'utilisateur continue de se synchroniser avec iCloud."
+          }
+        }
+      }
+    },
+    "Legacy local snapshot: playlists=%@, playlist entries=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legacy lokal: Playlists=%@, Playlist-Einträge=%@"
           }
         }
       }
@@ -10656,6 +10850,16 @@
         }
       }
     },
+    "Migration: version=%d, phase=%@, progress=%@, pending=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Migration: Version=%d, Phase=%@, Fortschritt=%@, ausstehend=%@"
+          }
+        }
+      }
+    },
     "Mini player, %@" : {
       "localizations" : {
         "de" : {
@@ -11262,6 +11466,16 @@
     "Network Tracking Protection" : {
 
     },
+    "Network=%@, iCloud account=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Netzwerk=%@, iCloud-Account=%@"
+          }
+        }
+      }
+    },
     "New episodes appear here as soon as their podcast has been checked." : {
       "localizations" : {
         "de" : {
@@ -11540,9 +11754,6 @@
         }
       }
     },
-    "Next predicted release: Unavailable" : {
-
-    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -11658,6 +11869,27 @@
         }
       }
     },
+    "No CloudKit error details were available." : {
+      "comment" : "Fallback when a CloudKit event did not include useful error details",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es sind keine CloudKit-Fehlerdetails verfügbar."
+          }
+        }
+      }
+    },
+    "No completed upload event observed in this session/history. This does not confirm synchronization." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In dieser Sitzung oder im Verlauf wurde kein abgeschlossener Upload beobachtet. Das bestätigt keine Synchronisierung."
+          }
+        }
+      }
+    },
     "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website." : {
       "localizations" : {
         "de" : {
@@ -11689,6 +11921,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aucun téléchargement"
+          }
+        }
+      }
+    },
+    "No episode is available to bookmark." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es ist keine Episode für ein Lesezeichen verfügbar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucun épisode n’est disponible pour un signet."
           }
         }
       }
@@ -11753,6 +12001,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Aucun fichier pour ce podcast"
+          }
+        }
+      }
+    },
+    "No import event observed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kein Importereignis beobachtet"
           }
         }
       }
@@ -12670,6 +12928,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Transcription sur appareil"
+          }
+        }
+      }
+    },
+    "Only batch failures were reported; the root cause is not present in the diagnostics." : {
+      "comment" : "Explains that CloudKit diagnostics contain only collateral atomic batch failures",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Es wurden nur Stapelfehler gemeldet; die Ursache ist in den Diagnosedaten nicht enthalten."
           }
         }
       }
@@ -14666,6 +14935,70 @@
         }
       }
     },
+    "Playback data is being recovered on this device. Keep Up Next installed while recovery finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wiedergabedaten werden auf diesem Gerät wiederhergestellt. Lassen Sie Up Next installiert, bis die Wiederherstellung abgeschlossen ist."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les données de lecture sont récupérées sur cet appareil. Gardez Up Next installé jusqu’à la fin de la récupération."
+          }
+        }
+      }
+    },
+    "Playback data needs attention. Keep Up Next installed and contact support from this screen." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wiedergabedaten erfordern Aufmerksamkeit. Lassen Sie Up Next installiert und kontaktieren Sie den Support über diesen Bildschirm."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les données de lecture nécessitent votre attention. Gardez Up Next installé et contactez l’assistance depuis cet écran."
+          }
+        }
+      }
+    },
+    "Playback Data Recovered" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabedaten wiederhergestellt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Données de lecture récupérées"
+          }
+        }
+      }
+    },
+    "Playback data was recovered on this device. iCloud may still be syncing." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wiedergabedaten wurden auf diesem Gerät wiederhergestellt. iCloud synchronisiert möglicherweise noch."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les données de lecture ont été récupérées sur cet appareil. iCloud est peut-être encore en cours de synchronisation."
+          }
+        }
+      }
+    },
     "Playback moved" : {
       "localizations" : {
         "de" : {
@@ -14710,6 +15043,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Taux de lecture"
+          }
+        }
+      }
+    },
+    "Playback Recovery Needs Attention" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiederherstellung der Wiedergabe erfordert Aufmerksamkeit"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La récupération de la lecture nécessite votre attention"
           }
         }
       }
@@ -14780,6 +15129,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La vitesse de lecture est définie sur %@ fois."
+          }
+        }
+      }
+    },
+    "Playback Sync Pending" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabesynchronisierung ausstehend"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisation de lecture en attente"
           }
         }
       }
@@ -16614,6 +16979,17 @@
         }
       }
     },
+    "Recent event timeline (last five minutes)" : {
+      "comment" : "Heading for recent app events in support report",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Ereignisse (fünf Minuten)"
+          }
+        }
+      }
+    },
     "Recent on-device transcriptions will appear here once you create one." : {
       "localizations" : {
         "de" : {
@@ -16710,6 +17086,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Récupéré / interrompu"
+          }
+        }
+      }
+    },
+    "Recovering Playback Data" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabedaten werden wiederhergestellt"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Récupération des données de lecture"
           }
         }
       }
@@ -17819,6 +18211,9 @@
     "Retry" : {
 
     },
+    "Retry after %@ seconds" : {
+
+    },
     "Retry episode import" : {
       "localizations" : {
         "fr" : {
@@ -18063,6 +18458,16 @@
         }
       }
     },
+    "Review per-store sync status and capture a local support report." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Synchronisierungsstatus je Store prüfen und einen lokalen Supportbericht erstellen."
+          }
+        }
+      }
+    },
     "Romansh-language radio and podcasts from SRG SSR." : {
       "localizations" : {
         "de" : {
@@ -18140,6 +18545,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Les règles comparent les titres de chapitres et marquent les chapitres correspondants à sa suppression."
+          }
+        }
+      }
+    },
+    "Runtime-visible Up Next (local snapshot): playlists=%@, entries=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In der Laufzeit sichtbares Up Next (lokale Momentaufnahme): Playlists=%@, Einträge=%@"
+          }
+        }
+      }
+    },
+    "Runtime: bootstrap=%@, read authority=%@, %@, readiness=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laufzeit: Startmodus=%@, maßgeblicher Speicher=%@, %@, Bereitschaft=%@"
           }
         }
       }
@@ -19025,6 +19450,16 @@
         }
       }
     },
+    "Share Report" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bericht teilen"
+          }
+        }
+      }
+    },
     "Share Selected Image" : {
       "localizations" : {
         "de" : {
@@ -19249,6 +19684,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Affichage des publicités détectées"
+          }
+        }
+      }
+    },
+    "Show error categories" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlerkategorien anzeigen"
           }
         }
       }
@@ -20326,6 +20771,16 @@
         }
       }
     },
+    "Snapshot %d · %@ · %d seconds since app session start" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Momentaufnahme %d · %@ · %d Sekunden seit Sitzungsbeginn"
+          }
+        }
+      }
+    },
     "Social links" : {
       "localizations" : {
         "de" : {
@@ -21079,6 +21534,16 @@
         }
       }
     },
+    "Store Imports Complete" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store-Importe abgeschlossen"
+          }
+        }
+      }
+    },
     "Store Split Release" : {
       "localizations" : {
         "de" : {
@@ -21091,6 +21556,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Sortie en plusieurs parties en magasin"
+          }
+        }
+      }
+    },
+    "Store-attributed failure · %lld failed upload event(s) in recent history" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesem Store zugeordneter Fehler · %lld fehlgeschlagene Uploads im aktuellen Verlauf"
+          }
+        }
+      }
+    },
+    "Store: unknown (aggregate sync monitor)" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Store: unbekannt (Gesamtsynchronisierung)"
           }
         }
       }
@@ -21112,6 +21597,7 @@
       }
     },
     "Stores Synced" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21123,6 +21609,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Les magasins sont synchronisés"
+          }
+        }
+      }
+    },
+    "Stores: runtime=%@, legacy=%@, user state=%@, cache=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stores: Laufzeit=%@, Legacy=%@, Benutzerstatus=%@, Cache=%@"
           }
         }
       }
@@ -21356,6 +21852,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Soutien et valeur"
+          }
+        }
+      }
+    },
+    "Support Diagnostics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Supportdiagnose"
+          }
+        }
+      }
+    },
+    "Support diagnostics report preview" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorschau des Supportberichts"
           }
         }
       }
@@ -21693,6 +22209,54 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Cette URL n'a pas permis de se connecter à un flux de podcasts."
+          }
+        }
+      }
+    },
+    "The bookmark could not be removed. Check storage and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Lesezeichen konnte nicht entfernt werden. Prüfe den Speicher und versuche es erneut."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le signet n’a pas pu être supprimé. Vérifiez l’espace de stockage et réessayez."
+          }
+        }
+      }
+    },
+    "The bookmark could not be saved. Check storage and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Lesezeichen konnte nicht gesichert werden. Prüfe den Speicher und versuche es erneut."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le signet n’a pas pu être enregistré. Vérifiez l’espace de stockage et réessayez."
+          }
+        }
+      }
+    },
+    "The bookmark was saved on this device but could not be queued for syncing. Check storage; do not add it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Lesezeichen wurde auf diesem Gerät gesichert, konnte aber nicht für die Synchronisierung vorgemerkt werden. Prüfe den Speicher und füge es nicht erneut hinzu."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le signet est enregistré sur cet appareil, mais n’a pas pu être mis en attente de synchronisation. Vérifiez l’espace de stockage et ne l’ajoutez pas à nouveau."
           }
         }
       }
@@ -23720,6 +24284,22 @@
         }
       }
     },
+    "Up Next is retrying a playback data update. Keep using the app; check back here if this status persists." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next versucht erneut, die Wiedergabedaten zu aktualisieren. Verwenden Sie die App weiter und prüfen Sie diesen Status erneut, falls er bestehen bleibt."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next réessaie de mettre à jour les données de lecture. Continuez à utiliser l’app et revenez ici si cet état persiste."
+          }
+        }
+      }
+    },
     "Up Next is starting" : {
       "localizations" : {
         "de" : {
@@ -23765,6 +24345,17 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ensuite se trouve votre file d'attente de lecture unique. Les épisodes de cette liste sont ce que le lecteur utilise pour \"ce qui vient ensuite\"."
+          }
+        }
+      }
+    },
+    "Up Next Support Diagnostics" : {
+      "comment" : "Title of the support report",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next Supportdiagnose"
           }
         }
       }
@@ -23930,7 +24521,7 @@
         }
       }
     },
-    "Upload: (diagnostic.activeExportCount) active" : {
+    "Upload: %lld active" : {
 
     },
     "URL" : {
@@ -24244,6 +24835,16 @@
         }
       }
     },
+    "User State local snapshot: PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benutzerstatus lokal: PlaylistSync aktiv/gelöscht=%@/%@, PlaylistEntrySync aktiv/gelöscht=%@/%@, QueueEntrySync aktiv/gelöscht=%@/%@, offene Episodenverweise=%@"
+          }
+        }
+      }
+    },
     "User State queue entries    : %lld → %lld" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -24489,6 +25090,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Attendez que l'épisode se synchronise"
+          }
+        }
+      }
+    },
+    "Waiting for saved Up Next episodes to restore from iCloud…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Up-Next-Episoden werden aus iCloud wiederhergestellt …"
           }
         }
       }
@@ -25198,211 +25809,6 @@
             "value" : "Votre dossier de chargement latéral est vide"
           }
         }
-      }
-    },
-    "%d %@ + %d collateral batch failures" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "%d %@ + %d weitere Fehler im atomaren Stapel" } }
-      }
-    },
-    "%d %@ failure(s)" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "%d Fehler des Typs %@" } }
-      }
-    },
-    "Install this build without reinstalling or resetting data. Capture a snapshot as soon as Up Next is empty, wait for entries to return or at least three minutes, then capture again. Review the preview before sharing." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Installiere diese Version, ohne die App neu zu installieren oder Daten zurückzusetzen. Erstelle sofort eine Momentaufnahme, wenn „Up Next“ leer ist. Warte, bis die Einträge zurück sind, oder mindestens drei Minuten, und erstelle dann eine weitere. Prüfe die Vorschau, bevor du sie teilst." } }
-      }
-    },
-    "Capture Snapshot" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme erstellen" } }
-      }
-    },
-    "Capturing Snapshot…" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme wird erstellt …" } }
-      }
-    },
-    "Copy Report" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bericht kopieren" } }
-      }
-    },
-    "Review per-store sync status and capture a local support report." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Synchronisierungsstatus je Store prüfen und einen lokalen Supportbericht erstellen." } }
-      }
-    },
-    "Share Report" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Bericht teilen" } }
-      }
-    },
-    "Support Diagnostics" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Supportdiagnose" } }
-      }
-    },
-    "Support diagnostics report preview" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Vorschau des Supportberichts" } }
-      }
-    },
-    "Up Next Support Diagnostics" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Up Next Supportdiagnose" } }
-      }
-    },
-    "Generated locally. This report contains local counts and categorized sync errors; no data was uploaded." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Bericht wurde lokal erstellt. Er enthält lokale Zähler und kategorisierte Synchronisierungsfehler; es wurden keine Daten hochgeladen." } }
-      }
-    },
-    "Capture a snapshot while Up Next is empty and another after its entries return, or after waiting at least three minutes. Install the build without reinstalling or resetting data." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind oder du mindestens drei Minuten gewartet hast. Installiere die Version, ohne die App neu zu installieren oder Daten zurückzusetzen." } }
-      }
-    },
-    "Recent event timeline (last five minutes)" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Letzte Ereignisse (fünf Minuten)" } }
-      }
-    },
-    "CloudKit store events (local observation; not server record counts):" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "CloudKit-Store-Ereignisse (lokale Beobachtung, keine Serverzähler):" } }
-      }
-    },
-    "%@ · setup %@ at %@ · import %@ at %@ · latest export %@ (event %@, %@–%@) · last successful export %@ · last failed export at %@ (event %@) · failed exports in retained history %@ · retry hint %@ seconds · failure categories %@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "%@ · Einrichtung %@ um %@ · Import %@ um %@ · letzter Export %@ (Ereignis %@, %@–%@) · letzter erfolgreicher Export %@ · letzter fehlgeschlagener Export um %@ (Ereignis %@) · fehlgeschlagene Exporte im gespeicherten Verlauf %@ · Wiederholungshinweis %@ Sekunden · Fehlerkategorien %@" } }
-      }
-    },
-    "Snapshot %d · %@ · %d seconds since app session start" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Momentaufnahme %d · %@ · %d Sekunden seit Sitzungsbeginn" } }
-      }
-    },
-    "App %@ (%@) · %@ · %@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "App %@ (%@) · %@ · %@" } }
-      }
-    },
-    "Runtime: bootstrap=%@, read authority=%@, %@, readiness=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Laufzeit: Startmodus=%@, maßgeblicher Speicher=%@, %@, Bereitschaft=%@" } }
-      }
-    },
-    "Stores: runtime=%@, legacy=%@, user state=%@, cache=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Stores: Laufzeit=%@, Legacy=%@, Benutzerstatus=%@, Cache=%@" } }
-      }
-    },
-    "Migration: version=%d, phase=%@, progress=%@, pending=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Migration: Version=%d, Phase=%@, Fortschritt=%@, ausstehend=%@" } }
-      }
-    },
-    "Runtime-visible Up Next (local snapshot): playlists=%@, entries=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "In der Laufzeit sichtbares Up Next (lokale Momentaufnahme): Playlists=%@, Einträge=%@" } }
-      }
-    },
-    "Legacy local snapshot: playlists=%@, playlist entries=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Legacy lokal: Playlists=%@, Playlist-Einträge=%@" } }
-      }
-    },
-    "User State local snapshot: PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Benutzerstatus lokal: PlaylistSync aktiv/gelöscht=%@/%@, PlaylistEntrySync aktiv/gelöscht=%@/%@, QueueEntrySync aktiv/gelöscht=%@/%@, offene Episodenverweise=%@" } }
-      }
-    },
-    "Network=%@, iCloud account=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Netzwerk=%@, iCloud-Account=%@" } }
-      }
-    },
-    "Aggregate monitor attribution=unknown · errors=%@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gesamtmonitor-Zuordnung=unbekannt · Fehler=%@" } }
-      }
-    },
-    "Additional nested errors were omitted from this bounded report." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Weitere verschachtelte Fehler wurden in diesem begrenzten Bericht ausgelassen." } }
-      }
-    },
-    "Error categories" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerkategorien" } }
-      }
-    },
-    "Error details unavailable" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerdetails nicht verfügbar" } }
-      }
-    },
-    "Import complete" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Import abgeschlossen" } }
-      }
-    },
-    "Last upload failed: %@" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Letzter Upload fehlgeschlagen: %@" } }
-      }
-    },
-    "No CloudKit error details were available." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es sind keine CloudKit-Fehlerdetails verfügbar." } }
-      }
-    },
-    "No completed upload event observed in this session/history. This does not confirm synchronization." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "In dieser Sitzung oder im Verlauf wurde kein abgeschlossener Upload beobachtet. Das bestätigt keine Synchronisierung." } }
-      }
-    },
-    "No import event observed" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kein Importereignis beobachtet" } }
-      }
-    },
-    "Only batch failures were reported; the root cause is not present in the diagnostics." : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Es wurden nur Stapelfehler gemeldet; die Ursache ist in den Diagnosedaten nicht enthalten." } }
-      }
-    },
-    "Show error categories" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Fehlerkategorien anzeigen" } }
-      }
-    },
-    "Store Imports Complete" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Store-Importe abgeschlossen" } }
-      }
-    },
-    "Store: unknown (aggregate sync monitor)" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Store: unbekannt (Gesamtsynchronisierung)" } }
-      }
-    },
-    "Store-attributed failure · %lld failed upload event(s) in recent history" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diesem Store zugeordneter Fehler · %lld fehlgeschlagene Uploads im aktuellen Verlauf" } }
-      }
-    },
-    "CloudKit retry hint: %lld seconds" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "CloudKit-Wiederholungshinweis: %lld Sekunden" } }
-      }
-    },
-    "Waiting for saved Up Next episodes to restore from iCloud…" : {
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gespeicherte Up-Next-Episoden werden aus iCloud wiederhergestellt …" } }
       }
     }
   },
