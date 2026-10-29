@@ -33,8 +33,14 @@ struct SupportDiagnosticCloudStore: Codable, Hashable, Sendable {
     let importStatus: String
     let importAt: Date?
     let exportStatus: String
+    let exportEventID: String?
+    let exportStartedAt: Date?
     let exportAt: Date?
+    let lastFailedExportEventID: String?
+    let lastFailedExportAt: Date?
     let lastSuccessfulExportAt: Date?
+    let failedExportCount: Int
+    let retryAfterSeconds: Double?
     let failureCategories: [String]
 }
 
@@ -109,7 +115,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             NSLocalizedString("Generated locally. This report contains local counts and categorized sync errors; no data was uploaded.", comment: "Privacy note at the top of the support report")
         ]
         if snapshots.isEmpty {
-            sections.append(NSLocalizedString("Capture a snapshot while Up Next is empty and another after its entries return.", comment: "Instruction shown before the first diagnostic snapshot"))
+            sections.append(NSLocalizedString("Capture a snapshot while Up Next is empty and another after its entries return, or after waiting at least three minutes. Install the build without reinstalling or resetting data.", comment: "Instruction shown before the first diagnostic snapshot"))
         } else {
             sections.append(contentsOf: snapshots.enumerated().map { index, snapshot in
                 Self.format(snapshot, index: index + 1)
@@ -238,18 +244,41 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             let setup = latest(.setup)
             let importEvent = latest(.importEvent)
             let export = latest(.export)
+            let completedExports = completedEvents
+                .filter { $0.storeKind == store }
+                .filter { $0.type == .export }
+            let failedExports = completedExports.filter { $0.succeeded == false }
+            let lastFailedExport = failedExports.first
+            let failedExportCount = failedExports.count
+            let activeSetup = active.first { $0.type == .setup }
+            let activeImport = active.first { $0.type == .importEvent }
+            let activeExport = active.first { $0.type == .export }
+            let setupStatus = status(setup, active: activeSetup != nil)
+            let importStatus = status(importEvent, active: activeImport != nil)
+            let exportStatus = status(export, active: activeExport != nil)
+            let retryAfterSeconds = lastFailedExport?.failureReport?.groups
+                .first(where: { $0.retryAfterSeconds != nil })?.retryAfterSeconds
+            let lastSuccessfulExport = completedExports.first { $0.succeeded }
+            let setupAt = setup?.endedAt ?? activeSetup?.startedAt
+            let importAt = importEvent?.endedAt ?? activeImport?.startedAt
+            let exportStartedAt = export?.startedAt ?? activeExport?.startedAt
+            let exportAt = export?.endedAt ?? activeExport?.startedAt
             return SupportDiagnosticCloudStore(
                 store: store.title,
-                setupStatus: status(setup, active: active.contains { $0.type == .setup }),
-                setupAt: setup?.endedAt ?? active.first { $0.type == .setup }?.startedAt,
-                importStatus: status(importEvent, active: active.contains { $0.type == .importEvent }),
-                importAt: importEvent?.endedAt ?? active.first { $0.type == .importEvent }?.startedAt,
-                exportStatus: status(export, active: active.contains { $0.type == .export }),
-                exportAt: export?.endedAt ?? active.first { $0.type == .export }?.startedAt,
-                lastSuccessfulExportAt: completedEvents.first {
-                    $0.storeKind == store && $0.type == .export && $0.succeeded
-                }?.endedAt,
-                failureCategories: categories(export?.failureReport)
+                setupStatus: setupStatus,
+                setupAt: setupAt,
+                importStatus: importStatus,
+                importAt: importAt,
+                exportStatus: exportStatus,
+                exportEventID: export?.id.uuidString,
+                exportStartedAt: exportStartedAt,
+                exportAt: exportAt,
+                lastFailedExportEventID: lastFailedExport?.id.uuidString,
+                lastFailedExportAt: lastFailedExport?.endedAt,
+                lastSuccessfulExportAt: lastSuccessfulExport?.endedAt,
+                failedExportCount: failedExportCount,
+                retryAfterSeconds: retryAfterSeconds,
+                failureCategories: categories(lastFailedExport?.failureReport)
             )
         }
     }
@@ -257,7 +286,22 @@ final class SupportDiagnosticsRecorder: ObservableObject {
     private static func format(_ snapshot: SupportDiagnosticSnapshot, index: Int) -> String {
         let date = snapshot.capturedAt.formatted(date: .numeric, time: .standard)
         let cloud = snapshot.cloudStores.map {
-            "\($0.store): setup=\($0.setupStatus) @ \($0.setupAt?.formatted(date: .omitted, time: .standard) ?? "n/a"), import=\($0.importStatus) @ \($0.importAt?.formatted(date: .omitted, time: .standard) ?? "n/a"), export=\($0.exportStatus) @ \($0.exportAt?.formatted(date: .omitted, time: .standard) ?? "n/a"), last successful export=\($0.lastSuccessfulExportAt?.formatted(date: .omitted, time: .standard) ?? "n/a"), errors=\($0.failureCategories.isEmpty ? "none observed" : $0.failureCategories.joined(separator: ", "))"
+            let started = $0.exportStartedAt?.formatted(date: .omitted, time: .standard) ?? "n/a"
+            let ended = $0.exportAt?.formatted(date: .omitted, time: .standard) ?? "n/a"
+            let successful = $0.lastSuccessfulExportAt?.formatted(date: .omitted, time: .standard) ?? "n/a"
+            let eventID = $0.exportEventID ?? "n/a"
+            let failedEventID = $0.lastFailedExportEventID ?? "n/a"
+            let failedAt = $0.lastFailedExportAt?.formatted(date: .omitted, time: .standard) ?? "n/a"
+            let retry = $0.retryAfterSeconds.map { String(Int(ceil($0))) } ?? "n/a"
+            let failedCount = String($0.failedExportCount)
+            let errors = $0.failureCategories.isEmpty ? "none observed" : $0.failureCategories.joined(separator: ", ")
+            return formatted(
+                "%@ · setup %@ at %@ · import %@ at %@ · latest export %@ (event %@, %@–%@) · last successful export %@ · last failed export at %@ (event %@) · failed exports in retained history %@ · retry hint %@ seconds · failure categories %@",
+                $0.store, $0.setupStatus, $0.setupAt?.formatted(date: .omitted, time: .standard) ?? "n/a",
+                $0.importStatus, $0.importAt?.formatted(date: .omitted, time: .standard) ?? "n/a",
+                $0.exportStatus, eventID, started, ended, successful, failedAt, failedEventID,
+                failedCount, retry, errors
+            )
         }.joined(separator: "\n")
         func formatted(_ key: String, _ values: CVarArg...) -> String {
             String(

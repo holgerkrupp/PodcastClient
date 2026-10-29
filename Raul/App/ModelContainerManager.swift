@@ -183,11 +183,15 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
         let activeExportCount: Int
         let lastImportStartedAt: Date?
         let lastImportEndedAt: Date?
+        let lastImportSucceeded: Bool?
         let lastSuccessfulImportAt: Date?
         let lastImportErrorCode: Int?
         let lastImportCountsBefore: StoreCounts?
         let lastImportCountsAfter: StoreCounts?
         let lastExportEndedAt: Date?
+        let lastExportStartedAt: Date?
+        let lastExportEventID: UUID?
+        let lastExportSucceeded: Bool?
         let lastSuccessfulExportAt: Date?
         let lastExportErrorCode: Int?
         let lastExportFailureReport: CloudKitFailureAnalyzer.Report?
@@ -198,14 +202,12 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
 
         var importStatus: ImportStatus {
             if activeImportCount > 0 { return .syncing }
-            guard let lastImportEndedAt else { return .notObserved }
-            if lastSuccessfulImportAt == lastImportEndedAt { return .complete }
-            return .failed
+            guard let lastImportSucceeded else { return .notObserved }
+            return lastImportSucceeded ? .complete : .failed
         }
 
         var hasUnresolvedExportFailure: Bool {
-            guard let lastExportEndedAt else { return false }
-            return lastSuccessfulExportAt != lastExportEndedAt
+            lastExportSucceeded == false
         }
     }
 
@@ -416,6 +418,14 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                     ? "completed"
                     : "failed" + (event.failureReport.map { ": \($0.summary)" } ?? "")
             )
+            if let retryAfter = event.failureReport?.groups
+                .compactMap(\.retryAfterSeconds)
+                .min() {
+                SupportDiagnosticsRecorder.shared.record(
+                    "CloudKit retry hint observed",
+                    detail: "\(storeKind.title) after \(Int(ceil(retryAfter))) seconds"
+                )
+            }
             lastCompletedEvents = ([completed] + lastCompletedEvents).prefix(20).map { $0 }
             if eventKind == .importEvent {
                 latestCompletedImport = completed
@@ -563,6 +573,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 activeExportCount: active.filter { $0.type == .export }.count,
                 lastImportStartedAt: activeImport?.startedAt ?? lastImport?.startedAt,
                 lastImportEndedAt: lastImport?.endedAt,
+                lastImportSucceeded: lastImport?.succeeded,
                 lastSuccessfulImportAt: successfulImport?.endedAt,
                 lastImportErrorCode: lastImport?.succeeded == false
                     ? lastImport?.errorCode
@@ -570,6 +581,9 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
                 lastImportCountsBefore: lastImport?.countsBefore,
                 lastImportCountsAfter: lastImport?.countsAfter,
                 lastExportEndedAt: lastExport?.endedAt,
+                lastExportStartedAt: lastExport?.startedAt,
+                lastExportEventID: lastExport?.id,
+                lastExportSucceeded: lastExport?.succeeded,
                 lastSuccessfulExportAt: successfulExport?.endedAt,
                 lastExportErrorCode: lastExport?.succeeded == false
                     ? lastExport?.errorCode

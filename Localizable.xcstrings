@@ -25210,9 +25210,9 @@
         "de" : { "stringUnit" : { "state" : "translated", "value" : "%d Fehler des Typs %@" } }
       }
     },
-    "Capture a snapshot while Up Next is empty, then capture another when the entries return. The report contains local counts and recent sync events." : {
+    "Install this build without reinstalling or resetting data. Capture a snapshot as soon as Up Next is empty, wait for entries to return or at least three minutes, then capture again. Review the preview before sharing." : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind. Der Bericht enthält lokale Zähler und letzte Synchronisierungsereignisse." } }
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Installiere diese Version, ohne die App neu zu installieren oder Daten zurückzusetzen. Erstelle sofort eine Momentaufnahme, wenn „Up Next“ leer ist. Warte, bis die Einträge zurück sind, oder mindestens drei Minuten, und erstelle dann eine weitere. Prüfe die Vorschau, bevor du sie teilst." } }
       }
     },
     "Capture Snapshot" : {
@@ -25260,9 +25260,9 @@
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Dieser Bericht wurde lokal erstellt. Er enthält lokale Zähler und kategorisierte Synchronisierungsfehler; es wurden keine Daten hochgeladen." } }
       }
     },
-    "Capture a snapshot while Up Next is empty and another after its entries return." : {
+    "Capture a snapshot while Up Next is empty and another after its entries return, or after waiting at least three minutes. Install the build without reinstalling or resetting data." : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind." } }
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Momentaufnahme, solange „Up Next“ leer ist, und eine weitere, wenn die Einträge zurück sind oder du mindestens drei Minuten gewartet hast. Installiere die Version, ohne die App neu zu installieren oder Daten zurückzusetzen." } }
       }
     },
     "Recent event timeline (last five minutes)" : {
@@ -25273,6 +25273,11 @@
     "CloudKit store events (local observation; not server record counts):" : {
       "localizations" : {
         "de" : { "stringUnit" : { "state" : "translated", "value" : "CloudKit-Store-Ereignisse (lokale Beobachtung, keine Serverzähler):" } }
+      }
+    },
+    "%@ · setup %@ at %@ · import %@ at %@ · latest export %@ (event %@, %@–%@) · last successful export %@ · last failed export at %@ (event %@) · failed exports in retained history %@ · retry hint %@ seconds · failure categories %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "%@ · Einrichtung %@ um %@ · Import %@ um %@ · letzter Export %@ (Ereignis %@, %@–%@) · letzter erfolgreicher Export %@ · letzter fehlgeschlagener Export um %@ (Ereignis %@) · fehlgeschlagene Exporte im gespeicherten Verlauf %@ · Wiederholungshinweis %@ Sekunden · Fehlerkategorien %@" } }
       }
     },
     "Snapshot %d · %@ · %d seconds since app session start" : {
@@ -25388,6 +25393,11 @@
     "Store-attributed failure · %lld failed upload event(s) in recent history" : {
       "localizations" : {
         "de" : { "stringUnit" : { "state" : "translated", "value" : "Diesem Store zugeordneter Fehler · %lld fehlgeschlagene Uploads im aktuellen Verlauf" } }
+      }
+    },
+    "CloudKit retry hint: %lld seconds" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "CloudKit-Wiederholungshinweis: %lld Sekunden" } }
       }
     },
     "Waiting for saved Up Next episodes to restore from iCloud…" : {

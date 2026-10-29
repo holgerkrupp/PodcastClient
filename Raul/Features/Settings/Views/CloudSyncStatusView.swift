@@ -382,7 +382,7 @@ struct CloudSyncStatusDetailView: View {
             }
 
             Section("Support Diagnostics") {
-                Text("Capture a snapshot while Up Next is empty, then capture another when the entries return. The report contains local counts and recent sync events.")
+                Text("Install this build without reinstalling or resetting data. Capture a snapshot as soon as Up Next is empty, wait for entries to return or at least three minutes, then capture again. Review the preview before sharing.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
 
@@ -634,6 +634,11 @@ private struct StoreCloudKitDiagnosticRow: View {
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
+                    if let retryAfter = primary.retryAfterSeconds {
+                        Text("CloudKit retry hint: \(Int(ceil(retryAfter))) seconds")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             } else if diagnostic.activeExportCount == 0,
                       diagnostic.lastExportEndedAt == nil {
