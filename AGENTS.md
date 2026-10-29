@@ -39,6 +39,38 @@ asynchronous and out of the launch-critical path. Reserve a launch error or
 retry view for genuine initialization failures, not normal readiness or
 background setup.
 
+## Non-blocking error presentation and automatic recovery
+
+**Do not interrupt the user with a modal warning for a failure that the app can
+handle or retry itself.** In particular, background/automatic iCloud or
+UserState sync, playback-position and listening-history persistence, durable
+retry queues, downloads, feed refresh, cache maintenance and migration must
+never trigger an unsolicited `.alert`, blocking sheet or startup overlay.
+This includes one-time-per-launch or one-time-per-session warnings: limiting
+their frequency does not make them non-blocking. Playback, navigation and
+normal use must remain available whenever their local data is usable.
+
+- Preserve the user's local data and recover automatically with bounded,
+  resumable and idempotent retries. Never treat dismissal of a message, a
+  successful local enqueue or an empty retry queue as proof of iCloud export.
+- Surface a persistent problem only through quiet, context-specific status
+  (for example the relevant screen or Settings → iCloud Sync), with clear
+  actionable guidance when an actual user action is necessary. Do not show
+  raw technical errors or repeatedly reappear after a transient failure.
+  A non-blocking indication must not obscure controls or steal focus.
+- Record privacy-safe diagnostics (error category, phase, retry count, age,
+  pending-work count and recovery outcome), and clear stale warning state only
+  after the missing work has been safely reconstructed or reconciled. Keep
+  private feed URLs, listening-history contents and credentials out of logs.
+- Modal confirmation is appropriate only for an explicit user-initiated
+  decision requiring immediate input, such as destructive deletion, irreversible
+  migration or permissions. An unrecoverable failure that actually prevents
+  opening the app may have a dedicated recovery screen; routine background
+  failures are not such a case.
+- Cover failure, offline, full-storage, background/foreground transition,
+  automatic recovery and relaunch scenarios in tests. Review the User Guide and
+  view hierarchy when changing error presentation or recovery behavior.
+
 ## User Guide and feature documentation
 
 - Treat the in-app guide as part of every user-visible feature. For any addition, removal, rename, placement, gesture, option/default, platform gate, refresh/sync behavior, Siri/App Intent, widget, or error-state change, review the matching topics in `Raul/Features/Help/UserGuideView.swift` in the same change. Update the steps, examples, search aliases, related topics, availability notes, and safe actions, or record why no guide change is needed. Add a topic for each major new feature.
