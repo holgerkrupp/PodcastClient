@@ -1,5 +1,7 @@
 # Repository Instructions
 
+We are not apple, google or amazon. we don't need to cover all edge cases. the app is a small free podcast client. we don't need tests for everything. 
+
 ## Player design requirements
 
 The following behavior is a strict product requirement for the full player on every iPhone variant, including iPhone Duo layouts. Preserve it when changing the player, its presentation host, responsive layouts, artwork loading, or ESADesignKit integration.
