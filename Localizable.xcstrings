@@ -854,86 +854,6 @@
         }
       }
     },
-    "Copy Diagnostics" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diagnosedaten kopieren"
-          }
-        }
-      }
-    },
-    "Diagnostics Copied" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diagnosedaten kopiert"
-          }
-        }
-      }
-    },
-    "If the launch logo remains visible for about ten seconds, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wenn das Startlogo etwa zehn Sekunden lang sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
-          }
-        }
-      }
-    },
-    "Local library preparation has not finished. You can share diagnostics to help investigate." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die lokale Mediathek ist noch nicht bereit. Du kannst Diagnosedaten teilen, um bei der Untersuchung zu helfen."
-          }
-        }
-      }
-    },
-    "Restoring saved playlist episodes…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gespeicherte Playlist-Folgen werden wiederhergestellt …"
-          }
-        }
-      }
-    },
-    "Restoring your saved Up Next episodes…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gespeicherte Up-Next-Folgen werden wiederhergestellt …"
-          }
-        }
-      }
-    },
-    "Restoring your saved library…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gespeicherte Mediathek wird wiederhergestellt …"
-          }
-        }
-      }
-    },
-    "Share Diagnostics" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Diagnosedaten teilen"
-          }
-        }
-      }
-    },
     "^[%lld episode](inflect    : true)" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4564,6 +4484,16 @@
     "Controls the current episode." : {
 
     },
+    "Copy Diagnostics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten kopieren"
+          }
+        }
+      }
+    },
     "Copy Report" : {
       "localizations" : {
         "de" : {
@@ -5713,6 +5643,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "La détection s'exécute sur l'appareil et sépare les preuves des chapitres de l'éditeur. "
+          }
+        }
+      }
+    },
+    "Diagnostics Copied" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten kopiert"
           }
         }
       }
@@ -8692,6 +8632,16 @@
     "If an episode is missing, refresh the show directly and check its latest published item and any visible feed or sign-in error. Scheduled work has no guaranteed interval." : {
 
     },
+    "If the launch logo remains visible for about ten seconds, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das Startlogo etwa zehn Sekunden lang sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
+          }
+        }
+      }
+    },
     "Import / Export" : {
       "localizations" : {
         "de" : {
@@ -10404,6 +10354,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Charge les derniers épisodes de la boîte de réception de votre téléphone"
+          }
+        }
+      }
+    },
+    "Local library preparation has not finished. You can share diagnostics to help investigate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die lokale Mediathek ist noch nicht bereit. Du kannst Diagnosedaten teilen, um bei der Untersuchung zu helfen."
           }
         }
       }
@@ -18214,6 +18174,36 @@
         }
       }
     },
+    "Restoring saved playlist episodes…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Playlist-Folgen werden wiederhergestellt …"
+          }
+        }
+      }
+    },
+    "Restoring your saved library…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Mediathek wird wiederhergestellt …"
+          }
+        }
+      }
+    },
+    "Restoring your saved Up Next episodes…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Up-Next-Folgen werden wiederhergestellt …"
+          }
+        }
+      }
+    },
     "Resume" : {
       "localizations" : {
         "de" : {
@@ -19435,6 +19425,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Partager une clip audio"
+          }
+        }
+      }
+    },
+    "Share Diagnostics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagnosedaten teilen"
           }
         }
       }
