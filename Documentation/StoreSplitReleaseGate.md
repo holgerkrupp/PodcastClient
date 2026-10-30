@@ -26,6 +26,12 @@ app is open and foreground. A failure stays quiet and resumes next launch. Until
 nothing is imported back from UserState, because the local library is the more complete record.
 Live edits are written to UserState as they happen.
 
+Once the copy finishes, one cleanup tombstones active subscriptions that this library has no
+podcast for and that predate its switch to local-only. Older backfills left such rows behind
+(475 active against about 55 real on one device), and a new device would restore them all.
+A real subscription that exists only on a device not yet updated can be removed by this; it
+comes back only when that device updates and writes it again.
+
 ## Multiple devices
 
 Only UserState syncs. Each device gets feed data from RSS. These stay on one device: AI

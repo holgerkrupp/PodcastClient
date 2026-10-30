@@ -40,6 +40,26 @@ enum StoreCutoverState {
         defaults.object(forKey: startedAtKey) as? Date
     }
 
+    private static let staleSubscriptionCleanupKey = "storeSplit.staleSubscriptionCleanup.v1"
+
+    /// Once, on upgraded devices, after this device's own subscriptions are in UserState.
+    static func cleanUpStaleSubscriptionsIfNeeded(library: ModelContainer, userState: ModelContainer) {
+        guard let cutoff = localLibraryStartedAt,
+              isDeferredMigrationPending == false,
+              defaults.bool(forKey: staleSubscriptionCleanupKey) == false else { return }
+        do {
+            let changed = try StoreSplitMigrationService.tombstoneSubscriptionsMissingFromLibrary(
+                libraryContainer: library,
+                userStateContainer: userState,
+                olderThan: cutoff
+            )
+            defaults.set(true, forKey: staleSubscriptionCleanupKey)
+            CrashBreadcrumbs.shared.record("stale_subscriptions_tombstoned", details: "count=\(changed)")
+        } catch {
+            CrashBreadcrumbs.shared.record("stale_subscription_cleanup_failed")
+        }
+    }
+
     static func markDeferredComplete() {
         defaults.set(true, forKey: deferredCompleteKey)
         CrashBreadcrumbs.shared.record("store_cutover_deferred_complete")

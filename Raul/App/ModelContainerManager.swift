@@ -1204,6 +1204,7 @@ class ModelContainerManager: ObservableObject {
                 refreshMissingFeeds: false,
                 reason: "local_library_migration"
             )
+            StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
         }
     }
 
@@ -1897,6 +1898,9 @@ class ModelContainerManager: ObservableObject {
         if let userState = preparedUserStateContainer {
             let library = runtimeProjectsFromCache ? nil : preparedContainer
             Task.detached(priority: .background) {
+                if let library {
+                    StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
+                }
                 ListeningTotalsDiagnostics.capture(userState: userState, library: library)
             }
         }

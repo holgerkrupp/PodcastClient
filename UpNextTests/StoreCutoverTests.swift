@@ -174,6 +174,64 @@ final class StoreCutoverTests: XCTestCase {
         )
     }
 
+    func testCleanupTombstonesOnlyOldRowsMissingFromTheLibrary() async throws {
+        let stores = try makeStores(episodeCount: 1)
+        let copied = await runCopy(stores)
+        XCTAssertEqual(copied, .committed)
+        let cutoff = Date(timeIntervalSince1970: 5_000)
+        let context = ModelContext(stores.userState)
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/stale.xml",
+            isSubscribed: true,
+            subscribedAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        ))
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/new-elsewhere.xml",
+            isSubscribed: true,
+            subscribedAt: cutoff.addingTimeInterval(60),
+            updatedAt: cutoff.addingTimeInterval(60)
+        ))
+        try context.save()
+
+        let changed = try StoreSplitMigrationService.tombstoneSubscriptionsMissingFromLibrary(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState,
+            olderThan: cutoff
+        )
+        XCTAssertEqual(changed, 1)
+        let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<SubscriptionSync>())
+        XCTAssertEqual(rows.first { $0.feedURL.contains("stale") }?.isSubscribed, false)
+        XCTAssertEqual(rows.first { $0.feedURL.contains("new-elsewhere") }?.isSubscribed, true)
+        XCTAssertEqual(rows.first { $0.feedURL.contains("feed.xml") }?.isSubscribed, true, "A real subscription stays")
+
+        let again = try StoreSplitMigrationService.tombstoneSubscriptionsMissingFromLibrary(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState,
+            olderThan: cutoff
+        )
+        XCTAssertEqual(again, 0)
+    }
+
+    func testCleanupDoesNothingWhenTheLibraryIsEmpty() throws {
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let context = ModelContext(userState)
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/real.xml",
+            isSubscribed: true,
+            subscribedAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        ))
+        try context.save()
+        let changed = try StoreSplitMigrationService.tombstoneSubscriptionsMissingFromLibrary(
+            libraryContainer: library,
+            userStateContainer: userState,
+            olderThan: .now
+        )
+        XCTAssertEqual(changed, 0)
+    }
+
     func testClassificationFollowsTheLibraryFile() {
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: true), .legacyUpgrade)
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: false), .freshSplitInstall)

@@ -4449,6 +4449,37 @@ actor StoreSplitMigrationService {
         }
     }
 
+    /// Tombstones active subscriptions this library has no podcast for and that
+    /// predate its switch to local-only: until then legacy CloudKit kept the library
+    /// complete, so these aren't subscriptions, and a new device would restore them
+    /// all. Returns how many changed. An unreadable or empty library proves nothing.
+    @discardableResult
+    nonisolated static func tombstoneSubscriptionsMissingFromLibrary(
+        libraryContainer: ModelContainer,
+        userStateContainer: ModelContainer,
+        olderThan cutoff: Date
+    ) throws -> Int {
+        let podcasts = try ModelContext(libraryContainer).fetch(FetchDescriptor<Podcast>())
+        let known = Set(podcasts.compactMap(\.feed).flatMap(\.podcastFeedComparisonKeys))
+        guard known.isEmpty == false else { return 0 }
+        let context = makeContext(for: userStateContainer)
+        let now = Date()
+        var changed = 0
+        for row in try context.fetch(FetchDescriptor<SubscriptionSync>(
+            predicate: #Predicate { $0.isSubscribed }
+        )) where row.updatedAt < cutoff {
+            // A URL that can't be compared can't be shown to be stale.
+            guard let url = URL(string: row.feedURL),
+                  url.podcastFeedComparisonKeys.isDisjoint(with: known) else { continue }
+            row.isSubscribed = false
+            row.unsubscribedAt = now
+            row.updatedAt = now
+            changed += 1
+        }
+        if context.hasChanges { try context.save() }
+        return changed
+    }
+
     /// Tombstones memberships of episodes that UserState knows are finished, so
     /// they don't come back on this or any other device. Membership added after
     /// the episode finished is a deliberate re-listen and stays.
