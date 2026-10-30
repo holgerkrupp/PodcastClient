@@ -721,7 +721,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var cutoverProgress: StoreCutoverProgress?
     private var pendingRuntimeContainer: ModelContainer?
     private var libraryFillTask: Task<Bool, Never>?
-    private static let maximumForegroundDrainPasses = 64
+    private static let maximumForegroundDrainPasses = 160
     private var openedExistingProjection = false
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
@@ -1399,8 +1399,7 @@ class ModelContainerManager: ObservableObject {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               let userStateContainer = preparedUserStateContainer,
-              StoreSplitPlaybackGate.shared.isActive == false,
-              StoreSplitCloudKitExportGate.shared.isActive == false else { return }
+              StoreSplitPlaybackGate.shared.isActive == false else { return }
 #if canImport(UIKit)
         guard UIApplication.shared.applicationState == .active else { return }
 #endif
@@ -1421,11 +1420,13 @@ class ModelContainerManager: ObservableObject {
                     userStateContainer: userStateContainer,
                     legacyContainer: preparedContainer,
                     limit: 8,
+                    // Each drained write starts an export, so yielding to exports
+                    // here would stop the queue after every batch.
                     shouldContinue: {
                         Task.isCancelled == false
                             && permit.yieldReason(
                                 playbackActive: StoreSplitPlaybackGate.shared.isActive,
-                                cloudKitExportActive: StoreSplitCloudKitExportGate.shared.isActive
+                                cloudKitExportActive: false
                             ) == nil
                     }
                 )
@@ -1441,18 +1442,20 @@ class ModelContainerManager: ObservableObject {
                     hasPending: result.hasPending, queueCount: after.count
                 )
                 if result.hasPending { AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded() }
-                // Whatever is still queued is waiting for its retry time, or yielded.
-                guard result.succeeded > 0, result.hasPending, Task.isCancelled == false else { break }
-                try await Task.sleep(for: .milliseconds(250))
-            }
-            for item in monitor.pendingOperations() {
-                do {
-                    try await StoreSplitPortableWriteOutbox.shared.enqueue(item.operation)
-                    monitor.acknowledgeFallbackOperation(item.id)
-                } catch {
-                    monitor.recordDrainFailure(error)
-                    return
+                // Room just opened up, so move in what was waiting for it.
+                var moved = 0
+                for item in monitor.pendingOperations().prefix(max(1, result.succeeded)) {
+                    do {
+                        try await StoreSplitPortableWriteOutbox.shared.enqueue(item.operation)
+                        monitor.acknowledgeFallbackOperation(item.id)
+                        moved += 1
+                    } catch {
+                        break
+                    }
                 }
+                // Nothing attempted means the rest is waiting for its retry time.
+                guard result.attempted > 0 || moved > 0, Task.isCancelled == false else { break }
+                try await Task.sleep(for: .milliseconds(250))
             }
         } catch {
             monitor.recordDrainFailure(error)
@@ -1899,6 +1902,7 @@ class ModelContainerManager: ObservableObject {
             let library = runtimeProjectsFromCache ? nil : preparedContainer
             Task.detached(priority: .background) {
                 if let library {
+                    StoreCutoverState.repairInflatedBaselineIfNeeded(library: library, userState: userState)
                     StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
                 }
                 ListeningTotalsDiagnostics.capture(userState: userState, library: library)

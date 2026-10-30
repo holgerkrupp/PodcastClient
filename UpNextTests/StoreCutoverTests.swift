@@ -232,6 +232,53 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(changed, 0)
     }
 
+    func testInflatedBaselineFromAnOlderTierIsCorrected() throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        library.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: PlaySessionSummaryPeriod.year.rawValue,
+            periodStart: Date(timeIntervalSince1970: 0),
+            podcastFeed: feedURL,
+            totalSeconds: 3_600
+        ))
+        try library.save()
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let userState = ModelContext(stores.userState)
+        userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 9_000, capturedByDeviceID: "other"))
+        userState.insert(ListeningBaselineSync(feedURL: "https://example.com/old-tier.xml", totalSeconds: 9_000))
+        try userState.save()
+
+        _ = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState
+        )
+        let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(rows.reduce(0) { $0 + $1.totalSeconds }, 3_600)
+    }
+
+    func testBaselineCloseToTheSummariesIsLeftAlone() throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        library.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: PlaySessionSummaryPeriod.year.rawValue,
+            periodStart: Date(timeIntervalSince1970: 0),
+            podcastFeed: feedURL,
+            totalSeconds: 3_000
+        ))
+        try library.save()
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let userState = ModelContext(stores.userState)
+        userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 3_600))
+        try userState.save()
+        let changed = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState
+        )
+        XCTAssertEqual(changed, 0)
+    }
+
     func testClassificationFollowsTheLibraryFile() {
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: true), .legacyUpgrade)
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: false), .freshSplitInstall)

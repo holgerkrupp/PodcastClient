@@ -49,7 +49,9 @@ transcripts, AI chapters, downloads, bookmark images and links, and device-local
 - Upgrade a real populated App Store install; check everything opens at once and the copy finishes.
 - Two devices on one account, both directions, with one updated first.
 - Confirm in the CloudKit Console that no schema change needs deploying (UserState is unchanged).
-- Listening total against the expected figure: the 1451h report is unexplained so far.
+- Listening total against the expected figure. One device showed 1451h against about 400h:
+  a 1148h baseline from an older tier or run, plus live sessions the year summaries already
+  held. Year summaries there added up to 496h, so the corrected total is still an estimate.
 
 ---
 

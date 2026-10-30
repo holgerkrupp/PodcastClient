@@ -4449,6 +4449,75 @@ actor StoreSplitMigrationService {
         }
     }
 
+    /// Corrects baselines that clearly exceed what the year summaries add up to.
+    /// Those summaries are the account's lifetime figure, synced to every device
+    /// until the switch. Rows from an older tier or run can't otherwise be corrected,
+    /// because publication only visits feeds the summaries mention. A modest gap is
+    /// left alone: a device that synced late has a lower figure than the truth.
+    @discardableResult
+    nonisolated static func repairInflatedBaseline(
+        libraryContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) throws -> Int {
+        let kind = PlaySessionSummaryPeriod.year.rawValue
+        let summaries = try ModelContext(libraryContainer).fetch(FetchDescriptor<PlaySessionSummary>(
+            predicate: #Predicate { $0.periodKind == kind }
+        ))
+        struct Totals { var total = 0.0, silence = 0.0, rate = 0.0 }
+        var byFeedAndYear: [String: [String: Totals]] = [:]
+        for summary in summaries {
+            guard let start = summary.periodStart else { continue }
+            let feed = summary.podcastFeed.map(PodcastFeedIdentity.normalizedFeedURLString)
+                ?? ListeningBaselineSync.allPodcastsFeedURL
+            let year = baselinePeriodIdentity(start, kind: kind)
+            var value = byFeedAndYear[feed]?[year] ?? Totals()
+            value.total = max(value.total, summary.totalSeconds ?? 0)
+            value.silence = max(value.silence, summary.silenceGapTimeSavedSeconds ?? 0)
+            value.rate = max(value.rate, summary.playbackRateTimeSavedSeconds ?? 0)
+            byFeedAndYear[feed, default: [:]][year] = value
+        }
+        let expected = byFeedAndYear.mapValues { years in
+            years.values.reduce(into: Totals()) {
+                $0.total += $1.total
+                $0.silence += $1.silence
+                $0.rate += $1.rate
+            }
+        }
+        let expectedSum = expected.values.reduce(0) { $0 + $1.total }
+        guard expectedSum > 0 else { return 0 }
+
+        let context = makeContext(for: userStateContainer)
+        let rows = try context.fetch(FetchDescriptor<ListeningBaselineSync>())
+            .filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
+        guard rows.reduce(0, { $0 + $1.totalSeconds }) > expectedSum * 1.25 else { return 0 }
+
+        let now = Date()
+        var changed = 0
+        for row in rows {
+            let value = expected[row.feedURL] ?? Totals()
+            row.totalSeconds = value.total
+            row.silenceGapTimeSavedSeconds = value.silence
+            row.playbackRateTimeSavedSeconds = value.rate
+            row.capturedAt = now
+            changed += 1
+        }
+        let known = Set(rows.map(\.feedURL))
+        for (feed, value) in expected where known.contains(feed) == false
+            && feed != ListeningBaselineSync.allPodcastsFeedURL {
+            context.insert(ListeningBaselineSync(
+                feedURL: feed,
+                totalSeconds: value.total,
+                silenceGapTimeSavedSeconds: value.silence,
+                playbackRateTimeSavedSeconds: value.rate,
+                capturedAt: now,
+                capturedByDeviceID: ListeningDeviceIdentity.current().id
+            ))
+            changed += 1
+        }
+        if context.hasChanges { try context.save() }
+        return changed
+    }
+
     /// Tombstones active subscriptions this library has no podcast for and that
     /// predate its switch to local-only: until then legacy CloudKit kept the library
     /// complete, so these aren't subscriptions, and a new device would restore them

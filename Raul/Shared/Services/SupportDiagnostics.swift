@@ -187,7 +187,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             })
         }
         sections.append("Listening totals and subscriptions: \(ListeningTotalsDiagnostics.latest)")
-        sections.append("User data copy pending: \(StoreCutoverState.isDeferredMigrationPending)")
+        sections.append("User data copy pending: \(StoreCutoverState.isDeferredMigrationPending), phase: \(StoreCutoverState.currentCopyPhase)")
         sections.append(NSLocalizedString("Recent event timeline (last five minutes)", comment: "Heading for recent app events in support report"))
         let visibleEvents = events.filter { $0.at >= Date().addingTimeInterval(-eventWindow) }
         sections.append(contentsOf: visibleEvents.map {

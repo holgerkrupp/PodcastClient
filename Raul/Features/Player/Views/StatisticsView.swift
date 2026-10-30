@@ -1896,10 +1896,16 @@ struct StatisticsView: View {
         let baseline = syncedBaselineSeconds(
             selectedPodcastFeedString: selectedPodcastFeedString
         )
-        let live = syncedHistoryListeningSeconds(
-            selectedPodcastFeedString: selectedPodcastFeedString,
-            migratedOnly: false
-        )
+        // The baseline already holds what the legacy summaries held when it was
+        // captured, including sessions that were also written as live history.
+        let baselineCapturedAt = baseline == nil ? nil : latestBaselineCaptureDate()
+        let live = syncedHistoryRows(
+            scope: .live,
+            selectedPodcastFeedString: selectedPodcastFeedString
+        ).reduce(0.0) { total, row in
+            if let baselineCapturedAt, row.startedAt < baselineCapturedAt { return total }
+            return total + max(0, row.listenedSeconds)
+        }
         let migrated = syncedHistoryListeningSeconds(
             selectedPodcastFeedString: selectedPodcastFeedString,
             migratedOnly: true
@@ -1910,6 +1916,15 @@ struct StatisticsView: View {
             liveSeconds: live,
             migratedSeconds: migrated
         )
+    }
+
+    private func latestBaselineCaptureDate() -> Date? {
+        guard let container = ModelContainerManager.shared.preparedUserStateContainer else {
+            return nil
+        }
+        return ((try? ModelContext(container).fetch(FetchDescriptor<ListeningBaselineSync>())) ?? [])
+            .map(\.capturedAt)
+            .max()
     }
 
     /// The frozen pre-split total for the selected scope, or `nil` when this

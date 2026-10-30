@@ -5,6 +5,7 @@ import SwiftData
 /// The app runs from its existing local library throughout, so this never holds
 /// up startup; it only decides what may be imported back.
 enum StoreCutoverState {
+    private static let copyPhaseKey = "storeSplit.localLibraryCopyPhase"
     private static let startedKey = "storeSplit.localLibraryMigrationStarted.v1"
     private static let startedAtKey = "storeSplit.localLibraryStartedAt.v1"
     // v3: corrects baselines counted from duplicate summary rows and removes
@@ -58,6 +59,30 @@ enum StoreCutoverState {
         } catch {
             CrashBreadcrumbs.shared.record("stale_subscription_cleanup_failed")
         }
+    }
+
+    private static let baselineRepairKey = "storeSplit.inflatedBaselineRepair.v1"
+
+    /// Once, on upgraded devices. Doesn't wait for the copy: it reads only summaries.
+    static func repairInflatedBaselineIfNeeded(library: ModelContainer, userState: ModelContainer) {
+        guard localLibraryStartedAt != nil,
+              defaults.bool(forKey: baselineRepairKey) == false else { return }
+        do {
+            let changed = try StoreSplitMigrationService.repairInflatedBaseline(
+                libraryContainer: library,
+                userStateContainer: userState
+            )
+            defaults.set(true, forKey: baselineRepairKey)
+            CrashBreadcrumbs.shared.record("inflated_baseline_repaired", details: "rows=\(changed)")
+        } catch {
+            CrashBreadcrumbs.shared.record("inflated_baseline_repair_failed")
+        }
+    }
+
+    /// The copy's current phase, for the support report.
+    nonisolated static var currentCopyPhase: String {
+        get { defaults.string(forKey: copyPhaseKey) ?? "not started" }
+        set { defaults.set(newValue, forKey: copyPhaseKey) }
     }
 
     static func markDeferredComplete() {
@@ -303,6 +328,7 @@ enum StoreCutoverCoordinator {
                 cacheContainer: cacheContainer,
                 shouldContinue: shouldContinue
             )
+            StoreCutoverState.currentCopyPhase = report.phase ?? "finishing"
             switch report.status {
             case .completed:
                 do {
