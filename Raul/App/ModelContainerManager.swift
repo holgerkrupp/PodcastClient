@@ -721,6 +721,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var cutoverProgress: StoreCutoverProgress?
     private var pendingRuntimeContainer: ModelContainer?
     private var libraryFillTask: Task<Bool, Never>?
+    private static let maximumForegroundDrainPasses = 64
     private var openedExistingProjection = false
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
@@ -1410,7 +1411,40 @@ class ModelContainerManager: ObservableObject {
         defer { permit.release() }
 
         do {
-            for item in fallbackWrites {
+            // Drain first. A full queue can't accept the fallback writes, so moving
+            // them first would fail and leave the queue stuck full for good.
+            for _ in 0..<Self.maximumForegroundDrainPasses {
+                let before = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+                monitor.recordDrainAttempt(queueCount: before.count, oldestAge: before.oldestAge)
+                let result = try await StoreSplitPortableWriteOutbox.shared.drain(
+                    userStateContainer: userStateContainer,
+                    legacyContainer: preparedContainer,
+                    limit: 8,
+                    shouldContinue: {
+                        Task.isCancelled == false
+                            && permit.yieldReason(
+                                playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                                cloudKitExportActive: StoreSplitCloudKitExportGate.shared.isActive
+                            ) == nil
+                    }
+                )
+                if result.failed > 0 {
+                    monitor.recordDrainFailures(
+                        operationKinds: result.failureOperationKinds,
+                        categories: result.failureCategories
+                    )
+                }
+                let after = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
+                monitor.recordDrainSuccess(
+                    succeeded: result.succeeded, failed: result.failed,
+                    hasPending: result.hasPending, queueCount: after.count
+                )
+                if result.hasPending { AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded() }
+                // Whatever is still queued is waiting for its retry time, or yielded.
+                guard result.succeeded > 0, result.hasPending, Task.isCancelled == false else { break }
+                try await Task.sleep(for: .milliseconds(250))
+            }
+            for item in monitor.pendingOperations() {
                 do {
                     try await StoreSplitPortableWriteOutbox.shared.enqueue(item.operation)
                     monitor.acknowledgeFallbackOperation(item.id)
@@ -1419,32 +1453,6 @@ class ModelContainerManager: ObservableObject {
                     return
                 }
             }
-            let before = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
-            monitor.recordDrainAttempt(queueCount: before.count, oldestAge: before.oldestAge)
-            let result = try await StoreSplitPortableWriteOutbox.shared.drain(
-                userStateContainer: userStateContainer,
-                legacyContainer: preparedContainer,
-                limit: 8,
-                shouldContinue: {
-                    Task.isCancelled == false
-                        && permit.yieldReason(
-                            playbackActive: StoreSplitPlaybackGate.shared.isActive,
-                            cloudKitExportActive: StoreSplitCloudKitExportGate.shared.isActive
-                        ) == nil
-                }
-            )
-            if result.failed > 0 {
-                monitor.recordDrainFailures(
-                    operationKinds: result.failureOperationKinds,
-                    categories: result.failureCategories
-                )
-            }
-            let after = try await StoreSplitPortableWriteOutbox.shared.queueDiagnostics()
-            monitor.recordDrainSuccess(
-                succeeded: result.succeeded, failed: result.failed,
-                hasPending: result.hasPending, queueCount: after.count
-            )
-            if result.hasPending { AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded() }
         } catch {
             monitor.recordDrainFailure(error)
         }
@@ -1894,8 +1902,10 @@ class ModelContainerManager: ObservableObject {
         }
         Task(priority: .utility) { [weak self] in
             async let transcripts: Void? = self?.runLibraryBackfillIfNeeded()
+            async let writes: Void? = self?.retryPortableWritesIfSafe()
             await self?.runDeferredMigrationIfNeeded()
             _ = await transcripts
+            _ = await writes
         }
 #if canImport(UIKit)
         // Arm the background pass now rather than waiting for a clean
@@ -2127,8 +2137,10 @@ class ModelContainerManager: ObservableObject {
         exportWasInProgress = false
         Task(priority: .utility) { [weak self] in
             async let transcripts: Void? = self?.runLibraryBackfillIfNeeded()
+            async let writes: Void? = self?.retryPortableWritesIfSafe()
             await self?.runDeferredMigrationIfNeeded()
             _ = await transcripts
+            _ = await writes
         }
     }
 

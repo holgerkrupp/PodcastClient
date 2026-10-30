@@ -136,6 +136,44 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(active.count, 1)
     }
 
+    func testStaleActiveSubscriptionCreatesNoPodcastAfterTheLibrarySwitch() async throws {
+        let stores = try makeStores(episodeCount: 1)
+        StoreCutoverState.beginLocalLibrary()
+        let cutoff = try XCTUnwrap(StoreCutoverState.localLibraryStartedAt)
+        let context = ModelContext(stores.userState)
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/stale.xml",
+            isSubscribed: true,
+            subscribedAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        ))
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/new-elsewhere.xml",
+            isSubscribed: true,
+            subscribedAt: cutoff.addingTimeInterval(60),
+            updatedAt: cutoff.addingTimeInterval(60)
+        ))
+        try context.save()
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: stores.library,
+            userStateContainer: stores.userState,
+            cacheContainer: stores.cache,
+            authoritativePlaylists: false,
+            projectListeningHistoryToLegacy: false,
+            episodeStateProjectionRecencyCutoff: nil,
+            isInitialRuntimeHydration: true
+        )
+        let feeds = try ModelContext(stores.library).fetch(FetchDescriptor<Podcast>())
+            .compactMap { $0.feed?.absoluteString }
+        XCTAssertFalse(feeds.contains { $0.contains("stale") })
+        XCTAssertTrue(feeds.contains { $0.contains("new-elsewhere") })
+        XCTAssertEqual(
+            try ModelContext(stores.userState).fetch(FetchDescriptor<SubscriptionSync>()).filter(\.isSubscribed).count,
+            2,
+            "The synced rows are left as they are"
+        )
+    }
+
     func testClassificationFollowsTheLibraryFile() {
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: true), .legacyUpgrade)
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: false), .freshSplitInstall)

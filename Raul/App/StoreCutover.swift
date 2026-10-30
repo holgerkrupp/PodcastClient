@@ -6,6 +6,7 @@ import SwiftData
 /// up startup; it only decides what may be imported back.
 enum StoreCutoverState {
     private static let startedKey = "storeSplit.localLibraryMigrationStarted.v1"
+    private static let startedAtKey = "storeSplit.localLibraryStartedAt.v1"
     // v3: corrects baselines counted from duplicate summary rows and removes
     // finished episodes from playlists on devices that already ran earlier builds.
     static let deferredCompleteKey = "storeSplit.deferredMigrationComplete.v3"
@@ -22,11 +23,21 @@ enum StoreCutoverState {
     static func beginLocalLibrary() {
         StoreDevelopmentConfiguration.markLegacyCloudCutoverCompleted()
         defaults.set(true, forKey: startedKey)
+        if defaults.object(forKey: startedAtKey) == nil {
+            defaults.set(Date(), forKey: startedAtKey)
+        }
         var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
         if expected.contains("SharedDatabase.sqlite") == false {
             expected.append("SharedDatabase.sqlite")
             UserDefaults.standard.set(expected, forKey: StoreLineage.key)
         }
+    }
+
+    /// Until this moment, legacy CloudKit kept this device's library complete. A
+    /// synced subscription older than it, for a feed the library doesn't have, was
+    /// not subscribed here: older backfills left such rows active with no tombstone.
+    nonisolated static var localLibraryStartedAt: Date? {
+        defaults.object(forKey: startedAtKey) as? Date
     }
 
     static func markDeferredComplete() {
@@ -52,6 +63,21 @@ enum ListeningTotalsDiagnostics {
         if let baselines = try? account.fetch(FetchDescriptor<ListeningBaselineSync>()) {
             let perFeed = baselines.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
             parts.append("baseline rows=\(baselines.count) sum=\(hours(perFeed.reduce(0) { $0 + $1.totalSeconds }))")
+        }
+        if let library,
+           let podcasts = try? ModelContext(library).fetch(FetchDescriptor<Podcast>()),
+           let subscriptions = try? account.fetch(FetchDescriptor<SubscriptionSync>(
+               predicate: #Predicate { $0.isSubscribed }
+           )) {
+            let known = Set(podcasts.compactMap(\.feed).flatMap(\.podcastFeedComparisonKeys))
+            let unknown = subscriptions.filter { row in
+                guard let url = URL(string: row.feedURL) else { return true }
+                return url.podcastFeedComparisonKeys.isDisjoint(with: known)
+            }
+            let years = Dictionary(grouping: unknown) {
+                Calendar(identifier: .gregorian).component(.year, from: $0.updatedAt)
+            }.sorted { $0.key < $1.key }.map { "\($0.key)=\($0.value.count)" }.joined(separator: ",")
+            parts.append("subscriptions library=\(podcasts.count) librarySubscribed=\(podcasts.filter(\.isSubscribed).count) active=\(subscriptions.count) notInLibrary=\(unknown.count) byYear=\(years)")
         }
         if let history = try? account.fetch(FetchDescriptor<ListeningHistorySync>()) {
             let migrated = history.filter(\.isLegacyMigrated)

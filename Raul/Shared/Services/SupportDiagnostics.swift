@@ -186,6 +186,8 @@ final class SupportDiagnosticsRecorder: ObservableObject {
                 Self.format(snapshot, index: index + 1)
             })
         }
+        sections.append("Listening totals and subscriptions: \(ListeningTotalsDiagnostics.latest)")
+        sections.append("User data copy pending: \(StoreCutoverState.isDeferredMigrationPending)")
         sections.append(NSLocalizedString("Recent event timeline (last five minutes)", comment: "Heading for recent app events in support report"))
         let visibleEvents = events.filter { $0.at >= Date().addingTimeInterval(-eventWindow) }
         sections.append(contentsOf: visibleEvents.map {
@@ -228,7 +230,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             readAuthority: "User State",
             runtimeKind: manager.runtimeProjectsFromCache ? "in-memory projection" : "durable library store",
             runtimeStoreStatus: "open (primary app container available)",
-            legacyStoreStatus: "not used (frozen backup only)",
+            legacyStoreStatus: "not used (local library is the runtime)",
             userStateStoreStatus: manager.preparedUserStateContainer == nil ? "not open" : "open",
             cacheStoreStatus: manager.preparedCacheContainer == nil ? "not open" : "open",
             runtimeReadiness: String(describing: manager.runtimeStoreReadiness),

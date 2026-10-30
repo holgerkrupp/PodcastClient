@@ -34,6 +34,8 @@ actor StoreSplitUserStateImporter {
     private let userStateContainer: ModelContainer
     private let cacheContainer: ModelContainer?
     private let isInitialRuntimeHydration: Bool
+    /// Upgraded devices only: see `StoreCutoverState.localLibraryStartedAt`.
+    private let subscriptionCreationCutoff: Date?
     private let credentialStore: any PodcastCredentialStore
     private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
     private var legacyContext: ModelContext
@@ -74,6 +76,7 @@ actor StoreSplitUserStateImporter {
         self.userStateContainer = userStateContainer
         self.cacheContainer = cacheContainer
         self.isInitialRuntimeHydration = isInitialRuntimeHydration
+        self.subscriptionCreationCutoff = StoreCutoverState.localLibraryStartedAt
         self.credentialStore = credentialStore
         previousImportCursors = StoreSplitImportCursorStore.load()
         legacyContext = ModelContext(legacyContainer)
@@ -242,6 +245,9 @@ actor StoreSplitUserStateImporter {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
+                if let startedAt = subscriptionCreationCutoff, subscription.updatedAt < startedAt {
+                    return nil
+                }
                 let podcast = Podcast(feed: resolvedFeedURL)
                 legacyContext.insert(podcast)
                 createdPodcast = true
