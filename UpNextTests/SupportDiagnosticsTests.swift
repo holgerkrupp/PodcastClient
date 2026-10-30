@@ -89,6 +89,21 @@ final class SupportDiagnosticsTests: XCTestCase {
         XCTAssertTrue(recorder.reportText.contains("without reinstalling or resetting data"))
     }
 
+    func testLaunchReportIncludesHydrationPhaseWithoutPrivateEventDetails() {
+        SupportDiagnosticsRecorder.shared.record(
+            "Runtime compatibility hydration started",
+            detail: "https://private.example/feed?token=secret"
+        )
+        let report = SupportDiagnosticsRecorder.launchReport()
+
+        XCTAssertTrue(report.contains("Runtime container:"))
+        XCTAssertTrue(report.contains("Runtime readiness:"))
+        XCTAssertTrue(report.contains("Runtime compatibility hydration started"))
+        XCTAssertFalse(report.contains("private.example"))
+        XCTAssertFalse(report.contains("token=secret"))
+        XCTAssertFalse(report.contains("unavailable (store did not open)"))
+    }
+
     func testLatestExportResultWinsEvenWhenEventDatesCoincide() {
         let failure = storeDiagnostics(exportSucceeded: false)
         let success = storeDiagnostics(exportSucceeded: true)

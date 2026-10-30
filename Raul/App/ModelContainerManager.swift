@@ -738,6 +738,11 @@ class ModelContainerManager: ObservableObject {
         case ready
         case failed
     }
+    private enum RuntimeGraphPreparationResult: Sendable, Equatable {
+        case ready
+        case interrupted
+        case failed
+    }
     @Published private(set) var runtimeStoreReadiness: RuntimeStoreReadiness = .unopened
     @Published private(set) var isMigratingSplitStores = false
     @Published private(set) var requiresInitialCloudImport = false
@@ -770,7 +775,12 @@ class ModelContainerManager: ObservableObject {
     }
     private var didAttemptCompatibilityProjection = false
     private var didBuildCompatibilityProjection = false
-    private var isBuildingCompatibilityProjection = false
+    private var compatibilityProjectionTask: Task<RuntimeGraphPreparationResult, Never>?
+#if DEBUG
+    private var isRuntimeGraphFixture = false
+#else
+    private let isRuntimeGraphFixture = false
+#endif
     private var migrationTask: Task<StoreSplitMigrationExecutionResult, Never>?
     private var aiContentImportTask: Task<StoreSplitAIContentImportResult, Never>?
     private var userStateImportTask: Task<StoreSplitUserStateImportResult, Never>?
@@ -853,6 +863,23 @@ class ModelContainerManager: ObservableObject {
     }
     
     nonisolated static let shared = ModelContainerManager()
+
+#if DEBUG
+    /// In-memory fixture entrypoint for startup hydration regression tests.
+    /// Does not reset or replace any shared on-disk stores.
+    init(
+        runtimeContainer: ModelContainer,
+        userStateContainer: ModelContainer,
+        cacheContainer: ModelContainer
+    ) {
+        preparedContainer = runtimeContainer
+        preparedUserStateContainer = userStateContainer
+        preparedCacheContainer = cacheContainer
+        bootstrapMode = .freshSplitInstall
+        runtimeStoreReadiness = .settling
+        isRuntimeGraphFixture = true
+    }
+#endif
 
     nonisolated private init() {
 #if DEBUG
@@ -1115,8 +1142,24 @@ class ModelContainerManager: ObservableObject {
                     && bootstrapMode.usesInMemoryRuntimeProjection)
             // A projection is usable only after its durable backing stores
             // opened. Never expose a writable empty runtime on opening failure.
-            let userState = runtimeProjectsFromCache ? try Self.makeUserStateContainerWithRetry() : nil
-            let cache = runtimeProjectsFromCache ? try Self.makeCacheContainerWithRetry() : nil
+            let userState: ModelContainer?
+            let cache: ModelContainer?
+            if runtimeProjectsFromCache {
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Opening User State store")
+                }
+                userState = try Self.makeUserStateContainerWithRetry()
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
+                }
+                cache = try Self.makeCacheContainerWithRetry()
+            } else {
+                userState = nil
+                cache = nil
+            }
+            await MainActor.run {
+                SupportDiagnosticsRecorder.shared.record("Opening runtime library store")
+            }
             let runtimeContainer = try Self.makeLegacyContainerWithRetry(
                 isStoredInMemoryOnly: runtimeProjectsFromCache
             )
@@ -1255,18 +1298,11 @@ class ModelContainerManager: ObservableObject {
         migrationReadiness = .preparing
         migrationBlocker = nil
         guard preparedUserStateContainer == nil || preparedCacheContainer == nil else {
-            if let cache = preparedCacheContainer {
+            if let cache = preparedCacheContainer, isRuntimeGraphFixture == false {
                 Self.reconcileMigrationLedger(cacheContainer: cache)
             }
             recordOpenedSplitStoreEvidenceIfNeeded()
-            guard await buildRuntimeGraphIfNeeded() else {
-                markRuntimeStoreInitializationFailed(
-                    "Stored library data could not be restored. Please try again."
-                )
-                return
-            }
-            markRuntimeStoreReady()
-            updateMigrationReadiness()
+            await finishRuntimeGraphPreparation(await buildRuntimeGraphIfNeeded())
             return
         }
 
@@ -1325,7 +1361,7 @@ class ModelContainerManager: ObservableObject {
         splitStorePreparationTask = nil
         isPreparingSplitStores = false
 
-        if let cache = preparedCacheContainer {
+        if let cache = preparedCacheContainer, isRuntimeGraphFixture == false {
             Self.reconcileMigrationLedger(cacheContainer: cache)
         }
 
@@ -1338,14 +1374,7 @@ class ModelContainerManager: ObservableObject {
             }
             recordOpenedSplitStoreEvidenceIfNeeded()
         }
-        guard await buildRuntimeGraphIfNeeded() else {
-            markRuntimeStoreInitializationFailed(
-                "Stored library data could not be restored. Please try again."
-            )
-            return
-        }
-        markRuntimeStoreReady()
-        updateMigrationReadiness()
+        await finishRuntimeGraphPreparation(await buildRuntimeGraphIfNeeded())
 
         CrashBreadcrumbs.shared.record(
             "store_split_container_initialization_completed",
@@ -1354,7 +1383,7 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func recordOpenedSplitStoreEvidenceIfNeeded() {
-        guard runtimeProjectsFromCache else { return }
+        guard runtimeProjectsFromCache, isRuntimeGraphFixture == false else { return }
         if bootstrapMode == .freshSplitInstall {
             // Write only after both durable split stores opened. A process
             // interrupted before then must repeat fresh-install validation.
@@ -1388,6 +1417,7 @@ class ModelContainerManager: ObservableObject {
         }
         // This bounded repair is detached from launch readiness and yields to
         // playback, CloudKit export, cancellation, and resource pressure.
+        guard isRuntimeGraphFixture == false else { return }
         Task { [weak self] in await self?.retryPortableWritesIfSafe() }
     }
 
@@ -1397,6 +1427,28 @@ class ModelContainerManager: ObservableObject {
         migrationReadiness = .blocked
         migrationBlocker = message
         CrashBreadcrumbs.shared.record("runtime_store_initialization_failed")
+    }
+
+    private func finishRuntimeGraphPreparation(
+        _ result: RuntimeGraphPreparationResult
+    ) async {
+        switch result {
+        case .ready:
+            markRuntimeStoreReady()
+            updateMigrationReadiness()
+        case .failed:
+            markRuntimeStoreInitializationFailed(
+                "Stored library data could not be restored. Please try again."
+            )
+        case .interrupted:
+            // A background transition cancels the owned worker. Leave readiness
+            // settling so foreground entry can resume it without showing the
+            // initialization failure UI for a recoverable pause.
+            guard Task.isCancelled == false, heavyStoreWorkMayRunInCurrentAppState else {
+                return
+            }
+            await prepareSplitStores()
+        }
     }
 
     private func retryPortableWritesIfSafe() async {
@@ -1486,7 +1538,7 @@ class ModelContainerManager: ObservableObject {
     /// open. On disk that means a bounded, additive recovery of anything the
     /// cache holds but the durable store does not; in the experimental
     /// projection mode it means rebuilding the whole in-memory graph.
-    private func buildRuntimeGraphIfNeeded() async -> Bool {
+    private func buildRuntimeGraphIfNeeded() async -> RuntimeGraphPreparationResult {
         if runtimeProjectsFromCache {
             return await buildCompatibilityProjectionIfNeeded()
         } else {
@@ -1495,7 +1547,7 @@ class ModelContainerManager: ObservableObject {
             // must not hold the user's existing library behind the readiness
             // barrier.
             _ = await recoverCacheOnlyLibraryDataIfNeeded()
-            return true
+            return .ready
         }
     }
 
@@ -1721,27 +1773,63 @@ class ModelContainerManager: ObservableObject {
         UserDefaults.standard.bool(forKey: usedInMemoryProjectionKey)
     }
 
-    private func buildCompatibilityProjectionIfNeeded() async -> Bool {
-        guard runtimeProjectsFromCache else { return true }
-        if didBuildCompatibilityProjection { return true }
-        if isBuildingCompatibilityProjection {
-            while isBuildingCompatibilityProjection && Task.isCancelled == false {
-                try? await Task.sleep(for: .milliseconds(25))
-            }
-            return didBuildCompatibilityProjection
+    private func buildCompatibilityProjectionIfNeeded() async -> RuntimeGraphPreparationResult {
+        guard runtimeProjectsFromCache else { return .ready }
+        if didBuildCompatibilityProjection { return .ready }
+        if let compatibilityProjectionTask {
+            return await compatibilityProjectionTask.value
         }
         guard let runtimeContainer = preparedContainer,
+              let userStateContainer = preparedUserStateContainer,
               let cacheContainer = preparedCacheContainer else {
-            return false
+            return .failed
         }
-        isBuildingCompatibilityProjection = true
-        defer { isBuildingCompatibilityProjection = false }
+
+        SupportDiagnosticsRecorder.shared.record("Runtime compatibility hydration started")
+        CrashBreadcrumbs.shared.record("runtime_compatibility_hydration_started")
+        // This task is manager-owned rather than a child of the launch view's
+        // task, so dismissing/rebuilding that view cannot cancel local restore.
+        let task = Task { [weak self] in
+            guard let self else { return RuntimeGraphPreparationResult.interrupted }
+            let result = await self.performCompatibilityProjection(
+                runtimeContainer: runtimeContainer,
+                userStateContainer: userStateContainer,
+                cacheContainer: cacheContainer
+            )
+            switch result {
+            case .ready:
+                SupportDiagnosticsRecorder.shared.record("Runtime compatibility hydration finished")
+                CrashBreadcrumbs.shared.record("runtime_compatibility_hydration_finished")
+            case .interrupted:
+                SupportDiagnosticsRecorder.shared.record("Runtime compatibility hydration interrupted")
+                CrashBreadcrumbs.shared.record("runtime_compatibility_hydration_interrupted")
+            case .failed:
+                SupportDiagnosticsRecorder.shared.record("Runtime compatibility hydration failed")
+                CrashBreadcrumbs.shared.record("runtime_compatibility_hydration_failed")
+            }
+            self.compatibilityProjectionTask = nil
+            return result
+        }
+        compatibilityProjectionTask = task
+        return await task.value
+    }
+
+    private func performCompatibilityProjection(
+        runtimeContainer: ModelContainer,
+        userStateContainer: ModelContainer,
+        cacheContainer: ModelContainer
+    ) async -> RuntimeGraphPreparationResult {
         // Record that this install has rendered from the in-memory projection, so
         // a later durable-store launch knows the cache may hold feed data the
         // durable store never saw.
-        UserDefaults.standard.set(true, forKey: Self.usedInMemoryProjectionKey)
+        if isRuntimeGraphFixture == false {
+            UserDefaults.standard.set(true, forKey: Self.usedInMemoryProjectionKey)
+        }
 
-        await prepareLegacyMigrationSourceIfNeeded(cacheContainer: cacheContainer)
+        if isRuntimeGraphFixture == false {
+            await prepareLegacyMigrationSourceIfNeeded(cacheContainer: cacheContainer)
+        }
+        guard Task.isCancelled == false else { return .interrupted }
         let isRetry = didAttemptCompatibilityProjection
         didAttemptCompatibilityProjection = true
         let projection = await Task.detached(priority: .userInitiated) {
@@ -1771,27 +1859,30 @@ class ModelContainerManager: ObservableObject {
             "store_split_compatibility_projection_completed",
             details: "podcasts=\(projection.podcasts),episodes=\(projection.episodes),failed=\(projection.failed)"
         )
+        guard Task.isCancelled == false else { return .interrupted }
+        guard projection.failed == 0 else { return .failed }
 
-        var userStateProjectionSucceeded = true
-        if let userStateContainer = preparedUserStateContainer {
-            let result = await StoreSplitUserStateImporter.apply(
-                legacyContainer: runtimeContainer,
-                userStateContainer: userStateContainer,
-                authoritativePlaylists: false,
-                projectListeningHistoryToLegacy: true,
-                episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
-                    .episodeStateProjectionRecencyCutoff
-            )
-            userStateProjectionSucceeded = result.failed == 0 && result.interruptedByPlayback == false
-            await PlaySessionTrackerActor(
-                modelContainer: runtimeContainer
-            ).rebuildListeningStats()
-        } else {
-            userStateProjectionSucceeded = false
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtimeContainer,
+            userStateContainer: userStateContainer,
+            cacheContainer: cacheContainer,
+            authoritativePlaylists: false,
+            projectListeningHistoryToLegacy: true,
+            episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
+                .episodeStateProjectionRecencyCutoff,
+            isInitialRuntimeHydration: true
+        )
+        guard Task.isCancelled == false else { return .interrupted }
+        guard result.failed == 0, result.interruptedByPlayback == false else {
+            return result.interruptedByPlayback ? .interrupted : .failed
         }
-        didBuildCompatibilityProjection = projection.failed == 0
-            && userStateProjectionSucceeded
-        return didBuildCompatibilityProjection
+
+        await PlaySessionTrackerActor(
+            modelContainer: runtimeContainer
+        ).rebuildListeningStats()
+        guard Task.isCancelled == false else { return .interrupted }
+        didBuildCompatibilityProjection = true
+        return .ready
     }
 
     /// Reads only compact UserState rows and returns the feeds whose episodes
@@ -2870,6 +2961,7 @@ class ModelContainerManager: ObservableObject {
         migrationTask?.cancel()
         userStateImportTask?.cancel()
         aiContentImportTask?.cancel()
+        compatibilityProjectionTask?.cancel()
         Task {
             await splitStoreCoordinator.pauseForBackground()
         }
@@ -4262,7 +4354,7 @@ class ModelContainerManager: ObservableObject {
             return
         }
         SupportDiagnosticsRecorder.shared.record("Playlist hydration started")
-        guard await buildCompatibilityProjectionIfNeeded() else {
+        guard await buildCompatibilityProjectionIfNeeded() == .ready else {
             pendingSplitRuntimePlaylistReconciliation = true
             return
         }

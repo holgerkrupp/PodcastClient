@@ -10,22 +10,32 @@ struct ModelContainerLaunchView: View {
     let errorMessage: String?
     let retry: () -> Void
     @State private var copiedDiagnostics = false
+    @State private var showStalledStatus = false
 
     var body: some View {
         ZStack {
             AnimatedLaunchView(isFinishing: false)
 
-            if let errorMessage {
+            if errorMessage != nil || showStalledStatus {
                 VStack(spacing: 12) {
-                    Text("Up Next could not open its library.")
-                        .font(.headline)
-                    Text(errorMessage)
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(.secondary)
-                    Button("Try Again", action: retry)
-                        .buttonStyle(.borderedProminent)
-                    HStack {
+                    if let errorMessage {
+                        Text("Up Next could not open its library.")
+                            .font(.headline)
+                        Text(errorMessage)
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                        Button("Try Again", action: retry)
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Text("Restoring your saved library…")
+                            .font(.headline)
+                        Text("Local library preparation has not finished. You can share diagnostics to help investigate.")
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                    }
+                    VStack(spacing: 8) {
                         Button(copiedDiagnostics ? "Diagnostics Copied" : "Copy Diagnostics") {
                             Self.copyDiagnostics()
                             copiedDiagnostics = true
@@ -43,6 +53,13 @@ struct ModelContainerLaunchView: View {
                 .padding()
             }
         }
+        .task(id: errorMessage == nil) {
+            showStalledStatus = false
+            guard errorMessage == nil else { return }
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled, errorMessage == nil else { return }
+            showStalledStatus = true
+        }
     }
 
     private static func copyDiagnostics() {
@@ -55,206 +72,6 @@ struct ModelContainerLaunchView: View {
 #endif
     }
 }
-
-struct AppLaunchContainerView<Content: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    private let content: Content
-
-    @State private var isLaunchVisible = true
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        ZStack {
-            content
-
-            if isLaunchVisible {
-                CompositorLaunchView(reduceMotion: reduceMotion) {
-                    isLaunchVisible = false
-                }
-                    .transition(.opacity)
-                    .zIndex(1)
-                    .allowsHitTesting(false)
-            }
-        }
-    }
-}
-
-#if canImport(UIKit)
-private struct CompositorLaunchView: UIViewRepresentable {
-    let reduceMotion: Bool
-    let completion: () -> Void
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(completion: completion)
-    }
-
-    func makeUIView(context: Context) -> LaunchCurtainUIView {
-        let view = LaunchCurtainUIView(
-            colors: AnimatedLaunchView.activeStripeColors.map(UIColor.init),
-            reduceMotion: reduceMotion
-        )
-        view.animationDidComplete = context.coordinator.complete
-        return view
-    }
-
-    func updateUIView(_ uiView: LaunchCurtainUIView, context: Context) {}
-
-    final class Coordinator {
-        private var didComplete = false
-        private let completion: () -> Void
-
-        init(completion: @escaping () -> Void) {
-            self.completion = completion
-        }
-
-        func complete() {
-            guard !didComplete else { return }
-            didComplete = true
-            completion()
-        }
-    }
-}
-
-private final class LaunchCurtainUIView: UIView, CAAnimationDelegate {
-    var animationDidComplete: (() -> Void)?
-
-    private let colors: [UIColor]
-    private let reduceMotion: Bool
-    private var bandLayers: [CALayer] = []
-    private let markLayer = CALayer()
-    private var didStart = false
-
-    init(colors: [UIColor], reduceMotion: Bool) {
-        self.colors = colors
-        self.reduceMotion = reduceMotion
-        super.init(frame: .zero)
-        isUserInteractionEnabled = false
-        layer.masksToBounds = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        guard !didStart, bounds.width > 0, bounds.height > 0 else { return }
-        didStart = true
-        buildLayers()
-        startAnimation()
-    }
-
-    private func buildLayers() {
-        let bandHeight = bounds.height / CGFloat(colors.count)
-
-        for (index, color) in colors.enumerated() {
-            let band = CALayer()
-            let minY = floor(CGFloat(index) * bandHeight)
-            let maxY = index == colors.count - 1
-                ? bounds.height
-                : floor(CGFloat(index + 1) * bandHeight)
-            band.frame = CGRect(x: 0, y: minY, width: bounds.width, height: maxY - minY)
-            band.backgroundColor = color.cgColor
-            layer.addSublayer(band)
-            bandLayers.append(band)
-        }
-
-        guard let image = UIImage(named: "LaunchMark") else { return }
-        let markWidth = min(bounds.width * 0.28, 140)
-        let markHeight = markWidth * image.size.height / image.size.width
-        markLayer.contents = image.cgImage
-        markLayer.contentsGravity = .resizeAspect
-        markLayer.contentsScale = image.scale
-        markLayer.frame = CGRect(
-            x: bounds.midX - markWidth / 2,
-            y: bounds.midY - markHeight / 2,
-            width: markWidth,
-            height: markHeight
-        )
-        layer.addSublayer(markLayer)
-    }
-
-    private func startAnimation() {
-        let now = layer.convertTime(CACurrentMediaTime(), from: nil)
-
-        if reduceMotion {
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1
-            fade.toValue = 0
-            fade.duration = 0.16
-            fade.beginTime = now
-            fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            fade.delegate = self
-            layer.opacity = 0
-            layer.add(fade, forKey: "launchFade")
-            return
-        }
-
-        // The real interface is already mounted below this non-interactive
-        // curtain. Keep the handoff brief so it does not feel like launch work
-        // is still blocking interaction.
-        let duration: CFTimeInterval = 0.42
-        let stagger: CFTimeInterval = 0.025
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        for (index, band) in bandLayers.enumerated() {
-            let travel = -bounds.height - CGFloat(index) * 18
-            band.transform = CATransform3DMakeTranslation(0, travel, 0)
-
-            let animation = CABasicAnimation(keyPath: "transform.translation.y")
-            animation.fromValue = 0
-            animation.toValue = travel
-            animation.duration = duration
-            animation.beginTime = now + Double(index) * stagger
-            animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            if index == bandLayers.count - 1 {
-                animation.delegate = self
-            }
-            band.add(animation, forKey: "launchCurtain")
-        }
-
-        markLayer.opacity = 0
-        markLayer.transform = CATransform3DMakeScale(0.96, 0.96, 1)
-        CATransaction.commit()
-
-        let markFade = CABasicAnimation(keyPath: "opacity")
-        markFade.fromValue = 1
-        markFade.toValue = 0
-        markFade.duration = 0.16
-        markFade.beginTime = now
-        markFade.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        markLayer.add(markFade, forKey: "launchMarkFade")
-    }
-
-    nonisolated func animationDidStop(_ anim: CAAnimation, finished flag: Bool) {
-        Task { @MainActor [weak self] in
-            self?.animationDidComplete?()
-        }
-    }
-}
-#else
-private struct CompositorLaunchView: View {
-    let reduceMotion: Bool
-    let completion: () -> Void
-
-    @State private var isFinishing = false
-
-    var body: some View {
-        AnimatedLaunchView(isFinishing: isFinishing)
-            .task {
-                isFinishing = true
-                try? await Task.sleep(for: .milliseconds(reduceMotion ? 160 : 1_200))
-                completion()
-            }
-    }
-}
-#endif
 
 struct AnimatedLaunchView: View {
     let isFinishing: Bool

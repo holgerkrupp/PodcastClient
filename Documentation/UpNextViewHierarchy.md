@@ -84,3 +84,10 @@ All subscriptions, including OPML imports, admit only episodes released strictly
 ### Bookmark persistence
 
 The player, macOS menu, CarPlay and bookmark App Intent wait for a local save and either a portable save or a durable retry before reporting success. If the bookmark was saved locally but could not be queued for syncing, the error says it already exists on the device. Bookmark removal stages a retry before deleting locally; an error leaves the bookmark visible. The retry publishes a deletion only after the durable library confirms the local bookmark is absent.
+
+### Startup and library restoration
+
+- Mount the main app shell directly when its runtime container is available, without a decorative launch curtain. During local hydration, show **Restoring your saved library…** without obscuring navigation. Saved playlist references awaiting episode data use the contextual playlist recovery state.
+- Initial local hydration belongs to the container manager and survives removal of the launch view. Background interruption resumes on foreground activation; it is not an initialization error.
+- If the initial launch screen remains visible for ten seconds, it offers **Copy Diagnostics** and **Share Diagnostics**. These actions read local status and never upload automatically or reset stores.
+- A genuine initialization failure offers **Try Again**. Rendering the error screen does not automatically restart initialization or repeatedly replay the launch animation.

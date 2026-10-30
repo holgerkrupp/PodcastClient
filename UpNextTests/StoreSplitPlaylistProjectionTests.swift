@@ -953,6 +953,86 @@ extension StoreSplitPlaylistProjectionTests {
         XCTAssertEqual(try context.fetchCount(FetchDescriptor<PlaylistEntry>()), 1)
     }
 
+#if DEBUG
+    @MainActor
+    func testCancelledLaunchCallerDoesNotCancelEagerSplitStoreHydration() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let feed = URL(string: "https://example.com/eager-hydration.xml")!
+        let sourcePodcast = Podcast(feed: feed)
+        let sourceEpisode = Episode(
+            guid: "eager-hydration-episode",
+            title: "Eager hydration fixture",
+            url: URL(string: "https://example.com/eager-hydration.mp3")!,
+            podcast: sourcePodcast
+        )
+        sourcePodcast.episodes = [sourceEpisode]
+        let identity = sourceEpisode.stableEpisodeIdentity
+
+        let cachedPodcast = CachedPodcast(
+            id: identity.feedURL,
+            feedURL: identity.feedURL,
+            title: "Eager hydration fixture",
+            feed: feed
+        )
+        let cachedEpisode = CachedEpisode(
+            id: identity.key,
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            guid: sourceEpisode.guid,
+            title: sourceEpisode.title,
+            url: sourceEpisode.url
+        )
+        cachedEpisode.podcast = cachedPodcast
+        cachedPodcast.episodes = [cachedEpisode]
+        cache.mainContext.insert(cachedPodcast)
+        cache.mainContext.insert(cachedEpisode)
+        try cache.mainContext.save()
+
+        let queueRecord = QueueEntrySync(
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0
+        )
+        userState.mainContext.insert(queueRecord)
+        try userState.mainContext.save()
+
+        let manager = ModelContainerManager(
+            runtimeContainer: runtime,
+            userStateContainer: userState,
+            cacheContainer: cache
+        )
+
+        // Cancel before the main-actor task gets a chance to start. Hydration
+        // must outlive this caller, as it does when SwiftUI removes the launch
+        // view after publishing the runtime container.
+        let launchTask = Task { @MainActor in
+            await manager.prepareSplitStores()
+        }
+        launchTask.cancel()
+        await launchTask.value
+
+        XCTAssertEqual(manager.runtimeStoreReadiness, .ready)
+        let runtimeContext = ModelContext(runtime)
+        let queue = try XCTUnwrap(runtimeContext.fetch(FetchDescriptor<Playlist>())
+            .first { $0.title == Playlist.defaultQueueTitle })
+        XCTAssertEqual(queue.ordered.compactMap { $0.episode?.guid }, ["eager-hydration-episode"])
+
+        let persistedQueueRows = try ModelContext(userState).fetch(FetchDescriptor<QueueEntrySync>())
+        XCTAssertEqual(persistedQueueRows.map(\.id), [queueRecord.id])
+        XCTAssertFalse(try XCTUnwrap(persistedQueueRows.first).isDeleted)
+        XCTAssertEqual(try ModelContext(userState).fetchCount(FetchDescriptor<PlaylistEntrySync>()), 0)
+
+        // Both split stores were already open, and repeating hydration remains
+        // safe: it neither duplicates the queue row nor makes the runtime stale.
+        await manager.prepareSplitStores()
+        XCTAssertEqual(manager.runtimeStoreReadiness, .ready)
+        XCTAssertEqual(try runtimeContext.fetchCount(FetchDescriptor<PlaylistEntry>()), 1)
+        XCTAssertEqual(try ModelContext(userState).fetchCount(FetchDescriptor<QueueEntrySync>()), 1)
+    }
+#endif
+
     @MainActor
     func testInterruptedPlaylistCommitThrowsAndDoesNotPersistOrInventTombstones() throws {
         enum Interrupted: Error { case write }

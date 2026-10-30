@@ -1374,20 +1374,17 @@ private struct RootWindowView: View {
 #endif
 
     var body: some View {
-        if modelContainerManager.runtimeStoreReadiness == .failed {
-            ModelContainerLaunchView(
-                errorMessage: modelContainerManager.initializationError,
-                retry: {
-                    Task {
-                        await modelContainerManager.prepareContainer()
+        Group {
+            if modelContainerManager.runtimeStoreReadiness == .failed {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
                     }
-                }
-            )
-            .task {
-                await modelContainerManager.prepareContainer()
-            }
-        } else if let container = modelContainerManager.preparedContainer {
-            AppLaunchContainerView {
+                )
+            } else if let container = modelContainerManager.preparedContainer {
                 ContentView()
 #if DEBUG
                 .coverHeroHarnessOverride()
@@ -1510,25 +1507,25 @@ private struct RootWindowView: View {
                     }
                 }
 #endif
-            }
-            .upNextVisualDesignRoot()
-            .alert("Could Not Save Playlist", isPresented: $modelContainerManager.playlistSaveFailed) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("Playlist changes could not be saved. Please try again when storage is available.")
-            }
-        } else {
-            ModelContainerLaunchView(
-                errorMessage: modelContainerManager.initializationError,
-                retry: {
-                    Task {
-                        await modelContainerManager.prepareContainer()
-                    }
+                .upNextVisualDesignRoot()
+                .alert("Could Not Save Playlist", isPresented: $modelContainerManager.playlistSaveFailed) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text("Playlist changes could not be saved. Please try again when storage is available.")
                 }
-            )
-            .task {
-                await modelContainerManager.prepareContainer()
+            } else {
+                ModelContainerLaunchView(
+                    errorMessage: modelContainerManager.initializationError,
+                    retry: {
+                        Task {
+                            await modelContainerManager.prepareContainer()
+                        }
+                    }
+                )
             }
+        }
+        .task {
+            await modelContainerManager.prepareContainer()
         }
     }
 }

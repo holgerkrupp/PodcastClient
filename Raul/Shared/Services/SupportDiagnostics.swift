@@ -337,6 +337,8 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         let onboarding = UserDefaults.standard.bool(forKey: "didCompleteOnboarding")
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unavailable"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unavailable"
+        let manager = ModelContainerManager.shared
+        let startupEvents = recentStartupEvents()
         let releasePhase: String
         switch StoreSplitReleasePhase.current {
         case .dualSyncBackfill: releasePhase = "dualSyncBackfill"
@@ -346,7 +348,12 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         Up Next Data Recovery Diagnostics
         App version/build: \(version) (\(build))
         Release phase: \(releasePhase)
-        Runtime/bootstrap mode: unavailable (store did not open)
+        Runtime container: \(manager.preparedContainer == nil ? "not open" : "open")
+        Runtime readiness: \(String(describing: manager.runtimeStoreReadiness))
+        Bootstrap mode: \(manager.preparedContainer == nil ? "not yet adopted" : manager.bootstrapMode.rawValue)
+        Initialization error recorded: \(manager.initializationError != nil || manager.userStateInitializationError != nil || manager.cacheInitializationError != nil)
+        Recent startup and hydration events (category and time only):
+        \(startupEvents.isEmpty ? "none observed" : startupEvents)
         App Group available: \(ModelContainerManager.sharedContainerURL != nil)
         Onboarding previously completed: \(onboarding)
         Installation evidence: \(onboarding ? "existing installation" : "unknown/new installation")
@@ -354,6 +361,32 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         Legacy CloudKit mirror quarantined: \(quarantined)
         SQLite files: \(fileSummary)
         """
+    }
+
+    /// Keep this launch-only view small and privacy-safe: categories are selected
+    /// from a fixed startup allowlist, and event details/error text are omitted.
+    private static func recentStartupEvents() -> String {
+        let startupCategories: Set<String> = [
+            "Opening User State store",
+            "Opening Podcast cache store",
+            "Opening runtime library store",
+            "Runtime library store opened",
+            "User State store preparation",
+            "Podcast cache store preparation",
+            "Runtime store ready",
+            "Runtime compatibility hydration started",
+            "Runtime compatibility hydration finished",
+            "Runtime compatibility hydration interrupted",
+            "Runtime compatibility hydration failed",
+            "Playlist hydration started",
+            "Playlist hydration finished"
+        ]
+        let formatter = ISO8601DateFormatter()
+        return SupportDiagnosticsRecorder.shared.events
+            .filter { startupCategories.contains($0.category) }
+            .suffix(12)
+            .map { "\(formatter.string(from: $0.at)) \($0.category)" }
+            .joined(separator: "\n")
     }
 
     private static func safePendingWork(_ value: String?) -> String {

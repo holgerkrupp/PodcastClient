@@ -33,6 +33,7 @@ actor StoreSplitUserStateImporter {
     private let legacyContainer: ModelContainer
     private let userStateContainer: ModelContainer
     private let cacheContainer: ModelContainer?
+    private let isInitialRuntimeHydration: Bool
     private let credentialStore: any PodcastCredentialStore
     private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
     private var legacyContext: ModelContext
@@ -66,11 +67,13 @@ actor StoreSplitUserStateImporter {
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
         credentialStore: any PodcastCredentialStore,
-        cacheContainer: ModelContainer? = nil
+        cacheContainer: ModelContainer? = nil,
+        isInitialRuntimeHydration: Bool = false
     ) {
         self.legacyContainer = legacyContainer
         self.userStateContainer = userStateContainer
         self.cacheContainer = cacheContainer
+        self.isInitialRuntimeHydration = isInitialRuntimeHydration
         self.credentialStore = credentialStore
         previousImportCursors = StoreSplitImportCursorStore.load()
         legacyContext = ModelContext(legacyContainer)
@@ -87,6 +90,7 @@ actor StoreSplitUserStateImporter {
         authoritativePlaylists: Bool = false,
         projectListeningHistoryToLegacy: Bool = true,
         episodeStateProjectionRecencyCutoff: Date? = nil,
+        isInitialRuntimeHydration: Bool = false,
         changedStreams: Set<StoreSplitUserStateStream> = Set(
             StoreSplitUserStateStream.allCases
         )
@@ -99,7 +103,8 @@ actor StoreSplitUserStateImporter {
             legacyContainer: legacyContainer,
             userStateContainer: userStateContainer,
             credentialStore: credentialStore,
-            cacheContainer: cacheContainer
+            cacheContainer: cacheContainer,
+            isInitialRuntimeHydration: isInitialRuntimeHydration
         )
         var result = await importer.run(
             authoritativePlaylists: authoritativePlaylists,
@@ -1614,6 +1619,7 @@ actor StoreSplitUserStateImporter {
     /// promptly releases the shared-container SQLite lock before suspension.
     private func shouldStop() async -> Bool {
         if Task.isCancelled { return true }
+        if isInitialRuntimeHydration { return false }
         return await shouldPauseForPlayback()
     }
 
@@ -1623,6 +1629,14 @@ actor StoreSplitUserStateImporter {
     /// when the task is cancelled.
     private func awaitIdleWindow() async {
         guard Task.isCancelled == false else { return }
+        if isInitialRuntimeHydration {
+            // Initial local restoration is required before the runtime store
+            // can become ready. Do not leave startup settling indefinitely
+            // behind transient thermal, memory, or foreground interaction
+            // pressure; still yield so other tasks can make progress.
+            await Task.yield()
+            return
+        }
         await SystemPressureGate.shared.waitUntilIdle()
     }
 
