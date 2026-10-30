@@ -4,7 +4,8 @@ import SwiftData
 
 @MainActor
 final class DownloadViewModel: ObservableObject {
-    @Published var item: DownloadItem? 
+    @Published var item: DownloadItem?
+    @Published private(set) var isStarting = false
     private var cancellables: Set<AnyCancellable> = []
     private var itemCancellable: AnyCancellable?
 
@@ -20,21 +21,25 @@ final class DownloadViewModel: ObservableObject {
         }
         let found = await DownloadManager.shared.getItem(for: url)
         guard Task.isCancelled == false else { return }
-        setItem(found?.isDownloading == true || found?.isPaused == true ? found : nil)
+        setItem(found?.isDownloading == true || found?.isPaused == true || found?.errorMessage != nil ? found : nil)
     }
 
     func startDownload(for episode: Episode) {
-        guard episode.source != .sideLoaded else { return }
+        guard episode.source != .sideLoaded, !isStarting else { return }
+        isStarting = true
         Task {
             await beginDownload(for: episode)
+            isStarting = false
         }
     }
 
     func retryDownload(for episode: Episode) {
-        guard let url = episode.url, episode.source != .sideLoaded else { return }
+        guard let url = episode.url, episode.source != .sideLoaded, !isStarting else { return }
+        isStarting = true
         Task {
             await DownloadManager.shared.cancelDownload(for: url)
             await beginDownload(for: episode)
+            isStarting = false
         }
     }
 

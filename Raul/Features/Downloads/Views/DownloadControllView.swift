@@ -39,6 +39,9 @@ struct DownloadControllView: View {
                     } else {
                         EmptyView()
                     }
+                } else if viewModel.isStarting {
+                    ProgressView()
+                        .accessibilityLabel("Starting download")
                 } else if let item = viewModel.item, item.isDownloading || item.isPaused || item.errorMessage != nil {
                     DownloadProgressView(item: item, viewModel: viewModel, episode: episode)
                         .progressViewStyle(CircularProgressViewStyle())

@@ -171,7 +171,12 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     ) async -> DownloadItem? {
         if !hasReconnectedTasks { await restorePendingDownloads() }
         if let existing = downloads[url] {
-            return existing
+            let isPaused = await MainActor.run { existing.isPaused }
+            if activeTaskIdentifiers[url] != nil || isPaused {
+                return existing
+            }
+            // An old inactive UI item must not swallow a new download tap.
+            downloads[url] = nil
         }
 
         let resolvedProfile = profile ?? profiles[url] ?? profiles[authorizationKeyURL(for: url)]
@@ -428,7 +433,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     // MARK: - Helpers
     private func fileExists(at url: URL) -> Bool {
-        FileManager.default.fileExists(atPath: url.path)
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              attributes[.type] as? FileAttributeType == .typeRegular,
+              let size = attributes[.size] as? NSNumber else { return false }
+        return size.int64Value > 0
     }
 
     private func markDownloaded(for url: URL) async {
@@ -439,9 +447,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
 
     private func defaultDestination(for url: URL) -> URL {
-        let filename = url.lastPathComponent
         let documents = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
-        return documents.appendingPathComponent(filename)
+        return EpisodeDownloadDestination.fileURL(for: url, in: documents)
     }
 
     private func authorizationKeyURL(for url: URL) -> URL {
@@ -496,7 +503,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 await DownloadManager.shared.failFinalization(
                     for: url,
                     taskIdentifier: downloadTask.taskIdentifier,
-                    error: error
+                    error: error,
+                    stage: "temporaryCopy"
                 )
             }
             return
@@ -514,56 +522,66 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 try? FileManager.default.removeItem(at: tempCopy)
                 return
             }
-            var didStoreFile = false
+            var storageError: Error?
             do {
                 let dir = destination.deletingLastPathComponent()
                 try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+                // Keep an existing complete download. Only an empty, unusable
+                // placeholder may be replaced by the completed transfer.
                 if FileManager.default.fileExists(atPath: destination.path) {
-                    try FileManager.default.removeItem(at: destination)
+                    let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+                    if attributes[.type] as? FileAttributeType == .typeRegular,
+                       (attributes[.size] as? NSNumber)?.int64Value == 0 {
+                        try FileManager.default.removeItem(at: destination)
+                    }
                 }
-                try FileManager.default.moveItem(at: tempCopy, to: destination)
-                didStoreFile = true
+                if !FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.moveItem(at: tempCopy, to: destination)
+                }
             } catch {
-                didStoreFile = false
+                storageError = error
             }
 
             try? FileManager.default.removeItem(at: tempCopy)
 
-            if didStoreFile {
-                if let episodeActor = await DownloadManager.shared.makeEpisodeActor() {
-                    await episodeActor.markEpisodeAvailable(fileURL: url)
-                }
-#if canImport(UIKit)
-                await AppDelegate.enqueuePublisherTranscriptSynchronization(for: url)
-#endif
-            }
-            
-            
-            if let item = await DownloadManager.shared.getItem(for: url, taskIdentifier: downloadTask.taskIdentifier) {
-                print("item received")
-                await MainActor.run {
-                    item.isDownloading = false
-                    item.isPaused = false
-                    item.isFinished = didStoreFile
-                }
-            }
-            if didStoreFile {
-                await markDownloaded(for: destination)
-                await MainActor.run {
-                    NotificationCenter.default.post(
-                        name: .episodeDownloadFinished,
-                        object: nil,
-                        userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
-                    )
-                }
-            } else {
+            if let storageError {
                 await DownloadManager.shared.failFinalization(
                     for: url,
                     taskIdentifier: downloadTask.taskIdentifier,
-                    error: CocoaError(.fileWriteUnknown)
+                    error: storageError,
+                    stage: "destinationInstall"
+                )
+                return
+            }
+
+            // Disk availability is authoritative. Do not keep the progress UI
+            // waiting for chapter extraction or SwiftData metadata updates.
+            await markDownloaded(for: destination)
+            if let item = await DownloadManager.shared.getItem(
+                for: url,
+                taskIdentifier: downloadTask.taskIdentifier
+            ) {
+                await MainActor.run {
+                    item.isDownloading = false
+                    item.isPaused = false
+                    item.isFinished = true
+                }
+            }
+            await MainActor.run {
+                NotificationCenter.default.post(
+                    name: .episodeDownloadFinished,
+                    object: nil,
+                    userInfo: [EpisodeDownloadNotificationKey.episodeURL: url]
                 )
             }
             await DownloadManager.shared.cleanUp(url: url, taskIdentifier: downloadTask.taskIdentifier)
+
+            if let episodeActor = await DownloadManager.shared.makeEpisodeActor() {
+                await episodeActor.markEpisodeAvailable(fileURL: url)
+            }
+#if canImport(UIKit)
+            await AppDelegate.enqueuePublisherTranscriptSynchronization(for: url)
+#endif
         }
     }
 
@@ -658,16 +676,30 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         destinations[url] ?? destinations[authorizationKeyURL(for: url)]
     }
 
-    private func failFinalization(for url: URL, taskIdentifier: Int, error: Error) async {
+    private func failFinalization(
+        for url: URL,
+        taskIdentifier: Int,
+        error: Error,
+        stage: String
+    ) async {
         guard activeTaskIdentifiers[url] == taskIdentifier else { return }
+        let fileError = error as NSError
+        let underlying = fileError.userInfo[NSUnderlyingErrorKey] as? NSError
+        let isOutOfSpace = (fileError.domain == NSCocoaErrorDomain
+            && fileError.code == NSFileWriteOutOfSpaceError)
+            || (underlying?.domain == NSPOSIXErrorDomain && underlying?.code == 28)
+        let message = isOutOfSpace
+            ? "Not enough storage to save this episode. Free some space and retry."
+            : "The downloaded file could not be saved. Check available storage and retry."
         if let item = downloads[url] {
             await MainActor.run {
                 item.isDownloading = false
                 item.isPaused = false
-                item.errorMessage = error.localizedDescription
+                item.errorMessage = message
             }
         }
-        print("Download finalization failed for \(url.redactedPodcastURLString): \(error.localizedDescription)")
+        // Avoid file paths and private podcast URLs in diagnostics.
+        print("Download finalization failed for \(url.redactedPodcastURLString): stage=\(stage) domain=\(fileError.domain) code=\(fileError.code) underlyingDomain=\(underlying?.domain ?? "none") underlyingCode=\(underlying?.code ?? 0)")
         await cleanUp(url: url, taskIdentifier: taskIdentifier)
     }
 

@@ -167,6 +167,36 @@ enum EpisodeMedia {
     }
 }
 
+/// Keeps existing short download filenames stable while avoiding APFS's
+/// per-component filename limit for long publisher/CDN enclosure paths.
+enum EpisodeDownloadDestination {
+    static func fileURL(for remoteURL: URL, in folder: URL) -> URL {
+        let digest = SHA256.hash(data: Data(remoteURL.absoluteString.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let originalName = remoteURL.lastPathComponent
+        let escapedName = originalName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? originalName
+        let legacyName = "\(digest)_\(escapedName)"
+
+        // Retain the established path for existing downloads. Never let a
+        // remote filename turn into nested directories or exceed 240 bytes.
+        if !escapedName.isEmpty,
+           !escapedName.contains("/"),
+           !escapedName.contains("\\"),
+           legacyName.utf8.count <= 240 {
+            return folder.appendingPathComponent(legacyName)
+        }
+
+        let pathExtension = remoteURL.pathExtension.lowercased()
+        let allowedExtensionCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyz0123456789")
+        let safeExtension = (1...8).contains(pathExtension.count)
+            && pathExtension.unicodeScalars.allSatisfy { allowedExtensionCharacters.contains($0) }
+            ? ".\(pathExtension)" : ""
+        return folder.appendingPathComponent("\(digest)_audio\(safeExtension)")
+    }
+}
+
 private final class EpisodeLocalFileCache: @unchecked Sendable {
     static let shared = EpisodeLocalFileCache()
 
@@ -398,12 +428,6 @@ class EpisodeDownloadStatus{
     }
     
     //MARK: calculated properties that will be generated out of existing properties.
-    private var urlIdentityComponent: String? {
-        guard let url else { return nil }
-        let digest = SHA256.hash(data: Data(url.absoluteString.utf8))
-        return digest.map { String(format: "%02x", $0) }.joined()
-    }
-
     var source: EpisodeSource {
         get {
             EpisodeSource(rawValue: sourceRawValue) ?? .feedDownload
@@ -426,13 +450,11 @@ class EpisodeDownloadStatus{
         let resolvedURL: URL?
         if source == .sideLoaded {
             resolvedURL = url
+        } else if let remoteURL = url,
+                  let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            resolvedURL = EpisodeDownloadDestination.fileURL(for: remoteURL, in: baseURL)
         } else {
-            let baseURL = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
-
-            guard let fileName = url?.lastPathComponent,
-                  let urlIdentityComponent else { return nil }
-            let sanitizedFileName = fileName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? fileName
-            resolvedURL = baseURL?.appendingPathComponent("\(urlIdentityComponent)_\(sanitizedFileName)")
+            resolvedURL = nil
         }
 
         if let resolvedURL {

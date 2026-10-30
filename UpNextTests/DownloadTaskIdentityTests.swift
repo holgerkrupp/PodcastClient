@@ -22,6 +22,40 @@ final class DownloadTaskIdentityTests: XCTestCase {
         XCTAssertNil(identity.episodeURL(for: 42))
     }
 
+    func testLongCDNFilenameIsBoundedAndKeepsAudioExtension() throws {
+        let filename = String(repeating: "very-long-episode-title-", count: 20) + ".mp3"
+        let remote = try XCTUnwrap(URL(string:
+            "https://audio.podigee-cdn.net/f/\(filename)?source=feed"
+        ))
+        let directory = FileManager.default.temporaryDirectory
+        let destination = EpisodeDownloadDestination.fileURL(for: remote, in: directory)
+
+        XCTAssertLessThanOrEqual(destination.lastPathComponent.utf8.count, 240)
+        XCTAssertTrue(destination.lastPathComponent.hasSuffix("_audio.mp3"))
+        XCTAssertEqual(destination.deletingLastPathComponent(), directory)
+    }
+
+    func testNormalDownloadFilenameRetainsExistingHashAndSuffix() throws {
+        let original = try XCTUnwrap(URL(string: "https://example.org/audio/episode.mp3"))
+        let directory = FileManager.default.temporaryDirectory
+        let destination = EpisodeDownloadDestination.fileURL(for: original, in: directory)
+
+        XCTAssertTrue(destination.lastPathComponent.hasSuffix("_episode.mp3"))
+        XCTAssertEqual(destination.lastPathComponent.prefix(64).count, 64)
+        XCTAssertLessThanOrEqual(destination.lastPathComponent.utf8.count, 240)
+    }
+
+    func testDifferentEpisodeQueriesGetDistinctDownloadDestinations() throws {
+        let first = try XCTUnwrap(URL(string: "https://example.org/audio.mp3?edition=1"))
+        let second = try XCTUnwrap(URL(string: "https://example.org/audio.mp3?edition=2"))
+        let directory = FileManager.default.temporaryDirectory
+
+        XCTAssertNotEqual(
+            EpisodeDownloadDestination.fileURL(for: first, in: directory),
+            EpisodeDownloadDestination.fileURL(for: second, in: directory)
+        )
+    }
+
     func testOldCallbackCannotOverwriteReplacementTaskIdentity() throws {
         let episode = try XCTUnwrap(URL(string: "https://example.org/episode.mp3?utm_source=feed"))
         var identity = DownloadTaskIdentity()
