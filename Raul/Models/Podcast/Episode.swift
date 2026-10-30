@@ -184,7 +184,7 @@ enum EpisodeDownloadDestination {
         if !escapedName.isEmpty,
            !escapedName.contains("/"),
            !escapedName.contains("\\"),
-           legacyName.utf8.count <= 240 {
+           legacyName.utf8.count <= 255 {
             return folder.appendingPathComponent(legacyName)
         }
 
