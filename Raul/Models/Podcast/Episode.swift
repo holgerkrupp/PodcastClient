@@ -180,7 +180,7 @@ enum EpisodeDownloadDestination {
         let legacyName = "\(digest)_\(escapedName)"
 
         // Retain the established path for existing downloads. Never let a
-        // remote filename turn into nested directories or exceed 240 bytes.
+        // remote filename turn into nested directories or exceed 255 bytes.
         if !escapedName.isEmpty,
            !escapedName.contains("/"),
            !escapedName.contains("\\"),
