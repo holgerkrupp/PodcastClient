@@ -1139,7 +1139,7 @@ class ModelContainerManager: ObservableObject {
 
     func prepareContainer() async {
         if preparedContainer != nil {
-            if runtimeStoreReadiness == .failed {
+            if runtimeStoreReadiness == .settling || runtimeStoreReadiness == .failed {
                 await prepareSplitStores()
             }
             return
