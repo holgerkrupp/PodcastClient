@@ -15011,12 +15011,12 @@
         }
       }
     },
-    "Playback data needs attention. Keep Up Next installed and contact support from this screen." : {
+    "Playback data needs attention. Keep Up Next installed. It keeps retrying while the app is open." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Wiedergabedaten erfordern Aufmerksamkeit. Lassen Sie Up Next installiert und kontaktieren Sie den Support über diesen Bildschirm."
+            "value" : "Die Wiedergabedaten erfordern Aufmerksamkeit. Lass Up Next installiert. Die App versucht es weiter, solange sie geöffnet ist."
           }
         },
         "fr" : {

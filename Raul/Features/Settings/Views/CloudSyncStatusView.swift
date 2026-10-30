@@ -117,7 +117,7 @@ struct CloudSyncStatusView: View {
                     showsRecentPortableRecovery
                         ? "Playback data was recovered on this device. iCloud may still be syncing."
                         : (portableWriteFailures.state.requiresReconstruction
-                        ? "Playback data needs attention. Keep Up Next installed and contact support from this screen."
+                        ? "Playback data needs attention. Keep Up Next installed. It keeps retrying while the app is open."
                         : (portableWriteFailures.state.pendingOperations.isEmpty
                             ? "Up Next is retrying a playback data update. Keep using the app; check back here if this status persists."
                             : "Playback data is being recovered on this device. Keep Up Next installed while recovery finishes.")),
