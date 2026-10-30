@@ -51,7 +51,8 @@ transcripts, AI chapters, downloads, bookmark images and links, and device-local
 - Confirm in the CloudKit Console that no schema change needs deploying (UserState is unchanged).
 - Listening total against the expected figure. One device showed 1451h against about 400h:
   a 1148h baseline from an older tier or run, plus live sessions the year summaries already
-  held. Year summaries there added up to 496h, so the corrected total is still an estimate.
+  held. Year summaries there added up to 496h, which the owner considers plausible. Upgraded
+  devices now show the sum of their year summaries as the lifetime total.
 
 ---
 

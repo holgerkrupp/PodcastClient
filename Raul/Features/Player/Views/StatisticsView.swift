@@ -1817,6 +1817,13 @@ struct StatisticsView: View {
             selectedPodcastURL: selectedPodcastURL
         )
 
+        // An upgraded device's year summaries already hold its whole history and
+        // keep updating, so the total agrees with the per-year figures on this screen.
+        if ModelContainerManager.shared.runtimeProjectsFromCache == false,
+           let legacySummaryTotal {
+            return legacySummaryTotal
+        }
+
         if StoreDevelopmentConfiguration.newStoreReadsEnabled,
            let syncedTotal = syncedLifetimeListeningSeconds(
                selectedPodcastFeedString: selectedPodcastFeedString
