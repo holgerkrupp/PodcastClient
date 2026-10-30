@@ -1128,6 +1128,10 @@ struct RaulApp: App {
                 await modelContainerManager.reconcileLegacyStoreAfterCloudKitImport()
             }
             if storeKind == .userState {
+                // The manager remembers this request while split stores are
+                // settling and replays it after their local projection is
+                // hydrated. Calling directly avoids losing an import event
+                // behind an app-side readiness check.
                 await modelContainerManager.reconcileSplitRuntimePlaylists()
             }
             if StoreDevelopmentConfiguration.userStateImportEnabled,
@@ -1362,7 +1366,19 @@ private struct RootWindowView: View {
 #endif
 
     var body: some View {
-        if let container = modelContainerManager.preparedContainer {
+        if modelContainerManager.runtimeStoreReadiness == .failed {
+            ModelContainerLaunchView(
+                errorMessage: modelContainerManager.initializationError,
+                retry: {
+                    Task {
+                        await modelContainerManager.prepareContainer()
+                    }
+                }
+            )
+            .task {
+                await modelContainerManager.prepareContainer()
+            }
+        } else if let container = modelContainerManager.preparedContainer {
             AppLaunchContainerView {
                 ContentView()
 #if DEBUG
@@ -1394,7 +1410,7 @@ private struct RootWindowView: View {
 #if canImport(UIKit)
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(6))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false,
                               UIApplication.shared.applicationState == .active else { return }
                         await BackgroundRefreshScheduleSnapshotCoordinator.refreshIfSafe(using: container)
@@ -1402,20 +1418,20 @@ private struct RootWindowView: View {
 #endif
                     Task(priority: .userInitiated) {
                         try? await Task.sleep(for: .milliseconds(250))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         await DeferredLaunchServiceBootstrap.shared.start()
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .milliseconds(500))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         await DownloadManager.shared.injectDownloadedFilesManager(managerReference)
                         await DownloadManager.shared.restorePendingDownloads()
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(1))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         await AutoDownloadNetworkCoordinator.shared.startMonitoringIfNeeded(
                             modelContainer: container
@@ -1433,7 +1449,7 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(2))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         WatchSyncCoordinator.activate()
                         await CloudSyncProgressReferenceStore.publish(modelContainer: container)
@@ -1443,7 +1459,7 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(3))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         _ = await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                             modelContainer: container
@@ -1451,7 +1467,7 @@ private struct RootWindowView: View {
                     }
                     Task(priority: .utility) {
                         try? await Task.sleep(for: .seconds(5))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         let actor = EpisodeActor(modelContainer: container)
                         await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
@@ -1459,7 +1475,7 @@ private struct RootWindowView: View {
                     TranscriptSearchLegacyStoreCleanup.removeObsoleteStore()
                     Task(priority: .background) {
                         try? await Task.sleep(for: .seconds(8))
-                        await modelContainerManager.waitUntilApplicationQueriesReady()
+                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                         guard Task.isCancelled == false else { return }
                         await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
 #if canImport(UIKit)
@@ -1472,7 +1488,7 @@ private struct RootWindowView: View {
                     }
                 }
                 .task {
-                    await modelContainerManager.waitUntilApplicationQueriesReady()
+                    guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
                     try? await Task.sleep(for: .seconds(15))
                     guard Task.isCancelled == false else { return }
                     await modelContainerManager.runLaunchStoreMaintenance()

@@ -139,7 +139,16 @@ enum StoreSplitCompatibilityProjectionService {
 
         // Index the durable store once by feed comparison key so a redirected or
         // differently-normalized feed URL is not recovered as a duplicate.
-        let existingPodcasts = (try? runtime.fetch(FetchDescriptor<Podcast>())) ?? []
+        let existingPodcasts: [Podcast]
+        do {
+            existingPodcasts = try runtime.fetch(FetchDescriptor<Podcast>())
+        } catch {
+            // Treating a failed destination read as an empty library can
+            // resurrect cached feeds or create duplicate podcasts. This pass
+            // is recovery-only and can be retried when the store is readable.
+            result.failed += 1
+            return result
+        }
         var podcastsByComparisonKey: [String: Podcast] = [:]
         for podcast in existingPodcasts {
             guard let feed = podcast.feed else { continue }

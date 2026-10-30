@@ -40,14 +40,14 @@ enum CloudKitFailureAnalyzer {
                     return String.localizedStringWithFormat(
                         NSLocalizedString("%d %@ + %d collateral batch failures", comment: "Summary of a primary CloudKit error and collateral atomic batch failures"),
                         primary.count,
-                        primary.name,
+                        primary.displayName,
                         collateral
                     )
                 }
                 return String.localizedStringWithFormat(
                     NSLocalizedString("%d %@ failure(s)", comment: "Summary of a grouped CloudKit error"),
                     primary.count,
-                    primary.name
+                    primary.displayName
                 )
             }
             if batchFailureCount > 0 {
@@ -155,7 +155,7 @@ enum CloudKitFailureAnalyzer {
             if isPartialWrapper, hasChildren { return }
             if hasChildren { return }
 
-            let key = GroupKey(domain: nsError.domain, code: nsError.code)
+            let key = GroupKey(domain: safeDomain(nsError.domain), code: nsError.code)
             var value = accumulated[key, default: Accumulated()]
             value.count += 1
             if value.reason == nil {
@@ -211,6 +211,25 @@ enum CloudKitFailureAnalyzer {
             ?? (error.userInfo[NSLocalizedDescriptionKey] as? String)
         guard let raw, raw.isEmpty == false else { return nil }
         return String(raw.prefix(maximumReasonLength))
+    }
+
+    /// NSError domains are normally static framework identifiers. Reject unusual
+    /// values so a custom domain cannot smuggle a URL, path, or user content into
+    /// persisted diagnostics.
+    private static func safeDomain(_ value: String) -> String {
+        let isFrameworkIdentifier = value == CKErrorDomain
+            || value.hasSuffix("Domain")
+            || value.hasPrefix("kCFErrorDomain")
+            || ["com.", "org.", "net."].contains(where: value.hasPrefix)
+        guard value.isEmpty == false,
+              value.count <= 128,
+              isFrameworkIdentifier,
+              value.unicodeScalars.allSatisfy({ scalar in
+                  CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains(scalar)
+              }) else {
+            return "custom error domain"
+        }
+        return value
     }
 
     private static func retryAfter(from error: NSError) -> Double? {

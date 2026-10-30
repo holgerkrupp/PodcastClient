@@ -15,6 +15,7 @@ import ESADesignKit
 struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var phase
+    @StateObject private var modelContainerManager = ModelContainerManager.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.requestReview) private var requestReview
     @Query(sort: [SortDescriptor(\Playlist.sortIndex, order: .forward), SortDescriptor(\Playlist.title, order: .forward)])
@@ -87,12 +88,28 @@ struct ContentView: View {
         .environment(\.episodeControlPlaylists, episodeControlPlaylists)
         .environment(\.userGuideNavigation, navigation)
         .hostsPlayerPresentation(navigation: navigation)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if modelContainerManager.runtimeStoreReadiness == .settling {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("Restoring your saved library…")
+                        .font(.subheadline)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity)
+                .background(.thinMaterial)
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.updatesFrequently)
+            }
+        }
 #if os(macOS) || targetEnvironment(macCatalyst)
         .focusedSceneValue(\.appNavigationModel, navigation)
 #endif
         .task {
             CrashBreadcrumbs.shared.record("content_view_task_started")
-            await loadLaunchCounts()
+            guard await loadLaunchCounts() else { return }
             schedulePendingEpisodeImportRetries()
             await importPendingSharedEpisodeIfNeeded()
             didCompleteInitialContentLoad = true
@@ -319,12 +336,14 @@ struct ContentView: View {
     
     // MARK: - Manual count loader
     @MainActor
-    private func loadLaunchCounts() async {
+    private func loadLaunchCounts() async -> Bool {
         // Keep relationship-heavy badge queries out of the first scene
         // transition and behind the runtime-store readiness barrier.
-        await ModelContainerManager.shared.waitUntilApplicationQueriesReady()
+        guard await ModelContainerManager.shared.waitUntilApplicationQueriesReady() else {
+            return false
+        }
         try? await Task.sleep(for: .milliseconds(250))
-        guard Task.isCancelled == false else { return }
+        guard Task.isCancelled == false else { return false }
         let loader = AppLaunchCountLoader(modelContainer: modelContext.container)
         do {
             let counts = try await loader.counts()
@@ -335,17 +354,16 @@ struct ContentView: View {
                 "launch_counts_loaded",
                 details: "inbox=\(counts.inbox),subscriptions=\(counts.subscribedPodcasts)"
             )
+            return true
         } catch {
             AppDiagnostics.log("Failed to load launch counts: \(error.localizedDescription)")
-            inboxCount = 0
-            subscribedPodcastCount = 0
-            evaluateOnboardingLaunchIfNeeded()
+            return false
         }
     }
 
     @MainActor
     private func loadInboxCount() async {
-        await ModelContainerManager.shared.waitUntilApplicationQueriesReady()
+        guard await ModelContainerManager.shared.waitUntilApplicationQueriesReady() else { return }
         guard Task.isCancelled == false else { return }
         CrashBreadcrumbs.shared.record("load_inbox_count_started")
         let counter = InboxCountLoader.shared

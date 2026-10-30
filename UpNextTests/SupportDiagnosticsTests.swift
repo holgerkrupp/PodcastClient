@@ -54,15 +54,15 @@ final class SupportDiagnosticsTests: XCTestCase {
             lastSuccessfulExportAt: nil,
             failedExportCount: 1,
             retryAfterSeconds: 30,
-            failureCategories: failure.groups.map { "\($0.name) × \($0.count)" }
+            failureCategories: failure.groups.map { "\($0.displayName) × \($0.count)" }
         )
         let recorder = SupportDiagnosticsRecorder()
         recorder.append(snapshot(at: .now, queueEntries: 0, cloudStores: [cloudStore]))
 
         let report = recorder.reportText
 
-        XCTAssertTrue(report.contains("serverRejectedRequest × 1"))
-        XCTAssertTrue(report.contains("batchRequestFailed × 143"))
+        XCTAssertTrue(report.contains("CKError \(CKError.Code.serverRejectedRequest.rawValue) — serverRejectedRequest × 1"))
+        XCTAssertTrue(report.contains("CKError \(CKError.Code.batchRequestFailed.rawValue) — batchRequestFailed × 143"))
         XCTAssertTrue(report.contains("retry hint 30 seconds"))
         XCTAssertTrue(report.contains(eventID.uuidString))
         XCTAssertFalse(report.contains("999-private-id"))

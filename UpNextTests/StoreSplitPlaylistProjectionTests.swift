@@ -97,7 +97,7 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
         ))
     }
 
-    func testPlaylistShowsRecoveringStateOnlyWhenRemoteQueueHasEntries() {
+    func testPlaylistShowsRecoveringStateWhenLocalOrRemoteMembershipIsUnresolved() {
         XCTAssertFalse(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
             initializationError: nil,
             localRecordCount: 0,
@@ -108,7 +108,7 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
             localRecordCount: 0,
             cloudReferenceCount: 3
         ))
-        XCTAssertFalse(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+        XCTAssertTrue(PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
             initializationError: nil,
             localRecordCount: 2,
             cloudReferenceCount: 3
@@ -875,6 +875,82 @@ extension StoreSplitPlaylistProjectionTests {
             XCTAssertTrue(try XCTUnwrap(records.first { $0.id == manualID }).isDeleted)
             XCTAssertEqual(try ModelContext(state).fetchCount(FetchDescriptor<QueueEntrySync>()), 3)
         }
+    }
+
+    @MainActor
+    func testDelayedUserStateImportAfterInitialProjectionKeepsQueueVisibleWithoutExport() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let state = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+
+        // Startup can complete an initial empty projection before CloudKit
+        // delivers the user's queue. Later cache hydration and UserState import
+        // must still produce the queue without relying on a successful export.
+        XCTAssertEqual(
+            StoreSplitCompatibilityProjectionService.rebuild(
+                cacheContainer: cache,
+                runtimeContainer: runtime
+            ).failed,
+            0
+        )
+
+        let source = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let feed = URL(string: "https://example.com/delayed-cloud-queue.xml")!
+        let podcast = Podcast(feed: feed)
+        let episode = Episode(
+            guid: "delayed-cloud-queue-episode",
+            title: "Delayed queue episode",
+            url: URL(string: "https://example.com/delayed-cloud-queue.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        source.mainContext.insert(podcast)
+        source.mainContext.insert(episode)
+        try source.mainContext.save()
+        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
+            feedURL: feed,
+            legacyContainer: source,
+            cacheContainer: cache
+        ))
+        XCTAssertEqual(
+            StoreSplitCompatibilityProjectionService.rebuild(
+                cacheContainer: cache,
+                runtimeContainer: runtime
+            ).failed,
+            0
+        )
+
+        let identity = episode.stableEpisodeIdentity
+        state.mainContext.insert(QueueEntrySync(
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0
+        ))
+        try state.mainContext.save()
+
+        // This is the local durable record that remains available even if its
+        // CloudKit export fails; applying it must not wait for export success.
+        let importResult = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: state,
+            projectListeningHistoryToLegacy: false
+        )
+        XCTAssertEqual(importResult.failed, 0)
+        XCTAssertEqual(try ModelContext(state).fetchCount(FetchDescriptor<QueueEntrySync>()), 1)
+
+        let context = ModelContext(runtime)
+        let queue = try XCTUnwrap(context.fetch(FetchDescriptor<Playlist>())
+            .first { $0.title == Playlist.defaultQueueTitle })
+        XCTAssertEqual(queue.ordered.compactMap { $0.episode?.guid }, ["delayed-cloud-queue-episode"])
+
+        // Reconciliation after a later import is idempotent and does not create
+        // duplicate queue membership.
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: state,
+            projectListeningHistoryToLegacy: false
+        )
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<PlaylistEntry>()), 1)
     }
 
     @MainActor

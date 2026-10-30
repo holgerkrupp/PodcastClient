@@ -21,7 +21,7 @@ final class CloudKitFailureAnalyzerTests: XCTestCase {
         XCTAssertEqual(report.batchFailureCount, 143)
         XCTAssertEqual(
             report.summary,
-            "1 serverRejectedRequest + 143 collateral batch failures"
+            "1 CKError \(CKError.Code.serverRejectedRequest.rawValue) — serverRejectedRequest + 143 collateral batch failures"
         )
         XCTAssertFalse(report.summary.contains("999"))
     }
@@ -75,6 +75,37 @@ final class CloudKitFailureAnalyzerTests: XCTestCase {
         XCTAssertFalse(encoded.contains("private-record-one"))
         XCTAssertFalse(encoded.contains("private-record-two"))
         XCTAssertFalse(encoded.contains("Invalid field value"))
+    }
+
+    func testNonCloudKitDomainAndCodeRemainActionableAndUnsafeDomainIsRedacted() throws {
+        let frameworkError = NSError(
+            domain: "NSPersistentStoreErrorDomain",
+            code: 134_060
+        )
+        let frameworkReport = CloudKitFailureAnalyzer.analyze(frameworkError)
+        let frameworkJSON = try XCTUnwrap(String(
+            data: JSONEncoder().encode(frameworkReport),
+            encoding: .utf8
+        ))
+
+        XCTAssertEqual(frameworkReport.groups.first?.displayName, "NSPersistentStoreErrorDomain (134060)")
+        XCTAssertTrue(frameworkReport.summary.contains("NSPersistentStoreErrorDomain (134060)"))
+        XCTAssertTrue(frameworkJSON.contains("NSPersistentStoreErrorDomain"))
+        XCTAssertTrue(frameworkJSON.contains("134060"))
+
+        let unsafeDomain = NSError(
+            domain: "https://private.example/feed?token=secret",
+            code: 42
+        )
+        let unsafeReport = CloudKitFailureAnalyzer.analyze(unsafeDomain)
+        let unsafeJSON = try XCTUnwrap(String(
+            data: JSONEncoder().encode(unsafeReport),
+            encoding: .utf8
+        ))
+
+        XCTAssertEqual(unsafeReport.groups.first?.domain, "custom error domain")
+        XCTAssertFalse(unsafeJSON.contains("private.example"))
+        XCTAssertFalse(unsafeJSON.contains("secret"))
     }
 
     func testUnderlyingErrorTraversalStopsAtDepthBudget() {

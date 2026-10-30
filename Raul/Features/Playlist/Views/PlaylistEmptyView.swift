@@ -15,8 +15,7 @@ enum PlaylistSilentRecoveryDecision {
         cloudReferenceCount: Int?
     ) -> Bool {
         initializationError == nil
-            && localRecordCount == 0
-            && (cloudReferenceCount ?? 0) > 0
+            && (localRecordCount > 0 || (cloudReferenceCount ?? 0) > 0)
     }
 
     static func shouldReconcile(
@@ -44,7 +43,7 @@ struct PlaylistEmptyView: View {
     @State private var didRequestAutomaticReconcile = false
 
     private var shouldShowRecoveringState: Bool {
-        isDefaultQueue && PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
+        PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
             initializationError: modelContainerManager.userStateInitializationError,
             localRecordCount: localSplitRecordCount,
             cloudReferenceCount: cloudReferenceCount
@@ -57,7 +56,9 @@ struct PlaylistEmptyView: View {
                 VStack(spacing: 10) {
                     ProgressView()
                         .controlSize(.regular)
-                    Text("Waiting for saved Up Next episodes to restore from iCloud…")
+                    Text(isDefaultQueue
+                         ? "Restoring your saved Up Next episodes…"
+                         : "Restoring saved playlist episodes…")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)

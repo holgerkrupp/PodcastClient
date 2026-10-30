@@ -736,6 +736,7 @@ class ModelContainerManager: ObservableObject {
         case unopened
         case settling
         case ready
+        case failed
     }
     @Published private(set) var runtimeStoreReadiness: RuntimeStoreReadiness = .unopened
     @Published private(set) var isMigratingSplitStores = false
@@ -781,6 +782,7 @@ class ModelContainerManager: ObservableObject {
     private var exporterPressureEvents = 0
     private var optionalSplitStoreWritesSuspended = false
     private var legacyCloudImportReconcilePending = false
+    private var pendingSplitRuntimePlaylistReconciliation = false
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
     private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
     private let splitStoreCoordinator = StoreSplitWorkCoordinator.shared
@@ -1136,7 +1138,12 @@ class ModelContainerManager: ObservableObject {
     }
 
     func prepareContainer() async {
-        guard preparedContainer == nil else { return }
+        if preparedContainer != nil {
+            if runtimeStoreReadiness == .failed {
+                await prepareSplitStores()
+            }
+            return
+        }
 #if canImport(UIKit)
         // An unfinished export recorded by the previous process is a poor
         // reason to reopen the large mirrored store for optional background
@@ -1158,6 +1165,7 @@ class ModelContainerManager: ObservableObject {
         } else {
             isInitializing = true
             initializationError = nil
+            runtimeStoreReadiness = .settling
             let newTask = Self.takeEagerPreparationTask()
                 ?? Self.makeRuntimeContainerPreparationTask()
             preparationTask = newTask
@@ -1209,6 +1217,7 @@ class ModelContainerManager: ObservableObject {
                     details: error.localizedDescription
                 )
             }
+            runtimeStoreReadiness = .failed
         }
 
         preparationTask = nil
@@ -1220,6 +1229,12 @@ class ModelContainerManager: ObservableObject {
             migrationReadiness = .unavailable
             migrationBlocker = "Runtime library store is not ready"
             return
+        }
+        if runtimeStoreReadiness == .failed {
+            runtimeStoreReadiness = .settling
+            initializationError = nil
+            userStateInitializationError = nil
+            cacheInitializationError = nil
         }
 #if DEBUG
         guard developmentResetRequiresRelaunch == false else {
@@ -1243,7 +1258,14 @@ class ModelContainerManager: ObservableObject {
             if let cache = preparedCacheContainer {
                 Self.reconcileMigrationLedger(cacheContainer: cache)
             }
-            await buildRuntimeGraphIfNeeded()
+            recordOpenedSplitStoreEvidenceIfNeeded()
+            guard await buildRuntimeGraphIfNeeded() else {
+                markRuntimeStoreInitializationFailed(
+                    "Stored library data could not be restored. Please try again."
+                )
+                return
+            }
+            markRuntimeStoreReady()
             updateMigrationReadiness()
             return
         }
@@ -1309,37 +1331,72 @@ class ModelContainerManager: ObservableObject {
 
         if runtimeProjectsFromCache {
             guard preparedUserStateContainer != nil, preparedCacheContainer != nil else {
-                initializationError = "Persistent storage is unavailable. Please try again."
+                markRuntimeStoreInitializationFailed(
+                    "Persistent storage is unavailable. Please try again."
+                )
                 return
             }
-            if bootstrapMode == .freshSplitInstall {
-                // Write only after both durable split stores opened. A process
-                // interrupted before then must repeat fresh-install validation.
-                UserDefaults.standard.set(
-                    true,
-                    forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey
-                )
-            }
-            var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
-            for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
-                expected.append(name)
-            }
-            UserDefaults.standard.set(expected, forKey: StoreLineage.key)
+            recordOpenedSplitStoreEvidenceIfNeeded()
         }
-        await buildRuntimeGraphIfNeeded()
-        runtimeStoreReadiness = .ready
-        SupportDiagnosticsRecorder.shared.record("Runtime store ready")
-        NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
+        guard await buildRuntimeGraphIfNeeded() else {
+            markRuntimeStoreInitializationFailed(
+                "Stored library data could not be restored. Please try again."
+            )
+            return
+        }
+        markRuntimeStoreReady()
         updateMigrationReadiness()
-        CrashBreadcrumbs.shared.record("runtime_store_ready")
-        // This bounded repair is detached from launch readiness and yields to
-        // playback, CloudKit export, cancellation, and resource pressure.
-        Task { [weak self] in await self?.retryPortableWritesIfSafe() }
 
         CrashBreadcrumbs.shared.record(
             "store_split_container_initialization_completed",
             details: "user_state=\(preparedUserStateContainer != nil),cache=\(preparedCacheContainer != nil)"
         )
+    }
+
+    private func recordOpenedSplitStoreEvidenceIfNeeded() {
+        guard runtimeProjectsFromCache else { return }
+        if bootstrapMode == .freshSplitInstall {
+            // Write only after both durable split stores opened. A process
+            // interrupted before then must repeat fresh-install validation.
+            UserDefaults.standard.set(
+                true,
+                forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey
+            )
+        }
+        var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
+        for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
+            expected.append(name)
+        }
+        UserDefaults.standard.set(expected, forKey: StoreLineage.key)
+    }
+
+    private func markRuntimeStoreReady() {
+        guard runtimeStoreReadiness != .ready else {
+            updateMigrationReadiness()
+            return
+        }
+        runtimeStoreReadiness = .ready
+        SupportDiagnosticsRecorder.shared.record("Runtime store ready")
+        NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
+        updateMigrationReadiness()
+        CrashBreadcrumbs.shared.record("runtime_store_ready")
+        if pendingSplitRuntimePlaylistReconciliation {
+            pendingSplitRuntimePlaylistReconciliation = false
+            Task { [weak self] in
+                await self?.reconcileSplitRuntimePlaylists()
+            }
+        }
+        // This bounded repair is detached from launch readiness and yields to
+        // playback, CloudKit export, cancellation, and resource pressure.
+        Task { [weak self] in await self?.retryPortableWritesIfSafe() }
+    }
+
+    private func markRuntimeStoreInitializationFailed(_ message: String) {
+        initializationError = message
+        runtimeStoreReadiness = .failed
+        migrationReadiness = .blocked
+        migrationBlocker = message
+        CrashBreadcrumbs.shared.record("runtime_store_initialization_failed")
     }
 
     private func retryPortableWritesIfSafe() async {
@@ -1401,11 +1458,12 @@ class ModelContainerManager: ObservableObject {
 
     /// Application queries wait here instead of racing CloudKit metadata setup
     /// immediately after the runtime container object is returned.
-    func waitUntilApplicationQueriesReady() async {
-        while runtimeStoreReadiness != .ready {
-            guard Task.isCancelled == false else { return }
+    func waitUntilApplicationQueriesReady() async -> Bool {
+        while runtimeStoreReadiness != .ready && runtimeStoreReadiness != .failed {
+            guard Task.isCancelled == false else { return false }
             try? await Task.sleep(for: .milliseconds(100))
         }
+        return runtimeStoreReadiness == .ready
     }
 
     /// Opens the runtime graph for callers that can arrive without the normal
@@ -1428,11 +1486,16 @@ class ModelContainerManager: ObservableObject {
     /// open. On disk that means a bounded, additive recovery of anything the
     /// cache holds but the durable store does not; in the experimental
     /// projection mode it means rebuilding the whole in-memory graph.
-    private func buildRuntimeGraphIfNeeded() async {
+    private func buildRuntimeGraphIfNeeded() async -> Bool {
         if runtimeProjectsFromCache {
-            await buildCompatibilityProjectionIfNeeded()
+            return await buildCompatibilityProjectionIfNeeded()
         } else {
-            await recoverCacheOnlyLibraryDataIfNeeded()
+            // The durable library is already the queryable runtime source.
+            // Cache recovery is an additive optimization; a failure there
+            // must not hold the user's existing library behind the readiness
+            // barrier.
+            _ = await recoverCacheOnlyLibraryDataIfNeeded()
+            return true
         }
     }
 
@@ -1658,13 +1721,18 @@ class ModelContainerManager: ObservableObject {
         UserDefaults.standard.bool(forKey: usedInMemoryProjectionKey)
     }
 
-    private func buildCompatibilityProjectionIfNeeded() async {
-        guard runtimeProjectsFromCache,
-              didBuildCompatibilityProjection == false,
-              isBuildingCompatibilityProjection == false,
-              let runtimeContainer = preparedContainer,
+    private func buildCompatibilityProjectionIfNeeded() async -> Bool {
+        guard runtimeProjectsFromCache else { return true }
+        if didBuildCompatibilityProjection { return true }
+        if isBuildingCompatibilityProjection {
+            while isBuildingCompatibilityProjection && Task.isCancelled == false {
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+            return didBuildCompatibilityProjection
+        }
+        guard let runtimeContainer = preparedContainer,
               let cacheContainer = preparedCacheContainer else {
-            return
+            return false
         }
         isBuildingCompatibilityProjection = true
         defer { isBuildingCompatibilityProjection = false }
@@ -1699,14 +1767,14 @@ class ModelContainerManager: ObservableObject {
                 runtimeContainer: runtimeContainer
             )
         }.value
-        didBuildCompatibilityProjection = projection.failed == 0
         CrashBreadcrumbs.shared.record(
             "store_split_compatibility_projection_completed",
             details: "podcasts=\(projection.podcasts),episodes=\(projection.episodes),failed=\(projection.failed)"
         )
 
+        var userStateProjectionSucceeded = true
         if let userStateContainer = preparedUserStateContainer {
-            _ = await StoreSplitUserStateImporter.apply(
+            let result = await StoreSplitUserStateImporter.apply(
                 legacyContainer: runtimeContainer,
                 userStateContainer: userStateContainer,
                 authoritativePlaylists: false,
@@ -1714,10 +1782,16 @@ class ModelContainerManager: ObservableObject {
                 episodeStateProjectionRecencyCutoff: StoreDevelopmentConfiguration
                     .episodeStateProjectionRecencyCutoff
             )
+            userStateProjectionSucceeded = result.failed == 0 && result.interruptedByPlayback == false
             await PlaySessionTrackerActor(
                 modelContainer: runtimeContainer
             ).rebuildListeningStats()
+        } else {
+            userStateProjectionSucceeded = false
         }
+        didBuildCompatibilityProjection = projection.failed == 0
+            && userStateProjectionSucceeded
+        return didBuildCompatibilityProjection
     }
 
     /// Reads only compact UserState rows and returns the feeds whose episodes
@@ -4179,18 +4253,25 @@ class ModelContainerManager: ObservableObject {
     /// Lightweight playlist hydration for split-only runtimes. Legacy upgrade
     /// reads retain their shipping authority and background migration policy.
     func reconcileSplitRuntimePlaylists() async {
-        guard runtimeProjectsFromCache,
-              runtimeStoreReadiness == .ready,
+        guard runtimeProjectsFromCache else { return }
+        guard runtimeStoreReadiness == .ready,
               let runtime = preparedContainer,
               let userState = preparedUserStateContainer,
-              let cache = preparedCacheContainer else { return }
-        SupportDiagnosticsRecorder.shared.record("Playlist hydration started")
-        await buildCompatibilityProjectionIfNeeded()
-        if let userStateImportTask {
-            _ = await userStateImportTask.value
-            await reconcileSplitRuntimePlaylists()
+              let cache = preparedCacheContainer else {
+            pendingSplitRuntimePlaylistReconciliation = true
             return
         }
+        SupportDiagnosticsRecorder.shared.record("Playlist hydration started")
+        guard await buildCompatibilityProjectionIfNeeded() else {
+            pendingSplitRuntimePlaylistReconciliation = true
+            return
+        }
+        if let userStateImportTask {
+            pendingSplitRuntimePlaylistReconciliation = true
+            _ = await userStateImportTask.value
+            return
+        }
+        pendingSplitRuntimePlaylistReconciliation = false
         let task = Task {
             await StoreSplitUserStateImporter.apply(
                 legacyContainer: runtime,
@@ -4204,12 +4285,19 @@ class ModelContainerManager: ObservableObject {
         userStateImportTask = task
         let result = await task.value
         userStateImportTask = nil
+        if result.failed > 0 {
+            pendingSplitRuntimePlaylistReconciliation = true
+        }
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         SupportDiagnosticsRecorder.shared.record(
             "Playlist hydration finished",
             detail: result.failed == 0 ? "completed" : "deferred (local operation failed)"
         )
         CrashBreadcrumbs.shared.record("split_runtime_playlist_import", details: "failed=\(result.failed),pending_feeds=\(result.playlistFeedsToBootstrap.count)")
+        if result.failed == 0, pendingSplitRuntimePlaylistReconciliation {
+            pendingSplitRuntimePlaylistReconciliation = false
+            await reconcileSplitRuntimePlaylists()
+        }
     }
 
     private func applySyncedUserStateIfPossible(

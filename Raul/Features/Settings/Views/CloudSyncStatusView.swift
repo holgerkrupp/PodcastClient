@@ -430,7 +430,7 @@ struct CloudSyncStatusDetailView: View {
                             accountStatus: accountDescription,
                             aggregateErrorCategories: reportedErrors.flatMap { item in
                                 CloudKitFailureAnalyzer.analyze(item.error).groups.prefix(6).map {
-                                    "\(item.title): \($0.name) × \($0.count)"
+                                    "\(item.title): \($0.displayName) × \($0.count)"
                                 }
                             },
                             storeMonitor: storeMonitor
