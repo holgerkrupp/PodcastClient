@@ -278,15 +278,15 @@ actor StoreSplitMigrationService {
         Phase.preferences: 1,
         Phase.episodeStates: 1,
         Phase.bookmarks: 2,
-        Phase.listeningSummaries: 5,
-        Phase.listeningBaselinePrepareAggregates: 3,
-        Phase.listeningBaselinePrepareSources: 3,
-        Phase.listeningBaselinePublication: 4,
+        Phase.listeningSummaries: 6,
+        Phase.listeningBaselinePrepareAggregates: 4,
+        Phase.listeningBaselinePrepareSources: 4,
+        Phase.listeningBaselinePublication: 5,
         Phase.listeningHistory: 2,
         Phase.listeningHistoryVerification: 3,
-        Phase.listeningBaselineVerificationScan: 3,
-        Phase.listeningBaselineVerification: 3,
-        Phase.listeningBaselineVerificationComparison: 3
+        Phase.listeningBaselineVerificationScan: 4,
+        Phase.listeningBaselineVerification: 4,
+        Phase.listeningBaselineVerificationComparison: 4
     ]
 
     /// The checkpoint row identity for a phase at its current revision. Rows
@@ -3937,8 +3937,8 @@ actor StoreSplitMigrationService {
     ) -> String? {
         let available = Set(summaries.compactMap(\.periodKind))
         return [
-            PlaySessionSummaryPeriod.year,
-            .month,
+            PlaySessionSummaryPeriod.month,
+            .year,
             .week,
             .day
         ].first { available.contains($0.rawValue) }?.rawValue
@@ -3956,7 +3956,8 @@ actor StoreSplitMigrationService {
     }
 
     private static func selectedBaselinePeriodKind(in context: ModelContext) throws -> String? {
-        for kind in [PlaySessionSummaryPeriod.year, .month, .week, .day] {
+        // Months first: year rows can undercount, and months match session history.
+        for kind in [PlaySessionSummaryPeriod.month, .year, .week, .day] {
             let rawValue = kind.rawValue
             let predicate = #Predicate<PlaySessionSummary> { $0.periodKind == rawValue }
             if try context.fetchCount(FetchDescriptor(predicate: predicate)) > 0 {
@@ -4449,17 +4450,17 @@ actor StoreSplitMigrationService {
         }
     }
 
-    /// Corrects baselines that clearly exceed what the year summaries add up to.
-    /// Those summaries are the account's lifetime figure, synced to every device
-    /// until the switch. Rows from an older tier or run can't otherwise be corrected,
-    /// because publication only visits feeds the summaries mention. A modest gap is
-    /// left alone: a device that synced late has a lower figure than the truth.
+    /// Corrects baselines clearly different from what the summaries add up to, using
+    /// months, or years where there are none. The summaries are the account's lifetime
+    /// figure, synced to every device until the switch. Rows from an older tier or run
+    /// can't otherwise be corrected, because publication only visits feeds the summaries
+    /// mention. A modest gap is left alone.
     @discardableResult
     nonisolated static func repairInflatedBaseline(
         libraryContainer: ModelContainer,
         userStateContainer: ModelContainer
     ) throws -> Int {
-        let kind = PlaySessionSummaryPeriod.year.rawValue
+        guard let kind = try selectedBaselinePeriodKind(in: ModelContext(libraryContainer)) else { return 0 }
         let summaries = try ModelContext(libraryContainer).fetch(FetchDescriptor<PlaySessionSummary>(
             predicate: #Predicate { $0.periodKind == kind }
         ))
@@ -4489,7 +4490,8 @@ actor StoreSplitMigrationService {
         let context = makeContext(for: userStateContainer)
         let rows = try context.fetch(FetchDescriptor<ListeningBaselineSync>())
             .filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
-        guard rows.reduce(0, { $0 + $1.totalSeconds }) > expectedSum * 1.25 else { return 0 }
+        let currentSum = rows.reduce(0) { $0 + $1.totalSeconds }
+        guard currentSum > expectedSum * 1.25 || currentSum * 1.25 < expectedSum else { return 0 }
 
         let now = Date()
         var changed = 0

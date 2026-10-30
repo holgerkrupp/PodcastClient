@@ -1089,6 +1089,47 @@ actor PlaySessionTrackerActor {
         modelContext.saveIfNeeded()
     }
 
+    /// Replaces year rows with the sum of their months, which match session history.
+    /// Does nothing without month rows: the existing year rows are then all there is.
+    func rebuildYearSummariesFromMonths() {
+        let monthKind = PlaySessionSummaryPeriod.month.rawValue
+        let yearKind = PlaySessionSummaryPeriod.year.rawValue
+        let months = (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>(
+            predicate: #Predicate { $0.periodKind == monthKind }
+        ))) ?? []
+        guard months.isEmpty == false else { return }
+        struct Key: Hashable { let start: Date; let feed: URL? }
+        var years: [Key: PlaySessionSummary] = [:]
+        for month in months {
+            guard let start = month.periodStart else { continue }
+            let key = Key(start: summaryPeriodStart(for: .year, containing: start), feed: month.podcastFeed)
+            let year = years[key] ?? PlaySessionSummary(
+                id: UUID(),
+                periodKind: yearKind,
+                periodStart: key.start,
+                podcastFeed: key.feed,
+                podcastName: month.podcastName,
+                totalSeconds: 0,
+                silenceGapTimeSavedSeconds: 0,
+                playbackRateTimeSavedSeconds: 0,
+                activeHourCount: 0
+            )
+            year.podcastName = year.podcastName ?? month.podcastName
+            year.totalSeconds = (year.totalSeconds ?? 0) + max(0, month.totalSeconds ?? 0)
+            year.silenceGapTimeSavedSeconds = (year.silenceGapTimeSavedSeconds ?? 0) + max(0, month.silenceGapTimeSavedSeconds ?? 0)
+            year.playbackRateTimeSavedSeconds = (year.playbackRateTimeSavedSeconds ?? 0) + max(0, month.playbackRateTimeSavedSeconds ?? 0)
+            year.activeHourCount = (year.activeHourCount ?? 0) + (month.activeHourCount ?? 0)
+            years[key] = year
+        }
+        for row in (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>(
+            predicate: #Predicate { $0.periodKind == yearKind }
+        ))) ?? [] {
+            modelContext.delete(row)
+        }
+        for year in years.values { modelContext.insert(year) }
+        modelContext.saveIfNeeded()
+    }
+
     private func deleteExistingSummariesInBatches() {
         while true {
             var descriptor = FetchDescriptor<PlaySessionSummary>()

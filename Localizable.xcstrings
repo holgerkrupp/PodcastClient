@@ -17001,6 +17001,16 @@
         }
       }
     },
+    "Rebuilding analytics… You can keep using Up Next." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statistik wird neu berechnet … Du kannst Up Next weiter verwenden."
+          }
+        }
+      }
+    },
     "Rebuilding analytics…" : {
       "localizations" : {
         "de" : {

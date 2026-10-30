@@ -279,6 +279,68 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(changed, 0)
     }
 
+    func testMonthsWinOverUndercountingYearsAndALowBaselineIsRaised() throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        library.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: PlaySessionSummaryPeriod.year.rawValue,
+            periodStart: Date(timeIntervalSince1970: 0),
+            podcastFeed: feedURL,
+            totalSeconds: 1_000
+        ))
+        for month in 0..<3 {
+            library.insert(PlaySessionSummary(
+                id: UUID(),
+                periodKind: PlaySessionSummaryPeriod.month.rawValue,
+                periodStart: Date(timeIntervalSince1970: Double(month) * 2_678_400),
+                podcastFeed: feedURL,
+                totalSeconds: 1_000
+            ))
+        }
+        try library.save()
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let userState = ModelContext(stores.userState)
+        userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 1_000))
+        try userState.save()
+        _ = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState
+        )
+        let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(rows.map(\.totalSeconds), [3_000])
+    }
+
+    func testYearRowsAreRebuiltFromMonths() async throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        let kindYear = PlaySessionSummaryPeriod.year.rawValue
+        library.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: kindYear,
+            periodStart: Date(timeIntervalSince1970: 1_700_000_000),
+            podcastFeed: feedURL,
+            totalSeconds: 100
+        ))
+        for offset in 0..<3 {
+            library.insert(PlaySessionSummary(
+                id: UUID(),
+                periodKind: PlaySessionSummaryPeriod.month.rawValue,
+                periodStart: Calendar.current.date(
+                    from: DateComponents(year: 2026, month: offset + 1, day: 1)
+                ),
+                podcastFeed: feedURL,
+                totalSeconds: 1_000
+            ))
+        }
+        try library.save()
+        await PlaySessionTrackerActor(modelContainer: stores.library).rebuildYearSummariesFromMonths()
+        let years = try ModelContext(stores.library).fetch(FetchDescriptor<PlaySessionSummary>(
+            predicate: #Predicate { $0.periodKind == kindYear }
+        ))
+        XCTAssertEqual(years.map(\.totalSeconds), [3_000])
+    }
+
     func testClassificationFollowsTheLibraryFile() {
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: true), .legacyUpgrade)
         XCTAssertEqual(StoreBootstrapMode.resolve(legacyStoreExists: false), .freshSplitInstall)

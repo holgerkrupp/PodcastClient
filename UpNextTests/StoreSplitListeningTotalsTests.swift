@@ -167,12 +167,12 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
     // MARK: - Baseline capture
 
     @MainActor
-    func testBaselineCapturesLifetimeFromYearSummariesOnly() throws {
+    func testBaselinePrefersMonthSummariesOverYears() throws {
         let (legacy, userState) = try makeStores()
         let feed = URL(string: "https://example.com/feed.xml")!
         insertLegacySummary(feed: feed, kind: .year, seconds: 3_600, in: legacy)
         insertLegacySummary(feed: feed, kind: .year, seconds: 1_800, in: legacy, yearOffset: 1)
-        // Inside a year already counted — including it would double-count.
+        // Year rows can undercount, so months win, and the two are never added.
         insertLegacySummary(feed: feed, kind: .month, seconds: 1_800, in: legacy)
         try legacy.mainContext.save()
 
@@ -184,7 +184,7 @@ final class StoreSplitListeningTotalsTests: XCTestCase {
         let baselines = try ModelContext(userState)
             .fetch(FetchDescriptor<ListeningBaselineSync>())
         XCTAssertEqual(baselines.count, 1)
-        XCTAssertEqual(try XCTUnwrap(baselines.first).totalSeconds, 5_400)
+        XCTAssertEqual(try XCTUnwrap(baselines.first).totalSeconds, 1_800)
     }
 
     /// The defect this design removes: a total that can be re-derived from data

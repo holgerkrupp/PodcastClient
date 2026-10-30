@@ -693,11 +693,8 @@ struct StatisticsView: View {
         isRebuildingAnalytics = true
         rebuildAnalyticsStatusMessage = nil
 
-        let modelContainer = modelContext.container
         Task {
-            await Task.detached(priority: .utility) {
-                await PlaySessionTrackerActor(modelContainer: modelContainer).rebuildListeningStats()
-            }.value
+            await ModelContainerManager.shared.rebuildAllAnalytics()
 
             isRebuildingAnalytics = false
             rebuildAnalyticsStatusMessage = "Analytics rebuilt."
@@ -735,7 +732,11 @@ struct StatisticsView: View {
         let selectedPeriodEnd = nextPeriodStart(from: selectedPeriodStart, period: selectedPeriod)
         let lookbackPeriods = overviewPeriodCount(for: selectedPeriod)
         let overviewStart = periodStartByAdding(-lookbackPeriods, to: selectedPeriodStart, period: selectedPeriod)
-        let summaryFetchPeriod: PlaySessionSummaryPeriod = selectedPeriod == .forever ? .year : selectedPeriod
+        // Year rows can undercount badly: one real device's 2026 row held 230h
+        // while its months added up to far more and matched session history. Years
+        // are built from months, so every view agrees.
+        let groupsByYear = selectedPeriod == .year || selectedPeriod == .forever
+        let summaryFetchPeriod: PlaySessionSummaryPeriod = groupsByYear ? .month : selectedPeriod
         let selectedPodcastURL = selectedPodcastFeedString.flatMap(URL.init(string:))
         let selectedPodcastTitle: String
         if let selectedPodcastFeedString {
@@ -746,7 +747,7 @@ struct StatisticsView: View {
 
         updateHistoryLoadingProgress(0.16, "Loading summary totals")
         await Task.yield()
-        let fetchedSummaries = fetchSummariesInWindow(
+        var fetchedSummaries = fetchSummariesInWindow(
             period: summaryFetchPeriod,
             overviewStart: overviewStart,
             selectedPeriodEnd: selectedPeriodEnd,
@@ -754,6 +755,16 @@ struct StatisticsView: View {
             selectedPodcastURL: selectedPodcastURL,
             lookbackPeriods: lookbackPeriods
         )
+        if groupsByYear, fetchedSummaries.isEmpty {
+            fetchedSummaries = fetchSummariesInWindow(
+                period: .year,
+                overviewStart: overviewStart,
+                selectedPeriodEnd: selectedPeriodEnd,
+                selectedPodcastFeedString: selectedPodcastFeedString,
+                selectedPodcastURL: selectedPodcastURL,
+                lookbackPeriods: lookbackPeriods
+            )
+        }
 
         updateHistoryLoadingProgress(0.32, "Loading play sessions")
         await Task.yield()
@@ -764,8 +775,8 @@ struct StatisticsView: View {
         )
 
         let summaryTotals = Dictionary(grouping: fetchedSummaries.compactMap { summary -> (Date, Double)? in
-            guard let periodStart = summary.periodStart else { return nil }
-            return (periodStart, summary.totalSeconds ?? 0)
+            guard let start = summary.periodStart else { return nil }
+            return (groupsByYear ? periodStart(for: start, period: .year) : start, summary.totalSeconds ?? 0)
         }, by: \.0)
         .map { key, values in
             PeriodListeningTotal(start: key, totalSeconds: values.reduce(0) { $0 + $1.1 })
@@ -1817,8 +1828,8 @@ struct StatisticsView: View {
             selectedPodcastURL: selectedPodcastURL
         )
 
-        // An upgraded device's year summaries already hold its whole history and
-        // keep updating, so the total agrees with the per-year figures on this screen.
+        // An upgraded device's summaries already hold its whole history and keep
+        // updating, so the total agrees with the other figures on this screen.
         if ModelContainerManager.shared.runtimeProjectsFromCache == false,
            let legacySummaryTotal {
             return legacySummaryTotal
@@ -1852,16 +1863,18 @@ struct StatisticsView: View {
             value: 1,
             to: Calendar.current.startOfDay(for: Date())
         ) ?? Date().addingTimeInterval(86_400)
-        let summaries = fetchSummariesInWindow(
-            period: .year,
-            overviewStart: .distantPast,
-            selectedPeriodEnd: endOfToday,
-            selectedPodcastFeedString: selectedPodcastFeedString,
-            selectedPodcastURL: selectedPodcastURL,
-            lookbackPeriods: 0
-        )
-        if !summaries.isEmpty {
-            return summaries.reduce(0) { $0 + max(0, $1.totalSeconds ?? 0) }
+        for period in [PlaySessionSummaryPeriod.month, .year] {
+            let summaries = fetchSummariesInWindow(
+                period: period,
+                overviewStart: .distantPast,
+                selectedPeriodEnd: endOfToday,
+                selectedPodcastFeedString: selectedPodcastFeedString,
+                selectedPodcastURL: selectedPodcastURL,
+                lookbackPeriods: 0
+            )
+            if !summaries.isEmpty {
+                return summaries.reduce(0) { $0 + max(0, $1.totalSeconds ?? 0) }
+            }
         }
 
         return nil

@@ -61,7 +61,7 @@ enum StoreCutoverState {
         }
     }
 
-    private static let baselineRepairKey = "storeSplit.inflatedBaselineRepair.v1"
+    private static let baselineRepairKey = "storeSplit.inflatedBaselineRepair.v2"
 
     /// Once, on upgraded devices. Doesn't wait for the copy: it reads only summaries.
     static func repairInflatedBaselineIfNeeded(library: ModelContainer, userState: ModelContainer) {

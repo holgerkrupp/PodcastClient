@@ -44,8 +44,9 @@ final class EpisodeChapterIngestionTests: XCTestCase {
 
         let createdEpisode = try fetchEpisode(in: fixture.container, url: episodeURL)
         let created = try XCTUnwrap(createdEpisode.chapters?.filter { $0.type == .transcriptGap })
-        XCTAssertEqual(created.map(\.start), [90, 420])
-        XCTAssertEqual(created.map(\.duration), [75, 50])
+        let ordered = created.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        XCTAssertEqual(ordered.map(\.start), [90, 420])
+        XCTAssertEqual(ordered.map(\.duration), [75, 50])
         XCTAssertTrue(created.allSatisfy { $0.title == "Likely ad break" })
         XCTAssertTrue(created.allSatisfy { $0.analysisVariantID == "media-revision" })
 

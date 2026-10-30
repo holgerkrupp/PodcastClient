@@ -228,7 +228,7 @@ final class StoreSplitIncrementalBaselineVerificationTests: XCTestCase {
         let stores = try makeStores()
         let feed = "https://example.com/a.xml"
         for index in 0..<41 {
-            let summary = PlaySessionSummary(id: summaryID(index), periodKind: PlaySessionSummaryPeriod.month.rawValue, periodStart: Date(timeIntervalSince1970: Double(index) * 1000), podcastFeed: URL(string: feed), totalSeconds: 100)
+            let summary = PlaySessionSummary(id: summaryID(index), periodKind: PlaySessionSummaryPeriod.week.rawValue, periodStart: Date(timeIntervalSince1970: Double(index) * 1000), podcastFeed: URL(string: feed), totalSeconds: 100)
             stores.legacy.mainContext.insert(summary)
         }
         try stores.legacy.mainContext.save()

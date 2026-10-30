@@ -720,6 +720,7 @@ class ModelContainerManager: ObservableObject {
     /// Non-nil while the one-time migration is the thing blocking startup.
     @Published private(set) var cutoverProgress: StoreCutoverProgress?
     private var pendingRuntimeContainer: ModelContainer?
+    private var analyticsRebuildTask: Task<Void, Never>?
     private var libraryFillTask: Task<Bool, Never>?
     private static let maximumForegroundDrainPasses = 160
     private var openedExistingProjection = false
@@ -1125,6 +1126,33 @@ class ModelContainerManager: ObservableObject {
 
         preparationTask = nil
         isInitializing = false
+    }
+
+    /// Recalculates every listening figure the stored data allows, owned here so it
+    /// keeps running after the screen that started it closes. Raw sessions are
+    /// pruned after 30 days, so older periods come from their stored summaries.
+    func rebuildAllAnalytics() async {
+        if let analyticsRebuildTask {
+            await analyticsRebuildTask.value
+            return
+        }
+        guard let runtime = preparedContainer else { return }
+        let userState = preparedUserStateContainer
+        let isLocalLibrary = runtimeProjectsFromCache == false
+        let task = Task.detached(priority: .utility) {
+            let tracker = PlaySessionTrackerActor(modelContainer: runtime)
+            await tracker.rebuildListeningStats()
+            await tracker.rebuildYearSummariesFromMonths()
+            if isLocalLibrary, let userState {
+                _ = try? StoreSplitMigrationService.repairInflatedBaseline(
+                    libraryContainer: runtime,
+                    userStateContainer: userState
+                )
+            }
+        }
+        analyticsRebuildTask = task
+        await task.value
+        analyticsRebuildTask = nil
     }
 
     /// Adds the remaining episodes and saved transcripts while the app is in use.

@@ -666,11 +666,10 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             )
         }
 
-        // Two years of `.year` summaries for feed A, one for feed B, plus a `.month`
-        // row that must NOT contribute to the forever rollup (it overlaps the year).
+        // Two years of `.year` summaries for feed A, one for feed B. With no month rows,
+        // years are the tier used.
         context.insert(summary(feedA, kind: .year, year: 2023, seconds: 3_600))
         context.insert(summary(feedA, kind: .year, year: 2024, seconds: 1_800))
-        context.insert(summary(feedA, kind: .month, year: 2024, seconds: 1_800))
         context.insert(summary(feedB, kind: .year, year: 2024, seconds: 600))
         try context.save()
 

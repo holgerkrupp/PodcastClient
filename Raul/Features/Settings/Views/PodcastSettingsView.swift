@@ -1814,7 +1814,7 @@ struct PodcastSettingsView: View {
                 HStack(spacing: 10) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Rebuilding analytics…")
+                    Text("Rebuilding analytics… You can keep using Up Next.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -2157,13 +2157,10 @@ struct PodcastSettingsView: View {
         isRebuildingAnalytics = true
         rebuildAnalyticsStatusMessage = nil
 
-        let modelContainer = context.container
-        Task.detached(priority: .utility) {
-            await PlaySessionTrackerActor(modelContainer: modelContainer).rebuildListeningStats()
-            await MainActor.run {
-                isRebuildingAnalytics = false
-                rebuildAnalyticsStatusMessage = "Analytics rebuilt."
-            }
+        Task {
+            await ModelContainerManager.shared.rebuildAllAnalytics()
+            isRebuildingAnalytics = false
+            rebuildAnalyticsStatusMessage = "Analytics rebuilt."
         }
     }
 
