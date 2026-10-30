@@ -8,7 +8,9 @@ struct StoreSplitCompatibilityProjectionResult: Sendable {
     var transcriptLines = 0
     var playSessions = 0
     var hourlyStats = 0
+    var transcriptionRecords = 0
     var failed = 0
+    var interrupted = false
 }
 
 /// Projects PodcastCache rows onto the model-shaped library graph.
@@ -18,38 +20,66 @@ struct StoreSplitCompatibilityProjectionResult: Sendable {
 /// strictly additive — it is the return path for devices that spent time in the
 /// in-memory mode and persisted feed refreshes to the cache only.
 enum StoreSplitCompatibilityProjectionService {
+    /// Builds the runtime graph one feed at a time, each with its own context and
+    /// small saves so neither memory nor save time grows with the library. Every
+    /// finished feed is reported through `checkpoint`; passing it back as
+    /// `resumeAfter` continues there instead of starting over.
     static func rebuild(
         cacheContainer: ModelContainer,
         runtimeContainer: ModelContainer,
         feedPageSize: Int = 25,
-        episodePageSize: Int = 100
+        episodePageSize: Int = 100,
+        resumeAfter: String? = nil,
+        includesTranscripts: Bool = true,
+        priorityEpisodes: Set<String>? = nil,
+        shouldContinue: @Sendable () -> Bool = { true },
+        checkpoint: @Sendable (String) -> Void = { _ in },
+        progress: @Sendable (_ episodes: Int, _ total: Int) -> Void = { _, _ in }
     ) -> StoreSplitCompatibilityProjectionResult {
         var result = StoreSplitCompatibilityProjectionResult()
-        let runtime = ModelContext(runtimeContainer)
-        runtime.autosaveEnabled = false
         do {
-            // The target is a disposable in-memory projection. Replacing it
-            // makes a retry safe even if a prior launch saved only some pages.
-            try runtime.delete(model: RateSegment.self)
-            try runtime.delete(model: PlaySession.self)
-            try runtime.delete(model: ListeningStat.self)
-            try runtime.delete(model: PlaySessionSummary.self)
-            try runtime.delete(model: Podcast.self)
-            try runtime.delete(model: Playlist.self)
+            let runtime = ModelContext(runtimeContainer)
+            runtime.autosaveEnabled = false
+            if let resumeAfter {
+                // Only a feed that was still in progress can be partial.
+                for podcast in try runtime.fetch(FetchDescriptor<Podcast>())
+                where (podcast.feed?.absoluteString ?? "") > resumeAfter {
+                    runtime.delete(podcast)
+                }
+            } else {
+                // Replacing it makes a fresh build safe after an abandoned one.
+                try runtime.delete(model: Podcast.self)
+                try runtime.delete(model: Playlist.self)
+                try runtime.delete(model: TranscriptionRecord.self)
+            }
             try runtime.save()
         } catch {
-            runtime.rollback()
             result.failed = 1
             return result
         }
-        var feedOffset = 0
 
+        let totalEpisodes = priorityEpisodes?.count
+            ?? (try? ModelContext(cacheContainer).fetchCount(FetchDescriptor<CachedEpisode>())) ?? 0
+        var doneEpisodes = 0
+        if let resumeAfter, priorityEpisodes == nil {
+            doneEpisodes = (try? ModelContext(cacheContainer).fetchCount(FetchDescriptor<CachedEpisode>(
+                predicate: #Predicate { $0.feedURL <= resumeAfter }
+            ))) ?? 0
+        }
+        progress(doneEpisodes, totalEpisodes)
+
+        var lastFeed = resumeAfter
         while true {
             let cache = ModelContext(cacheContainer)
-            var feedDescriptor = FetchDescriptor<CachedPodcast>(
-                sortBy: [SortDescriptor(\CachedPodcast.feedURL)]
-            )
-            feedDescriptor.fetchOffset = feedOffset
+            var feedDescriptor: FetchDescriptor<CachedPodcast>
+            if let lastFeed {
+                feedDescriptor = FetchDescriptor(
+                    predicate: #Predicate { $0.feedURL > lastFeed },
+                    sortBy: [SortDescriptor(\CachedPodcast.feedURL)]
+                )
+            } else {
+                feedDescriptor = FetchDescriptor(sortBy: [SortDescriptor(\CachedPodcast.feedURL)])
+            }
             feedDescriptor.fetchLimit = feedPageSize
             let feeds: [CachedPodcast]
             do { feeds = try cache.fetch(feedDescriptor) }
@@ -57,53 +87,131 @@ enum StoreSplitCompatibilityProjectionService {
             guard !feeds.isEmpty else { break }
 
             for cachedPodcast in feeds {
-                guard let feedURL = URL(string: cachedPodcast.feedURL) else {
+                guard shouldContinue() else {
+                    result.interrupted = true
+                    return result
+                }
+                let feedKey = cachedPodcast.feedURL
+                lastFeed = feedKey
+                guard let feedURL = URL(string: feedKey) else {
                     result.failed += 1
                     continue
                 }
+                let runtime = ModelContext(runtimeContainer)
+                runtime.autosaveEnabled = false
                 let podcast = Podcast(feed: feedURL)
                 apply(cachedPodcast, to: podcast)
+                // Subscription state belongs to UserState: the importer sets it
+                // from SubscriptionSync. A cached feed alone is not a subscription.
+                podcast.metaData?.isSubscribed = false
+                podcast.metaData?.subscriptionDate = nil
                 runtime.insert(podcast)
                 result.podcasts += 1
+                restoreTranscriptionRecords(
+                    feedKey: feedKey,
+                    cacheContainer: cacheContainer,
+                    runtime: runtime,
+                    result: &result
+                )
 
-                var episodeOffset = 0
-                while true {
-                    let episodeCache = ModelContext(cacheContainer)
-                    let feedKey = cachedPodcast.feedURL
-                    var episodeDescriptor = FetchDescriptor<CachedEpisode>(
-                        predicate: #Predicate { $0.feedURL == feedKey },
-                        sortBy: [SortDescriptor(\CachedEpisode.publishDate)]
-                    )
-                    episodeDescriptor.fetchOffset = episodeOffset
-                    episodeDescriptor.fetchLimit = episodePageSize
-                    let cachedEpisodes: [CachedEpisode]
-                    do { cachedEpisodes = try episodeCache.fetch(episodeDescriptor) }
-                    catch { result.failed += 1; return result }
-                    guard !cachedEpisodes.isEmpty else { break }
-
-                    for cachedEpisode in cachedEpisodes {
+                if let priorityEpisodes {
+                    let cache = ModelContext(cacheContainer)
+                    let inInbox = (try? cache.fetch(FetchDescriptor<CachedEpisode>(
+                        predicate: #Predicate { $0.feedURL == feedKey && $0.localIsInbox == true }
+                    ))) ?? []
+                    var seen = Set<String>()
+                    let wanted = priorityEpisodes.filter { $0.hasPrefix(StableIdentityKey.make(feedKey)) }
+                    var rows = inInbox
+                    for id in wanted {
+                        var descriptor = FetchDescriptor<CachedEpisode>(predicate: #Predicate { $0.id == id })
+                        descriptor.fetchLimit = 1
+                        if let row = try? cache.fetch(descriptor).first { rows.append(row) }
+                    }
+                    for row in rows where seen.insert(row.id).inserted {
                         let episode = makeEpisode(
-                            from: cachedEpisode,
+                            from: row,
                             podcast: podcast,
-                            cacheContext: episodeCache,
+                            cacheContext: cache,
+                            includesTranscripts: includesTranscripts,
                             result: &result
                         )
                         runtime.insert(episode)
                         result.episodes += 1
+                        doneEpisodes += 1
                     }
-                    episodeOffset += cachedEpisodes.count
+                    progress(min(doneEpisodes, totalEpisodes), totalEpisodes)
                 }
-            }
 
-            do {
-                if runtime.hasChanges { try runtime.save() }
-            } catch {
-                result.failed += 1
-                runtime.rollback()
+                var episodeOffset = 0
+                while priorityEpisodes == nil {
+                    guard shouldContinue() else {
+                        result.interrupted = true
+                        return result
+                    }
+                    let outcome: Bool? = autoreleasepool {
+                        let episodeCache = ModelContext(cacheContainer)
+                        var episodeDescriptor = FetchDescriptor<CachedEpisode>(
+                            predicate: #Predicate { $0.feedURL == feedKey },
+                            sortBy: [
+                                SortDescriptor(\CachedEpisode.publishDate),
+                                SortDescriptor(\CachedEpisode.id)
+                            ]
+                        )
+                        episodeDescriptor.fetchOffset = episodeOffset
+                        episodeDescriptor.fetchLimit = episodePageSize
+                        guard let cachedEpisodes = try? episodeCache.fetch(episodeDescriptor) else {
+                            return nil
+                        }
+                        guard !cachedEpisodes.isEmpty else { return false }
+                        for cachedEpisode in cachedEpisodes {
+                            let episode = makeEpisode(
+                                from: cachedEpisode,
+                                podcast: podcast,
+                                cacheContext: episodeCache,
+                                includesTranscripts: includesTranscripts,
+                                result: &result
+                            )
+                            runtime.insert(episode)
+                            result.episodes += 1
+                        }
+                        episodeOffset += cachedEpisodes.count
+                        doneEpisodes += cachedEpisodes.count
+                        return (try? runtime.save()) != nil ? true : nil
+                    }
+                    guard let more = outcome else {
+                        result.failed += 1
+                        return result
+                    }
+                    guard more else { break }
+                    progress(doneEpisodes, totalEpisodes)
+                }
+                do {
+                    if runtime.hasChanges { try runtime.save() }
+                } catch {
+                    result.failed += 1
+                    return result
+                }
+                checkpoint(feedKey)
             }
-            feedOffset += feeds.count
         }
 
+        guard shouldContinue() else {
+            result.interrupted = true
+            return result
+        }
+        let runtime = ModelContext(runtimeContainer)
+        runtime.autosaveEnabled = false
+        do {
+            // Analytics are built whole, so an interrupted run just repeats them.
+            try runtime.delete(model: RateSegment.self)
+            try runtime.delete(model: PlaySession.self)
+            try runtime.delete(model: ListeningStat.self)
+            try runtime.delete(model: PlaySessionSummary.self)
+            try runtime.save()
+        } catch {
+            result.failed += 1
+            return result
+        }
         projectLocalAnalytics(
             cacheContainer: cacheContainer,
             runtime: runtime,
@@ -204,7 +312,10 @@ enum StoreSplitCompatibilityProjectionService {
                     let feedKey = cachedPodcast.feedURL
                     var episodeDescriptor = FetchDescriptor<CachedEpisode>(
                         predicate: #Predicate { $0.feedURL == feedKey },
-                        sortBy: [SortDescriptor(\CachedEpisode.publishDate)]
+                        sortBy: [
+                            SortDescriptor(\CachedEpisode.publishDate),
+                            SortDescriptor(\CachedEpisode.id)
+                        ]
                     )
                     episodeDescriptor.fetchOffset = episodeOffset
                     episodeDescriptor.fetchLimit = episodePageSize
@@ -264,6 +375,40 @@ enum StoreSplitCompatibilityProjectionService {
         podcast.metaData?.lastFeedFailureDate = cachedPodcast.lastFeedFailureDate
         podcast.metaData?.lastFeedFailureStatusCode = cachedPodcast.lastFeedFailureStatusCode
         podcast.metaData?.lastFeedFailureMessage = cachedPodcast.lastFeedFailureMessage
+        podcast.metaData?.firstConsecutiveFeedFailureDate = cachedPodcast.firstConsecutiveFeedFailureDate
+        podcast.metaData?.authenticationRetryAfter = cachedPodcast.authenticationRetryAfter
+        podcast.metaData?.nextPredictedReleaseDate = cachedPodcast.nextPredictedReleaseDate
+        podcast.metaData?.nextPredictedRefreshStartDate = cachedPodcast.nextPredictedRefreshStartDate
+        podcast.metaData?.nextPredictedRefreshEndDate = cachedPodcast.nextPredictedRefreshEndDate
+        podcast.metaData?.releasePredictionUpdatedAt = cachedPodcast.releasePredictionUpdatedAt
+    }
+
+    private static func restoreTranscriptionRecords(
+        feedKey: String,
+        cacheContainer: ModelContainer,
+        runtime: ModelContext,
+        result: inout StoreSplitCompatibilityProjectionResult
+    ) {
+        let cache = ModelContext(cacheContainer)
+        let rows = (try? cache.fetch(FetchDescriptor<CachedTranscriptionRecord>(
+            predicate: #Predicate { $0.feedURL == feedKey }
+        ))) ?? []
+        for row in rows {
+            guard let episodeURL = row.episodeURL else { continue }
+            let record = TranscriptionRecord(
+                episodeURL: episodeURL,
+                episodeTitle: row.episodeTitle,
+                podcastTitle: row.podcastTitle,
+                localeIdentifier: row.localeIdentifier,
+                startedAt: row.startedAt,
+                finishedAt: row.finishedAt,
+                audioDuration: row.audioDuration
+            )
+            record.id = UUID(uuidString: row.id) ?? record.id
+            record.transcriptionDuration = row.transcriptionDuration
+            runtime.insert(record)
+            result.transcriptionRecords += 1
+        }
     }
 
     /// Builds — but does not insert — the model-shaped episode for one cache row,
@@ -273,6 +418,7 @@ enum StoreSplitCompatibilityProjectionService {
         from cachedEpisode: CachedEpisode,
         podcast: Podcast,
         cacheContext: ModelContext,
+        includesTranscripts: Bool = true,
         result: inout StoreSplitCompatibilityProjectionResult
     ) -> Episode {
         let placeholderURL = cachedEpisode.url
@@ -306,12 +452,23 @@ enum StoreSplitCompatibilityProjectionService {
         episode.social = cachedEpisode.social
         episode.people = cachedEpisode.people
         episode.optionalTags = cachedEpisode.optionalTags
-        episode.metaData?.isInbox = cachedEpisode.localIsInbox
-        episode.metaData?.status = cachedEpisode.localStatusRawValue
+        let restoredStatus = cachedEpisode.localStatusRawValue
             .flatMap(EpisodeStatus.init(rawValue:))
+        episode.metaData?.isInbox = cachedEpisode.localIsInbox
+        // `status` is derived from these flags; restore them so it round-trips.
+        episode.metaData?.isArchived = restoredStatus == .archived
+        episode.metaData?.isHistory = restoredStatus == .history
+        episode.metaData?.status = restoredStatus
         episode.metaData?.systemSuppressionReasonRawValue =
             cachedEpisode.localSystemSuppressionReasonRawValue
         episode.metaData?.reconcileLegacyStatus()
+        episode.metaData?.playbackStartTimes = cachedEpisode.playbackStartTimes ?? .init([])
+        episode.metaData?.playbackDurations = cachedEpisode.playbackDurations ?? .init([])
+        episode.metaData?.silenceGapTimeSavedDurations =
+            cachedEpisode.silenceGapTimeSavedDurations ?? .init([])
+        episode.metaData?.playbackSpeeds = cachedEpisode.playbackSpeeds ?? .init([])
+        episode.metaData?.totalListenTime = cachedEpisode.totalListenTime
+        episode.metaData?.totalSilenceGapTimeSaved = cachedEpisode.totalSilenceGapTimeSaved
         // Resolve the current sandbox path rather than trusting a cached URL or
         // flag from a previous installation. Never redownload an existing file.
         episode.metaData?.isAvailableLocally = episode.localFile.map {
@@ -320,8 +477,9 @@ enum StoreSplitCompatibilityProjectionService {
 
 
         let rowID = cachedEpisode.id
+        let rowFeedKey = cachedEpisode.feedURL
         let chapterDescriptor = FetchDescriptor<CachedChapter>(
-            predicate: #Predicate { $0.episodeID == rowID },
+            predicate: #Predicate { $0.feedURL == rowFeedKey && $0.episodeID == rowID },
             sortBy: [SortDescriptor(\CachedChapter.ordinal)]
         )
         let cachedChapters = (try? cacheContext.fetch(chapterDescriptor)) ?? []
@@ -349,14 +507,25 @@ enum StoreSplitCompatibilityProjectionService {
             return marker
         }
 
-        let transcriptDescriptor = FetchDescriptor<CachedTranscriptLine>(
-            predicate: #Predicate { $0.episodeID == rowID },
+        if includesTranscripts {
+            let lines = makeTranscriptLines(feedKey: rowFeedKey, episodeID: rowID, cacheContext: cacheContext)
+            result.transcriptLines += lines.count
+            episode.transcriptLines = lines
+        }
+        return episode
+    }
+
+    private static func makeTranscriptLines(
+        feedKey: String,
+        episodeID: String,
+        cacheContext: ModelContext
+    ) -> [TranscriptLineAndTime] {
+        let descriptor = FetchDescriptor<CachedTranscriptLine>(
+            predicate: #Predicate { $0.feedURL == feedKey && $0.episodeID == episodeID },
             sortBy: [SortDescriptor(\CachedTranscriptLine.ordinal)]
         )
-        let cachedLines = (try? cacheContext.fetch(transcriptDescriptor)) ?? []
-        episode.transcriptLines = cachedLines.map { cached in
-            result.transcriptLines += 1
-            return TranscriptLineAndTime(
+        return ((try? cacheContext.fetch(descriptor)) ?? []).map { cached in
+            TranscriptLineAndTime(
                 id: cached.sourceUUID.flatMap(UUID.init(uuidString:)) ?? UUID(),
                 speaker: cached.speaker,
                 text: cached.text,
@@ -365,7 +534,166 @@ enum StoreSplitCompatibilityProjectionService {
                 source: CachedTranscriptSource(rawValue: cached.sourceRawValue) ?? .unknown
             )
         }
-        return episode
+    }
+
+    /// What the first build includes, beyond the Inbox: what a person can reach
+    /// from the main screens immediately. The rest fills in right after.
+    static func priorityEpisodeKeys(userState: ModelContainer, cache: ModelContainer) -> Set<String> {
+        let context = ModelContext(userState)
+        var keys = Set<String>()
+        // A downloaded episode has to stay reachable, whatever else it is.
+        for row in (try? ModelContext(cache).fetch(FetchDescriptor<CachedDownloadRecord>(
+            predicate: #Predicate { $0.isAvailableLocally == true }
+        ))) ?? [] {
+            keys.insert(StableIdentityKey.make(row.feedURL, row.episodeID))
+        }
+        for row in (try? context.fetch(FetchDescriptor<QueueEntrySync>(
+            predicate: #Predicate { $0.isDeleted == false }
+        ))) ?? [] {
+            keys.insert(StableIdentityKey.make(row.feedURL, row.episodeID))
+        }
+        for row in (try? context.fetch(FetchDescriptor<PlaylistEntrySync>(
+            predicate: #Predicate { $0.isDeleted == false }
+        ))) ?? [] {
+            keys.insert(StableIdentityKey.make(row.feedURL, row.episodeID))
+        }
+        for row in (try? context.fetch(FetchDescriptor<BookmarkSync>(
+            predicate: #Predicate { $0.isDeleted == false }
+        ))) ?? [] {
+            keys.insert(StableIdentityKey.make(row.feedURL, row.episodeID))
+        }
+        var recent = FetchDescriptor<EpisodeStateSync>(
+            sortBy: [SortDescriptor(\EpisodeStateSync.lastPlayedAt, order: .reverse)]
+        )
+        recent.fetchLimit = 200
+        for row in (try? context.fetch(recent)) ?? [] {
+            keys.insert(StableIdentityKey.make(row.feedURL, row.episodeID))
+        }
+        return keys
+    }
+
+    /// Applies the synced state as the episode is added. An episode without it
+    /// would look unplayed, and its next write would publish that over the truth.
+    static func applySyncedState(to episode: Episode, id: String, userState: ModelContext) {
+        var descriptor = FetchDescriptor<EpisodeStateSync>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        guard let state = try? userState.fetch(descriptor).first,
+              let metadata = episode.metaData else { return }
+        metadata.playPosition = max(0, state.playPosition)
+        metadata.maxPlayposition = max(state.maxPlayPosition, state.playPosition)
+        metadata.stateUpdatedAt = state.updatedAt
+        metadata.lastPlayed = state.lastPlayedAt
+        metadata.firstListenDate = state.firstPlayedAt
+        metadata.completionDate = state.completedAt
+        metadata.archivedAt = state.archivedAt
+        metadata.wasSkipped = state.wasSkipped
+        metadata.isArchived = state.isArchived
+        metadata.isHistory = state.isPlayed
+        if state.isArchived || state.isPlayed { metadata.isInbox = false }
+        if state.isArchived {
+            metadata.status = .archived
+        } else if state.isPlayed {
+            metadata.status = .history
+        }
+    }
+
+    /// Re-derives sessions once every episode they belong to is in the graph.
+    static func rebuildLocalAnalytics(
+        cacheContainer: ModelContainer,
+        runtimeContainer: ModelContainer
+    ) {
+        let runtime = ModelContext(runtimeContainer)
+        runtime.autosaveEnabled = false
+        var result = StoreSplitCompatibilityProjectionResult()
+        do {
+            try runtime.delete(model: RateSegment.self)
+            try runtime.delete(model: PlaySession.self)
+            try runtime.delete(model: ListeningStat.self)
+            try runtime.delete(model: PlaySessionSummary.self)
+            try runtime.save()
+        } catch {
+            return
+        }
+        projectLocalAnalytics(cacheContainer: cacheContainer, runtime: runtime, result: &result)
+    }
+
+    /// Adds saved transcripts to the episodes now in the graph, while the app is
+    /// in use. Transcripts can't come from a feed, so this one part does read the
+    /// cache. One feed at a time and resumable. An episode that already has lines
+    /// keeps them: those are newer than the cache's.
+    /// Returns false if it should run again.
+    static func backfillTranscripts(
+        cacheContainer: ModelContainer,
+        runtimeContainer: ModelContainer,
+        resumeAfter: String?,
+        episodePageSize: Int = 25,
+        shouldContinue: @Sendable () -> Bool,
+        checkpoint: @Sendable (String) -> Void,
+        idle: @Sendable () async -> Void = { try? await Task.sleep(for: .milliseconds(100)) }
+    ) async -> Bool {
+        var lastFeed = resumeAfter
+        while true {
+            var feedDescriptor: FetchDescriptor<CachedPodcast>
+            if let lastFeed {
+                feedDescriptor = FetchDescriptor(
+                    predicate: #Predicate { $0.feedURL > lastFeed },
+                    sortBy: [SortDescriptor(\CachedPodcast.feedURL)]
+                )
+            } else {
+                feedDescriptor = FetchDescriptor(sortBy: [SortDescriptor(\CachedPodcast.feedURL)])
+            }
+            feedDescriptor.fetchLimit = 1
+            guard let feeds = try? ModelContext(cacheContainer).fetch(feedDescriptor) else { return false }
+            guard let feedKey = feeds.first?.feedURL else { return true }
+            lastFeed = feedKey
+
+            let runtime = ModelContext(runtimeContainer)
+            runtime.autosaveEnabled = false
+            let feedURL = URL(string: feedKey)
+            guard let podcast = try? runtime.fetch(FetchDescriptor<Podcast>(
+                predicate: #Predicate { $0.feed == feedURL }
+            )).first else {
+                checkpoint(feedKey)
+                continue
+            }
+            let episodesByID = Dictionary(
+                (podcast.episodes ?? []).map { ($0.stableEpisodeIdentityKey, $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            var offset = 0
+            while true {
+                guard shouldContinue() else { return false }
+                let cache = ModelContext(cacheContainer)
+                var descriptor = FetchDescriptor<CachedEpisode>(
+                    predicate: #Predicate { $0.feedURL == feedKey },
+                    sortBy: [SortDescriptor(\CachedEpisode.id)]
+                )
+                descriptor.fetchOffset = offset
+                descriptor.fetchLimit = episodePageSize
+                guard let page = try? cache.fetch(descriptor) else { return false }
+                guard page.isEmpty == false else { break }
+                autoreleasepool {
+                    for cachedEpisode in page {
+                        guard let episode = episodesByID[cachedEpisode.id] else { continue }
+                        guard episode.transcriptLines?.isEmpty != false else { continue }
+                        let lines = makeTranscriptLines(
+                            feedKey: feedKey,
+                            episodeID: cachedEpisode.id,
+                            cacheContext: cache
+                        )
+                        if lines.isEmpty == false { episode.transcriptLines = lines }
+                    }
+                }
+                do {
+                    if runtime.hasChanges { try runtime.save() }
+                } catch {
+                    return false
+                }
+                offset += page.count
+                await idle()
+            }
+            checkpoint(feedKey)
+        }
     }
 
     private static func projectLocalAnalytics(

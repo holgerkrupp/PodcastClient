@@ -1,3 +1,8 @@
+> **Superseded (30 Oct 2026).** This document describes the earlier multi-night
+> backfill and staged rollout. Upgraded devices now keep their legacy store as a
+> local library with CloudKit off, and copy user data in the background. Current
+> behaviour: [StoreSplitReleaseGate.md](StoreSplitReleaseGate.md). Kept for history only.
+
 # Store-Split Safety Audit — Findings
 
 Audit of the SwiftData store-split, migration and legacy-compatibility code,

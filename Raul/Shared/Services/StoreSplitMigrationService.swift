@@ -1,25 +1,6 @@
 import Foundation
 import SwiftData
 
-enum StoreSplitMigrationSchedulePolicy {
-    static let nightStartHour = 22
-    static let nightEndHour = 7
-
-    static func isEligibleNight(_ date: Date, calendar: Calendar = .current) -> Bool {
-        let hour = calendar.component(.hour, from: date)
-        return hour >= nightStartHour || hour < nightEndHour
-    }
-
-    static func nextEligibleNightStart(after date: Date, calendar: Calendar = .current) -> Date? {
-        if isEligibleNight(date, calendar: calendar) { return date }
-        let todayStart = calendar.startOfDay(for: date)
-        let startHour = calendar.date(bySettingHour: nightStartHour, minute: 0, second: 0, of: todayStart)
-        if let startHour, date < startHour { return startHour }
-        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: todayStart) else { return nil }
-        return calendar.date(bySettingHour: nightStartHour, minute: 0, second: 0, of: tomorrow)
-    }
-}
-
 /// Synchronous, thread-safe signal read inside migration row loops. Playback
 /// remains owned by `Player`; this gate only publishes its active state so a
 /// background worker can preempt without crossing actor isolation.
@@ -199,6 +180,7 @@ struct StoreWorkBudget: Sendable, Equatable {
         maximumSaves: 2,
         maximumWallTime: .seconds(4)
     )
+
 }
 
 /// Run-level limits are deliberately separate from the wall-clock window that
@@ -283,17 +265,28 @@ actor StoreSplitMigrationService {
     /// `bookmarks` is at revision 1 because its cursor used to count rows in the
     /// `Marker` base table (every chapter of every episode) and now counts
     /// bookmarks, so the old offsets mean nothing in the new coordinate space.
+    ///
+    /// The final cutover revisions restart every source-copying phase: a phase
+    /// completed weeks ago has not seen what the legacy store gained since. All
+    /// of them merge by stable identity and date, so re-running can't rewind or
+    /// double count. Baseline phases keep their namespaces for the same reason.
     private static let phaseRevisions: [String: Int] = [
-        Phase.bookmarks: 1,
-        Phase.listeningSummaries: 3,
-        Phase.listeningBaselinePrepareAggregates: 1,
-        Phase.listeningBaselinePrepareSources: 1,
-        Phase.listeningBaselinePublication: 2,
-        Phase.listeningHistory: 1,
-        Phase.listeningHistoryVerification: 2,
-        Phase.listeningBaselineVerificationScan: 1,
-        Phase.listeningBaselineVerification: 1,
-        Phase.listeningBaselineVerificationComparison: 1
+        Phase.subscriptions: 1,
+        Phase.playlists: 1,
+        Phase.playlistEntries: 1,
+        Phase.queueEntries: 1,
+        Phase.preferences: 1,
+        Phase.episodeStates: 1,
+        Phase.bookmarks: 2,
+        Phase.listeningSummaries: 5,
+        Phase.listeningBaselinePrepareAggregates: 3,
+        Phase.listeningBaselinePrepareSources: 3,
+        Phase.listeningBaselinePublication: 4,
+        Phase.listeningHistory: 2,
+        Phase.listeningHistoryVerification: 3,
+        Phase.listeningBaselineVerificationScan: 3,
+        Phase.listeningBaselineVerification: 3,
+        Phase.listeningBaselineVerificationComparison: 3
     ]
 
     /// The checkpoint row identity for a phase at its current revision. Rows
@@ -378,7 +371,7 @@ actor StoreSplitMigrationService {
     /// The paging order of every sliced phase, in one place. `resolvedOffset`
     /// re-reads the same order to find where a checkpointed row moved to, so the
     /// two must never drift apart.
-    private enum SourceOrder {
+    enum SourceOrder {
         static let podcasts = [SortDescriptor(\Podcast.title)]
         static let playlists = [
             SortDescriptor(\Playlist.sortIndex),
@@ -958,6 +951,17 @@ actor StoreSplitMigrationService {
         }
         if let failure {
             cacheContext.rollback()
+            progress.failed = 1
+            // Record a first failure, and leave an existing cursor exactly as it is.
+            let checkpointKey = checkpointID(for: phase)
+            let hasCheckpoint = ((try? cacheContext.fetchCount(FetchDescriptor<StoreSplitMigrationCheckpoint>(
+                predicate: #Predicate { $0.id == checkpointKey }
+            ))) ?? 0) > 0
+            if hasCheckpoint { return StoreSplitSliceReport(status: .failed, phase: phase, error: failure) }
+            guard let encoded = cursor.encoded,
+                  recordCheckpoint(phase: phase, result: progress, cursor: encoded, completed: false, error: failure, context: cacheContext) else {
+                return StoreSplitSliceReport(status: .failed, phase: phase, error: "checkpoint_save_failed")
+            }
             return StoreSplitSliceReport(status: .failed, phase: phase, error: failure)
         }
         if let boundary = outcome.boundaryKey, let afterID = UUID(uuidString: boundary) {
@@ -1028,7 +1032,6 @@ actor StoreSplitMigrationService {
         case invalidAggregate = "baseline_maintenance_invalid_aggregate"
         case destinationFetch = "baseline_maintenance_destination_fetch_failed"
         case destinationConflict = "baseline_maintenance_destination_identity_conflict"
-        case sourceEvidence = "baseline_publication_source_evidence_unresolved"
     }
 
     private static func isBaselineMaintenancePhase(_ phase: String) -> Bool {
@@ -1092,6 +1095,7 @@ actor StoreSplitMigrationService {
         let originalCursor = cursor
         var processed = 0
         var skipped = 0
+        var published = 0
         var reachedEnd = false
         var failure: BaselineMaintenanceError?
         let pageSize = max(1, min(40, budget.maximumMutations - 1))
@@ -1169,8 +1173,34 @@ actor StoreSplitMigrationService {
                         do { existing = try destinationContext.fetch(baselineDescriptor) }
                         catch { throw BaselineMaintenanceError.destinationFetch }
                         guard existing.count <= 1 else { throw BaselineMaintenanceError.destinationConflict }
-                        guard !existing.isEmpty else { throw BaselineMaintenanceError.sourceEvidence }
-                        skipped += 1
+                        if existing.isEmpty {
+                            // The frozen source is the fence this needed: its
+                            // summaries can't change under the aggregate any more.
+                            // A row from another device wins as first writer.
+                            destinationContext.insert(ListeningBaselineSync(
+                                feedURL: aggregate.feedURL,
+                                podcastName: aggregate.podcastName,
+                                totalSeconds: aggregate.totalSeconds,
+                                silenceGapTimeSavedSeconds: aggregate.silenceGapTimeSavedSeconds,
+                                playbackRateTimeSavedSeconds: aggregate.playbackRateTimeSavedSeconds,
+                                capturedByDeviceID: ListeningDeviceIdentity.current().id
+                            ))
+                            published += 1
+                        } else if let own = existing.first,
+                                  own.capturedByDeviceID == ListeningDeviceIdentity.current().id,
+                                  own.totalSeconds > aggregate.totalSeconds {
+                            // This device's own earlier snapshot, computed before
+                            // duplicate summary rows were recognised. Removing
+                            // duplicates only lowers a total; otherwise a baseline
+                            // stays the constant it was captured as.
+                            own.totalSeconds = aggregate.totalSeconds
+                            own.silenceGapTimeSavedSeconds = aggregate.silenceGapTimeSavedSeconds
+                            own.playbackRateTimeSavedSeconds = aggregate.playbackRateTimeSavedSeconds
+                            own.capturedAt = .now
+                            published += 1
+                        } else {
+                            skipped += 1
+                        }
                     } else { skipped += 1 }
                     cursor.afterID = aggregate.id
                     processed += 1
@@ -1186,6 +1216,10 @@ actor StoreSplitMigrationService {
             guard shouldContinue() else {
                 cacheContext.rollback()
                 return StoreSplitSliceReport(status: .cancelled, phase: phase)
+            }
+            if published > 0 {
+                do { try destinationContext.save() }
+                catch { throw BaselineMaintenanceError.destinationFetch }
             }
         } catch let error as BaselineMaintenanceError {
             failure = error
@@ -1279,7 +1313,6 @@ actor StoreSplitMigrationService {
         case destinationRead = "baseline_verification_destination_read_failed"
         case missingBaseline = "baseline_verification_missing_baseline"
         case duplicateBaseline = "baseline_verification_duplicate_baseline"
-        case sourceLineage = "baseline_verification_source_lineage_unresolved"
         case aggregateMismatch = "baseline_verification_aggregate_mismatch"
         case fields = "baseline_verification_semantic_mismatch"
     }
@@ -1784,13 +1817,15 @@ actor StoreSplitMigrationService {
                     catch { throw BaselineVerificationError.destinationRead }
                     guard baselines.count <= 1 else { throw BaselineVerificationError.duplicateBaseline }
                     guard let baseline = baselines.first else { throw BaselineVerificationError.missingBaseline }
-                    guard baseline.capturedByDeviceID == ListeningDeviceIdentity.current().id else {
-                        throw BaselineVerificationError.sourceLineage
-                    }
-                    guard baseline.feedURL == feedURL,
-                          equal(baseline.totalSeconds, first.totalSeconds),
-                          equal(baseline.silenceGapTimeSavedSeconds, first.silenceGapTimeSavedSeconds),
-                          equal(baseline.playbackRateTimeSavedSeconds, first.playbackRateTimeSavedSeconds) else {
+                    // A row another device published first is the account's
+                    // baseline. This device's snapshot has nothing to say about it.
+                    let isOwnBaseline = baseline.capturedByDeviceID == ListeningDeviceIdentity.current().id
+                    // This scan sums every row while the baseline counts each feed
+                    // and period once, so the scan is the upper bound.
+                    guard isOwnBaseline == false || baseline.feedURL == feedURL,
+                          isOwnBaseline == false || baseline.totalSeconds <= first.totalSeconds + 0.5,
+                          isOwnBaseline == false || baseline.silenceGapTimeSavedSeconds <= first.silenceGapTimeSavedSeconds + 0.5,
+                          isOwnBaseline == false || baseline.playbackRateTimeSavedSeconds <= first.playbackRateTimeSavedSeconds + 0.5 else {
                         throw BaselineVerificationError.fields
                     }
                 }
@@ -2006,6 +2041,7 @@ actor StoreSplitMigrationService {
                 offset: offset,
                 legacyContext: legacyContext,
                 destinationContext: userStateContext,
+                cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
         case Phase.preferences:
@@ -2013,6 +2049,7 @@ actor StoreSplitMigrationService {
                 offset: offset,
                 legacyContext: legacyContext,
                 destinationContext: userStateContext,
+                cacheContext: cacheContext,
                 shouldContinue: shouldContinue
             )
         case Phase.episodeStates:
@@ -2314,14 +2351,7 @@ actor StoreSplitMigrationService {
                 destination.updatedAt = updatedAt
                 outcome.delta.updated += 1
             } else {
-                let destination = SubscriptionSync(
-                    feedURL: feedURL,
-                    isSubscribed: isSubscribed,
-                    subscribedAt: subscribedAt,
-                    unsubscribedAt: isSubscribed ? nil : updatedAt,
-                    updatedAt: updatedAt
-                )
-                destinationContext.insert(destination)
+                destinationContext.insert(subscriptionRow(for: podcast, feed: feed))
                 outcome.delta.inserted += 1
             }
         }
@@ -2337,6 +2367,21 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = podcasts.count < defaultPageSize
         }
         return outcome
+    }
+
+    /// The row a first-time copy of this legacy podcast creates.
+    static func subscriptionRow(for podcast: Podcast, feed: URL) -> SubscriptionSync {
+        let metadata = podcast.metaData
+        let isSubscribed = metadata?.isSubscribed != false
+        // Feed refresh timestamps are cache activity, not subscription edits.
+        let updatedAt = metadata?.subscriptionDate ?? .distantPast
+        return SubscriptionSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            isSubscribed: isSubscribed,
+            subscribedAt: metadata?.subscriptionDate ?? .distantPast,
+            unsubscribedAt: isSubscribed ? nil : updatedAt,
+            updatedAt: updatedAt
+        )
     }
 
     // MARK: - Playlists
@@ -2404,21 +2449,7 @@ actor StoreSplitMigrationService {
                     outcome.delta.skipped += 1
                 }
             } else {
-                let destination = PlaylistSync(
-                    id: playlistID,
-                    title: playlist.title,
-                    symbolName: playlist.symbolName,
-                    sortIndex: playlist.sortIndex,
-                    kindRawValue: playlist.kindRawValue,
-                    smartFilterRawValue: smartFilterRawValue,
-                    isHidden: playlist.hidden,
-                    autoDownloadEnabled: playlist.autoDownloadEnabled,
-                    autoDownloadEpisodeLimit: playlist.resolvedAutoDownloadEpisodeLimit,
-                    removesEpisodesPlayedElsewhere: playlist.removesEpisodesPlayedElsewhere,
-                    createdAt: createdAt,
-                    updatedAt: updatedAt
-                )
-                destinationContext.insert(destination)
+                destinationContext.insert(playlistRow(for: playlist))
                 outcome.delta.inserted += 1
             }
         }
@@ -2434,6 +2465,30 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = playlists.count < defaultPageSize
         }
         return outcome
+    }
+
+    /// The row a first-time copy of this legacy playlist creates.
+    static func playlistRow(for playlist: Playlist) -> PlaylistSync {
+        let entryDates = playlist.ordered.compactMap(\.dateAdded)
+        let createdAt = entryDates.min() ?? .distantPast
+        return PlaylistSync(
+            id: playlist.storeSplitSyncID,
+            title: playlist.title,
+            symbolName: playlist.symbolName,
+            sortIndex: playlist.sortIndex,
+            kindRawValue: playlist.kindRawValue,
+            smartFilterRawValue: playlist.smartFilter.flatMap {
+                try? JSONEncoder().encode($0)
+            }.flatMap {
+                String(data: $0, encoding: .utf8)
+            },
+            isHidden: playlist.hidden,
+            autoDownloadEnabled: playlist.autoDownloadEnabled,
+            autoDownloadEpisodeLimit: playlist.resolvedAutoDownloadEpisodeLimit,
+            removesEpisodesPlayedElsewhere: playlist.removesEpisodesPlayedElsewhere,
+            createdAt: createdAt,
+            updatedAt: entryDates.max() ?? createdAt
+        )
     }
 
     // MARK: - Playlist + queue entries
@@ -2480,6 +2535,18 @@ actor StoreSplitMigrationService {
 
             guard let episode = entry.episode,
                   episode.podcast?.feed != nil else {
+                outcome.delta.skipped += 1
+                if isDefaultQueue {
+                    outcome.queueDelta.scanned += 1
+                    outcome.queueDelta.skipped += 1
+                }
+                continue
+            }
+
+            // A finished episode isn't a queue member. The disabled pruner never
+            // cleaned these out of the legacy store, so don't carry them over.
+            if PlayedEpisodeQueuePolicy.isStaleQueueMembership(for: episode, addedAt: entry.dateAdded),
+               playlist.removesEpisodesPlayedElsewhere {
                 outcome.delta.skipped += 1
                 if isDefaultQueue {
                     outcome.queueDelta.scanned += 1
@@ -2613,6 +2680,7 @@ actor StoreSplitMigrationService {
         offset: Int,
         legacyContext: ModelContext,
         destinationContext: ModelContext,
+        cacheContext: ModelContext,
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
@@ -2646,13 +2714,10 @@ actor StoreSplitMigrationService {
 
             let identity = episode.stableEpisodeIdentity
             let createdAt = bookmark.creationtime ?? .distantPast
-            let bookmarkID = bookmark.uuid?.uuidString ?? StableIdentityKey.make(
-                "legacy-bookmark",
-                identity.key,
-                String(bookmark.start ?? 0),
-                bookmark.title,
-                String(createdAt.timeIntervalSince1970)
-            )
+            let bookmarkID = bookmarkSyncID(for: bookmark, identity: identity)
+            // Device-local fields live in the cache; a newer synced row doesn't
+            // make them any less this device's data.
+            StoreSplitBookmarkDetailWriter.upsert(from: bookmark, id: bookmarkID, in: cacheContext)
 
             if let destination = fetchBookmark(
                 id: bookmarkID,
@@ -2673,16 +2738,7 @@ actor StoreSplitMigrationService {
                 destination.updatedAt = createdAt
                 outcome.delta.updated += 1
             } else {
-                let destination = BookmarkSync(
-                    id: bookmarkID,
-                    feedURL: identity.feedURL,
-                    episodeID: identity.episodeID,
-                    time: bookmark.start ?? 0,
-                    title: bookmark.title,
-                    createdAt: createdAt,
-                    updatedAt: createdAt
-                )
-                destinationContext.insert(destination)
+                destinationContext.insert(bookmarkRow(for: bookmark, identity: identity))
                 outcome.delta.inserted += 1
             }
         }
@@ -2693,11 +2749,44 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        do {
+            try cacheContext.save()
+        } catch {
+            cacheContext.rollback()
+            outcome.error = "cache_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         outcome.boundaryKey = boundaryKey(of: bookmarkPage, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = end >= ordered.count
         }
         return outcome
+    }
+
+    static func bookmarkSyncID(for bookmark: Bookmark, identity: EpisodeStableIdentity) -> String {
+        bookmark.uuid?.uuidString ?? StableIdentityKey.make(
+            "legacy-bookmark",
+            identity.key,
+            String(bookmark.start ?? 0),
+            bookmark.title,
+            String((bookmark.creationtime ?? .distantPast).timeIntervalSince1970)
+        )
+    }
+
+    /// The row a first-time copy of this legacy bookmark creates.
+    static func bookmarkRow(for bookmark: Bookmark, identity: EpisodeStableIdentity) -> BookmarkSync {
+        let createdAt = bookmark.creationtime ?? .distantPast
+        return BookmarkSync(
+            id: bookmarkSyncID(for: bookmark, identity: identity),
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            time: bookmark.start ?? 0,
+            title: bookmark.title,
+            createdAt: createdAt,
+            updatedAt: createdAt
+        )
     }
 
     /// Every legacy bookmark, in a stable order.
@@ -2713,7 +2802,7 @@ actor StoreSplitMigrationService {
     /// offset, which makes SQLite spill a temp B-tree to disk on every slice.
     /// Two of those per slice, with only a short idle gap, dirtied gigabytes per
     /// run (68GB in one report) to migrate a handful of bookmarks.
-    private static func orderedBookmarks(in context: ModelContext) throws -> [Bookmark] {
+    static func orderedBookmarks(in context: ModelContext) throws -> [Bookmark] {
         try context.fetch(FetchDescriptor<Bookmark>())
             .sorted { lhs, rhs in
                 let lhsCreated = lhs.creationtime ?? .distantPast
@@ -2735,6 +2824,7 @@ actor StoreSplitMigrationService {
         offset: Int,
         legacyContext: ModelContext,
         destinationContext: ModelContext,
+        cacheContext: ModelContext,
         shouldContinue: @Sendable () -> Bool
     ) -> PageOutcome {
         var outcome = PageOutcome()
@@ -2759,52 +2849,8 @@ actor StoreSplitMigrationService {
             }
             outcome.processed += 1
             outcome.delta.scanned += 1
-            let feedURL = setting.podcast?.feed.map(
-                PodcastFeedIdentity.normalizedFeedURLString
-            )
-            let candidate = PodcastPreferenceSync(
-                feedURL: feedURL,
-                isEnabled: setting.isEnabled,
-                playNextPositionRawValue: (try? encoder.encode(setting.playnextPosition))
-                    .map { String(decoding: $0, as: UTF8.self) } ?? "",
-                defaultPlaylistID: setting.defaultPlaylistID.flatMap { playlistID in
-                    (try? legacyContext.fetch(FetchDescriptor<Playlist>(
-                        predicate: #Predicate { $0.id == playlistID }
-                    )))?.first?.storeSplitSyncID
-                },
-                autoDownload: setting.autoDownload,
-                autoDownloadEpisodeCount: setting.autoDownloadEpisodeCount,
-                autoDownloadSelectionRawValue: setting.autoDownloadSelectionRawValue,
-                autoDownloadNetworkModeRawValue: setting.autoDownloadNetworkModeRawValue,
-                autoDownloadIncludesArchivedEpisodes: setting.autoDownloadIncludesArchivedEpisodes,
-                archiveFileRetentionDays: setting.archiveFileRetentionDays,
-                playbackSpeed: setting.playbackSpeed.map(Double.init),
-                reduceSilenceGapsEnabled: setting.reduceSilenceGapsEnabled,
-                silenceGapReductionLevelRawValue: setting.silenceGapReductionLevelRawValue,
-                voiceEnhancementEnabled: setting.voiceEnhancementEnabled,
-                autoSkipKeywordsJSON: (try? encoder.encode(setting.autoSkipKeywords))
-                    .map { String(decoding: $0, as: UTF8.self) } ?? "[]",
-                autoDownloadFilterJSON: setting.autoDownloadFilterJSON,
-                cutFront: setting.cutFront.map(Double.init),
-                cutEnd: setting.cutEnd.map(Double.init),
-                skipForwardSeconds: setting.skipForward.rawValue,
-                skipBackSeconds: setting.skipBack.rawValue,
-                skipForwardBehaviorRawValue: setting.skipForwardBehaviorRawValue,
-                skipBackBehaviorRawValue: setting.skipBackBehaviorRawValue,
-                markAsPlayedAfterSubscribe: setting.markAsPlayedAfterSubscribe,
-                playSumAdjustedByPlaySpeed: setting.playSumAdjustedbyPlayspeed,
-                enableLockscreenSlider: setting.enableLockscreenSlider,
-                enableInAppSlider: setting.enableInAppSlider,
-                continuousPlayEnabled: setting.getContinuousPlay,
-                showLivePodcasts: setting.showLivePodcasts,
-                liveItemNotificationsEnabled: setting.enableLiveItemNotifications,
-                sleepTimerAddMinutes: setting.sleepTimerAddMinutes,
-                sleepTimerDurationToReactivate: setting.sleepTimerDurationToReactivate,
-                sleepTimerVoiceFeedbackEnabled: setting.sleepTimerVoiceFeedbackEnabled,
-                sleepTimerText: setting.sleepTimerText,
-                updatedAt: .distantPast,
-                sourceDeviceID: ListeningDeviceIdentity.current().id
-            )
+            let candidate = preferenceRow(for: setting, legacyContext: legacyContext, encoder: encoder)
+            StoreSplitLocalSettingsWriter.upsert(from: setting, in: cacheContext)
             if let existing = fetchPreference(id: candidate.id, in: destinationContext) {
                 guard StoreSplitMergePolicy.prefersIncoming(
                     existingUpdatedAt: existing.updatedAt,
@@ -2826,11 +2872,73 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = false
             return outcome
         }
+        do {
+            try cacheContext.save()
+        } catch {
+            cacheContext.rollback()
+            outcome.error = "cache_save_failed"
+            outcome.processed = 0
+            outcome.reachedEnd = false
+            return outcome
+        }
         outcome.boundaryKey = boundaryKey(of: settings, processed: outcome.processed)
         if outcome.reachedEnd {
             outcome.reachedEnd = settings.count < defaultPageSize
         }
         return outcome
+    }
+
+    static func preferenceRow(
+        for setting: PodcastSettings,
+        legacyContext: ModelContext,
+        encoder: JSONEncoder
+    ) -> PodcastPreferenceSync {
+        let feedURL = setting.podcast?.feed.map(
+            PodcastFeedIdentity.normalizedFeedURLString
+        )
+        return PodcastPreferenceSync(
+            feedURL: feedURL,
+            isEnabled: setting.isEnabled,
+            playNextPositionRawValue: (try? encoder.encode(setting.playnextPosition))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "",
+            defaultPlaylistID: setting.defaultPlaylistID.flatMap { playlistID in
+                (try? legacyContext.fetch(FetchDescriptor<Playlist>(
+                    predicate: #Predicate { $0.id == playlistID }
+                )))?.first?.storeSplitSyncID
+            },
+            autoDownload: setting.autoDownload,
+            autoDownloadEpisodeCount: setting.autoDownloadEpisodeCount,
+            autoDownloadSelectionRawValue: setting.autoDownloadSelectionRawValue,
+            autoDownloadNetworkModeRawValue: setting.autoDownloadNetworkModeRawValue,
+            autoDownloadIncludesArchivedEpisodes: setting.autoDownloadIncludesArchivedEpisodes,
+            archiveFileRetentionDays: setting.archiveFileRetentionDays,
+            playbackSpeed: setting.playbackSpeed.map(Double.init),
+            reduceSilenceGapsEnabled: setting.reduceSilenceGapsEnabled,
+            silenceGapReductionLevelRawValue: setting.silenceGapReductionLevelRawValue,
+            voiceEnhancementEnabled: setting.voiceEnhancementEnabled,
+            autoSkipKeywordsJSON: (try? encoder.encode(setting.autoSkipKeywords))
+                .map { String(decoding: $0, as: UTF8.self) } ?? "[]",
+            autoDownloadFilterJSON: setting.autoDownloadFilterJSON,
+            cutFront: setting.cutFront.map(Double.init),
+            cutEnd: setting.cutEnd.map(Double.init),
+            skipForwardSeconds: setting.skipForward.rawValue,
+            skipBackSeconds: setting.skipBack.rawValue,
+            skipForwardBehaviorRawValue: setting.skipForwardBehaviorRawValue,
+            skipBackBehaviorRawValue: setting.skipBackBehaviorRawValue,
+            markAsPlayedAfterSubscribe: setting.markAsPlayedAfterSubscribe,
+            playSumAdjustedByPlaySpeed: setting.playSumAdjustedbyPlayspeed,
+            enableLockscreenSlider: setting.enableLockscreenSlider,
+            enableInAppSlider: setting.enableInAppSlider,
+            continuousPlayEnabled: setting.getContinuousPlay,
+            showLivePodcasts: setting.showLivePodcasts,
+            liveItemNotificationsEnabled: setting.enableLiveItemNotifications,
+            sleepTimerAddMinutes: setting.sleepTimerAddMinutes,
+            sleepTimerDurationToReactivate: setting.sleepTimerDurationToReactivate,
+            sleepTimerVoiceFeedbackEnabled: setting.sleepTimerVoiceFeedbackEnabled,
+            sleepTimerText: setting.sleepTimerText,
+            updatedAt: .distantPast,
+            sourceDeviceID: ListeningDeviceIdentity.current().id
+        )
     }
 
     private static func applyPreference(
@@ -2909,19 +3017,8 @@ actor StoreSplitMigrationService {
                 continue
             }
 
-            let isPlayed = metadata.isHistory == true
-                || metadata.status == .history
-                || metadata.completionDate != nil
-            let isArchived = metadata.isArchived == true || metadata.status == .archived
-            let hasMeaningfulState = (metadata.playPosition ?? 0) > 0
-                || (metadata.maxPlayposition ?? 0) > 0
-                || isPlayed
-                || isArchived
-                || metadata.wasSkipped
-                || metadata.firstListenDate != nil
-                || metadata.lastPlayed != nil
-
-            guard hasMeaningfulState else {
+            let (isPlayed, isArchived) = episodeStateFlags(metadata)
+            guard hasMeaningfulEpisodeState(metadata) else {
                 outcome.delta.skipped += 1
                 continue
             }
@@ -2955,22 +3052,11 @@ actor StoreSplitMigrationService {
                 )
                 outcome.delta.updated += 1
             } else {
-                let destination = EpisodeStateSync(
-                    feedURL: identity.feedURL,
-                    episodeID: identity.episodeID,
-                    playPosition: metadata.playPosition ?? 0,
-                    maxPlayPosition: metadata.maxPlayposition ?? 0,
-                    duration: episode.duration,
-                    isPlayed: isPlayed,
-                    isArchived: isArchived,
-                    wasSkipped: metadata.wasSkipped,
-                    completedAt: metadata.completionDate,
-                    archivedAt: metadata.archivedAt,
-                    firstPlayedAt: metadata.firstListenDate,
-                    lastPlayedAt: metadata.lastPlayed,
-                    updatedAt: updatedAt
-                )
-                destinationContext.insert(destination)
+                destinationContext.insert(episodeStateRow(
+                    metadata: metadata,
+                    episode: episode,
+                    identity: identity
+                ))
                 outcome.delta.inserted += 1
             }
         }
@@ -2986,6 +3072,53 @@ actor StoreSplitMigrationService {
             outcome.reachedEnd = episodes.count < pageSize
         }
         return outcome
+    }
+
+    static func episodeStateFlags(_ metadata: EpisodeMetaData) -> (isPlayed: Bool, isArchived: Bool) {
+        (
+            metadata.isHistory == true
+                || metadata.status == .history
+                || metadata.completionDate != nil,
+            metadata.isArchived == true || metadata.status == .archived
+        )
+    }
+
+    static func hasMeaningfulEpisodeState(_ metadata: EpisodeMetaData) -> Bool {
+        let flags = episodeStateFlags(metadata)
+        return (metadata.playPosition ?? 0) > 0
+            || (metadata.maxPlayposition ?? 0) > 0
+            || flags.isPlayed
+            || flags.isArchived
+            || metadata.wasSkipped
+            || metadata.firstListenDate != nil
+            || metadata.lastPlayed != nil
+    }
+
+    /// The row a first-time copy of this legacy episode's state creates.
+    static func episodeStateRow(
+        metadata: EpisodeMetaData,
+        episode: Episode,
+        identity: EpisodeStableIdentity
+    ) -> EpisodeStateSync {
+        let flags = episodeStateFlags(metadata)
+        return EpisodeStateSync(
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            playPosition: metadata.playPosition ?? 0,
+            maxPlayPosition: metadata.maxPlayposition ?? 0,
+            duration: episode.duration,
+            isPlayed: flags.isPlayed,
+            isArchived: flags.isArchived,
+            wasSkipped: metadata.wasSkipped,
+            completedAt: metadata.completionDate,
+            archivedAt: metadata.archivedAt,
+            firstPlayedAt: metadata.firstListenDate,
+            lastPlayedAt: metadata.lastPlayed,
+            // `stateUpdatedAt` is the explicit generation stamp written by the
+            // dual-write; the playback timestamps are the fallback for rows that
+            // predate it.
+            updatedAt: metadata.effectiveStateUpdatedAt ?? .distantPast
+        )
     }
 
     private static func applyEpisodeState(
@@ -3160,30 +3293,16 @@ actor StoreSplitMigrationService {
                 )
                 outcome.delta.updated += 1
             } else {
-                destinationContext.insert(
-                    ListeningHistorySync(
-                        id: recordID,
-                        feedURL: identity.feedURL,
-                        episodeID: identity.episodeID,
-                        podcastName: session.podcastName ?? episode.displayPodcastTitle,
-                        episodeTitle: episode.title,
-                        sourceDeviceID: sourceDeviceID,
-                        sourceDeviceName: sourceDeviceName,
-                        deviceModel: session.deviceModel,
-                        startedAt: startedAt,
-                        endedAt: endedAt,
-                        startPosition: session.startPosition ?? 0,
-                        endPosition: session.endPosition ?? 0,
-                        listenedSeconds: listenedSeconds,
-                        silenceGapTimeSavedSeconds:
-                            session.silenceGapTimeSavedSeconds ?? 0,
-                        playbackRateTimeSavedSeconds:
-                            PlaybackRateSavingsCalculator.secondsSaved(in: session),
-                        endedCleanly: session.endedCleanly == true,
-                        isLegacyMigrated: true,
-                        updatedAt: updatedAt
-                    )
-                )
+                destinationContext.insert(listeningHistoryRow(
+                    id: recordID,
+                    session: session,
+                    episode: episode,
+                    identity: identity,
+                    sourceDeviceID: sourceDeviceID,
+                    sourceDeviceName: sourceDeviceName,
+                    startedAt: startedAt,
+                    endedAt: endedAt
+                ))
                 outcome.delta.inserted += 1
             }
         }
@@ -3494,7 +3613,7 @@ actor StoreSplitMigrationService {
         return outcome
     }
 
-    private static func historyIdentityValuesAreValid(
+    static func historyIdentityValuesAreValid(
         startedAt: Date,
         endedAt: Date?,
         startPosition: Double,
@@ -3734,6 +3853,42 @@ actor StoreSplitMigrationService {
         for old in oldHours where retainedHourIDs.contains(old.id) == false { context.delete(old) }
     }
 
+    /// The row a first-time copy of this completed legacy session creates.
+    /// `isLegacyMigrated` keeps it out of live totals: the frozen baseline already
+    /// contains it.
+    static func listeningHistoryRow(
+        id: String,
+        session: PlaySession,
+        episode: Episode,
+        identity: EpisodeStableIdentity,
+        sourceDeviceID: String,
+        sourceDeviceName: String,
+        startedAt: Date,
+        endedAt: Date
+    ) -> ListeningHistorySync {
+        ListeningHistorySync(
+            id: id,
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            podcastName: session.podcastName ?? episode.displayPodcastTitle,
+            episodeTitle: episode.title,
+            sourceDeviceID: sourceDeviceID,
+            sourceDeviceName: sourceDeviceName,
+            deviceModel: session.deviceModel,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            startPosition: session.startPosition ?? 0,
+            endPosition: session.endPosition ?? 0,
+            listenedSeconds: endedAt.timeIntervalSince(startedAt),
+            silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+            playbackRateTimeSavedSeconds:
+                PlaybackRateSavingsCalculator.secondsSaved(in: session),
+            endedCleanly: session.endedCleanly == true,
+            isLegacyMigrated: true,
+            updatedAt: endedAt
+        )
+    }
+
     private static func applyListeningHistory(
         session: PlaySession,
         episode: Episode,
@@ -3787,6 +3942,17 @@ actor StoreSplitMigrationService {
             .week,
             .day
         ].first { available.contains($0.rawValue) }?.rawValue
+    }
+
+    /// Devices in other time zones start the same year at a different instant.
+    /// Shifting by 14 hours lands every zone's January 1 in the same UTC year.
+    nonisolated static func baselinePeriodIdentity(_ periodStart: Date, kind: String) -> String {
+        guard kind == PlaySessionSummaryPeriod.year.rawValue else {
+            return String(periodStart.timeIntervalSince1970)
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        return String(calendar.component(.year, from: periodStart.addingTimeInterval(14 * 60 * 60)))
     }
 
     private static func selectedBaselinePeriodKind(in context: ModelContext) throws -> String? {
@@ -3896,17 +4062,20 @@ actor StoreSplitMigrationService {
             let feedURL = summary.podcastFeed
                 .map(PodcastFeedIdentity.normalizedFeedURLString)
                 ?? ListeningBaselineSync.allPodcastsFeedURL
-            let sourceID = summary.id?.uuidString ?? StableIdentityKey.make(
+            // One row per feed and period is the invariant. Rows re-imported
+            // after a CloudKit re-attach have new UUIDs, so the UUID can't be the
+            // identity without counting the same listening several times.
+            let sourceID = StableIdentityKey.make(
                 feedURL,
                 baselineKind,
-                String(periodStart.timeIntervalSince1970),
-                summary.podcastName ?? ""
+                baselinePeriodIdentity(periodStart, kind: baselineKind)
             )
             let sourceKey = StableIdentityKey.make(baselineSourceNamespace, sourceID)
             var sourceDescriptor = FetchDescriptor<CachedListeningBaselineSource>(
                 predicate: #Predicate { $0.id == sourceKey }
             )
             sourceDescriptor.fetchLimit = 2
+            let existingSource: CachedListeningBaselineSource?
             do {
                 let existing = try cacheContext.fetch(sourceDescriptor)
                 guard existing.count <= 1 else {
@@ -3914,10 +4083,7 @@ actor StoreSplitMigrationService {
                     outcome.reachedEnd = false
                     break
                 }
-                if existing.first != nil {
-                    outcome.delta.skipped += 1
-                    continue
-                }
+                existingSource = existing.first
             } catch {
                 outcome.error = "summary_source_ledger_fetch_failed: \(error.localizedDescription)"
                 outcome.reachedEnd = false
@@ -3952,10 +4118,17 @@ actor StoreSplitMigrationService {
                 break
             }
             aggregate.podcastName = summary.podcastName ?? aggregate.podcastName
-            aggregate.totalSeconds += max(0, summary.totalSeconds ?? 0)
-            aggregate.silenceGapTimeSavedSeconds += max(0, summary.silenceGapTimeSavedSeconds ?? 0)
-            aggregate.playbackRateTimeSavedSeconds += max(0, summary.playbackRateTimeSavedSeconds ?? 0)
-            cacheContext.insert(CachedListeningBaselineSource(id: sourceKey))
+            let source = existingSource ?? CachedListeningBaselineSource(id: sourceKey)
+            if existingSource == nil { cacheContext.insert(source) }
+            let seconds = max(source.totalSeconds, summary.totalSeconds ?? 0)
+            let silence = max(source.silenceGapTimeSavedSeconds, summary.silenceGapTimeSavedSeconds ?? 0)
+            let rate = max(source.playbackRateTimeSavedSeconds, summary.playbackRateTimeSavedSeconds ?? 0)
+            aggregate.totalSeconds += seconds - source.totalSeconds
+            aggregate.silenceGapTimeSavedSeconds += silence - source.silenceGapTimeSavedSeconds
+            aggregate.playbackRateTimeSavedSeconds += rate - source.playbackRateTimeSavedSeconds
+            source.totalSeconds = seconds
+            source.silenceGapTimeSavedSeconds = silence
+            source.playbackRateTimeSavedSeconds = rate
         }
 
         if outcome.error != nil {
@@ -4276,6 +4449,72 @@ actor StoreSplitMigrationService {
         }
     }
 
+    /// Tombstones memberships of episodes that UserState knows are finished, so
+    /// they don't come back on this or any other device. Membership added after
+    /// the episode finished is a deliberate re-listen and stays.
+    nonisolated static func tombstonePlayedMemberships(
+        userStateContainer: ModelContainer
+    ) throws {
+        let context = makeContext(for: userStateContainer)
+        let played = try context.fetch(FetchDescriptor<EpisodeStateSync>(
+            predicate: #Predicate { $0.isPlayed == true }
+        ))
+        let stateByID = Dictionary(played.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        guard stateByID.isEmpty == false else { return }
+        let keepsPlayed = Set(try context.fetch(FetchDescriptor<PlaylistSync>())
+            .filter { $0.removesEpisodesPlayedElsewhere == false }
+            .map(\.id))
+        let now = Date()
+        func isStale(_ feedURL: String, _ episodeID: String, _ addedAt: Date) -> Bool {
+            let key = EpisodeStableIdentity(feedURL: feedURL, episodeID: episodeID).key
+            guard let state = stateByID[key] else { return false }
+            return PlayedEpisodeQueuePolicy.isStaleQueueMembership(
+                isPlayed: state.isPlayed,
+                completionDate: state.completedAt,
+                addedAt: addedAt
+            )
+        }
+        for entry in try context.fetch(FetchDescriptor<PlaylistEntrySync>())
+        where entry.isDeleted == false
+            && keepsPlayed.contains(entry.playlistID) == false
+            && isStale(entry.feedURL, entry.episodeID, entry.addedAt) {
+            entry.isDeleted = true
+            entry.deletedAt = now
+            entry.updatedAt = now
+        }
+        for entry in try context.fetch(FetchDescriptor<QueueEntrySync>())
+        where entry.isDeleted == false && isStale(entry.feedURL, entry.episodeID, entry.addedAt) {
+            entry.isDeleted = true
+            entry.deletedAt = now
+            entry.updatedAt = now
+        }
+        if context.hasChanges { try context.save() }
+    }
+
+    /// Marks a phase done after it has repeatedly failed, keeping its failure
+    /// recorded. Only for content that stays recoverable from the backup.
+    nonisolated static func completePhaseAfterFailure(
+        _ phase: String,
+        cacheContainer: ModelContainer
+    ) -> Bool {
+        let context = makeContext(for: cacheContainer)
+        let id = checkpointID(for: phase)
+        var descriptor = FetchDescriptor<StoreSplitMigrationCheckpoint>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let checkpoint = try? context.fetch(descriptor).first else { return false }
+        checkpoint.completedAt = .now
+        checkpoint.updatedAt = .now
+        do {
+            try context.save()
+            return true
+        } catch {
+            context.rollback()
+            return false
+        }
+    }
+
     nonisolated static func isMigrationVerified(
         cacheContainer: ModelContainer
     ) -> Bool {
@@ -4428,7 +4667,7 @@ actor StoreSplitMigrationService {
         return context
     }
 
-    private static func legacyDeviceID(
+    static func legacyDeviceID(
         deviceModel: String?,
         osVersion: String?
     ) -> String {

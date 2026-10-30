@@ -47,6 +47,7 @@ actor PlaylistModelActor {
     // Nonisolated so you can read them without await (types are value types)
     public nonisolated let modelContainer: ModelContainer
     public nonisolated let modelExecutor: any ModelExecutor
+    private nonisolated let storeManager: ModelContainerManager
 
     // Actor-isolated context (do not cross actors with it)
     private let modelContext: ModelContext
@@ -57,11 +58,16 @@ actor PlaylistModelActor {
     // MARK: - Inits
 
     /// Initialize by known playlist ID. Throws if playlist can't be found.
-    public init(modelContainer: ModelContainer? = nil, playlistID: UUID) throws {
+    init(
+        modelContainer: ModelContainer? = nil,
+        storeManager: ModelContainerManager = .shared,
+        playlistID: UUID
+    ) throws {
         guard let container = modelContainer else {
             fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
         }
         self.modelContainer = container
+        self.storeManager = storeManager
         self.modelContext = ModelContext(container)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         self.playlistID = playlistID
@@ -89,6 +95,7 @@ actor PlaylistModelActor {
         )
 
         self.modelContainer = container
+        self.storeManager = .shared
         self.modelContext = ModelContext(container)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
         self.playlistID = selectedPlaylistID
@@ -106,12 +113,16 @@ actor PlaylistModelActor {
     }
 
     /// Initialize by title; creates the playlist if it doesn't exist.
-    public init(modelContainer: ModelContainer? = nil,
-                playlistTitle: String = Playlist.defaultQueueTitle) throws {
+    init(
+        modelContainer: ModelContainer? = nil,
+        storeManager: ModelContainerManager = .shared,
+        playlistTitle: String = Playlist.defaultQueueTitle
+    ) throws {
         guard let container = modelContainer else {
             fatalError("PlaylistModelActor requires a modelContainer to be passed in from the main actor.")
         }
         self.modelContainer = container
+        self.storeManager = storeManager
         self.modelContext = ModelContext(container)
         self.modelExecutor = DefaultSerialModelExecutor(modelContext: modelContext)
 
@@ -511,9 +522,9 @@ actor PlaylistModelActor {
         _ snapshots: [StoreSplitLocalEpisodeClassificationSnapshot]
     ) async {
         guard snapshots.isEmpty == false else { return }
-        await ModelContainerManager.shared.prepareSplitStores()
+        await storeManager.prepareSplitStores()
         guard let cacheContainer = await MainActor.run(body: {
-            ModelContainerManager.shared.preparedCacheContainer
+            storeManager.preparedCacheContainer
         }) else { return }
         await StoreSplitLocalEpisodeClassificationWriter(
             modelContainer: cacheContainer
@@ -1063,9 +1074,9 @@ actor PlaylistModelActor {
         at date: Date = .now
     ) async throws {
         guard removals.isEmpty == false else { return }
-        await ModelContainerManager.shared.prepareSplitStores()
+        await storeManager.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
-            ModelContainerManager.shared.preparedUserStateContainer
+            storeManager.preparedUserStateContainer
         }) else {
             CrashBreadcrumbs.shared.record(
                 "store_split_playlist_tombstone_deferred",
@@ -1076,7 +1087,7 @@ actor PlaylistModelActor {
 
         let writer = StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
         try await writer.tombstoneDurably(removals, at: date)
-        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
+        Task { await storeManager.reconcileSplitRuntimePlaylists() }
         CrashBreadcrumbs.shared.record(
             "store_split_playlist_tombstone_committed",
             details: "count=\(removals.count)"
@@ -1107,20 +1118,20 @@ actor PlaylistModelActor {
     }
 
     private func publishSplitStorePlaylist(_ snapshot: StoreSplitPlaylistSnapshot) async throws {
-        await ModelContainerManager.shared.prepareSplitStores()
+        await storeManager.prepareSplitStores()
         guard let userStateContainer = await MainActor.run(body: {
-            ModelContainerManager.shared.preparedUserStateContainer
+            storeManager.preparedUserStateContainer
         }) else { throw PlaylistPersistenceError.storageUnavailable }
         // Split-only runtimes must also persist enough episode metadata to
         // resolve the committed membership after offline container recreation.
         let source = modelContainer
         let isSplitRuntime = await MainActor.run {
-            ModelContainerManager.shared.runtimeProjectsFromCache
-                && ModelContainerManager.shared.preparedContainer === source
+            storeManager.runtimeProjectsFromCache
+                && storeManager.preparedContainer === source
         }
         if isSplitRuntime {
             guard let cache = await MainActor.run(body: {
-                ModelContainerManager.shared.preparedCacheContainer
+                storeManager.preparedCacheContainer
             }) else { throw PlaylistPersistenceError.storageUnavailable }
             for feedKey in Set(snapshot.entries.map(\.identity.feedURL)) {
                 guard let feed = URL(string: feedKey) else { throw PlaylistPersistenceError.storageUnavailable }
@@ -1149,7 +1160,7 @@ actor PlaylistModelActor {
             .upsertDurably(snapshot)
         // A cache completion may have started hydration before this commit.
         // Queue another pass so that the final UI reflects the committed order.
-        Task { await ModelContainerManager.shared.reconcileSplitRuntimePlaylists() }
+        Task { await storeManager.reconcileSplitRuntimePlaylists() }
     }
 
     // MARK: - Convenience helpers callable from outside

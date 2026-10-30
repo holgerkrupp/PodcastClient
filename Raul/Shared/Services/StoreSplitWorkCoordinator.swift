@@ -1,11 +1,5 @@
 import Foundation
 
-enum StoreMaintenanceExecutionContext: Equatable, Sendable {
-    case foreground
-    case systemBackgroundProcessing
-    case test
-}
-
 /// Allows detached PodcastCache writers to observe playback transitions
 /// synchronously, without touching MainActor-isolated Player from SwiftData.
 final class StoreSplitCachePlaybackGate: @unchecked Sendable {
@@ -28,12 +22,6 @@ final class StoreSplitCachePlaybackGate: @unchecked Sendable {
 }
 
 enum StoreSplitMaintenancePolicy {
-    static func allowsHeavyMaintenance(
-        in context: StoreMaintenanceExecutionContext
-    ) -> Bool {
-        context != .foreground
-    }
-
     static func shouldYieldForCloudKitExport(
         exportInProgress: Bool
     ) -> Bool {
@@ -47,8 +35,6 @@ actor StoreSplitWorkCoordinator {
     enum Job: String, Sendable {
         case reconcile = "Reconcile user state"
         case aiImport = "Import AI content"
-        case migration = "Migrate split stores"
-        case feedCachePrewarm = "Prewarm PodcastCache"
     }
 
     private struct ReconcileRequest: Sendable {
@@ -77,8 +63,6 @@ actor StoreSplitWorkCoordinator {
     private var currentJob: Job?
     private var pendingReconcile: ReconcileRequest?
     private var pendingAIImport = false
-    private var pendingMigration = false
-    private var pendingFeedCachePrewarm = false
     private var pendingPlaybackIdleReconcile = false
     private var runnerTask: Task<Void, Never>?
     private var nextHeavyWorkAllowedAt = Date.distantPast
@@ -102,19 +86,9 @@ actor StoreSplitWorkCoordinator {
             // new CloudKit content or require restarting the dry run.
             ModelContainerManager.requestBackgroundUserStateImport(newGeneration: false)
         }
-        // Bulk migration, reconciliation and feed-cache bootstrap are armed by
-        // BGProcessingTask. Launch never starts a maintenance runner.
+        // Launch never starts a maintenance runner; a pending import is
+        // applied by the foreground reconcile or the background pass.
         await publishPendingState()
-    }
-
-    func scheduleFeedCachePrewarming() async {
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.feedCachePrewarmingEnabled else {
-            return
-        }
-        pendingFeedCachePrewarm = true
-        await publishPendingState()
-        startRunnerIfNeeded()
     }
 
     func waitForBackgroundPassToDrain() async {
@@ -128,22 +102,23 @@ actor StoreSplitWorkCoordinator {
         await publishPendingState()
     }
 
+    /// A CloudKit import landed (or the app became active with one pending).
+    /// The request is recorded durably first, so the background pass still
+    /// picks it up; while the app is in the foreground the reconcile also runs
+    /// here, because nothing else brings other devices' changes into the
+    /// runtime graph. The ledger entry is cleared only by a completed
+    /// reconcile (see `runLoop`).
     func scheduleCloudImportReconcile() async {
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
         ModelContainerManager.requestBackgroundUserStateImport()
+        enqueueReconcile(
+            authoritativePlaylists: false,
+            force: false,
+            refreshMissingFeeds: true,
+            reason: "cloud_import_foreground"
+        )
         await publishPendingState()
-    }
-
-    func scheduleForegroundMigration() async {
-        // Kept for older callers during rollout. Foreground callers only arm
-        // the system request; the coordinator is not a migration executor.
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              StoreDevelopmentConfiguration.legacyMigrationEnabled else { return }
-#if canImport(UIKit)
-        await MainActor.run {
-            AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
-        }
-#endif
+        startRunnerIfNeeded()
     }
 
     func notePlaybackActivityChanged(isPlaying: Bool) async {
@@ -163,21 +138,21 @@ actor StoreSplitWorkCoordinator {
     }
 
     func runManualReconcile(authoritativePlaylists: Bool) async {
-        _ = authoritativePlaylists
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
         ModelContainerManager.requestBackgroundUserStateImport()
+        enqueueReconcile(
+            authoritativePlaylists: authoritativePlaylists,
+            force: true,
+            refreshMissingFeeds: true,
+            reason: "manual"
+        )
         await publishPendingState()
-    }
-
-    func runManualMigration() async {
-        await scheduleForegroundMigration()
+        startRunnerIfNeeded()
     }
 
     private func clearAllPendingWork(reason: String) async {
         pendingReconcile = nil
         pendingAIImport = false
-        pendingMigration = false
-        pendingFeedCachePrewarm = false
         pendingPlaybackIdleReconcile = false
         currentJob = nil
         await MainActor.run {
@@ -231,28 +206,20 @@ actor StoreSplitWorkCoordinator {
                 }
                 guard Task.isCancelled == false else { return }
             }
-            let maintenancePermit: StoreMaintenancePermit?
-            if nextJob == .migration {
-                // Migration acquires its permit around the checkpointed slice
-                // loop, where it can inspect CPU and playback between pages.
-                maintenancePermit = nil
-            } else {
-                let runtimeState = await MainActor.run {
-                    (
-                        playbackActive: Player.shared.isPlaying,
-                        exportActive: ModelContainerManager.shared.isCloudKitExportInProgress
-                    )
-                }
-                guard let permit = StoreMaintenanceResourceBudget.shared.acquire(
-                    operation: nextJob.rawValue,
-                    playbackActive: runtimeState.playbackActive,
-                    cloudKitExportActive: runtimeState.exportActive
-                ) else {
-                    await publishPendingState()
-                    nextHeavyWorkAllowedAt = Date().addingTimeInterval(30)
-                    continue
-                }
-                maintenancePermit = permit
+            let admission = await MainActor.run {
+                (
+                    playbackActive: Player.shared.isPlaying,
+                    exportActive: ModelContainerManager.shared.isCloudKitExportInProgress
+                )
+            }
+            guard let maintenancePermit = StoreMaintenanceResourceBudget.shared.acquire(
+                operation: nextJob.rawValue,
+                playbackActive: admission.playbackActive,
+                cloudKitExportActive: admission.exportActive
+            ) else {
+                await publishPendingState()
+                nextHeavyWorkAllowedAt = Date().addingTimeInterval(30)
+                continue
             }
             let startedAt = Date()
             let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
@@ -260,8 +227,17 @@ actor StoreSplitWorkCoordinator {
 
             switch nextJob {
             case .reconcile:
-                guard let request = pendingReconcile else { continue }
+                guard let request = pendingReconcile else {
+                    maintenancePermit.release()
+                    await clearCurrentJob()
+                    continue
+                }
                 pendingReconcile = nil
+                // Taken before the pass: an import requested while it runs has
+                // a newer generation and stays pending.
+                let importRequest = StoreSplitPendingImportLedger.snapshot(
+                    in: UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+                )
                 let result = await ModelContainerManager.shared.performSplitStoreReconcile(
                     authoritativePlaylists: request.authoritativePlaylists,
                     force: request.force,
@@ -272,38 +248,18 @@ actor StoreSplitWorkCoordinator {
                     pendingPlaybackIdleReconcile = true
                 } else if case .completed = result {
                     pendingAIImport = true
+                    if importRequest.pending {
+                        ModelContainerManager.clearPendingBackgroundUserStateImport(
+                            generation: importRequest.generation
+                        )
+                    }
                 }
             case .aiImport:
                 pendingAIImport = false
                 await ModelContainerManager.shared.performSplitStoreAIImportIfPossible()
-            case .migration:
-                pendingMigration = false
-                let result = await ModelContainerManager.shared
-                    .performSplitStoreMigrationIfNeeded()
-                switch result {
-                case .completed, .progressed, .deferred:
-                    break
-                case let .blocked(reason), let .failed(reason):
-                    // The manager records the blocker and schedules a delayed
-                    // retry when the cause can recover (store preparation,
-                    // CloudKit export, or a transient save failure). Keep the
-                    // coordinator queue clear here so a blocked launch cannot
-                    // spin at full speed.
-                    await MainActor.run {
-                        ModelContainerManager.shared.updateSplitStoreCoordinatorState(
-                            currentJob: nil,
-                            pendingReason: reason
-                        )
-                    }
-                }
-            case .feedCachePrewarm:
-                pendingFeedCachePrewarm = false
-                await ModelContainerManager.shared.performFeedCachePrewarmIfPossible(
-                    feedLimit: 200
-                )
             }
 
-            maintenancePermit?.release()
+            maintenancePermit.release()
             await clearCurrentJob()
             let duration = Date().timeIntervalSince(startedAt)
             if duration > 1 {
@@ -374,43 +330,13 @@ actor StoreSplitWorkCoordinator {
                     pendingReason: "CloudKit export cool-down until \(cooldownDescription)"
                 )
             }
-            return pendingMigration || pendingReconcile != nil || pendingAIImport
-                || pendingFeedCachePrewarm
-                ? nextPendingJobWithoutExportCheck()
-                : nil
         }
-
-        // During the legacy-authoritative release, finish the backfill and its
-        // deletion cleanup before importing UserState back into the legacy graph.
-        // Otherwise stale destination rows could be reintroduced as source data
-        // immediately before the authoritative pass runs.
-        if pendingMigration,
-           StoreSplitReleasePhase.current == .dualSyncBackfill {
-            return .migration
-        }
-        if pendingFeedCachePrewarm {
-            return .feedCachePrewarm
-        }
-        if pendingReconcile != nil {
-            return .reconcile
-        }
-        if pendingAIImport {
-            return .aiImport
-        }
-        if pendingMigration {
-            return .migration
-        }
-        return nil
+        return nextPendingJob()
     }
 
-    private func nextPendingJobWithoutExportCheck() -> Job? {
-        if pendingMigration, StoreSplitReleasePhase.current == .dualSyncBackfill {
-            return .migration
-        }
-        if pendingFeedCachePrewarm { return .feedCachePrewarm }
+    private func nextPendingJob() -> Job? {
         if pendingReconcile != nil { return .reconcile }
         if pendingAIImport { return .aiImport }
-        if pendingMigration { return .migration }
         return nil
     }
 
@@ -425,8 +351,7 @@ actor StoreSplitWorkCoordinator {
     /// asked for the reconcile goes away — this spun the actor's executor at
     /// 100% CPU until iOS killed the process on the 80%-over-60s limit.
     private func waitForIdle() async {
-        while currentJob != nil || pendingReconcile != nil || pendingAIImport
-            || pendingMigration || pendingFeedCachePrewarm {
+        while currentJob != nil || pendingReconcile != nil || pendingAIImport {
             // Nobody left to drain the queue: the work stays queued for the
             // next `.active` transition, and this caller stops waiting.
             guard runnerTask != nil else { return }
@@ -462,10 +387,6 @@ actor StoreSplitWorkCoordinator {
             pendingReason = "waiting for playback to stop"
         } else if pendingAIImport {
             pendingReason = "ai import"
-        } else if pendingMigration {
-            pendingReason = "migration"
-        } else if pendingFeedCachePrewarm {
-            pendingReason = "PodcastCache prewarming"
         } else {
             pendingReason = nil
         }

@@ -112,33 +112,29 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 task.setTaskCompleted(success: false)
                 return
             }
-            self.handleStoreSplitMigration(task: processingTask)
+            self.handleStoreSplitBackgroundProcessing(task: processingTask)
         }
 
         return true
     }
 
-    /// Schedules the overnight store-split migration pass. Requires external
-    /// power and becomes eligible during the local 22:00–07:00 window. Only scheduled while migration could still
-    /// have migration, cache-bootstrap, or reconciliation work left to do.
-    static func scheduleStoreSplitMigrationProcessingIfNeeded() {
-        // Gate on real remaining work, not on the rollout marker. A device can
-        // sit at `newStoreReads` from an earlier migration version and still owe
-        // the current version every phase — that combination silently stopped the
-        // overnight pass from ever being scheduled.
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              ModelContainerManager.hasPendingStoreSplitBackgroundWork else {
+    /// Schedules the store-sync background pass (the task identifier is kept
+    /// from the migration era). It drains the portable-write outbox and repair
+    /// journal and applies a pending CloudKit user-state import, so it is only
+    /// scheduled while one of those is outstanding. Requires external power.
+    static func scheduleStoreSplitBackgroundProcessingIfNeeded() {
+        guard ModelContainerManager.hasPendingStoreSplitBackgroundWork else {
             BGTaskScheduler.shared.cancel(
                 taskRequestWithIdentifier: BackgroundTaskConfiguration.storeSplitMigrationIdentifier
             )
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_background_task_not_scheduled",
-                details: "state=\(StoreSplitRollout.state.rawValue),pending=\(ModelContainerManager.hasPendingStoreSplitBackgroundWork),unfinished_legacy_export=\(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)"
+                details: "pending=false"
             )
 #if DEBUG
             StoreSplitMigrationDebugLog.record(
                 "background task not scheduled",
-                details: "no pending migration work"
+                details: "no pending store-sync work"
             )
 #endif
             return
@@ -170,10 +166,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             )
             request.requiresExternalPower = true
             request.requiresNetworkConnectivity = false
-            guard let earliestBeginDate = StoreSplitMigrationSchedulePolicy
-                .nextEligibleNightStart(
-                    after: ModelContainerManager.nextStoreSplitBackgroundOpportunity
-                ) else { return }
+            let earliestBeginDate = ModelContainerManager.nextStoreSplitBackgroundOpportunity
             request.earliestBeginDate = earliestBeginDate
 
             do {
@@ -182,7 +175,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 #if DEBUG
                 StoreSplitMigrationDebugLog.record(
                     "background task scheduled",
-                    details: "not before \(earliestBeginDate.formatted(date: .omitted, time: .shortened)), needs power + local night window"
+                    details: "not before \(earliestBeginDate.formatted(date: .omitted, time: .shortened)), needs external power"
                 )
 #endif
             } catch {
@@ -201,21 +194,21 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
-    private func handleStoreSplitMigration(task: BGProcessingTask) {
+    private func handleStoreSplitBackgroundProcessing(task: BGProcessingTask) {
         beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("store_split_migration_background_task_started")
 #if DEBUG
         StoreSplitMigrationDebugLog.record("background pass launched by iOS")
 #endif
         let processingTask = Task(priority: .utility) {
-            await ModelContainerManager.shared.runStoreSplitMigrationBackgroundPass()
+            await ModelContainerManager.shared.runStoreSplitBackgroundPass()
 
-            // Re-arm only if work remains (state still pre-completion).
-            Self.scheduleStoreSplitMigrationProcessingIfNeeded()
+            // Re-arm only if work remains.
+            Self.scheduleStoreSplitBackgroundProcessingIfNeeded()
 
             CrashBreadcrumbs.shared.record(
                 "store_split_migration_background_task_completed",
-                details: "state=\(StoreSplitRollout.state.rawValue),cancelled=\(Task.isCancelled)"
+                details: "cancelled=\(Task.isCancelled)"
             )
 #if DEBUG
             StoreSplitMigrationDebugLog.record(
@@ -228,7 +221,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 operation: "store_split_migration",
                 requestedSuccess: Task.isCancelled == false,
                 waitForExportQuiescence: true,
-                details: "state=\(StoreSplitRollout.state.rawValue)"
+                details: "pending=\(ModelContainerManager.hasPendingStoreSplitBackgroundWork)"
             )
         }
 
@@ -317,6 +310,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// scheduled at all. It is now armed whenever transcriptions are on, and the
     /// charging setting decides the request's power requirement instead.
     static func scheduleAutomaticTranscriptionProcessingIfNeeded() async {
+        guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
         guard let container = await ModelContainerManager.shared
             .prepareContainerForExternalEntryPoint() else {
             CrashBreadcrumbs.shared.record(
@@ -419,6 +413,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// It requires power, uses no network, and is scheduled only while the user
     /// has opted in and downloaded episodes are queued.
     static func schedulePublisherTranscriptSynchronizationIfNeeded() async {
+        guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
         guard let container = await ModelContainerManager.shared
             .prepareContainerForExternalEntryPoint(),
               let cacheContainer = await MainActor.run(body: {

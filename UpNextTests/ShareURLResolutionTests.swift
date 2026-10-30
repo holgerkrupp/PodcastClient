@@ -37,7 +37,12 @@ final class ShareURLResolutionTests: XCTestCase {
             "guid": "dark-matters",
             "enclosure": [["url": episodeURL.absoluteString, "type": "audio/mpeg"]]
         ])!
-        XCTAssertEqual(importer.matchingEpisode(in: [draft], sharedURLs: [baseURL]), nil)
+        // A page whose slug equals the GUID identifies the episode; any other page doesn't.
+        XCTAssertEqual(importer.matchingEpisode(in: [draft], sharedURLs: [baseURL]), draft)
+        XCTAssertEqual(
+            importer.matchingEpisode(in: [draft], sharedURLs: [URL(string: "https://example.com/episode/other")!]),
+            nil
+        )
         XCTAssertEqual(importer.matchingEpisode(in: [draft], sharedURLs: [episodeURL]), draft)
     }
 }

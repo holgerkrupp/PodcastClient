@@ -134,7 +134,6 @@ final class SupportDiagnosticsTests: XCTestCase {
             appGroupAvailable: true,
             storeFiles: [],
             legacyCloudAttachmentConfigured: true,
-            legacyCloudMirrorQuarantined: false,
             readAuthority: "Legacy Library",
             runtimeKind: "durable library store",
             runtimeStoreStatus: "open",

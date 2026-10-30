@@ -1367,6 +1367,8 @@ actor SubscriptionManager:NSObject{
     }
 
     func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
+        // An episode still waiting to be filled in would look new to a refresh.
+        guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
         let signpostID = OSSignpostID(log: Self.refreshPerformanceLog)
         os_signpost(.begin, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
         defer {

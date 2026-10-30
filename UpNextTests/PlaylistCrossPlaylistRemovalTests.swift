@@ -5,6 +5,7 @@ import XCTest
 /// Finishing an episode dequeues it from the playlist it was played in. What
 /// happens to the *same* episode sitting in other playlists is now each of those
 /// playlists' own choice.
+@MainActor
 final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
     func testFinishingAnEpisodeRemovesItFromOtherPlaylistsByDefault() async throws {
         let fixture = try makeFixture()
@@ -13,6 +14,7 @@ final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.playedIn.id
         )
         _ = try await actor.dequeueFinishedEpisodeAndReturnNext(
@@ -32,6 +34,7 @@ final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.playedIn.id
         )
         _ = try await actor.dequeueFinishedEpisodeAndReturnNext(
@@ -53,6 +56,7 @@ final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.playedIn.id
         )
         let nextURL = try await actor.dequeueFinishedEpisodeAndReturnNext(
@@ -74,6 +78,7 @@ final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
 
     private struct Fixture {
         let container: ModelContainer
+        let storeManager: ModelContainerManager
         let context: ModelContext
         let playedIn: Playlist
         let other: Playlist
@@ -152,8 +157,17 @@ final class PlaylistCrossPlaylistRemovalTests: XCTestCase {
         episodes.forEach(context.insert)
         try context.save()
 
+        // Durable queue writes go to private stores, never the host app's. A separate
+        // runtime keeps its rebuild from UserState out of the graph under test.
+        let storeManager = ModelContainerManager(
+            runtimeContainer: try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true),
+            userStateContainer: try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true),
+            cacheContainer: try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        )
+
         return Fixture(
             container: container,
+            storeManager: storeManager,
             context: context,
             playedIn: playedIn,
             other: other,

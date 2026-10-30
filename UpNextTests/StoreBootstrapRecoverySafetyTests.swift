@@ -23,9 +23,7 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
                     standardDefaults: defaults,
                     appGroupDefaults: nil,
                     files: files
-                ),
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                )
             ),
             .existingLibraryUnavailable
         )
@@ -54,9 +52,7 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
             StoreBootstrapMode.resolve(
                 legacyStoreExists: false,
                 installationWasPreviouslyInitialized: hadPriorEvidence
-                    && !StoreBootstrapEvidence.hasFreshSplitInstallRecord(defaults: defaults),
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                    && !StoreBootstrapEvidence.hasFreshSplitInstallRecord(defaults: defaults)
             ),
             .freshSplitInstall
         )
@@ -83,53 +79,10 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
         XCTAssertEqual(
             StoreBootstrapMode.resolve(
                 legacyStoreExists: files.contains("SharedDatabase.sqlite"),
-                installationWasPreviouslyInitialized: false,
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                installationWasPreviouslyInitialized: false
             ),
             .legacyUpgrade
         )
-
-        let reopened = try ModelContainerManager.makeLegacyContainer(storageURL: storeURL)
-        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<Podcast>()), 1)
-    }
-
-    @MainActor
-    func testQuarantinedCloudMirrorDoesNotPreventOpeningLocalLegacyStore() throws {
-        let groupDefaults = try XCTUnwrap(
-            UserDefaults(suiteName: ModelContainerManager.appGroupID)
-        )
-        let previousValue = groupDefaults.object(
-            forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
-        )
-        defer {
-            if let previousValue {
-                groupDefaults.set(
-                    previousValue,
-                    forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
-                )
-            } else {
-                groupDefaults.removeObject(
-                    forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
-                )
-            }
-        }
-        groupDefaults.set(
-            true,
-            forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
-        )
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-
-        let directory = try makeTemporaryDirectory()
-        defer { try? FileManager.default.removeItem(at: directory) }
-        let storeURL = directory.appendingPathComponent("SharedDatabase.sqlite")
-        do {
-            let original = try ModelContainerManager.makeLegacyContainer(storageURL: storeURL)
-            let podcast = Podcast(feed: URL(string: "https://example.com/quarantine-fixture.xml")!)
-            podcast.title = "Offline quarantine fixture"
-            original.mainContext.insert(podcast)
-            try original.mainContext.save()
-        }
 
         let reopened = try ModelContainerManager.makeLegacyContainer(storageURL: storeURL)
         XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<Podcast>()), 1)

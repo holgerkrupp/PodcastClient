@@ -20,6 +20,16 @@
         }
       }
     },
+    "%@ of %@ episodes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ von %2$@ Episoden"
+          }
+        }
+      }
+    },
     "-%@" : {
       "localizations" : {
         "de" : {
@@ -12940,6 +12950,16 @@
         }
       }
     },
+    "Older listening history is still being moved after the update, so totals may be incomplete for now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Älterer Hörverlauf wird nach dem Update noch übertragen. Die Summen können deshalb vorerst unvollständig sein."
+          }
+        }
+      }
+    },
     "On" : {
       "localizations" : {
         "de" : {
@@ -16448,6 +16468,16 @@
         }
       }
     },
+    "Preparing your podcast library" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Podcast-Mediathek wird vorbereitet"
+          }
+        }
+      }
+    },
     "Preset" : {
       "localizations" : {
         "de" : {
@@ -18180,6 +18210,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Gespeicherte Playlist-Folgen werden wiederhergestellt …"
+          }
+        }
+      }
+    },
+    "Restoring your playback progress and playlists" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabefortschritt und Playlists werden wiederhergestellt"
           }
         }
       }
@@ -22942,6 +22982,16 @@
         }
       }
     },
+    "This happens once. You can leave Up Next and it will continue from here when you come back." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das passiert nur einmal. Du kannst Up Next verlassen. Es geht hier weiter, wenn du zurückkommst."
+          }
+        }
+      }
+    },
     "This is the built-in queue, so its name is fixed. You can still give it any icon." : {
       "localizations" : {
         "de" : {
@@ -24574,6 +24624,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Mise à jour des résultats de la recherche..."
+          }
+        }
+      }
+    },
+    "Updating your statistics" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Statistik wird aktualisiert"
           }
         }
       }

@@ -110,6 +110,14 @@ actor StoreSplitDevelopmentResetService {
             from: cacheContext
         )
         result.cacheRecordsDeleted += try deleteAll(
+            CachedPodcastLocalSettings.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
+            CachedBookmarkDetail.self,
+            from: cacheContext
+        )
+        result.cacheRecordsDeleted += try deleteAll(
             CachedDownloadRecord.self,
             from: cacheContext
         )

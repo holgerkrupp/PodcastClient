@@ -323,6 +323,12 @@ actor StoreSplitUserStateImporter {
             await awaitIdleWindow()
             await applyPreferences(result: &result)
             guard result.failed == 0, sourceReadFailed == false else { return result }
+            // Local settings only have to survive the relaunch rebuild. Later
+            // passes must not revert edits made during this session.
+            if isInitialRuntimeHydration {
+                applyLocalSettings(result: &result)
+                guard result.failed == 0 else { return result }
+            }
             saveLegacyChanges(phase: "preferences", result: &result)
             refreshContexts()
             if await shouldStop() {
@@ -577,6 +583,50 @@ actor StoreSplitUserStateImporter {
         }
     }
 
+    private func applyLocalSettings(result: inout StoreSplitUserStateImportResult) {
+        guard let cacheContainer else { return }
+        let rows: [CachedPodcastLocalSettings]
+        do {
+            rows = try ModelContext(cacheContainer).fetch(FetchDescriptor<CachedPodcastLocalSettings>())
+        } catch {
+            result.failed += 1
+            CrashBreadcrumbs.shared.record("store_split_local_settings_fetch_failed")
+            return
+        }
+        let decoder = JSONDecoder()
+        for row in rows {
+            guard let payload = try? decoder.decode(PodcastLocalSettingsPayload.self, from: row.payload) else {
+                continue
+            }
+            if let feedKey = row.feedURL {
+                guard let podcast = URL(string: feedKey)?.podcastFeedComparisonKeys.compactMap({
+                    podcastsByComparisonKey[$0].flatMap(indexedPodcast)
+                }).first else { continue }
+                payload.apply(to: ensureSettings(for: podcast))
+            } else {
+                let globalTitle = PodcastSettings.globalSettingsTitle
+                var descriptor = FetchDescriptor<PodcastSettings>(
+                    predicate: #Predicate { $0.title == globalTitle }
+                )
+                descriptor.fetchLimit = 1
+                let settings: PodcastSettings
+                do {
+                    if let existing = try legacyContext.fetch(descriptor).first {
+                        settings = existing
+                    } else {
+                        settings = PodcastSettings(defaultSettings: true)
+                        legacyContext.insert(settings)
+                    }
+                } catch {
+                    result.failed += 1
+                    CrashBreadcrumbs.shared.record("store_split_local_settings_destination_fetch_failed")
+                    return
+                }
+                payload.apply(to: settings)
+            }
+        }
+    }
+
     private func applyEpisodeStates(
         recencyCutoff: Date?,
         result: inout StoreSplitUserStateImportResult
@@ -608,6 +658,8 @@ actor StoreSplitUserStateImporter {
                     episodeID: state.episodeID
                 )
                 guard let episode = episodesByIdentity[identityKey] else {
+                    // The first build is deliberately partial; the fill applies this.
+                    if isInitialRuntimeHydration, StoreRuntimeProjection.isLibraryBackfillPending { continue }
                     appendMissingFeed(state.feedURL, to: &result)
                     missing.append(.init(stream: .episodeState, sourceRecordID: state.id,
                                          feedURL: state.feedURL, episodeID: state.episodeID,
@@ -1188,6 +1240,7 @@ actor StoreSplitUserStateImporter {
                 if episode.bookmarks?.contains(where: { $0 === bookmark }) == false {
                     episode.bookmarks?.append(bookmark)
                 }
+                applyLocalBookmarkDetail(id: record.id, to: bookmark)
                 result.bookmarksApplied += 1
             }
 
@@ -1204,6 +1257,20 @@ actor StoreSplitUserStateImporter {
 
             offset += page.count
         }
+    }
+
+    private func applyLocalBookmarkDetail(id: String, to bookmark: Bookmark) {
+        guard let cacheContainer else { return }
+        var descriptor = FetchDescriptor<CachedBookmarkDetail>(
+            predicate: #Predicate { $0.id == id }
+        )
+        descriptor.fetchLimit = 1
+        guard let detail = try? ModelContext(cacheContainer).fetch(descriptor).first else { return }
+        setIfChanged(bookmark, \.imageData, detail.imageData)
+        setIfChanged(bookmark, \.duration, detail.duration)
+        setIfChanged(bookmark, \.endTime, detail.endTime)
+        setIfChanged(bookmark, \.link, detail.link)
+        setIfChanged(bookmark, \.progress, detail.progress)
     }
 
     private func applyListeningHistory(

@@ -44,6 +44,7 @@ actor ChapterModelActor {
 
         chapter.shouldPlay = shouldPlay
         modelContext.saveIfNeeded()
+        requestCacheProjection(for: chapter)
     }
     
     func setChapterProgress(_ progress: Double, for chapterID: UUID) async {
@@ -51,6 +52,18 @@ actor ChapterModelActor {
         
         chapter.progress = progress
        modelContext.saveIfNeeded()
+        requestCacheProjection(
+            for: chapter,
+            delay: StoreSplitFeedCacheWriter.playbackProjectionInterval
+        )
+    }
+
+    private func requestCacheProjection(
+        for chapter: Marker,
+        delay: TimeInterval = StoreSplitFeedCacheWriter.projectionDebounce
+    ) {
+        guard let episode = chapter.episode else { return }
+        StoreSplitFeedCacheWriter.requestProjection(for: episode, delay: delay)
     }
     
     func saveAllChanges() async {

@@ -11,12 +11,34 @@ struct ModelContainerLaunchView: View {
     let retry: () -> Void
     @State private var copiedDiagnostics = false
     @State private var showStalledStatus = false
+    @ObservedObject private var manager = ModelContainerManager.shared
 
     var body: some View {
         ZStack {
             AnimatedLaunchView(isFinishing: false)
 
-            if errorMessage != nil || showStalledStatus {
+            if let progress = manager.cutoverProgress, errorMessage == nil {
+                VStack(spacing: 12) {
+                    Text("Preparing your podcast library")
+                        .font(.headline)
+                    ProgressView(value: progress.fraction)
+                        .progressViewStyle(.linear)
+                    if let detail = progress.detail {
+                        Text(detail)
+                            .font(.footnote.monospacedDigit())
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("This happens once. You can leave Up Next and it will continue from here when you come back.")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding()
+                .accessibilityElement(children: .combine)
+            } else if errorMessage != nil || showStalledStatus {
                 VStack(spacing: 12) {
                     if let errorMessage {
                         Text("Up Next could not open its library.")

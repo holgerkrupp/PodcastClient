@@ -20,7 +20,10 @@ private func |= (lhs: inout Bool, rhs: Bool) {
 enum StoreSplitFeedCacheWriter {
     /// Phase 2 wrote podcast/episode metadata as version 1. Phase 3 adds the
     /// cache-local records required before repository reads can be cut over.
-    static let currentCacheSchemaVersion = 4
+    ///
+    /// Version 5 adds per-episode analytics. A version 2-4 row can only get those
+    /// from the legacy store, so a parser projection must not stamp it current.
+    static let currentCacheSchemaVersion = 5
 
     struct FeedCacheProjectionResult: Sendable {
         var inserted = 0
@@ -82,7 +85,8 @@ enum StoreSplitFeedCacheWriter {
         deadline: Date? = nil,
         refreshedEpisodeGUIDs: Set<String>? = nil,
         refreshedEpisodeURLs: Set<URL>? = nil,
-        requiresIdlePlayback: Bool = false
+        requiresIdlePlayback: Bool = false,
+        reconcilesPlaylists: Bool = true
     ) -> FeedCacheProjectionResult {
         var result = FeedCacheProjectionResult()
         guard shouldContinue(
@@ -93,7 +97,7 @@ enum StoreSplitFeedCacheWriter {
             return result
         }
         defer {
-            if result.completed {
+            if result.completed, reconcilesPlaylists {
                 Task { @MainActor in
                     await ModelContainerManager.shared.reconcileSplitRuntimePlaylists()
                 }
@@ -279,6 +283,7 @@ enum StoreSplitFeedCacheWriter {
                 forceIncrementalRefresh: true,
                 allowPruning: false,
                 preserveExistingRefreshMetadata: true,
+                preserveLocalEpisodeState: true,
                 markSchemaCurrent: isFinalBatch && isCompleteFeed,
                 result: &result
             ) else {
@@ -592,6 +597,11 @@ enum StoreSplitFeedCacheWriter {
         return bootstrapResult
     }
 
+
+    /// Copies only the cache rows that don't exist yet for one backup feed. Unlike
+    /// the bootstrap, which re-projects any feed below the current schema version
+    /// (and so could rewrite refreshed rows with stale ones), an existing podcast
+    /// or episode row is left exactly as it is.
     private static func recordCheckpoint(
         feedKey: String,
         succeeded: Bool,
@@ -843,7 +853,13 @@ enum StoreSplitFeedCacheWriter {
         forceIncrementalRefresh: Bool = false,
         allowPruning: Bool = false,
         preserveExistingRefreshMetadata: Bool = false,
+        // Parser drafts have default metadata and no local chapters/transcripts.
+        // They must not overwrite what an existing cache row knows.
+        preserveLocalEpisodeState: Bool = false,
         markSchemaCurrent: Bool = true,
+        /// Set by `restoreMissingRows`: project just these episodes and leave an
+        /// existing podcast row untouched.
+        restoreOnlyEpisodeIDs: Set<String>? = nil,
         result: inout FeedCacheProjectionResult
     ) -> Bool {
         guard let feed = podcast.feed,
@@ -856,7 +872,9 @@ enum StoreSplitFeedCacheWriter {
         let safeFeed = feed.isLikelyPrivatePodcastURL ? feed.podcastNonSecretURL : feed
 
         result.fetchCount += 1
-        let cached = fetchCachedPodcast(id: feedKey, in: cacheContext)
+        let existingCached = fetchCachedPodcast(id: feedKey, in: cacheContext)
+        let preservesPodcastRow = restoreOnlyEpisodeIDs != nil && existingCached != nil
+        let cached = existingCached
             ?? {
                 let created = CachedPodcast(id: feedKey, feedURL: feedKey)
                 cacheContext.insert(created)
@@ -864,49 +882,57 @@ enum StoreSplitFeedCacheWriter {
                 return created
             }()
 
-        var podcastChanged = false
-        podcastChanged |= assignIfChanged(cached, \.feedURL, feedKey)
-        podcastChanged |= assignIfChanged(cached, \.title, podcast.title)
-        podcastChanged |= assignIfChanged(cached, \.desc, podcast.desc)
-        podcastChanged |= assignIfChanged(cached, \.author, podcast.author)
-        podcastChanged |= assignIfChanged(cached, \.feed, safeFeed)
-        podcastChanged |= assignIfChanged(cached, \.link, podcast.link)
-        podcastChanged |= assignIfChanged(cached, \.language, podcast.language)
-        podcastChanged |= assignIfChanged(cached, \.copyright, podcast.copyright)
-        podcastChanged |= assignIfChanged(cached, \.imageURL, podcast.imageURL)
-        podcastChanged |= assignIfChanged(cached, \.lastBuildDate, podcast.lastBuildDate)
-        podcastChanged |= assignIfChanged(cached, \.funding, podcast.funding)
-        podcastChanged |= assignIfChanged(cached, \.social, podcast.social)
-        podcastChanged |= assignIfChanged(cached, \.people, podcast.people)
-        podcastChanged |= assignIfChanged(cached, \.alternativeFeeds, podcast.alternativeFeeds)
-        podcastChanged |= assignIfChanged(cached, \.optionalTags, podcast.optionalTags)
+        if preservesPodcastRow == false {
+            var podcastChanged = false
+            podcastChanged |= assignIfChanged(cached, \.feedURL, feedKey)
+            podcastChanged |= assignIfChanged(cached, \.title, podcast.title)
+            podcastChanged |= assignIfChanged(cached, \.desc, podcast.desc)
+            podcastChanged |= assignIfChanged(cached, \.author, podcast.author)
+            podcastChanged |= assignIfChanged(cached, \.feed, safeFeed)
+            podcastChanged |= assignIfChanged(cached, \.link, podcast.link)
+            podcastChanged |= assignIfChanged(cached, \.language, podcast.language)
+            podcastChanged |= assignIfChanged(cached, \.copyright, podcast.copyright)
+            podcastChanged |= assignIfChanged(cached, \.imageURL, podcast.imageURL)
+            podcastChanged |= assignIfChanged(cached, \.lastBuildDate, podcast.lastBuildDate)
+            podcastChanged |= assignIfChanged(cached, \.funding, podcast.funding)
+            podcastChanged |= assignIfChanged(cached, \.social, podcast.social)
+            podcastChanged |= assignIfChanged(cached, \.people, podcast.people)
+            podcastChanged |= assignIfChanged(cached, \.alternativeFeeds, podcast.alternativeFeeds)
+            podcastChanged |= assignIfChanged(cached, \.optionalTags, podcast.optionalTags)
 
-        upsertTypedExtensionElements(
-            podcast.optionalTags?.allNodes ?? [],
-            feedKey: feedKey,
-            episodeID: nil,
-            scope: "feed",
-            into: cacheContext,
-            result: &result
-        )
+            upsertTypedExtensionElements(
+                podcast.optionalTags?.allNodes ?? [],
+                feedKey: feedKey,
+                episodeID: nil,
+                scope: "feed",
+                into: cacheContext,
+                result: &result
+            )
 
-        let meta = podcast.metaData
-        if preserveExistingRefreshMetadata == false {
-            podcastChanged |= assignIfChanged(cached, \.lastRefresh, meta?.lastRefresh)
-            podcastChanged |= assignIfChanged(cached, \.feedUpdated, meta?.feedUpdated)
-            podcastChanged |= assignIfChanged(cached, \.feedUpdateCheckDate, meta?.feedUpdateCheckDate)
-            podcastChanged |= assignIfChanged(cached, \.consecutiveFeedFailureCount, meta?.consecutiveFeedFailureCount ?? 0)
-            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureDate, meta?.lastFeedFailureDate)
-            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureStatusCode, meta?.lastFeedFailureStatusCode)
-            podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
+            let meta = podcast.metaData
+            if preserveExistingRefreshMetadata == false {
+                podcastChanged |= assignIfChanged(cached, \.lastRefresh, meta?.lastRefresh)
+                podcastChanged |= assignIfChanged(cached, \.feedUpdated, meta?.feedUpdated)
+                podcastChanged |= assignIfChanged(cached, \.feedUpdateCheckDate, meta?.feedUpdateCheckDate)
+                podcastChanged |= assignIfChanged(cached, \.consecutiveFeedFailureCount, meta?.consecutiveFeedFailureCount ?? 0)
+                podcastChanged |= assignIfChanged(cached, \.lastFeedFailureDate, meta?.lastFeedFailureDate)
+                podcastChanged |= assignIfChanged(cached, \.lastFeedFailureStatusCode, meta?.lastFeedFailureStatusCode)
+                podcastChanged |= assignIfChanged(cached, \.lastFeedFailureMessage, meta?.lastFeedFailureMessage)
+                podcastChanged |= assignIfChanged(cached, \.firstConsecutiveFeedFailureDate, meta?.firstConsecutiveFeedFailureDate)
+                podcastChanged |= assignIfChanged(cached, \.authenticationRetryAfter, meta?.authenticationRetryAfter)
+                podcastChanged |= assignIfChanged(cached, \.nextPredictedReleaseDate, meta?.nextPredictedReleaseDate)
+                podcastChanged |= assignIfChanged(cached, \.nextPredictedRefreshStartDate, meta?.nextPredictedRefreshStartDate)
+                podcastChanged |= assignIfChanged(cached, \.nextPredictedRefreshEndDate, meta?.nextPredictedRefreshEndDate)
+                podcastChanged |= assignIfChanged(cached, \.releasePredictionUpdatedAt, meta?.releasePredictionUpdatedAt)
+            }
+            if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
         }
-        if podcastChanged { cached.updatedAt = .now; result.updated += 1 }
 
         // Normal GET refreshes generally import zero or a few episodes.
         // Avoid fetching every cached chapter, transcript and download from
         // historical back catalogue during these small deltas. Large deltas and
         // first-time backfills keep the existing batch-read path.
-        let isIncrementalRefresh = forceIncrementalRefresh || (
+        let isIncrementalRefresh = restoreOnlyEpisodeIDs != nil || forceIncrementalRefresh || (
             cached.cacheSchemaVersion >= currentCacheSchemaVersion
                 && refreshedEpisodeGUIDs != nil
                 && refreshedEpisodeURLs != nil
@@ -914,12 +940,16 @@ enum StoreSplitFeedCacheWriter {
         let selectedGUIDs = refreshedEpisodeGUIDs ?? []
         let selectedURLs = refreshedEpisodeURLs ?? []
         let sourceEpisodes = podcast.episodes ?? []
-        let episodesToProject = isIncrementalRefresh
-            ? sourceEpisodes.filter {
+        let episodesToProject = if let restoreOnlyEpisodeIDs {
+            sourceEpisodes.filter { restoreOnlyEpisodeIDs.contains($0.stableEpisodeIdentity.key) }
+        } else if isIncrementalRefresh {
+            sourceEpisodes.filter {
                 selectedGUIDs.contains($0.guid ?? "")
                     || ($0.url.map { selectedURLs.contains($0) } == true)
             }
-            : sourceEpisodes
+        } else {
+            sourceEpisodes
+        }
         let targetedLookup = isIncrementalRefresh && episodesToProject.count <= 25
 
         let existingEpisodes: [CachedEpisode]
@@ -969,6 +999,7 @@ enum StoreSplitFeedCacheWriter {
             let identity = episode.stableEpisodeIdentity
             let episodeID = identity.key
             seenIDs.insert(episodeID)
+            let keepsLocalState = preserveLocalEpisodeState && existingByID[episodeID] != nil
 
             let cachedEpisode = existingByID[episodeID]
                 ?? {
@@ -1003,21 +1034,29 @@ enum StoreSplitFeedCacheWriter {
             episodeChanged |= assignIfChanged(cachedEpisode, \.social, episode.social)
             episodeChanged |= assignIfChanged(cachedEpisode, \.people, episode.people)
             episodeChanged |= assignIfChanged(cachedEpisode, \.optionalTags, episode.optionalTags)
-            episodeChanged |= assignIfChanged(
-                cachedEpisode,
-                \.localIsInbox,
-                episode.metaData?.isInbox == true
-            )
-            episodeChanged |= assignIfChanged(
-                cachedEpisode,
-                \.localStatusRawValue,
-                episode.metaData?.status?.rawValue
-            )
-            episodeChanged |= assignIfChanged(
-                cachedEpisode,
-                \.localSystemSuppressionReasonRawValue,
-                episode.metaData?.systemSuppressionReasonRawValue
-            )
+            if keepsLocalState == false {
+                episodeChanged |= assignIfChanged(
+                    cachedEpisode,
+                    \.localIsInbox,
+                    episode.metaData?.isInbox == true
+                )
+                episodeChanged |= assignIfChanged(
+                    cachedEpisode,
+                    \.localStatusRawValue,
+                    episode.metaData?.status?.rawValue
+                )
+                episodeChanged |= assignIfChanged(
+                    cachedEpisode,
+                    \.localSystemSuppressionReasonRawValue,
+                    episode.metaData?.systemSuppressionReasonRawValue
+                )
+                episodeChanged |= assignIfChanged(cachedEpisode, \.playbackStartTimes, episode.metaData?.playbackStartTimes)
+                episodeChanged |= assignIfChanged(cachedEpisode, \.playbackDurations, episode.metaData?.playbackDurations)
+                episodeChanged |= assignIfChanged(cachedEpisode, \.silenceGapTimeSavedDurations, episode.metaData?.silenceGapTimeSavedDurations)
+                episodeChanged |= assignIfChanged(cachedEpisode, \.playbackSpeeds, episode.metaData?.playbackSpeeds)
+                episodeChanged |= assignIfChanged(cachedEpisode, \.totalListenTime, episode.metaData?.totalListenTime ?? 0)
+                episodeChanged |= assignIfChanged(cachedEpisode, \.totalSilenceGapTimeSaved, episode.metaData?.totalSilenceGapTimeSaved ?? 0)
+            }
             upsertTypedExtensionElements(
                 episode.optionalTags?.allNodes ?? [],
                 feedKey: feedKey,
@@ -1034,26 +1073,34 @@ enum StoreSplitFeedCacheWriter {
             else { result.unchanged += 1; result.episodesUnchanged += 1 }
             result.episodesProcessed += 1
 
+            let existingChapterRows = chaptersByEpisodeID[episodeID] ?? []
             upsertChapters(
                 episode.chapters ?? [],
                 feedKey: feedKey,
                 episodeID: episodeID,
-                existing: chaptersByEpisodeID[episodeID] ?? [],
+                existing: keepsLocalState
+                    ? carryLocalChapterState(from: existingChapterRows, to: episode.chapters ?? [])
+                    : existingChapterRows,
                 into: cacheContext,
                 result: &result
             )
             let transcriptionRecords = episode.url.flatMap {
                 transcriptionRecordsByEpisodeURL[$0]
             } ?? []
-            upsertTranscriptLines(
-                episode.transcriptLines ?? [],
-                feedKey: feedKey,
-                episodeID: episodeID,
-                fallbackSource: transcriptionRecords.isEmpty ? .unknown : .localAI,
-                existing: transcriptLinesByEpisodeID[episodeID] ?? [],
-                into: cacheContext,
-                result: &result
-            )
+            // Until the backfill is done, no lines doesn't mean no transcript.
+            if keepsLocalState == false,
+               StoreRuntimeProjection.isLibraryBackfillPending == false
+                || episode.transcriptLines?.isEmpty == false {
+                upsertTranscriptLines(
+                    episode.transcriptLines ?? [],
+                    feedKey: feedKey,
+                    episodeID: episodeID,
+                    fallbackSource: transcriptionRecords.isEmpty ? .unknown : .localAI,
+                    existing: transcriptLinesByEpisodeID[episodeID] ?? [],
+                    into: cacheContext,
+                    result: &result
+                )
+            }
             upsertDownloadRecord(
                 episode: episode,
                 feedKey: feedKey,
@@ -1087,7 +1134,12 @@ enum StoreSplitFeedCacheWriter {
             guard shouldContinue(deadline: deadline, requiresIdlePlayback: requiresIdlePlayback) else { return false }
         }
         }
-        if markSchemaCurrent {
+        if preservesPodcastRow {
+            // Not ours to re-stamp: the row's version describes its own projection.
+        } else if preserveLocalEpisodeState,
+                  (2..<currentCacheSchemaVersion).contains(cached.cacheSchemaVersion) {
+            // Awaiting the legacy re-projection at cutover; see the version note.
+        } else if markSchemaCurrent {
             _ = assignIfChanged(cached, \.cacheSchemaVersion, currentCacheSchemaVersion)
         } else {
             // A partial feed or an unfinished multi-batch refresh cannot use
@@ -1159,6 +1211,33 @@ enum StoreSplitFeedCacheWriter {
         for (id, stale) in existingByID where seenIDs.contains(id) == false {
             context.delete(stale)
         }
+    }
+
+    /// Prepares parser draft chapters for an existing cache row: rows of a type the
+    /// draft does not contain (MP3, AI, ...) stay untouched, and a matching chapter
+    /// keeps its identity, progress and skip choice. Returns the rows the draft replaces.
+    private static func carryLocalChapterState(
+        from existing: [CachedChapter],
+        to draftChapters: [Marker]
+    ) -> [CachedChapter] {
+        let draftTypes = Set(draftChapters.map(\.type.rawValue))
+        let replaceable = existing.filter { draftTypes.contains($0.typeRawValue) }
+        func key(_ type: String, _ start: Double?, _ title: String) -> String {
+            StableIdentityKey.make(type, String(Int(((start ?? 0) * 100).rounded())), title)
+        }
+        let rowsByKey = Dictionary(
+            replaceable.map { (key($0.typeRawValue, $0.start, $0.title), $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        for chapter in draftChapters {
+            guard let row = rowsByKey[key(chapter.type.rawValue, chapter.start, chapter.title)] else {
+                continue
+            }
+            chapter.uuid = row.sourceUUID.flatMap(UUID.init(uuidString:)) ?? chapter.uuid
+            chapter.progress = row.progress
+            chapter.shouldPlay = row.shouldPlay
+        }
+        return replaceable
     }
 
     private static func upsertTypedExtensionElements(
@@ -1238,7 +1317,10 @@ enum StoreSplitFeedCacheWriter {
             changed |= assignIfChanged(cached, \.startTime, line.startTime)
             changed |= assignIfChanged(cached, \.endTime, line.endTime)
             changed |= assignIfChanged(cached, \.ordinal, ordinal)
-            let source = line.transcriptSource ?? fallbackSource
+            // A provenance-less runtime line must not downgrade a known cached source.
+            let currentSource = CachedTranscriptSource(rawValue: cached.sourceRawValue) ?? .unknown
+            let source = line.transcriptSource
+                ?? (currentSource == .unknown ? fallbackSource : currentSource)
             changed |= assignIfChanged(cached, \.sourceRawValue, source.rawValue)
             if changed { cached.updatedAt = .now; result.updated += 1 }
             else { result.unchanged += 1 }
@@ -1342,6 +1424,222 @@ enum StoreSplitFeedCacheWriter {
         for (id, stale) in existingByID where seenIDs.contains(id) == false {
             context.delete(stale)
         }
+    }
+
+    // MARK: - Local mutations
+
+    /// Removes one episode and its local children, so a rebuild cannot resurrect a
+    /// deliberately deleted episode. Synchronized user state is left alone.
+    static func deleteEpisode(
+        identity: EpisodeStableIdentity,
+        cacheContainer: ModelContainer
+    ) throws {
+        let context = ModelContext(cacheContainer)
+        let rowID = identity.key
+        let feedKey = identity.feedURL
+        let elementEpisodeID: String? = identity.episodeID
+        deleteSupplementalRows(feedKey: feedKey, episodeID: rowID, in: context)
+        try context.delete(model: CachedFeedExtensionElement.self, where: #Predicate {
+            $0.feedURL == feedKey && $0.episodeID == elementEpisodeID
+        })
+        try context.delete(model: AppliedAIContentRevision.self, where: #Predicate { $0.id == rowID })
+        if let episode = fetchCachedEpisode(id: rowID, in: context) {
+            context.delete(episode)
+        }
+        try context.save()
+    }
+
+    /// Removes a feed's rebuildable rows. Local settings and bookmark details stay,
+    /// matching the PodcastPreferenceSync and BookmarkSync rows they extend.
+    static func deletePodcast(feedURL: URL, cacheContainer: ModelContainer) throws {
+        let context = ModelContext(cacheContainer)
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        try context.delete(model: CachedChapter.self, where: #Predicate { $0.feedURL == feedKey })
+        try context.delete(model: CachedTranscriptLine.self, where: #Predicate { $0.feedURL == feedKey })
+        try context.delete(model: CachedTranscriptionRecord.self, where: #Predicate { $0.feedURL == feedKey })
+        try context.delete(model: CachedDownloadRecord.self, where: #Predicate { $0.feedURL == feedKey })
+        try context.delete(model: CachedFeedExtensionElement.self, where: #Predicate { $0.feedURL == feedKey })
+        try context.delete(model: StoreSplitFeedCacheCheckpoint.self, where: #Predicate { $0.id == feedKey })
+        for episode in fetchCachedEpisodes(feedKey: feedKey, in: context) {
+            context.delete(episode)
+        }
+        if let podcast = fetchCachedPodcast(id: feedKey, in: context) {
+            context.delete(podcast)
+        }
+        try context.save()
+    }
+
+    struct RefreshMetadataSnapshot: Sendable {
+        var lastRefresh: Date?
+        var feedUpdated: Bool?
+        var feedUpdateCheckDate: Date?
+        var consecutiveFeedFailureCount: Int
+        var firstConsecutiveFeedFailureDate: Date?
+        var lastFeedFailureDate: Date?
+        var lastFeedFailureStatusCode: Int?
+        var lastFeedFailureMessage: String?
+        var authenticationRetryAfter: Date?
+        var nextPredictedReleaseDate: Date?
+        var nextPredictedRefreshStartDate: Date?
+        var nextPredictedRefreshEndDate: Date?
+        var releasePredictionUpdatedAt: Date?
+
+        init(_ metadata: PodcastMetaData) {
+            lastRefresh = metadata.lastRefresh
+            feedUpdated = metadata.feedUpdated
+            feedUpdateCheckDate = metadata.feedUpdateCheckDate
+            consecutiveFeedFailureCount = metadata.consecutiveFeedFailureCount
+            firstConsecutiveFeedFailureDate = metadata.firstConsecutiveFeedFailureDate
+            lastFeedFailureDate = metadata.lastFeedFailureDate
+            lastFeedFailureStatusCode = metadata.lastFeedFailureStatusCode
+            lastFeedFailureMessage = metadata.lastFeedFailureMessage
+            authenticationRetryAfter = metadata.authenticationRetryAfter
+            nextPredictedReleaseDate = metadata.nextPredictedReleaseDate
+            nextPredictedRefreshStartDate = metadata.nextPredictedRefreshStartDate
+            nextPredictedRefreshEndDate = metadata.nextPredictedRefreshEndDate
+            releasePredictionUpdatedAt = metadata.releasePredictionUpdatedAt
+        }
+    }
+
+    /// Persists refresh diagnostics for every refresh outcome, including 304,
+    /// unchanged HEAD and failures, which never reach an episode projection.
+    /// A feed with no cache row yet has nothing to update.
+    static func updateRefreshMetadata(
+        feedURL: URL,
+        snapshot: RefreshMetadataSnapshot,
+        cacheContainer: ModelContainer
+    ) {
+        let context = ModelContext(cacheContainer)
+        guard let cached = fetchCachedPodcast(
+            id: PodcastFeedIdentity.normalizedFeedURLString(feedURL),
+            in: context
+        ) else { return }
+        var changed = false
+        changed |= assignIfChanged(cached, \.lastRefresh, snapshot.lastRefresh)
+        changed |= assignIfChanged(cached, \.feedUpdated, snapshot.feedUpdated)
+        changed |= assignIfChanged(cached, \.feedUpdateCheckDate, snapshot.feedUpdateCheckDate)
+        changed |= assignIfChanged(cached, \.consecutiveFeedFailureCount, snapshot.consecutiveFeedFailureCount)
+        changed |= assignIfChanged(cached, \.firstConsecutiveFeedFailureDate, snapshot.firstConsecutiveFeedFailureDate)
+        changed |= assignIfChanged(cached, \.lastFeedFailureDate, snapshot.lastFeedFailureDate)
+        changed |= assignIfChanged(cached, \.lastFeedFailureStatusCode, snapshot.lastFeedFailureStatusCode)
+        changed |= assignIfChanged(cached, \.lastFeedFailureMessage, snapshot.lastFeedFailureMessage)
+        changed |= assignIfChanged(cached, \.authenticationRetryAfter, snapshot.authenticationRetryAfter)
+        changed |= assignIfChanged(cached, \.nextPredictedReleaseDate, snapshot.nextPredictedReleaseDate)
+        changed |= assignIfChanged(cached, \.nextPredictedRefreshStartDate, snapshot.nextPredictedRefreshStartDate)
+        changed |= assignIfChanged(cached, \.nextPredictedRefreshEndDate, snapshot.nextPredictedRefreshEndDate)
+        changed |= assignIfChanged(cached, \.releasePredictionUpdatedAt, snapshot.releasePredictionUpdatedAt)
+        guard changed else { return }
+        cached.updatedAt = .now
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_refresh_metadata_save_failed",
+                details: error.localizedDescription
+            )
+        }
+    }
+
+    struct TranscriptionRecordSnapshot: Sendable {
+        var id: UUID
+        var identity: EpisodeStableIdentity
+        var episodeURL: URL?
+        var episodeTitle: String
+        var podcastTitle: String?
+        var localeIdentifier: String
+        var startedAt: Date
+        var finishedAt: Date
+        var audioDuration: Double
+        var transcriptionDuration: Double
+    }
+
+    /// Incremental projections leave transcription history alone, so a finished job
+    /// writes its record here directly.
+    static func upsertTranscriptionRecord(
+        _ snapshot: TranscriptionRecordSnapshot,
+        cacheContainer: ModelContainer
+    ) {
+        let context = ModelContext(cacheContainer)
+        let rowID = snapshot.id.uuidString
+        var descriptor = FetchDescriptor<CachedTranscriptionRecord>(
+            predicate: #Predicate { $0.id == rowID }
+        )
+        descriptor.fetchLimit = 1
+        let row = (try? context.fetch(descriptor).first) ?? {
+            let created = CachedTranscriptionRecord(
+                id: rowID,
+                feedURL: snapshot.identity.feedURL,
+                episodeID: snapshot.identity.key
+            )
+            context.insert(created)
+            return created
+        }()
+        row.episodeURL = snapshot.episodeURL
+        row.episodeTitle = snapshot.episodeTitle
+        row.podcastTitle = snapshot.podcastTitle
+        row.localeIdentifier = snapshot.localeIdentifier
+        row.startedAt = snapshot.startedAt
+        row.finishedAt = snapshot.finishedAt
+        row.audioDuration = snapshot.audioDuration
+        row.transcriptionDuration = snapshot.transcriptionDuration
+        row.updatedAt = .now
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            CrashBreadcrumbs.shared.record(
+                "store_split_transcription_record_save_failed",
+                details: error.localizedDescription
+            )
+        }
+    }
+
+    static func deleteTranscriptionRecords(
+        identity: EpisodeStableIdentity,
+        cacheContainer: ModelContainer
+    ) {
+        let context = ModelContext(cacheContainer)
+        for record in fetchCachedTranscriptionRecords(
+            feedKey: identity.feedURL,
+            episodeID: identity.key,
+            in: context
+        ) {
+            context.delete(record)
+        }
+        try? context.save()
+    }
+
+    /// Delay for ordinary local edits (chapter, transcript and skip changes).
+    static let projectionDebounce: TimeInterval = 5
+    /// Delay for playback-driven changes, which must not write more often.
+    static let playbackProjectionInterval: TimeInterval = 120
+
+    /// Coalesced persistence of in-memory runtime edits. Only the named episodes
+    /// are projected, and playlists are not re-imported afterwards.
+    static func requestProjection(
+        feedURL: URL?,
+        episodeURL: URL?,
+        delay: TimeInterval = projectionDebounce
+    ) {
+        guard let feedURL, let episodeURL else { return }
+        Task {
+            await FeedProjectionRequestQueue.shared.enqueue(
+                feedURL: feedURL, episodeURL: episodeURL, delay: delay
+            )
+        }
+    }
+
+    static func requestProjection(
+        for episode: Episode,
+        delay: TimeInterval = projectionDebounce
+    ) {
+        requestProjection(feedURL: episode.podcast?.feed, episodeURL: episode.url, delay: delay)
+    }
+
+    /// Writes pending requests now, for example when the app moves to the background.
+    static func flushRequestedProjections() async {
+        await FeedProjectionRequestQueue.shared.drain()
     }
 
     private static func deleteSupplementalRows(
@@ -1556,5 +1854,73 @@ enum StoreSplitFeedCacheWriter {
         }
         guard let deadline else { return true }
         return Date() < deadline
+    }
+}
+
+private actor FeedProjectionRequestQueue {
+    static let shared = FeedProjectionRequestQueue()
+
+    private var pending: [URL: Set<URL>] = [:]
+    private var due: Date?
+    private var task: Task<Void, Never>?
+
+    func enqueue(feedURL: URL, episodeURL: URL, delay: TimeInterval) {
+        pending[feedURL, default: []].insert(episodeURL)
+        schedule(after: delay)
+    }
+
+    private func schedule(after delay: TimeInterval) {
+        let requested = Date().addingTimeInterval(delay)
+        if let due, due <= requested { return }
+        due = requested
+        task?.cancel()
+        task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard Task.isCancelled == false else { return }
+            await self?.drain()
+        }
+    }
+
+    func drain() async {
+        task?.cancel()
+        task = nil
+        due = nil
+        guard pending.isEmpty == false else { return }
+        let requests = pending
+        pending = [:]
+
+        let containers = await MainActor.run { () -> (ModelContainer, ModelContainer)? in
+            let manager = ModelContainerManager.shared
+            guard manager.runtimeProjectsFromCache,
+                  manager.runtimeStoreReadiness == .ready,
+                  let cache = manager.preparedCacheContainer else { return nil }
+            return (manager.container, cache)
+        }
+        guard let (runtime, cache) = containers else {
+            // Not ready to write yet; these edits are still only in memory.
+            for (feed, episodes) in requests {
+                pending[feed, default: []].formUnion(episodes)
+            }
+            schedule(after: 30)
+            return
+        }
+        await Task.detached(priority: .utility) {
+            for (feed, episodeURLs) in requests {
+                let result = StoreSplitFeedCacheWriter.projectFeed(
+                    feedURL: feed,
+                    legacyContainer: runtime,
+                    cacheContainer: cache,
+                    refreshedEpisodeGUIDs: [],
+                    refreshedEpisodeURLs: episodeURLs,
+                    reconcilesPlaylists: false
+                )
+                if result.completed == false {
+                    CrashBreadcrumbs.shared.record(
+                        "store_split_requested_projection_failed",
+                        details: result.failureReason ?? "unknown"
+                    )
+                }
+            }
+        }.value
     }
 }

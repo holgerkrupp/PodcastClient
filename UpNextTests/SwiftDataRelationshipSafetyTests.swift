@@ -142,7 +142,7 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             Episode.self,
             EpisodeMetaData.self,
             TranscriptLineAndTime.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         let context = ModelContext(container)
         let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
@@ -186,7 +186,7 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             Episode.self,
             EpisodeMetaData.self,
             TranscriptLineAndTime.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         var podcasts: [(PersistentIdentifier, String, Int)] = []
         for count in [0, 100, 1_000, 10_000] {

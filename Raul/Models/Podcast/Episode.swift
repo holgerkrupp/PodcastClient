@@ -266,9 +266,6 @@ class EpisodeDownloadStatus{
     /// runs for every subscribed podcast; on the FK index alone SQLite still had
     /// to sort, which is what blocked the main thread through the suspension
     /// deadline.
-    ///
-    /// Existing stores do not get these from SwiftData — see
-    /// `LegacyStoreIndexBackfill`.
     #Index<Episode>([\.publishDate], [\.podcast, \.publishDate])
 
     var guid: String?

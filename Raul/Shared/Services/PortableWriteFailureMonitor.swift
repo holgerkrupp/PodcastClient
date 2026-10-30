@@ -117,7 +117,7 @@ final class PortableWriteFailureMonitor: ObservableObject {
         if state.firstRetryAt == nil { state.firstRetryAt = now }
         persist()
 #if canImport(UIKit)
-        AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+        AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded()
 #endif
         return true
     }

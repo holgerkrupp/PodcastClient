@@ -87,8 +87,7 @@ enum StoreSplitMigrationVerifier {
         )
     }
 
-    @discardableResult
-    static func verify(
+     static func verify(
         legacyContainer: ModelContainer,
         userStateContainer: ModelContainer,
         cacheContainer: ModelContainer
@@ -322,6 +321,11 @@ enum StoreSplitMigrationVerifier {
                 let entryID = StableIdentityKey.make(
                     playlistID, identity.feedURL, identity.episodeID
                 )
+                // The migration deliberately leaves finished episodes behind.
+                if playlist.removesEpisodesPlayedElsewhere,
+                   PlayedEpisodeQueuePolicy.isStaleQueueMembership(for: episode, addedAt: entry.dateAdded) {
+                    continue
+                }
                 requiredFeedKeys.insert(identity.feedURL)
                 requiredEpisodeKeys.insert(identity.key)
                 sourcePlaylistEntryIDs.insert(entryID)

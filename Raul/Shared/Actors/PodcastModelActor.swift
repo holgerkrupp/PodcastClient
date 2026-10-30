@@ -26,6 +26,12 @@ struct PodcastRefreshRequestPolicy: Sendable, Equatable {
         forceGETRegardlessOfHEAD || hasTimeSensitiveLiveItem || feedWasUpdated != false
     }
 
+    /// A cached "unchanged" answer would leave the episodes the fill is after out.
+    static let forceFullFetch = PodcastRefreshRequestPolicy(
+        performHEAD: false,
+        forceGETRegardlessOfHEAD: true
+    )
+
     static let regular = PodcastRefreshRequestPolicy(
         performHEAD: true,
         forceGETRegardlessOfHEAD: false
@@ -1158,6 +1164,7 @@ actor PodcastModelActor {
             await updateLastRefresh(for: finalMeta.persistentModelID)
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
+            await persistRefreshMetadata(for: feedURL)
             await reconcileLiveNotifications(for: finalPodcast)
             return true
         } catch {
@@ -1174,6 +1181,7 @@ actor PodcastModelActor {
                 failedPodcast.message = nil
             }
             modelContext.saveIfNeeded()
+            await persistRefreshMetadata(for: feedURL)
             throw error
         }
     }
@@ -1219,18 +1227,25 @@ actor PodcastModelActor {
     ) async throws -> PodcastUpdateSummary {
         let operation: @Sendable (SubscriptionProgressHandler?) async throws -> PodcastUpdateSummary = { activeProgress in
             try await PodcastMutationCoordinator.shared.withExclusive(feedURL: podcastFeed) {
-                try await self.performUpdatePodcastWithSummary(
-                    podcastFeed,
-                    policy: policy,
-                    refreshRunID: refreshRunID,
-                    silent: silent,
-                    resolveExistingMissingDurations: resolveExistingMissingDurations,
-                    processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
-                    deadline: deadline,
-                    initialPage: initialPage,
-                    startingAt: startingAt,
-                    progress: activeProgress
-                )
+                do {
+                    let summary = try await self.performUpdatePodcastWithSummary(
+                        podcastFeed,
+                        policy: policy,
+                        refreshRunID: refreshRunID,
+                        silent: silent,
+                        resolveExistingMissingDurations: resolveExistingMissingDurations,
+                        processNewEpisodesDuringSilentRefresh: processNewEpisodesDuringSilentRefresh,
+                        deadline: deadline,
+                        initialPage: initialPage,
+                        startingAt: startingAt,
+                        progress: activeProgress
+                    )
+                    await self.persistRefreshMetadata(for: podcastFeed)
+                    return summary
+                } catch {
+                    await self.persistRefreshMetadata(for: podcastFeed)
+                    throw error
+                }
             }
         }
 
@@ -1264,6 +1279,26 @@ actor PodcastModelActor {
             progress: progress,
             operation: operation
         )
+    }
+
+    /// 304, unchanged HEAD and failed refreshes never reach an episode projection,
+    /// so this is what carries their outcome across a relaunch.
+    private func persistRefreshMetadata(for podcastFeed: URL) async {
+        guard let cache = await preparedCacheContainerForMirroring(),
+              let podcast = await fetchPodcast(byFeed: podcastFeed),
+              let feed = podcast.feed,
+              let metadata = podcast.metaData else { return }
+        StoreSplitFeedCacheWriter.updateRefreshMetadata(
+            feedURL: feed,
+            snapshot: .init(metadata),
+            cacheContainer: cache
+        )
+    }
+
+    private func preparedCacheContainerForMirroring() async -> ModelContainer? {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled else { return nil }
+        await ModelContainerManager.shared.prepareSplitStores()
+        return await MainActor.run { ModelContainerManager.shared.preparedCacheContainer }
     }
 
     private func performUpdatePodcastWithSummary(
@@ -2213,6 +2248,14 @@ actor PodcastModelActor {
                     publishDate: episode.publishDate,
                     subscriptionDate: episode.podcast?.metaData?.subscriptionDate
                 )
+                if StoreRuntimeProjection.isLibraryBackfillPending,
+                   let userState = StoreRuntimeProjection.fillUserStateContainer {
+                    StoreSplitCompatibilityProjectionService.applySyncedState(
+                        to: episode,
+                        id: episode.stableEpisodeIdentityKey,
+                        userState: ModelContext(userState)
+                    )
+                }
                 if shouldProcessNewEpisodes {
                     await fillMissingRemoteMP3DurationIfNeeded(
                         episodeID: episode.persistentModelID,
@@ -2222,7 +2265,13 @@ actor PodcastModelActor {
                 }
 
                 if shouldProcessNewEpisodes {
-                    if classification == .backCatalog {
+                    // An episode this old that only now shows up in a feed is not
+                    // news, even if it postdates a long-standing subscription.
+                    let isLongPublished = episode.publishDate.map {
+                        Date().timeIntervalSince($0) > 90 * 24 * 60 * 60
+                    } ?? false
+                    if classification == .backCatalog || isLongPublished
+                        || StoreRuntimeProjection.isLibraryBackfillPending {
                         print("episode is old")
                         suppressFromInbox(episode, reason: .backCatalogImport)
                         modelContext.saveIfNeeded()
@@ -2305,7 +2354,6 @@ actor PodcastModelActor {
                 feedURL: feedURL, status: "deferred_deadline",
                 episodeCount: 0, cacheContainer: nil
             )
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         await ModelContainerManager.shared.prepareSplitStores()
@@ -2315,7 +2363,6 @@ actor PodcastModelActor {
                 feedURL: feedURL, status: "deferred_cancelled_or_deadline",
                 episodeCount: 0, cacheContainer: nil
             )
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         guard let cacheContainer = await MainActor.run(body: {
@@ -2325,7 +2372,6 @@ actor PodcastModelActor {
                 feedURL: feedURL, status: "failed_cache_container_unavailable",
                 episodeCount: 0, cacheContainer: nil
             )
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
 
@@ -2404,7 +2450,6 @@ actor PodcastModelActor {
                 feedURL: feedURL,
                 cacheContainer: cacheContainer
             )
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
         }
         // Namespaced extension subtrees have no equivalent in the model graph, so
         // they are captured in every mode.
@@ -2449,7 +2494,6 @@ actor PodcastModelActor {
         guard let cache = await MainActor.run(body: {
             ModelContainerManager.shared.preparedCacheContainer
         }) else {
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         guard StoreSplitFeedCacheWriter.needsFeedProjection(
@@ -2462,7 +2506,6 @@ actor PodcastModelActor {
         do {
             try await coordinator.acquire()
         } catch {
-            ModelContainerManager.requestPodcastCacheBackgroundBootstrap()
             return
         }
         await updateFeedCache(
@@ -2566,7 +2609,16 @@ actor PodcastModelActor {
         if source != .sideLoaded {
             await EpisodeActor(modelContainer: modelContainer).deleteFile(episodeURL: episodeURL)
         }
+        let cache = await preparedCacheContainerForMirroring()
         guard let currentEpisode: Episode = modelContext.existingModel(for: episodeID) else { return }
+        // Remove the durable copy first: otherwise the next launch's rebuild
+        // would bring the episode back.
+        if let cache {
+            try StoreSplitFeedCacheWriter.deleteEpisode(
+                identity: currentEpisode.stableEpisodeIdentity,
+                cacheContainer: cache
+            )
+        }
         modelContext.delete(currentEpisode)
         try modelContext.save()
     }
@@ -2595,6 +2647,9 @@ actor PodcastModelActor {
         let episodeURLs = Set(try modelContext.fetch(episodeDescriptor).compactMap(\.url))
         await Player.shared.prepareForLibraryDeletion(episodeURLs: episodeURLs)
 
+        if let cache = await preparedCacheContainerForMirroring() {
+            try StoreSplitFeedCacheWriter.deletePodcast(feedURL: feedURL, cacheContainer: cache)
+        }
         guard try deletePodcastRow(podcastID) != nil else { return }
         _ = try await updateSplitSubscription(
             feedURL: feedURL,

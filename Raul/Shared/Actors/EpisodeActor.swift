@@ -193,6 +193,7 @@ actor EpisodeActor {
         with newChapters: [Marker]
     ) {
         EpisodeChapterMerger.replaceChapters(on: episode, replacingTypes: types, with: newChapters)
+        StoreSplitFeedCacheWriter.requestProjection(for: episode)
     }
 
     @discardableResult
@@ -382,6 +383,7 @@ actor EpisodeActor {
         }
         episode.metaData?.playbackStartTimes?.elements.append(date)
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
+        persistPlaybackAnalytics(of: episode)
     }
     
     func addPlaybackDuration(episodeURL: URL, duration: TimeInterval) async {
@@ -393,6 +395,7 @@ actor EpisodeActor {
         episode.metaData?.playbackDurations?.elements.append(duration)
         episode.metaData?.totalListenTime += duration
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
+        persistPlaybackAnalytics(of: episode)
     }
 
     func addPlaybackSpeed(episodeURL: URL, speed: Double) async {
@@ -401,6 +404,15 @@ actor EpisodeActor {
             episode.metaData?.playbackSpeeds = .init([])
         }
         episode.metaData?.playbackSpeeds?.elements.append(speed)
+        persistPlaybackAnalytics(of: episode)
+    }
+
+    private func persistPlaybackAnalytics(of episode: Episode) {
+        modelContext.saveIfNeeded()
+        StoreSplitFeedCacheWriter.requestProjection(
+            for: episode,
+            delay: StoreSplitFeedCacheWriter.playbackProjectionInterval
+        )
     }
 
     func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
@@ -1439,6 +1451,11 @@ actor EpisodeActor {
         )
         let publishedAt = Date()
         if StoreDevelopmentConfiguration.splitStoresEnabled {
+            if let cacheContainer = await preparedCacheContainer() {
+                let cacheContext = ModelContext(cacheContainer)
+                StoreSplitBookmarkDetailWriter.upsert(from: bookmark, id: bookmarkID, in: cacheContext)
+                try? cacheContext.save()
+            }
             let mayPublish = await MainActor.run {
                 ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
             }
@@ -1715,6 +1732,10 @@ actor EpisodeActor {
             modelContext.rollback()
             throw BookmarkSaveError.deleteFailed
         }
+        if StoreDevelopmentConfiguration.splitStoresEnabled,
+           let cacheContainer = await preparedCacheContainer() {
+            StoreSplitBookmarkDetailWriter.delete(id: markerID.uuidString, cacheContainer: cacheContainer)
+        }
     }
 
     @discardableResult
@@ -1841,6 +1862,9 @@ actor EpisodeActor {
             return false
         }
         let didChange = ChapterSkipKeywordPolicy.apply(skipWords, to: episode.chapters ?? [])
+        if didChange {
+            StoreSplitFeedCacheWriter.requestProjection(for: episode)
+        }
         if didChange {
             episode.refresh.toggle()
             modelContext.saveIfNeeded()
@@ -2769,6 +2793,9 @@ actor EpisodeActor {
 
         guard episode.transcriptLines == nil || episode.transcriptLines == [] else {
             throw TranscriptError.transcriptionExists }
+        if manuallyRequested == false, StoreRuntimeProjection.isLibraryBackfillPending {
+            throw TranscriptError.transcriptionExists
+        }
         
 
         if let transcriptfile = bestExternalFile(
@@ -2931,6 +2958,7 @@ actor EpisodeActor {
         )
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
+        StoreSplitFeedCacheWriter.requestProjection(for: episode)
         return true
     }
 
@@ -3018,6 +3046,7 @@ actor EpisodeActor {
             try Task.checkCancellation()
             try modelContext.save()
         }
+        StoreSplitFeedCacheWriter.requestProjection(for: episode)
 
 #if canImport(UIKit)
         if source == .publisher, let episodeURL = episode.url, episode.localFile != nil {
@@ -3060,8 +3089,13 @@ actor EpisodeActor {
         }
         try modelContext.save()
         episode.refresh.toggle()
+        StoreSplitFeedCacheWriter.requestProjection(for: episode)
 
         if let cacheContainer = await preparedCacheContainer() {
+            StoreSplitFeedCacheWriter.deleteTranscriptionRecords(
+                identity: identity,
+                cacheContainer: cacheContainer
+            )
             await StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
                 .tombstoneTranscripts(identities: [identity])
         }
@@ -3125,9 +3159,29 @@ actor EpisodeActor {
         )
         modelContext.insert(record)
         modelContext.saveIfNeeded()
+        let recordID = record.id
+        let recordDuration = record.transcriptionDuration
         guard let episode = await fetchEpisode(byURL: snapshot.episodeURL) else {
             return
         }
+        if let cacheContainer = await preparedCacheContainer() {
+            StoreSplitFeedCacheWriter.upsertTranscriptionRecord(
+                .init(
+                    id: recordID,
+                    identity: episode.stableEpisodeIdentity,
+                    episodeURL: snapshot.episodeURL,
+                    episodeTitle: snapshot.episodeTitle,
+                    podcastTitle: snapshot.podcastTitle,
+                    localeIdentifier: localeIdentifier,
+                    startedAt: startedAt,
+                    finishedAt: finishedAt,
+                    audioDuration: snapshot.audioDuration,
+                    transcriptionDuration: recordDuration
+                ),
+                cacheContainer: cacheContainer
+            )
+        }
+        StoreSplitFeedCacheWriter.requestProjection(for: episode)
         await writeAITranscriptToSplitStore(
             episode: episode,
             lines: transcriptSnapshots,

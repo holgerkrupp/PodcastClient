@@ -613,17 +613,6 @@ struct StoreSplitMigrationStatus: Sendable, Equatable {
     }
 }
 
-/// The manual development action has an explicit outcome even when no database
-/// row was touched. Keeping this separate from `StoreSplitSliceReport` prevents
-/// the UI from turning a deferred/failed prerequisite into “Slice complete”.
-enum StoreSplitMigrationSliceResult: Sendable, Equatable {
-    case advanced(phase: String?, processed: Int)
-    case phaseCompleted(phase: String?, processed: Int)
-    case allComplete
-    case deferred(String)
-    case failed(String)
-}
-
 enum StoreSplitMigrationDiagnostics {
     private static let lastMigrationKey = "storeSplit.lastMigrationAt"
     private static let failedItemsKey = "storeSplit.failedItems"

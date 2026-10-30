@@ -23,21 +23,7 @@ private final class SliceGate: @unchecked Sendable {
 
 final class StoreSplitSliceMigrationTests: XCTestCase {
 
-    func testBackgroundMigrationScheduleUsesLocalNightAndDSTSafeNextWindow() throws {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
-        let beforeNight = calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 18))!
-        let duringNight = calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 23))!
-        XCTAssertFalse(StoreSplitMigrationSchedulePolicy.isEligibleNight(beforeNight, calendar: calendar))
-        XCTAssertTrue(StoreSplitMigrationSchedulePolicy.isEligibleNight(duringNight, calendar: calendar))
-        XCTAssertEqual(
-            StoreSplitMigrationSchedulePolicy.nextEligibleNightStart(after: beforeNight, calendar: calendar),
-            calendar.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: 22))
-        )
-        XCTAssertEqual(
-            StoreSplitMigrationSchedulePolicy.nextEligibleNightStart(after: duringNight, calendar: calendar),
-            duringNight
-        )
+    func testAdaptiveBatchSizerAndRunPolicyStayBounded() throws {
         let sizer = StoreSplitAdaptiveBatchSizer.shared
         XCTAssertEqual(sizer.pageSize(for: "adaptive-policy-test", base: 100, footprint: 100), 100)
         XCTAssertEqual(sizer.pageSize(for: "adaptive-policy-test", base: 100, footprint: 800 * 1_024 * 1_024), 50)
@@ -49,10 +35,6 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
 
     func testListeningStagesAreDispatchedBeforeHistoricalEpisodeSweep() {
         let phases = StoreSplitMigrationService.slicePhaseOrder
-        XCTAssertLessThan(
-            phases.firstIndex(of: "listening_summaries")!,
-            phases.firstIndex(of: "episode_states")!
-        )
         XCTAssertLessThan(
             phases.firstIndex(of: "listening_history")!,
             phases.firstIndex(of: "episode_states")!
@@ -642,94 +624,6 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
         )
     }
 
-    func testRolloutResolvedModeMapping() {
-        StoreSplitRollout.resetForDevelopment()
-        defer { StoreSplitRollout.resetForDevelopment() }
-
-        XCTAssertEqual(StoreSplitRollout.state, .unclassified)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
-
-        StoreSplitRollout.set(.migrating)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
-
-        StoreSplitRollout.set(.newStoreReads)
-        // The backfill release records migration completion but must not change
-        // how the app reads; only the authority release maps it to split reads.
-        XCTAssertEqual(
-            StoreSplitRollout.resolvedMode,
-            StoreSplitReleasePhase.current == .userStateAuthority
-                ? .splitStoreReads
-                : .splitStores
-        )
-    }
-
-    @MainActor
-    func testCompletedCheckpointsDoNotPromoteWithoutProductionVerification() throws {
-        StoreSplitRollout.resetForDevelopment()
-        defer { StoreSplitRollout.resetForDevelopment() }
-        let containers = try makeContainers()
-        let context = containers.cache.mainContext
-
-        for phase in StoreSplitMigrationService.slicePhaseOrder {
-            context.insert(
-                StoreSplitMigrationCheckpoint(
-                    id: StoreSplitMigrationService.checkpointID(for: phase),
-                    migrationVersion: StoreSplitMigrationService.migrationVersion,
-                    phase: phase,
-                    cursor: "0",
-                    completedAt: Date(timeIntervalSince1970: 1_000),
-                    scannedCount: 0
-                )
-            )
-        }
-        let verification = StoreSplitMigrationVerification(
-            id: StoreSplitMigrationVerifier.verificationID,
-            migrationVersion: StoreSplitMigrationService.migrationVersion
-        )
-        verification.verifiedAt = Date(timeIntervalSince1970: 1_001)
-        verification.cacheMissingCount = 0
-        verification.issues = []
-        context.insert(verification)
-        try context.save()
-
-        XCTAssertFalse(
-            ModelContainerManager.promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
-                cacheContainer: containers.cache
-            )
-        )
-        XCTAssertEqual(StoreSplitRollout.state, .unclassified)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
-    }
-
-    @MainActor
-    func testIncompleteMigrationPreflightDoesNotPromoteRollout() throws {
-        StoreSplitRollout.resetForDevelopment()
-        defer { StoreSplitRollout.resetForDevelopment() }
-        let containers = try makeContainers()
-        let context = containers.cache.mainContext
-
-        for phase in StoreSplitMigrationService.slicePhaseOrder.dropLast() {
-            context.insert(
-                StoreSplitMigrationCheckpoint(
-                    id: StoreSplitMigrationService.checkpointID(for: phase),
-                    migrationVersion: StoreSplitMigrationService.migrationVersion,
-                    phase: phase,
-                    completedAt: Date(timeIntervalSince1970: 1_000),
-                    scannedCount: 1
-                )
-            )
-        }
-        try context.save()
-
-        XCTAssertFalse(
-            ModelContainerManager.promoteRolloutForCompletedSplitStoreMigrationIfNeeded(
-                cacheContainer: containers.cache
-            )
-        )
-        XCTAssertEqual(StoreSplitRollout.state, .unclassified)
-        XCTAssertEqual(StoreSplitRollout.resolvedMode, .splitStores)
-    }
-
     @MainActor
     func testCancellationBeforeWorkReportsCancelled() async throws {
         let containers = try makeContainers()
@@ -801,7 +695,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
             context.insert(PlaySessionSummary(
                 id: UUID(),
                 periodKind: PlaySessionSummaryPeriod.year.rawValue,
-                periodStart: Date(timeIntervalSince1970: Double(index)),
+                periodStart: Date(timeIntervalSince1970: Double(index) * 366 * 86_400),
                 podcastFeed: feed,
                 podcastName: "Large fixture",
                 totalSeconds: 10,
@@ -1128,13 +1022,7 @@ final class StoreSplitSliceMigrationTests: XCTestCase {
     }
 
     @MainActor
-    func testDualSyncBackfillConvergesTwoReleaseEquivalentDevicesBeforeCutover() async throws {
-        XCTAssertEqual(
-            StoreSplitReleasePhase.current,
-            .dualSyncBackfill,
-            "the release-equivalent test must exercise ship one"
-        )
-
+    func testBackfillConvergesTwoDevicesBeforeCutover() async throws {
         let firstDevice = try makeContainers()
         let secondDevice = try makeContainers()
         try populate(firstDevice.legacy, episodeCount: 12)

@@ -178,7 +178,7 @@ actor StoreSplitPortableWriteOutbox {
 #if canImport(UIKit)
         if directoryOverride == nil {
             Task { @MainActor in
-                AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+                AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded()
             }
         }
 #endif

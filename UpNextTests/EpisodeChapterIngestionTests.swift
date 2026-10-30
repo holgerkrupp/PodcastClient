@@ -567,7 +567,7 @@ private extension EpisodeChapterIngestionTests {
     }
 
     func makeFixture() throws -> Fixture {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,

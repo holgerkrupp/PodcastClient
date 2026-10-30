@@ -3,112 +3,34 @@ import XCTest
 import SQLite3
 @testable import UpNext
 
-/// The legacy store's CloudKit mirror is switched by a compile-time constant, so
-/// the only thing that can tell a re-attach from a store that was always mirrored
-/// is the decision recorded on the previous launch.
+/// After the cutover the legacy-model container is never attached to CloudKit:
+/// it is either in memory or an explicit local file.
 final class StoreSplitCloudReattachGuardTests: XCTestCase {
-    private let lastStateKey = StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey
-    private let approvedKey = StoreDevelopmentConfiguration.legacyCloudReattachApprovedKey
-    private let cutoverKey = StoreDevelopmentConfiguration.legacyCloudCutoverCompletedKey
-    private let quarantineKey = StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey
-    private let quarantineEligibleKey = StoreDevelopmentConfiguration.legacyCloudMirrorQuarantineEligibleKey
-
     override func setUp() {
         super.setUp()
-        clearGuardDefaults()
+        clearLaunchHealthDefaults()
     }
 
     override func tearDown() {
-        clearGuardDefaults()
+        clearLaunchHealthDefaults()
         super.tearDown()
     }
 
-    func testReattachIsBlockedAfterASpellWithMirroringOff() {
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
-
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(false)
-        XCTAssertTrue(
-            StoreDevelopmentConfiguration.legacyCloudReattachBlocked,
-            "rows written while detached carry no CloudKit identity; re-attaching merges them alongside the zone"
-        )
-    }
-
-    func testApprovalUnblocksExactlyOneReattach() {
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(false)
-        StoreDevelopmentConfiguration.approveLegacyCloudReattach()
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
-
-        // The re-attach the approval covered.
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
-    }
-
-    /// The cutover detaches every install's legacy store and a rollback re-attaches
-    /// it — the population-scale version of the sequence that duplicated the
-    /// development device. An approval granted before the cutover must not carry
-    /// through it, or the guard fires once per install and never again.
-    func testApprovalDoesNotSurviveALaterDetach() {
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(false)
-        StoreDevelopmentConfiguration.approveLegacyCloudReattach()
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-
-        // Cutover to `.userStateAuthority`: mirroring off again. The explicit
-        // persisted boundary is what makes a later rollback safe even if the
-        // release phase constant is changed back.
-        StoreDevelopmentConfiguration.markLegacyCloudCutoverCompleted()
-        XCTAssertTrue(
-            StoreDevelopmentConfiguration.legacyCloudReattachBlocked,
-            "a rollback after the cutover must be blocked even on a device that approved an earlier re-attach"
-        )
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
+    func testLegacyContainerRequiresInMemoryOrAnExplicitURL() {
+        XCTAssertThrowsError(try ModelContainerManager.makeLegacyContainer())
+        XCTAssertNoThrow(try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true))
         XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
-    func testCutoverBoundarySurvivesAReadAuthorityRollback() {
-        StoreDevelopmentConfiguration.markLegacyCloudCutoverCompleted()
-
-        // Simulate a rollback release whose read authority changes but whose
-        // library attachment policy must remain local-only.
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
-    }
-
-    func testPreCutoverInstallKeepsLegacyAttachmentWhenItWasNeverDetached() {
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudCutoverCompleted)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
-    }
-
-    func testAStoreThatWasNeverDetachedIsNeverBlocked() {
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudReattachBlocked)
-    }
-
-    func testShortUsableSessionsDoNotTriggerLegacyMirrorQuarantine() {
-        StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
-        let base = Date(timeIntervalSince1970: 1_000)
+    func testRepeatedPreReadyLaunchesOfferRecoveryWithoutDetachingSync() {
+        let base = Date(timeIntervalSince1970: 2_500)
         for offset in 0..<4 {
             XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
-                now: base.addingTimeInterval(Double(offset) * 100)
+                now: base.addingTimeInterval(Double(offset))
             ))
-            StoreSplitLaunchHealth.markRuntimeReady(
-                now: base.addingTimeInterval(Double(offset) * 100 + 1)
-            )
         }
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
-
-        // Eligibility alone is not a convergence proof and must not detach
-        // the legacy CloudKit exporter after otherwise usable sessions.
-        StoreDevelopmentConfiguration.recordLegacyCloudSyncDecision(true)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
+        XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
+        XCTAssertTrue(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)
     }
 
     func testRecoveryOfferSurvivesAHealthyForegroundSession() {
@@ -120,15 +42,10 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
 
         StoreSplitLaunchHealth.markHealthy(now: base.addingTimeInterval(100))
         XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
     }
 
-    func testStaleExportMarkerNeverQuarantinesLegacyMirror() {
-        let exportID = UUID()
-        LegacyCloudExportRecovery.started(
-            id: exportID, storeIdentifier: "SharedDatabase.sqlite"
-        )
-        let base = Date(timeIntervalSince1970: 2_000)
+    func testShortUsableSessionsDoNotOfferRecovery() {
+        let base = Date(timeIntervalSince1970: 1_000)
         for offset in 0..<4 {
             XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
                 now: base.addingTimeInterval(Double(offset) * 100)
@@ -137,61 +54,7 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
                 now: base.addingTimeInterval(Double(offset) * 100 + 1)
             )
         }
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
-        XCTAssertTrue(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)
-        LegacyCloudExportRecovery.ended(id: exportID)
-    }
-
-    func testRepeatedPreReadyLaunchesOfferRecoveryWithoutDetachingSync() {
-        StoreDevelopmentConfiguration.markLegacyCloudMirrorQuarantineEligible()
-        let base = Date(timeIntervalSince1970: 2_500)
-        for offset in 0..<4 {
-            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
-                now: base.addingTimeInterval(Double(offset))
-            ))
-        }
-        XCTAssertTrue(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-        XCTAssertTrue(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
-    }
-
-    func testCompletedExportDoesNotTriggerAutomaticQuarantine() {
-        let exportID = UUID()
-        LegacyCloudExportRecovery.started(
-            id: exportID, storeIdentifier: "SharedDatabase.sqlite"
-        )
-        LegacyCloudExportRecovery.ended(id: exportID)
-        let base = Date(timeIntervalSince1970: 3_000)
-        for offset in 0..<4 {
-            XCTAssertFalse(StoreSplitLaunchHealth.beginLaunch(
-                now: base.addingTimeInterval(Double(offset))
-            ))
-        }
-        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined)
-    }
-
-    func testNewProcessCanClearAnOldExporterCrashMarker() {
-        LegacyCloudExportRecovery.started(
-            id: UUID(), storeIdentifier: "SharedDatabase.sqlite"
-        )
-        XCTAssertTrue(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
-        LegacyCloudExportRecovery.finishedExport(
-            storeIdentifier: "SharedDatabase.sqlite",
-            currentProcessExports: [:]
-        )
-        XCTAssertFalse(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
-    }
-
-    func testAnotherStoreFinishingDoesNotClearLegacyCrashMarker() {
-        LegacyCloudExportRecovery.started(
-            id: UUID(), storeIdentifier: "SharedDatabase.sqlite"
-        )
-        LegacyCloudExportRecovery.finishedExport(
-            storeIdentifier: "UserState.sqlite",
-            currentProcessExports: [:]
-        )
-        XCTAssertTrue(LegacyCloudExportRecovery.hasUnfinishedLegacyExport)
+        XCTAssertFalse(StoreSplitLaunchHealth.shouldOfferLegacyRecovery)
     }
 
     func testStoreUUIDIsUsedForCloudKitEventAttribution() {
@@ -223,60 +86,14 @@ final class StoreSplitCloudReattachGuardTests: XCTestCase {
         )
     }
 
-    /// The release phase is the only thing allowed to decide what the legacy store
-    /// is attached to.
-    ///
-    /// Between `989ac881` (2026-06-24) and `9c7ddeae` (2026-08-17) the store mode
-    /// decided it too: `effectiveLegacyCloudSyncEnabled` was gated on
-    /// `cloudSyncSettingsAvailable`, which is false for `.legacyOnly`, and the
-    /// remote kill switch resolved the mode to `.legacyOnly`. Publishing a kill
-    /// therefore detached every affected device's library store from CloudKit, and
-    /// clearing it re-attached them — the duplication mechanism, on a remote
-    /// trigger, for whoever ran a build from that window.
-    func testNoStoreModeCanDetachTheLegacyStore() {
-        for mode in DevelopmentStoreMode.allCases {
-            for enabled in [true, false] {
-                let configuration = StoreDevelopmentConfiguration(
-                    mode: mode,
-                    legacyCloudSyncEnabled: enabled,
-                    userStateCloudSyncEnabled: true,
-                    splitStoreWorkEnabled: true
-                )
-                XCTAssertEqual(
-                    configuration.effectiveLegacyCloudSyncEnabled, enabled,
-                    "mode \(mode.rawValue) must not change the legacy store's CloudKit attachment"
-                )
-            }
-        }
-    }
-
-    func testTheRolloutNeverResolvesToLegacyOnly() {
-        XCTAssertNotEqual(
-            StoreSplitRollout.resolvedMode, .legacyOnly,
-            "a resolved mode of .legacyOnly is what let the remote kill switch detach the library store"
-        )
-    }
-
-    private func clearGuardDefaults() {
+    private func clearLaunchHealthDefaults() {
         let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
             ?? .standard
-        defaults.removeObject(forKey: lastStateKey)
-        defaults.removeObject(forKey: approvedKey)
-        defaults.removeObject(forKey: cutoverKey)
-        defaults.removeObject(forKey: quarantineKey)
-        defaults.removeObject(forKey: quarantineEligibleKey)
         defaults.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
         defaults.removeObject(forKey: StoreSplitLaunchHealth.recoverySuggestedKey)
-        defaults.removeObject(forKey: LegacyCloudExportRecovery.activeExportsKey)
         // Keep the fallback clean too when the app-group suite is unavailable
         // in a unit-test process.
-        UserDefaults.standard.removeObject(forKey: lastStateKey)
-        UserDefaults.standard.removeObject(forKey: approvedKey)
-        UserDefaults.standard.removeObject(forKey: cutoverKey)
-        UserDefaults.standard.removeObject(forKey: quarantineKey)
-        UserDefaults.standard.removeObject(forKey: quarantineEligibleKey)
         UserDefaults.standard.removeObject(forKey: StoreSplitLaunchHealth.stateKey)
         UserDefaults.standard.removeObject(forKey: StoreSplitLaunchHealth.recoverySuggestedKey)
-        UserDefaults.standard.removeObject(forKey: LegacyCloudExportRecovery.activeExportsKey)
     }
 }

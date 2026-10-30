@@ -60,11 +60,8 @@ struct StoreSplitMigrationLogView: View {
         .task {
             reload()
         }
-        // Slices publish their progress through the manager, so this picks up new
+        // The manager publishes reconcile results, so this picks up new
         // entries while the screen is open without polling.
-        .onChange(of: modelContainerManager.migrationProgressSummary) { _, _ in
-            reload()
-        }
         .onChange(of: modelContainerManager.lastSplitStoreReconcileSummary) { _, _ in
             reload()
         }

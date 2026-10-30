@@ -225,6 +225,13 @@ struct StatisticsView: View {
 
     var body: some View {
         List {
+            if StoreCutoverState.isDeferredMigrationPending {
+                Section {
+                    Text("Older listening history is still being moved after the update, so totals may be incomplete for now.")
+                        .font(.footnote)
+                        .esaForeground(.secondary)
+                }
+            }
             Section {
                 Picker("Period", selection: $selectedPeriod) {
                     ForEach(PlaySessionSummaryPeriod.allCases) { period in

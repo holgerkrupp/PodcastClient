@@ -1,5 +1,55 @@
 # Store split release gate
 
+Decision (30 Oct 2026): upgraded devices keep `SharedDatabase.sqlite` as their local library,
+with CloudKit off. There is no blocking migration, no copy of the library, and no
+stabilization-only release. This narrows epic #394, whose full move to two stores took too
+long on a real 4.68 GB library.
+
+## Stores
+
+| Store | Role |
+| --- | --- |
+| `UserState.sqlite` | The only CloudKit-backed store. Subscriptions, shared preferences, playback state, queue and playlists, bookmarks, listening history and baselines. |
+| `SharedDatabase.sqlite` | Upgraded devices: the local library the UI reads and writes. Never attached to CloudKit again. |
+| `LibraryRuntime.sqlite` + `PodcastCache.sqlite` | Devices with no legacy store (fresh installs): the same role. The runtime file is derived and built once. Its first build holds every podcast plus Inbox, playlist, bookmarked, downloaded and recently played episodes; the rest comes from a full fetch of each subscribed feed after opening. Saved transcripts then follow from the cache. Until that finishes, routine feed refresh and automatic transcription are off, and an episode with no lines never overwrites cached ones. |
+
+## Startup
+
+A legacy file present means an upgraded device: it opens directly, whatever its earlier state.
+No legacy file and evidence of a library fails closed. No legacy file and no evidence means a
+fresh install. Readiness depends only on local stores; CloudKit never blocks startup.
+
+## Upgrade
+
+`runDeferredMigrationIfNeeded` copies user data to UserState in checkpointed slices while the
+app is open and foreground. A failure stays quiet and resumes next launch. Until it finishes,
+nothing is imported back from UserState, because the local library is the more complete record.
+Live edits are written to UserState as they happen.
+
+## Multiple devices
+
+Only UserState syncs. Each device gets feed data from RSS. These stay on one device: AI
+transcripts, AI chapters, downloads, bookmark images and links, and device-local settings.
+
+- An old-version device writes to UserState too but never reads it, so its changes reach
+  updated devices and not the reverse, until it updates.
+- Merging by stable identity, date and tombstones stops older data overwriting newer data. An
+  entry removed before tombstones existed can come back from a long-dormant device.
+- **Release blocker:** with no legacy mirror, failing UserState exports (#395) mean devices
+  silently diverge. Its cause has to be known before release.
+
+## Manual checks before App Store release
+
+- Upgrade a real populated App Store install; check everything opens at once and the copy finishes.
+- Two devices on one account, both directions, with one updated first.
+- Confirm in the CloudKit Console that no schema change needs deploying (UserState is unchanged).
+- Listening total against the expected figure: the 1451h report is unexplained so far.
+
+---
+
+# Earlier release notes (history)
+
+
 The dual-sync backfill must be exercised with release-equivalent stores before an App Store rollout. The automated coverage lives in `StoreSplitSliceMigrationTests` and must remain green together with the focused HTML, live-podcast, and shownote suites.
 
 ## Automated scenarios

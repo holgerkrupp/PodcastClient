@@ -6,28 +6,12 @@ import UIKit
 struct DevelopmentSettingsView: View {
     @ObservedObject private var modelContainerManager = ModelContainerManager.shared
     @ObservedObject private var cloudKitActivity = StoreCloudKitActivityMonitor.shared
-    @AppStorage(StoreDevelopmentConfiguration.modeKey)
-    private var storeMode = DevelopmentStoreMode.splitStores
-    @AppStorage(StoreDevelopmentConfiguration.legacyCloudSyncEnabledKey)
-    private var legacyCloudSyncEnabled = StoreDevelopmentConfiguration
-        .releaseLegacyCloudSyncEnabled
-    @AppStorage(StoreDevelopmentConfiguration.userStateCloudSyncEnabledKey)
-    private var userStateCloudSyncEnabled = StoreDevelopmentConfiguration
-        .releaseUserStateCloudSyncEnabled
-    @AppStorage(StoreDevelopmentConfiguration.splitStoreWorkEnabledKey)
-    private var splitStoreWorkEnabled = true
-    @AppStorage(StoreDevelopmentConfiguration.migrationPausedKey)
-    private var migrationPaused = false
-
-    @State private var launchConfiguration = StoreDevelopmentConfiguration.launch
     @State private var showLocalResetConfirmation = false
     @State private var showAllLocalStoresResetConfirmation = false
     @State private var showResetConfirmation = false
     @State private var isResetting = false
     @State private var isRunningSyncAction = false
     @State private var resetMessage: String?
-    @State private var remoteConfigRefreshToken = 0
-    @State private var reattachApprovalToken = 0
     @State private var playlistDiagnostics: String?
     @State private var breadcrumbsCopied = false
     @State private var showTombstoneRecoverySheet = false
@@ -42,272 +26,8 @@ struct DevelopmentSettingsView: View {
         to: Date()
     ) ?? Date()
 
-    private var remoteConfig: StoreSplitRemoteConfig {
-        _ = remoteConfigRefreshToken
-        return StoreSplitRemoteConfigStore.current
-    }
-
-    private var publicConfiguration: StoreDevelopmentConfiguration {
-        StoreDevelopmentConfiguration.publicBaseline
-    }
-
-    private var selectedConfiguration: StoreDevelopmentConfiguration {
-        StoreDevelopmentConfiguration(
-            mode: storeMode,
-            legacyCloudSyncEnabled: legacyCloudSyncEnabled,
-            userStateCloudSyncEnabled: userStateCloudSyncEnabled,
-            splitStoreWorkEnabled: splitStoreWorkEnabled
-        )
-    }
-
-    private var requiresRelaunch: Bool {
-        selectedConfiguration != launchConfiguration
-    }
-
-    private var readAuthorityPreviewBinding: Binding<Bool> {
-        Binding(
-            get: { storeMode == .splitStoreReads },
-            set: { enabled in
-                storeMode = enabled
-                    ? .splitStoreReads
-                    : publicConfiguration.mode
-                if enabled {
-                    userStateCloudSyncEnabled = true
-                    splitStoreWorkEnabled = true
-                }
-            }
-        )
-    }
-
-    private var publicDifferences: [String] {
-        var differences: [String] = []
-        if selectedConfiguration.mode != publicConfiguration.mode {
-            differences.append(
-                "Read authority: \(selectedConfiguration.mode.title) (public: \(publicConfiguration.mode.title))"
-            )
-        }
-        if selectedConfiguration.legacyCloudSyncEnabled
-            != publicConfiguration.legacyCloudSyncEnabled {
-            differences.append(
-                "Legacy CloudKit: \(selectedConfiguration.legacyCloudSyncEnabled ? "enabled" : "disabled") (public: \(publicConfiguration.legacyCloudSyncEnabled ? "enabled" : "disabled"))"
-            )
-        } else if StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-            != publicConfiguration.legacyCloudSyncEnabled {
-            differences.append(
-                "Active legacy CloudKit: disabled by the re-attach guard (public: enabled)"
-            )
-        }
-        if selectedConfiguration.userStateCloudSyncEnabled
-            != publicConfiguration.userStateCloudSyncEnabled {
-            differences.append(
-                "User-state CloudKit: \(selectedConfiguration.userStateCloudSyncEnabled ? "enabled" : "disabled") (public: \(publicConfiguration.userStateCloudSyncEnabled ? "enabled" : "disabled"))"
-            )
-        }
-        if selectedConfiguration.splitStoreWorkEnabled
-            != publicConfiguration.splitStoreWorkEnabled {
-            differences.append(
-                "Migration and reconciliation: \(selectedConfiguration.splitStoreWorkEnabled ? "enabled" : "disabled") (public: enabled)"
-            )
-        }
-        if migrationPaused {
-            differences.append("Manual migration pause: enabled (public: not paused)")
-        }
-        return differences
-    }
-
-    var body: some View {
-        Form {
-            Section("Crash Diagnostics") {
-                Button(breadcrumbsCopied ? "Breadcrumbs Copied" : "Copy Persisted Breadcrumbs") {
-                    UIPasteboard.general.string = CrashBreadcrumbs.shared.recentSummary(limit: 80)
-                    breadcrumbsCopied = true
-                }
-
-                Text("Includes recent operations and any operation without a matching completion event. Entries contain operation IDs, predicate labels, counts, and timing; no feed URLs or content.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                Picker("Data architecture", selection: $storeMode) {
-                    ForEach(DevelopmentStoreMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                LabeledContent(
-                    "Active since launch",
-                    value: launchConfiguration.mode.title
-                )
-            } header: {
-                Text("Store Selection")
-            } footer: {
-                Text("Selected: \(storeModeDescription) Changes apply after relaunch. The cache projection mode is experimental and rebuilds the library graph from PodcastCache.sqlite.")
-            }
-
-            Section {
-                Toggle(
-                    "Next step: UserState read authority",
-                    isOn: readAuthorityPreviewBinding
-                )
-                .tint(.orange)
-
-                Text("DEBUG-only preview. Turning this on changes the read authority to UserState.sqlite after relaunch; the public build still reads the legacy library store until the release phase changes.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-                Button("Match Public Backfill Configuration") {
-                    applyPublicConfiguration()
-                }
-                .disabled(publicDifferences.isEmpty)
-            } header: {
-                Text("Next Step Preview")
-            } footer: {
-                Text("Use the preview only after the backfill is complete and verified. Changing read authority requires a relaunch.")
-            }
-
-            Section("Compared with Public") {
-                if publicDifferences.isEmpty {
-                    Label(
-                        "Matches the public dual-sync backfill configuration",
-                        systemImage: "checkmark.circle.fill"
-                    )
-                    .foregroundStyle(.green)
-                } else {
-                    Label(
-                        "DEBUG settings differ from the public configuration",
-                        systemImage: "exclamationmark.triangle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                    ForEach(publicDifferences, id: \.self) { difference in
-                        Text(difference)
-                            .font(.footnote)
-                    }
-                }
-            }
-
-            Section {
-                Toggle("Enable migration and reconciliation", isOn: $splitStoreWorkEnabled)
-                    .disabled(storeMode == .legacyOnly)
-                Toggle("CloudKit for legacy library store", isOn: $legacyCloudSyncEnabled)
-                if StoreDevelopmentConfiguration.legacyCloudReattachBlocked {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Re-attach blocked")
-                            .font(.footnote.bold())
-                        Text("This store ran with CloudKit off. Turning mirroring back on re-imports the zone and duplicates every row written meanwhile. Deduplicate first, then allow it.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                        Button("Allow Legacy CloudKit Re-attach", role: .destructive) {
-                            StoreDevelopmentConfiguration.approveLegacyCloudReattach()
-                            reattachApprovalToken += 1
-                        }
-                    }
-                }
-                Toggle("CloudKit for user-state store", isOn: $userStateCloudSyncEnabled)
-                    .disabled(
-                        storeMode != .splitStores && storeMode != .splitStoreReads
-                    )
-            } header: {
-                Text("Cloud Synchronization")
-            } footer: {
-                Text("Public builds currently ship the \(StoreSplitReleasePhase.current == .dualSyncBackfill ? "dual-sync backfill" : "user-state authority") phase. In the backfill phase the legacy library store keeps its CloudKit mirror and stays the source of truth, while UserState.sqlite is populated one-way in the background and never read. The DEBUG next-step preview can intentionally change that after relaunch. PodcastCache.sqlite is always local-only.")
-            }
-
-            Section("Active Since Launch") {
-                LabeledContent("Data architecture", value: launchConfiguration.mode.title)
-                LabeledContent(
-                    "Legacy CloudKit",
-                    value: StoreDevelopmentConfiguration.legacyCloudSyncEnabled
-                        ? "Enabled"
-                        : "Disabled"
-                )
-                LabeledContent(
-                    "User-state CloudKit",
-                    value: StoreDevelopmentConfiguration.userStateCloudSyncEnabled
-                        ? "Enabled"
-                        : "Disabled"
-                )
-                LabeledContent(
-                    "Migration and reconciliation",
-                    value: StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused
-                        ? "Paused"
-                        : "Enabled"
-                )
-            }
-
-            Section("CloudKit Export Activity") {
-                let legacyEventIDs = cloudKitActivity.activeExportIdentifiers(for: .legacy)
-                let userStateEventIDs = cloudKitActivity.activeExportIdentifiers(for: .userState)
-                LabeledContent(
-                    "Legacy SharedDatabase",
-                    value: cloudKitActivity.activeExportStatus(for: .legacy)
-                )
-                if legacyEventIDs.isEmpty == false {
-                    Text("Events: " + legacyEventIDs.joined(separator: ", "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent(
-                    "UserState",
-                    value: cloudKitActivity.activeExportStatus(for: .userState)
-                )
-                if userStateEventIDs.isEmpty == false {
-                    Text("Events: " + userStateEventIDs.joined(separator: ", "))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                LabeledContent(
-                    "Scheduler blocker",
-                    value: cloudKitActivity.isAnyStoreExporting
-                        ? "CloudKit export in progress"
-                        : "None"
-                )
-                LabeledContent(
-                    "Legacy mirror",
-                    value: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined
-                        ? "Quarantined (local-only)"
-                        : "Attached by launch policy"
-                )
-                if StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined == false {
-                    Button(
-                        "Quarantine Legacy Mirror for Next Launch",
-                        role: .destructive
-                    ) {
-                        StoreDevelopmentConfiguration.quarantineLegacyCloudMirror(
-                            reason: "manual_debug_action"
-                        )
-                        resetMessage = "Legacy CloudKit mirroring will remain detached on the next launch. The SQLite library file is preserved."
-                    }
-                }
-                Text("A quarantined legacy store is never re-attached automatically. UserState remains CloudKit-backed; clear the quarantine only through an explicit development reset after deduplication and verification.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                ForEach(storeSizes) { store in
-                    LabeledContent(store.name, value: store.displayValue)
-                }
-
-                if storeSizes.contains(where: \.isAvailable) {
-                    LabeledContent("Total store footprint") {
-                        Text(storeSizes.reduce(into: Int64(0)) { total, store in
-                            total += store.bytes
-                        }.formattedAsStorage)
-                        .monospacedDigit()
-                    }
-                }
-
-                Button("Refresh Store Sizes") {
-                    refreshStoreSizes()
-                }
-            } header: {
-                Text("Database / Store Sizes")
-            } footer: {
-                Text("Includes each SQLite file and its -wal, -shm, and -journal sidecars. Sizes use allocated disk space and show Not created when a store has not been opened yet.")
-            }
-
+    @ViewBuilder
+    private var storeObjectsSection: some View {
             Section {
                 if isLoadingStoreObjectCounts {
                     HStack(spacing: 10) {
@@ -350,13 +70,86 @@ struct DevelopmentSettingsView: View {
             } footer: {
                 Text("The same metrics appear in the same order for every store. Counts are unique logical objects; live UserState counts exclude tombstoned/deleted rows. A dash means that store does not own that kind of data; it is not the same as zero. SQLite may still contain tombstones and duplicate historical rows for CloudKit deletion propagation.")
             }
+    }
+
+    var body: some View {
+        Form {
+            Section("Crash Diagnostics") {
+                Button(breadcrumbsCopied ? "Breadcrumbs Copied" : "Copy Persisted Breadcrumbs") {
+                    UIPasteboard.general.string = CrashBreadcrumbs.shared.recentSummary(limit: 80)
+                    breadcrumbsCopied = true
+                }
+
+                Text("Includes recent operations and any operation without a matching completion event. Entries contain operation IDs, predicate labels, counts, and timing; no feed URLs or content.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Active Runtime") {
+                LabeledContent(
+                    "Data architecture",
+                    value: modelContainerManager.runtimeProjectsFromCache
+                        ? "UserState + PodcastCache"
+                        : "UserState + local SharedDatabase"
+                )
+                LabeledContent(
+                    "User-state CloudKit",
+                    value: StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+                        ? "Enabled"
+                        : "Disabled"
+                )
+                LabeledContent(
+                    "Legacy library CloudKit",
+                    value: "Off"
+                )
+            }
+
+            Section("CloudKit Export Activity") {
+                let userStateEventIDs = cloudKitActivity.activeExportIdentifiers(for: .userState)
+                LabeledContent(
+                    "UserState",
+                    value: cloudKitActivity.activeExportStatus(for: .userState)
+                )
+                if userStateEventIDs.isEmpty == false {
+                    Text("Events: " + userStateEventIDs.joined(separator: ", "))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                LabeledContent(
+                    "Scheduler blocker",
+                    value: cloudKitActivity.isAnyStoreExporting
+                        ? "CloudKit export in progress"
+                        : "None"
+                )
+            }
+
+            Section {
+                ForEach(storeSizes) { store in
+                    LabeledContent(store.name, value: store.displayValue)
+                }
+
+                if storeSizes.contains(where: \.isAvailable) {
+                    LabeledContent("Total store footprint") {
+                        Text(storeSizes.reduce(into: Int64(0)) { total, store in
+                            total += store.bytes
+                        }.formattedAsStorage)
+                        .monospacedDigit()
+                    }
+                }
+
+                Button("Refresh Store Sizes") {
+                    refreshStoreSizes()
+                }
+            } header: {
+                Text("Database / Store Sizes")
+            } footer: {
+                Text("Includes each SQLite file and its -wal, -shm, and -journal sidecars. Sizes use allocated disk space and show Not created when a store has not been opened yet.")
+            }
+
+            storeObjectsSection
 
             Section {
                 if let cacheStatus {
-                    LabeledContent(
-                        "Automatic filling",
-                        value: cacheStatus.automaticFillingEnabled ? "Enabled" : "Not active in this mode"
-                    )
                     LabeledContent(
                         "Cache schema",
                         value: "v\(cacheStatus.cacheSchemaVersion)"
@@ -412,16 +205,6 @@ struct DevelopmentSettingsView: View {
                             "Episodes processed by last refresh",
                             value: "\(projected)"
                         )
-                    }
-                    LabeledContent(
-                        "Last background cache pass",
-                        value: cacheStatus.lastBootstrapAt?.formatted(
-                            date: .abbreviated,
-                            time: .shortened
-                        ) ?? "Not run"
-                    )
-                    if let copied = cacheStatus.lastBootstrapCopied {
-                        LabeledContent("Feeds copied last pass", value: "\(copied)")
                     }
                 } else {
                     Text("Cache status is not available until the split stores are opened.")
@@ -487,184 +270,66 @@ struct DevelopmentSettingsView: View {
                 Text("Checkpoints show bounded backfill progress. Counts are informational: identities, CloudKit membership, retention, and aggregation can differ, so count equality is not proof of completeness. Completed rows say Backfilled while semantic verification is pending. Tombstones remain stored for CloudKit deletion propagation and are excluded from active counts.")
             }
 
-            if launchConfiguration.mode != .legacyOnly {
-                Section("Split-Store Work") {
-                    LabeledContent(
-                        "Current job",
-                        value: modelContainerManager.currentSplitStoreJobDescription ?? "No active job"
-                    )
-                    LabeledContent(
-                        "Pending work",
-                        value: modelContainerManager.pendingSplitStoreWorkReason ?? "No pending work"
-                    )
-                    LabeledContent(
-                        "Last reconcile",
-                        value: modelContainerManager.lastSplitStoreReconcileSummary ?? "No reconcile has run"
-                    )
-                    LabeledContent(
-                        "Reconciled at",
-                        value: modelContainerManager.lastSplitStoreReconcileAt?
-                            .formatted(date: .abbreviated, time: .shortened) ?? "No reconcile has run"
-                    )
-                }
-            }
-
-            if launchConfiguration.mode != .legacyOnly {
-                Section {
-                    Button("Run One Migration Slice") {
-                        runOneMigrationSlice()
-                    }
-                    .disabled(
-                        isRunningSyncAction
-                            || isResetting
-                            || launchConfiguration.splitStoreWorkEnabled == false
-                            || modelContainerManager.isMigratingSplitStores
-                    )
-
-                    Toggle("Pause migration", isOn: $migrationPaused)
-
-                    LabeledContent(
-                        "Readiness",
-                        value: modelContainerManager.migrationReadiness.title
-                    )
-                    LabeledContent(
-                        "Blocker",
-                        value: modelContainerManager.migrationBlocker ?? "No blocker recorded"
-                    )
-
-                    LabeledContent(
-                        "Current phase",
-                        value: modelContainerManager.migrationCurrentPhase ?? "No slice has run"
-                    )
-                    LabeledContent(
-                        "Cursor",
-                        value: modelContainerManager.migrationCursorSummary ?? "No cursor"
-                    )
-                    LabeledContent(
-                        "Progress",
-                        value: modelContainerManager.migrationProgressSummary ?? "No checkpoint yet"
-                    )
-                    LabeledContent(
-                        "Memory footprint",
-                        value: modelContainerManager.migrationFootprintSummary ?? "No slice has run"
-                    )
-                    LabeledContent(
-                        "Last slice",
-                        value: modelContainerManager.migrationLastSliceResult
-                    )
-                    LabeledContent(
-                        "Last slice error",
-                        value: modelContainerManager.migrationLastSliceError ?? "No error"
-                    )
-                } header: {
-                    Text("Slice Migration")
-                } footer: {
-                    Text("Heavy migration runs only in a system background-processing grant during the local 22:00–07:00 window while charging and playback is inactive. iOS chooses whether and when to grant the task. Each page is bounded; a run yields to playback, CloudKit export pressure, memory limits, cancellation, or its active and wall-time budgets. SharedDatabase.sqlite is only ever read by the migrator.")
-                }
-
-                Section {
-                    NavigationLink {
-                        StoreSplitMigrationLogView()
-                    } label: {
-                        LabeledContent(
-                            "Migration Log",
-                            value: modelContainerManager.migrationLastSliceResult
-                        )
-                    }
-                } footer: {
-                    Text("When each run started and ended, which phases finished, and why a run stopped. Each finished phase also posts a local notification. DEBUG builds only.")
-                }
-
-                Section {
-                    NavigationLink {
-                        StoreSplitAutomaticChecksView()
-                    } label: {
-                        Label("Automatic Migration Checks", systemImage: "checkmark.seal")
-                    }
-                } footer: {
-                    Text("Runs deterministic store-split scenarios in temporary in-memory stores. Results marked Partial identify conditions that need a real background-processing or multi-device CloudKit test.")
-                }
-
-                Section {
-                    LabeledContent(
-                        "Rollout state",
-                        value: modelContainerManager.storeSplitRolloutStateDescription
-                    )
-                    Button("Resolve Rollout Now") {
-                        resolveRollout()
-                    }
-                    .disabled(isRunningSyncAction || isResetting)
-                    Button("Reset Rollout State") {
-                        modelContainerManager.resetStoreSplitRolloutForDevelopment()
-                    }
-                    .disabled(isRunningSyncAction || isResetting)
-                } header: {
-                    Text("Rollout")
-                } footer: {
-                    Text("Resolved automatically at launch in every configuration: existing users publish their state in bounded slices, then switch to new-store reads; brand-new users go straight to new-store reads. The development installation keeps the local library store as its read authority.")
-                }
-
-                Section {
-                    LabeledContent("Migration enabled", value: remoteConfig.migrationEnabled ? "yes" : "NO (paused)")
-                    LabeledContent("Force legacy reads", value: remoteConfig.forceLegacyReads ? "YES" : "no")
-                    LabeledContent("Min supported build", value: "\(remoteConfig.minSupportedBuild)")
-                    LabeledContent(
-                        "Last fetched",
-                        value: StoreSplitRemoteConfigStore.lastFetchedAt.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "never"
-                    )
-                    Button("Refresh Remote Config Now") {
-                        refreshRemoteConfig()
-                    }
-                    .disabled(isRunningSyncAction || isResetting)
-                    Button("Clear Cached Remote Config", role: .destructive) {
-                        StoreSplitRemoteConfigStore.resetCacheForDevelopment()
-                        remoteConfigRefreshToken += 1
-                    }
-                    .disabled(isRunningSyncAction || isResetting)
-                } header: {
-                    Text("Remote Kill Switch")
-                } footer: {
-                    Text("Published from CloudKit Dashboard as the public-database record \"\(StoreSplitRemoteConfigStore.recordName)\" (type \(StoreSplitRemoteConfigStore.recordType)). migrationEnabled=0 pauses all split-store work live; forceLegacyReads=1 reverts reads to legacy on next launch. To lift a kill, set the fields back to permissive — do not delete the record.")
-                }
-            }
-
-            if requiresRelaunch {
-                Section {
-                    Label(
-                        "Quit and relaunch Up Next to apply these database settings.",
-                        systemImage: "arrow.clockwise.circle"
-                    )
-                    .foregroundStyle(.orange)
-                }
+            Section("Split-Store Work") {
+                LabeledContent(
+                    "Current job",
+                    value: modelContainerManager.currentSplitStoreJobDescription ?? "No active job"
+                )
+                LabeledContent(
+                    "Pending work",
+                    value: modelContainerManager.pendingSplitStoreWorkReason ?? "No pending work"
+                )
+                LabeledContent(
+                    "Last reconcile",
+                    value: modelContainerManager.lastSplitStoreReconcileSummary ?? "No reconcile has run"
+                )
+                LabeledContent(
+                    "Reconciled at",
+                    value: modelContainerManager.lastSplitStoreReconcileAt?
+                        .formatted(date: .abbreviated, time: .shortened) ?? "No reconcile has run"
+                )
+                LabeledContent(
+                    "Readiness",
+                    value: modelContainerManager.migrationReadiness.title
+                )
+                LabeledContent(
+                    "Blocker",
+                    value: modelContainerManager.migrationBlocker ?? "No blocker recorded"
+                )
             }
 
             Section {
-                Button("Run Legacy Migration Now") {
-                    runMigrationNow()
+                NavigationLink {
+                    StoreSplitMigrationLogView()
+                } label: {
+                    Label("Store Sync Log", systemImage: "list.bullet.rectangle")
                 }
-                .disabled(
-                    isRunningSyncAction
-                        || isResetting
-                        || launchConfiguration.splitStoreWorkEnabled == false
-                        || (launchConfiguration.mode != .splitStores && launchConfiguration.mode != .splitStoreReads)
-                )
+            } footer: {
+                Text("When each background pass started and ended and why it stopped. DEBUG builds only.")
+            }
 
+            Section {
+                NavigationLink {
+                    StoreSplitAutomaticChecksView()
+                } label: {
+                    Label("Automatic Migration Checks", systemImage: "checkmark.seal")
+                }
+            } footer: {
+                Text("Runs deterministic store-split scenarios in temporary in-memory stores. Results marked Partial identify conditions that need a real background-processing or multi-device CloudKit test.")
+            }
+
+            Section {
                 Button("Import Available Cloud State Now") {
                     importAvailableCloudState()
                 }
-                .disabled(
-                    isRunningSyncAction
-                        || isResetting
-                        || launchConfiguration.splitStoreWorkEnabled == false
-                        || launchConfiguration.mode != .splitStoreReads
-                )
+                .disabled(splitStoreActionDisabled)
 
                 Button("Recover Cache-Only Library Data") {
                     recoverCacheOnlyLibraryData()
                 }
                 .disabled(splitStoreActionDisabled)
 
-                Button("Simulate Overnight Background Pass") {
+                Button("Simulate Background Pass") {
                     simulateBackgroundPass()
                 }
                 .disabled(splitStoreActionDisabled)
@@ -705,31 +370,6 @@ struct DevelopmentSettingsView: View {
 
                 Button("Restore Playlist Entries Deleted Since…") {
                     showTombstoneRecoverySheet = true
-                }
-                .disabled(splitStoreActionDisabled)
-
-                Button("Republish Playlists") {
-                    republishLegacyState(.playlists)
-                }
-                .disabled(splitStoreActionDisabled)
-
-                Button("Republish Bookmarks") {
-                    republishLegacyState(.bookmarks)
-                }
-                .disabled(splitStoreActionDisabled)
-
-                Button("Republish Playback State") {
-                    republishLegacyState(.episodeStates)
-                }
-                .disabled(splitStoreActionDisabled)
-
-                Button("Republish Subscriptions") {
-                    republishLegacyState(.subscriptions)
-                }
-                .disabled(splitStoreActionDisabled)
-
-                Button("Republish Listening History (Heavy)") {
-                    republishLegacyState(.listeningHistory)
                 }
                 .disabled(splitStoreActionDisabled)
 
@@ -788,9 +428,9 @@ struct DevelopmentSettingsView: View {
                         )
                 }
             } header: {
-                Text("Migration Testing")
+                Text("Store Maintenance")
             } footer: {
-                Text("Migration runs automatically; these buttons only force it to run now. Use the local reset to simulate a fresh device: the SQLite files are removed before SwiftData opens them, so CloudKit can download records again without receiving deletions. The CloudKit delete action is global and erases migrated records on every device.")
+                Text("Use the local reset to simulate a fresh device: the SQLite files are removed before SwiftData opens them, so CloudKit can download records again without receiving deletions. The CloudKit delete action is global and erases migrated records on every device.")
             }
         }
         .formStyle(.grouped)
@@ -801,14 +441,6 @@ struct DevelopmentSettingsView: View {
             refreshStoreSizes()
             refreshMigrationStatus()
             refreshStoreObjectCounts()
-        }
-        .onChange(of: storeMode) { _, mode in
-            if mode == .legacyOnly || mode == .newStoresOnly {
-                userStateCloudSyncEnabled = false
-            }
-            if mode == .legacyOnly {
-                splitStoreWorkEnabled = false
-            }
         }
         .confirmationDialog(
             "Reset only this device's split stores?",
@@ -878,26 +510,8 @@ struct DevelopmentSettingsView: View {
         }
     }
 
-    private var storeModeDescription: String {
-        switch storeMode {
-        case .legacyOnly:
-            "Only the local library store is opened. Split-store migration, imports, and dual writes are disabled."
-        case .splitStores:
-            StoreSplitReleasePhase.current == .dualSyncBackfill
-                ? "Shipping backfill mode. The legacy library store is the source of truth and keeps syncing through CloudKit exactly as before. UserState.sqlite is filled one-way in the background and is never read."
-                : "The app reads the durable local library store and dual-writes user state into UserState.sqlite. Migration publishes the remaining local state; UserState is not yet the read authority."
-        case .splitStoreReads:
-            "Recommended cross-device test mode. The durable local library store serves the UI, and UserState.sqlite is the authority for subscriptions, playback state, playlists, and bookmarks. CloudKit follows the two toggles above."
-        case .newStoresOnly:
-            "Experimental. The library graph is rebuilt in memory from PodcastCache at every launch and nothing on disk backs it. Expect a slow, initially empty launch; reset the cache before switching in."
-        }
-    }
-
     private var splitStoreActionDisabled: Bool {
-        isRunningSyncAction
-            || isResetting
-            || launchConfiguration.splitStoreWorkEnabled == false
-            || launchConfiguration.mode == .legacyOnly
+        isRunningSyncAction || isResetting
     }
 
     private func refreshStoreSizes() {
@@ -1026,15 +640,6 @@ struct DevelopmentSettingsView: View {
             .count
     }
 
-    private func applyPublicConfiguration() {
-        let configuration = publicConfiguration
-        storeMode = configuration.mode
-        legacyCloudSyncEnabled = configuration.legacyCloudSyncEnabled
-        userStateCloudSyncEnabled = configuration.userStateCloudSyncEnabled
-        splitStoreWorkEnabled = configuration.splitStoreWorkEnabled
-        migrationPaused = false
-    }
-
     private func resetMigratedData() {
         isResetting = true
         resetMessage = nil
@@ -1089,8 +694,8 @@ struct DevelopmentSettingsView: View {
         resetMessage = nil
         Task {
             StoreSplitMigrationDebugLog.record("background pass simulated from settings")
-            await modelContainerManager.runStoreSplitMigrationBackgroundPass()
-            resetMessage = "Background pass finished. Check the migration log."
+            await modelContainerManager.runStoreSplitBackgroundPass()
+            resetMessage = "Background pass finished. Check the store sync log."
             isRunningSyncAction = false
         }
     }
@@ -1108,86 +713,6 @@ struct DevelopmentSettingsView: View {
                     .recoverListeningHistoryForDevelopment()
                 resetMessage = "Recovered \(result.listeningHistoryApplied) sessions."
                     + (result.failed > 0 ? " \(result.failed) failures." : "")
-            } catch {
-                resetMessage = error.localizedDescription
-            }
-            isRunningSyncAction = false
-        }
-    }
-
-    private func runMigrationNow() {
-        isRunningSyncAction = true
-        resetMessage = nil
-        Task {
-            await modelContainerManager.runStoreSplitMigrationNowForDevelopment()
-            if let error = modelContainerManager.migrationError {
-                resetMessage = error
-            } else if let blocker = modelContainerManager.migrationBlocker {
-                resetMessage = "Migration not completed: \(blocker)"
-            } else {
-                resetMessage = modelContainerManager.isMigratingSplitStores
-                    || ModelContainerManager.hasPendingMigrationWork
-                    ? "Legacy migration is queued and will run when playback is idle."
-                    : "Legacy migration completed."
-            }
-            isRunningSyncAction = false
-        }
-    }
-
-    private func resolveRollout() {
-        isRunningSyncAction = true
-        resetMessage = nil
-        Task {
-            await modelContainerManager.resolveStoreSplitRolloutForDevelopment()
-            resetMessage = "Rollout state: \(modelContainerManager.storeSplitRolloutStateDescription)."
-            isRunningSyncAction = false
-        }
-    }
-
-    private func refreshRemoteConfig() {
-        isRunningSyncAction = true
-        resetMessage = nil
-        Task {
-            let result = await StoreSplitRemoteConfigStore.refresh()
-            remoteConfigRefreshToken += 1
-            resetMessage = result == nil
-                ? "Remote config fetch failed (cache unchanged)."
-                : "Remote config refreshed."
-            isRunningSyncAction = false
-        }
-    }
-
-    private func runOneMigrationSlice() {
-        isRunningSyncAction = true
-        resetMessage = nil
-        Task {
-            let result = await modelContainerManager.runOneMigrationSliceForDevelopment()
-            switch result {
-            case let .advanced(phase, processed):
-                resetMessage = "Advanced \(phase ?? "migration") by \(processed) item(s)."
-            case let .phaseCompleted(phase, processed):
-                resetMessage = "Completed \(phase ?? "phase") (\(processed) item(s))."
-            case .allComplete:
-                resetMessage = "All migration phases are complete."
-            case let .deferred(reason):
-                resetMessage = "Migration deferred: \(reason)"
-            case let .failed(reason):
-                resetMessage = "Migration failed: \(reason)"
-            }
-            isRunningSyncAction = false
-        }
-    }
-
-    private func republishLegacyState(
-        _ scope: StoreSplitDevelopmentRepublishScope
-    ) {
-        isRunningSyncAction = true
-        resetMessage = nil
-        Task {
-            do {
-                let result = try await modelContainerManager
-                    .republishLegacyStateToCloudKit(scope: scope)
-                resetMessage = "\(scope.title) complete. Source: \(result.sourceSummary). New store: \(result.storedCounts.summary)."
             } catch {
                 resetMessage = error.localizedDescription
             }
@@ -1354,29 +879,6 @@ private struct DevelopmentStoreSize: Identifiable {
 private extension Int64 {
     var formattedAsStorage: String {
         ByteCountFormatter.string(fromByteCount: self, countStyle: .file)
-    }
-}
-
-private extension StoreSplitDevelopmentRepublishScope {
-    var title: String {
-        switch self {
-        case .subscriptions:
-            "Subscriptions"
-        case .episodeStates:
-            "Playback state"
-        case .playlists:
-            "Playlists"
-        case .bookmarks:
-            "Bookmarks"
-        case .listeningHistory:
-            "Listening history"
-        }
-    }
-}
-
-private extension StoreSplitDevelopmentRepublishResult {
-    var sourceSummary: String {
-        "subscriptions \(subscriptions), states \(episodeStates), playlists \(playlists), bookmarks \(bookmarks), history \(listeningSessions)"
     }
 }
 

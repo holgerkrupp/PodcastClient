@@ -645,7 +645,7 @@ struct RaulApp: App {
                 Task {
                     await AppDelegate.scheduleAutomaticTranscriptionProcessingIfNeeded()
                 }
-                AppDelegate.scheduleStoreSplitMigrationProcessingIfNeeded()
+                AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded()
 #endif
              
                 
@@ -695,15 +695,10 @@ struct RaulApp: App {
                     guard phase == .active else { return }
 #endif
                     StoreSplitLaunchHealth.markHealthy()
-                    if storeCloudKitMonitor.activeExportEvents.allSatisfy({
-                        $0.storeKind == .userState
-                    }) {
-                        LegacyCloudExportRecovery.clearAfterHealthyIdle()
-                    }
                     CrashBreadcrumbs.shared.record("store_split_launch_marked_healthy")
                 }
                 refreshOnActive()
-                scheduleStoreSplitMigration()
+                scheduleDeferredStoreSplitWork()
                 Task(priority: .userInitiated) {
                     await Task.yield()
                     await Player.shared.enterForegroundPlaybackMode()
@@ -1081,7 +1076,7 @@ struct RaulApp: App {
         }
     }
 
-    func scheduleStoreSplitMigration() {
+    func scheduleDeferredStoreSplitWork() {
         deferredStoreSplitTask?.cancel()
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               StoreDevelopmentConfiguration.splitStoresEnabled else {
@@ -1100,10 +1095,11 @@ struct RaulApp: App {
             if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }
-            // Foreground activation only arms the system request. The durable
-            // worker runs when iOS grants a charging background-processing
-            // window; an active session never owns the migration loop.
-            await ModelContainerManager.shared.scheduleStoreSplitMigrationIfNeeded()
+#if canImport(UIKit)
+            // Arm the system request for outbox/import work that is still
+            // pending; the foreground reconcile above handles the rest.
+            AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded()
+#endif
             await MainActor.run {
                 deferredStoreSplitTask = nil
             }
@@ -1113,12 +1109,13 @@ struct RaulApp: App {
     func scheduleStoreAwareCloudImportReconciliation(
         for storeKind: StoreCloudKitActivityMonitor.StoreKind
     ) {
+        // Only UserState mirrors to CloudKit; the legacy-model graph is local.
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
-              storeKind != .other else { return }
+              storeKind == .userState else { return }
         cloudImportReconciliationTask?.cancel()
         SupportDiagnosticsRecorder.shared.record(
             "CloudKit reconciliation scheduled",
-            detail: storeKind == .legacy ? "store=Legacy Library" : "store=User State"
+            detail: "store=User State"
         )
         cloudImportReconciliationTask = Task {
             do {
@@ -1130,20 +1127,12 @@ struct RaulApp: App {
                 return
             }
             guard Task.isCancelled == false else { return }
-            if StoreSplitReleasePhase.current == .dualSyncBackfill,
-               StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
-               storeKind == .legacy {
-                await modelContainerManager.reconcileLegacyStoreAfterCloudKitImport()
-            }
-            if storeKind == .userState {
-                // The manager remembers this request while split stores are
-                // settling and replays it after their local projection is
-                // hydrated. Calling directly avoids losing an import event
-                // behind an app-side readiness check.
-                await modelContainerManager.reconcileSplitRuntimePlaylists()
-            }
-            if StoreDevelopmentConfiguration.userStateImportEnabled,
-               storeKind == .userState {
+            // The manager remembers this request while split stores are
+            // settling and replays it after their local projection is
+            // hydrated. Calling directly avoids losing an import event
+            // behind an app-side readiness check.
+            await modelContainerManager.reconcileSplitRuntimePlaylists()
+            if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }
             await MainActor.run {
@@ -1262,6 +1251,8 @@ struct RaulApp: App {
     }
 
     static func runAutomaticTranscriptionSweep(reason: String) async {
+        // An episode whose saved transcript hasn't been restored yet looks untranscribed.
+        guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
         let isPlaying = await MainActor.run {
             Player.shared.isPlaying || Player.shared.currentEpisode != nil
         }

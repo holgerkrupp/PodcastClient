@@ -109,6 +109,11 @@ final class CachedListeningBaselineAggregate: Identifiable {
 /// or disappears between pages.
 @Model
 final class CachedListeningBaselineSource: Identifiable {
+    /// What this feed and period has contributed so far, so a duplicate row can
+    /// only raise it to the larger value, never add to it.
+    var totalSeconds: Double = 0
+    var silenceGapTimeSavedSeconds: Double = 0
+    var playbackRateTimeSavedSeconds: Double = 0
     var id: String = ""
 
     init(id: String) {
@@ -271,6 +276,12 @@ final class CachedPodcast: Identifiable {
     var lastFeedFailureDate: Date?
     var lastFeedFailureStatusCode: Int?
     var lastFeedFailureMessage: String?
+    var firstConsecutiveFeedFailureDate: Date?
+    var authenticationRetryAfter: Date?
+    var nextPredictedReleaseDate: Date?
+    var nextPredictedRefreshStartDate: Date?
+    var nextPredictedRefreshEndDate: Date?
+    var releasePredictionUpdatedAt: Date?
 
     var updatedAt: Date = Date.distantPast
 
@@ -358,6 +369,14 @@ final class CachedEpisode: Identifiable {
     var localIsInbox: Bool = false
     var localStatusRawValue: String?
     var localSystemSuppressionReasonRawValue: String?
+
+    /// Device-local per-episode playback analytics. Not part of EpisodeStateSync.
+    var playbackStartTimes: CodableArray<Date>?
+    var playbackDurations: CodableArray<TimeInterval>?
+    var silenceGapTimeSavedDurations: CodableArray<TimeInterval>?
+    var playbackSpeeds: CodableArray<Double>?
+    var totalListenTime: TimeInterval = 0
+    var totalSilenceGapTimeSaved: TimeInterval = 0
 
     var updatedAt: Date = Date.distantPast
 
@@ -842,6 +861,54 @@ final class FeedAlias: Identifiable {
         self.oldFeedURL = oldFeedURL
         self.newFeedURL = newFeedURL
         self.reasonRawValue = reason.rawValue
+        self.updatedAt = updatedAt
+    }
+}
+
+/// Device-local `PodcastSettings` fields that `PodcastPreferenceSync` does not
+/// carry. `id` uses the same scope key as that record.
+@Model
+final class CachedPodcastLocalSettings: Identifiable {
+    #Index<CachedPodcastLocalSettings>([\.id])
+
+    var id: String = ""
+    var feedURL: String?
+    var payload: Data = Data()
+    var updatedAt: Date = Date.distantPast
+
+    init(feedURL: String?, payload: Data, updatedAt: Date = .now) {
+        self.id = Self.scopeID(feedURL: feedURL)
+        self.feedURL = feedURL
+        self.payload = payload
+        self.updatedAt = updatedAt
+    }
+
+    static func scopeID(feedURL: String?) -> String {
+        feedURL.map { StableIdentityKey.make("feed", $0) }
+            ?? StableIdentityKey.make("global")
+    }
+}
+
+/// Device-local bookmark fields that `BookmarkSync` does not carry, keyed by the
+/// `BookmarkSync` id.
+@Model
+final class CachedBookmarkDetail: Identifiable {
+    #Index<CachedBookmarkDetail>([\.id])
+
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var imageData: Data?
+    var duration: Double?
+    var endTime: Double?
+    var link: URL?
+    var progress: Double?
+    var updatedAt: Date = Date.distantPast
+
+    init(id: String, feedURL: String, episodeID: String, updatedAt: Date = .now) {
+        self.id = id
+        self.feedURL = feedURL
+        self.episodeID = episodeID
         self.updatedAt = updatedAt
     }
 }

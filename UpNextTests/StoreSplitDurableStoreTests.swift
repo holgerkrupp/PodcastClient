@@ -19,9 +19,7 @@ final class StoreSplitDurableStoreTests: XCTestCase {
                     standardDefaults: defaults,
                     appGroupDefaults: nil,
                     files: emptyFiles
-                ),
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                )
             ),
             .freshSplitInstall
         )
@@ -34,82 +32,30 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         XCTAssertFalse(defaults.bool(forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey))
     }
 
-    func testBootstrapModeUsesPersistedLegacyAndCutoverFacts() {
+    func testBootstrapModeFollowsTheLibraryFile() {
         XCTAssertEqual(
             StoreBootstrapMode.resolve(
                 legacyStoreExists: false,
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                installationWasPreviouslyInitialized: false
             ),
             .freshSplitInstall
         )
         XCTAssertEqual(
             StoreBootstrapMode.resolve(
                 legacyStoreExists: true,
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: false
+                installationWasPreviouslyInitialized: false
             ),
             .legacyUpgrade
         )
         XCTAssertEqual(
             StoreBootstrapMode.resolve(
                 legacyStoreExists: true,
-                legacyCloudCutoverCompleted: true,
-                releasePhaseIsPostCutover: false
+                installationWasPreviouslyInitialized: false
             ),
-            .postCutoverSplitInstall
-        )
-        XCTAssertEqual(
-            StoreBootstrapMode.resolve(
-                legacyStoreExists: false,
-                legacyCloudCutoverCompleted: false,
-                releasePhaseIsPostCutover: true
-            ),
-            .postCutoverSplitInstall
+            .legacyUpgrade
         )
         XCTAssertTrue(StoreBootstrapMode.freshSplitInstall.usesInMemoryRuntimeProjection)
         XCTAssertFalse(StoreBootstrapMode.legacyUpgrade.usesInMemoryRuntimeProjection)
-        XCTAssertTrue(StoreBootstrapMode.postCutoverSplitInstall.usesInMemoryRuntimeProjection)
-        XCTAssertFalse(
-            StoreBootstrapMode.requiresLegacyBackfill(
-                legacyStoreExists: false,
-                legacyCloudCutoverCompleted: false,
-                completedVersion: 0,
-                currentVersion: 1
-            ),
-            "fresh installations must not schedule legacy backfill"
-        )
-        XCTAssertFalse(
-            StoreBootstrapMode.requiresLegacyBackfill(
-                legacyStoreExists: true,
-                legacyCloudCutoverCompleted: true,
-                completedVersion: 0,
-                currentVersion: 1
-            ),
-            "a leftover legacy file after cutover is not a runtime migration source"
-        )
-        XCTAssertTrue(
-            StoreBootstrapMode.requiresLegacyBackfill(
-                legacyStoreExists: true,
-                legacyCloudCutoverCompleted: false,
-                completedVersion: 0,
-                currentVersion: 1
-            )
-        )
-    }
-
-    func testHeavyStoreMaintenanceRequiresBackgroundGrantOrTestContext() {
-        XCTAssertFalse(
-            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(in: .foreground)
-        )
-        XCTAssertTrue(
-            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(
-                in: .systemBackgroundProcessing
-            )
-        )
-        XCTAssertTrue(
-            StoreSplitMaintenancePolicy.allowsHeavyMaintenance(in: .test)
-        )
     }
 
     func testMigrationSliceBudgetBoundsMutationsAndWallTime() {
@@ -308,40 +254,9 @@ final class StoreSplitDurableStoreTests: XCTestCase {
         )
     }
 
-#if DEBUG
-    func testDebugInstallationDefaultsToPublicBackfillConfiguration() {
-        let configuration = StoreDevelopmentConfiguration.current
-
-        XCTAssertEqual(configuration, StoreDevelopmentConfiguration.publicBaseline)
-    }
-#endif
-
-    func testOnlyTheExperimentalModeRebuildsTheLibraryInMemory() {
-        XCTAssertFalse(DevelopmentStoreMode.legacyOnly.usesInMemoryLibraryProjection)
-        XCTAssertFalse(DevelopmentStoreMode.splitStores.usesInMemoryLibraryProjection)
-        XCTAssertFalse(DevelopmentStoreMode.splitStoreReads.usesInMemoryLibraryProjection)
-        XCTAssertTrue(DevelopmentStoreMode.newStoresOnly.usesInMemoryLibraryProjection)
-    }
-
-    /// UserState always syncs in the shipping modes. Whether the *library* store
-    /// also syncs is the release phase's decision: it does during the backfill
-    /// ship, and dropping it in the authority ship is the payload win.
-    func testShippingModesAlwaysSyncUserState() {
-        for mode in [DevelopmentStoreMode.splitStores, .splitStoreReads] {
-            let configuration = StoreDevelopmentConfiguration(
-                mode: mode,
-                legacyCloudSyncEnabled: StoreDevelopmentConfiguration
-                    .releaseLegacyCloudSyncEnabled,
-                userStateCloudSyncEnabled: true,
-                splitStoreWorkEnabled: true
-            )
-            XCTAssertTrue(configuration.effectiveUserStateCloudSyncEnabled)
-            XCTAssertEqual(
-                configuration.effectiveLegacyCloudSyncEnabled,
-                StoreSplitReleasePhase.current == .dualSyncBackfill,
-                "\(mode) library sync must follow the release phase"
-            )
-        }
+    func testOnlyUserStateSyncs() {
+        XCTAssertTrue(StoreDevelopmentConfiguration.userStateCloudSyncEnabled)
+        XCTAssertFalse(StoreDevelopmentConfiguration.legacyCloudSyncEnabled)
     }
 
     // MARK: - Additive recovery from a cache-only phase
@@ -711,74 +626,42 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
     }
 }
 
-/// The backfill has to finish without anyone tapping anything, so the conditions
-/// that decide whether it is scheduled are covered on their own.
-final class StoreSplitAutomaticMigrationTests: XCTestCase {
-    private let completedVersionKey = "storeSplit.backfillMigrationVersion"
-    private let pendingMaintenanceKey = "storeSplit.migrationNeedsMaintenance.v1"
-
+/// A CloudKit import that has not reached the runtime graph must keep the
+/// background pass armed until a reconcile completes, and a newer request made
+/// while a pass runs must not be cleared by that pass.
+final class StoreSplitPendingImportLedgerTests: XCTestCase {
     private var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     }
 
+    override func setUp() {
+        super.setUp()
+        let snapshot = StoreSplitPendingImportLedger.snapshot(in: defaults)
+        StoreSplitPendingImportLedger.acknowledge(snapshot.generation, in: defaults)
+    }
+
     override func tearDown() {
-        defaults.removeObject(forKey: completedVersionKey)
-        defaults.removeObject(forKey: pendingMaintenanceKey)
+        let snapshot = StoreSplitPendingImportLedger.snapshot(in: defaults)
+        StoreSplitPendingImportLedger.acknowledge(snapshot.generation, in: defaults)
         super.tearDown()
     }
 
-    func testPendingWorkIsTrueUntilTheCurrentVersionCompletes() {
-        defaults.removeObject(forKey: completedVersionKey)
-        XCTAssertTrue(
-            ModelContainerManager.hasPendingMigrationWork,
-            "a device that has never completed a migration owes work"
-        )
+    func testPendingImportKeepsBackgroundWorkArmedUntilAcknowledged() {
+        StoreSplitPendingImportLedger.request(in: defaults)
+        let request = StoreSplitPendingImportLedger.snapshot(in: defaults)
+        XCTAssertTrue(request.pending)
+        XCTAssertTrue(ModelContainerManager.hasPendingStoreSplitBackgroundWork)
 
-        defaults.set(
-            StoreSplitMigrationService.migrationVersion - 1,
-            forKey: completedVersionKey
-        )
-        XCTAssertTrue(
-            ModelContainerManager.hasPendingMigrationWork,
-            "an older completed version must not suppress the current one"
-        )
-
-        defaults.set(
-            StoreSplitMigrationService.migrationVersion,
-            forKey: completedVersionKey
-        )
-        XCTAssertFalse(ModelContainerManager.hasPendingMigrationWork)
-
-        defaults.set(true, forKey: pendingMaintenanceKey)
-        XCTAssertTrue(
-            ModelContainerManager.hasPendingMigrationWork,
-            "a stale completed-version marker must not suppress explicitly invalidated work"
-        )
+        XCTAssertTrue(StoreSplitPendingImportLedger.acknowledge(request.generation, in: defaults))
+        XCTAssertFalse(StoreSplitPendingImportLedger.snapshot(in: defaults).pending)
     }
 
-    /// The rollout marker used to gate the overnight task, which meant a device
-    /// sitting at `newStoreReads` from an older version never scheduled it.
-    func testPendingWorkIsIndependentOfTheRolloutMarker() {
-        defaults.set(
-            StoreSplitMigrationService.migrationVersion - 1,
-            forKey: completedVersionKey
-        )
-        let rolloutDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
-            ?? .standard
-        let previousState = rolloutDefaults.string(forKey: StoreSplitRollout.stateKey)
-        defer {
-            if let previousState {
-                rolloutDefaults.set(previousState, forKey: StoreSplitRollout.stateKey)
-            } else {
-                rolloutDefaults.removeObject(forKey: StoreSplitRollout.stateKey)
-            }
-        }
+    func testAPassCannotAcknowledgeANewerImportRequest() {
+        StoreSplitPendingImportLedger.request(in: defaults)
+        let first = StoreSplitPendingImportLedger.snapshot(in: defaults)
 
-        rolloutDefaults.set(
-            StoreSplitRolloutState.newStoreReads.rawValue,
-            forKey: StoreSplitRollout.stateKey
-        )
-        XCTAssertEqual(StoreSplitRollout.state, .newStoreReads)
-        XCTAssertTrue(ModelContainerManager.hasPendingMigrationWork)
+        StoreSplitPendingImportLedger.request(in: defaults)
+        XCTAssertFalse(StoreSplitPendingImportLedger.acknowledge(first.generation, in: defaults))
+        XCTAssertTrue(StoreSplitPendingImportLedger.snapshot(in: defaults).pending)
     }
 }

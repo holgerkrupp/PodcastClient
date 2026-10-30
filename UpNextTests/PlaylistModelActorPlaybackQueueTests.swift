@@ -2,11 +2,13 @@ import SwiftData
 import XCTest
 @testable import UpNext
 
+@MainActor
 final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
     func testNextEpisodeAfterCurrentWhenCurrentIsFirst() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
-        let actor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: fixture.selectedPlaylist.id)
+        let actor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: fixture.selectedPlaylist.id)
 
         let nextURL = try await actor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
@@ -16,7 +18,8 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
     func testNextEpisodeAfterCurrentWhenCurrentIsInMiddle() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
-        let actor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: fixture.selectedPlaylist.id)
+        let actor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: fixture.selectedPlaylist.id)
 
         let nextURL = try await actor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[1].url))
 
@@ -26,7 +29,8 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
     func testNextEpisodeFallsBackToFirstWhenCurrentIsAbsent() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
         try queueEpisodes([1, 2], in: fixture.selectedPlaylist, fixture: fixture)
-        let actor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: fixture.selectedPlaylist.id)
+        let actor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: fixture.selectedPlaylist.id)
 
         let nextURL = try await actor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
@@ -35,7 +39,8 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
     func testNextEpisodeReturnsNilForEmptySelectedPlaylist() async throws {
         let fixture = try makeFixture(selectedPlaylistTitle: "Selected")
-        let actor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: fixture.selectedPlaylist.id)
+        let actor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: fixture.selectedPlaylist.id)
 
         let nextURL = try await actor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
@@ -47,6 +52,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         try queueEpisodes([0, 1, 2], in: fixture.selectedPlaylist, fixture: fixture)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -71,6 +77,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         try queueEpisodes([0], in: fixture.selectedPlaylist, fixture: fixture)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -106,6 +113,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let playlistActor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         let nextURL = try await playlistActor.dequeueFinishedEpisodeAndReturnNext(after: finishedURL)
@@ -121,6 +129,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -163,6 +172,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         try queueEpisodes([2, 0, 1], in: fixture.defaultPlaylist, fixture: fixture)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -188,6 +198,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         try queueEpisodes([1, 2], in: fixture.selectedPlaylist, fixture: fixture)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -213,7 +224,8 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
             in: fixture.context,
             defaults: defaults
         )
-        let activeActor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: selectedPlaylistID)
+        let activeActor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: selectedPlaylistID)
         let nextURL = try await activeActor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
         XCTAssertEqual(nextURL, fixture.episodes[1].url)
@@ -230,7 +242,8 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
             in: fixture.context,
             defaults: defaults
         )
-        let activeActor = try PlaylistModelActor(modelContainer: fixture.container, playlistID: selectedPlaylistID)
+        let activeActor = try PlaylistModelActor(modelContainer: fixture.container,
+            storeManager: fixture.storeManager, playlistID: selectedPlaylistID)
         let nextURL = try await activeActor.nextEpisodeURL(after: try XCTUnwrap(fixture.episodes[0].url))
 
         XCTAssertEqual(nextURL, fixture.episodes[2].url)
@@ -245,6 +258,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         try await actor.add(
@@ -272,6 +286,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         try await actor.remove(episodeURL: try XCTUnwrap(episode.url))
@@ -299,6 +314,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         try await actor.add(
@@ -320,6 +336,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         try await actor.add(
@@ -338,6 +355,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         let finishedURL = try XCTUnwrap(fixture.episodes[0].url)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
 
@@ -377,6 +395,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         _ = try await actor.dequeueFinishedEpisodeAndReturnNext(after: finishedURL)
@@ -421,6 +440,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
         XCTAssertEqual(result.removedEntryCount, 1)
         let actor = try PlaylistModelActor(
             modelContainer: fixture.container,
+            storeManager: fixture.storeManager,
             playlistID: fixture.selectedPlaylist.id
         )
         let orderedURLs = try await actor.orderedEpisodeURLs()
@@ -431,6 +451,7 @@ final class PlaylistModelActorPlaybackQueueTests: XCTestCase {
 private extension PlaylistModelActorPlaybackQueueTests {
     struct Fixture {
         let container: ModelContainer
+        let storeManager: ModelContainerManager
         let context: ModelContext
         let defaultPlaylist: Playlist
         let selectedPlaylist: Playlist
@@ -445,7 +466,7 @@ private extension PlaylistModelActorPlaybackQueueTests {
     }
 
     func makeFixture(selectedPlaylistTitle: String) throws -> Fixture {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,
@@ -483,8 +504,17 @@ private extension PlaylistModelActorPlaybackQueueTests {
         episodes.forEach(context.insert)
         try context.save()
 
+        // Durable queue writes go to private stores, never the host app's. A separate
+        // runtime keeps its rebuild from UserState out of the graph under test.
+        let storeManager = ModelContainerManager(
+            runtimeContainer: try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true),
+            userStateContainer: try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true),
+            cacheContainer: try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        )
+
         return Fixture(
             container: container,
+            storeManager: storeManager,
             context: context,
             defaultPlaylist: defaultPlaylist,
             selectedPlaylist: selectedPlaylist,

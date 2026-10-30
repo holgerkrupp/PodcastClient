@@ -91,26 +91,7 @@ struct StorageManagementView: View {
             refreshMigrationStatus()
 #endif
             guard report == nil else { return }
-            guard modelContainerManager.isMigratingSplitStores == false else { return }
             await reload()
-        }
-        .task(id: modelContainerManager.isMigratingSplitStores) {
-#if DEBUG
-            refreshMigrationStatus()
-#endif
-            while modelContainerManager.isMigratingSplitStores {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard Task.isCancelled == false else { return }
-#if DEBUG
-                refreshMigrationStatus()
-#endif
-            }
-#if DEBUG
-            refreshMigrationStatus()
-#endif
-            if report == nil, modelContainerManager.isMigratingSplitStores == false {
-                await reload()
-            }
         }
         .alert(item: $presentedAlert) { alert in
             switch alert {
@@ -223,7 +204,7 @@ struct StorageManagementView: View {
         } header: {
             Text("Database Migration")
         } footer: {
-            Text("Migration is repeatable and may run again when delayed iCloud records arrive. The old database remains available during this rollout.")
+            Text("Checkpoints recorded by the one-time library migration. The frozen SharedDatabase backup is only ever read.")
         }
     }
 

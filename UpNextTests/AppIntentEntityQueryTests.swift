@@ -6,7 +6,7 @@ import XCTest
 
 final class AppIntentEntityQueryTests: XCTestCase {
     func testUpNextSnapshotsAreLimitedOrderedAndSkipMissingURLs() async throws {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,
@@ -59,7 +59,7 @@ final class AppIntentEntityQueryTests: XCTestCase {
     }
 
     func testUpNextSnapshotsAreEmptyWithoutAnExistingQueue() async throws {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,

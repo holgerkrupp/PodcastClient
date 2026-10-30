@@ -155,7 +155,7 @@ final class StoreSplitIncrementalBaselineVerificationTests: XCTestCase {
     }
 
     @MainActor
-    func testOtherDeviceBaselineRemainsUnchangedAndUnresolved() async throws {
+    func testOtherDeviceBaselineIsAcceptedUnchanged() async throws {
         let restoreDefaults = preserveInvalidationDefault()
         defer { restoreDefaults() }
         let stores = try makeStores()
@@ -169,8 +169,7 @@ final class StoreSplitIncrementalBaselineVerificationTests: XCTestCase {
         let second = await runUntilPhaseChanges(StoreSplitMigrationService.Phase.listeningBaselineVerification, stores: stores)
         XCTAssertEqual(second.last?.status, .phaseCompleted)
         let report = await StoreSplitMigrationService.runSlice(legacyContainer: stores.legacy, userStateContainer: stores.userState, cacheContainer: stores.cache)
-        XCTAssertEqual(report.status, .failed)
-        XCTAssertEqual(report.error, "baseline_verification_source_lineage_unresolved")
+        XCTAssertNotEqual(report.status, .failed)
         let persisted = try XCTUnwrap(ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>()).first)
         XCTAssertEqual(persisted.capturedByDeviceID, "other-device")
         XCTAssertEqual(persisted.totalSeconds, 100)

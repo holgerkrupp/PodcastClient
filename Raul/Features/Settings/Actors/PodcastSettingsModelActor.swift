@@ -776,6 +776,7 @@ actor PodcastSettingsModelActor {
         _ settings: PodcastSettings,
         feedURL: URL?
     ) async {
+        StoreSplitLocalSettingsWriter.persist(settings)
         let publicationDate = Date.now
         let snapshot = PortablePodcastPreferenceSnapshot.make(
             settings: settings,

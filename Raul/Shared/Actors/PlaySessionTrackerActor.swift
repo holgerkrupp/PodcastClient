@@ -274,8 +274,10 @@ actor PlaySessionTrackerActor {
             endedCleanly: false
         )
         modelContext.insert(session)
-        currentSessionID = session.persistentModelID
         saveSession()
+        // Read the identifier after saving: an unsaved model's is temporary and
+        // no longer resolves, which would leave the session open forever.
+        currentSessionID = session.persistentModelID
         if let currentSession = currentSessionModel(),
            let snapshot = localAnalyticsSnapshot(from: currentSession) {
             await persistLocalAnalytics(snapshot)
@@ -502,6 +504,12 @@ actor PlaySessionTrackerActor {
         }
         metadata.silenceGapTimeSavedDurations?.elements.append(savedSeconds)
         metadata.totalSilenceGapTimeSaved += savedSeconds
+        if let episode = session.episode {
+            StoreSplitFeedCacheWriter.requestProjection(
+                for: episode,
+                delay: StoreSplitFeedCacheWriter.playbackProjectionInterval
+            )
+        }
     }
 
     private func playbackRateTimeSaved(for session: PlaySession) -> TimeInterval {

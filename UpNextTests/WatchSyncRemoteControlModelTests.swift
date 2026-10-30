@@ -54,7 +54,7 @@ final class WatchSyncRemoteControlModelTests: XCTestCase {
     }
 
     func testPlaylistEntryQueryFiltersAndOrdersInTheStore() throws {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,
@@ -108,7 +108,7 @@ final class WatchSyncRemoteControlModelTests: XCTestCase {
     }
 
     func testPlaylistEntryQueryLimitsLargeWatchSnapshots() throws {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,

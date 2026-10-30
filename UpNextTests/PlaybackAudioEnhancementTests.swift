@@ -263,7 +263,7 @@ private extension PlaybackAudioEnhancementTests {
     }
 
     func makeSettingsFixture() throws -> SettingsFixture {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         let container = try ModelContainer(
             for: Podcast.self,
             PodcastMetaData.self,

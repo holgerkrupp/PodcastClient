@@ -70,7 +70,6 @@ struct SupportDiagnosticSnapshot: Codable, Hashable, Sendable, Identifiable {
     let appGroupAvailable: Bool
     let storeFiles: [SupportDiagnosticStoreFile]
     let legacyCloudAttachmentConfigured: Bool
-    let legacyCloudMirrorQuarantined: Bool
     let readAuthority: String
     let runtimeKind: String
     let runtimeStoreStatus: String
@@ -204,12 +203,9 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         storeMonitor: StoreCloudKitActivityMonitor
     ) async {
         let now = Date()
-        let legacyContainer = manager.runtimeProjectsFromCache
-            ? manager.preparedLegacyMigrationContainer
-            : modelContainer
         let countSnapshot = await SupportDiagnosticsStoreCounter(
             runtimeContainer: modelContainer,
-            legacyContainer: legacyContainer,
+            legacyContainer: nil,
             userStateContainer: manager.preparedUserStateContainer,
             cacheContainer: manager.preparedCacheContainer
         ).snapshot()
@@ -229,21 +225,16 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             appGroupAvailable: ModelContainerManager.sharedContainerURL != nil,
             storeFiles: Self.storeFiles(),
             legacyCloudAttachmentConfigured: StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
-            legacyCloudMirrorQuarantined: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantined,
-            readAuthority: manager.bootstrapMode == .legacyUpgrade
-                ? "Legacy Library"
-                : "User State",
+            readAuthority: "User State",
             runtimeKind: manager.runtimeProjectsFromCache ? "in-memory projection" : "durable library store",
             runtimeStoreStatus: "open (primary app container available)",
-            legacyStoreStatus: manager.preparedLegacyMigrationContainer != nil || !manager.runtimeProjectsFromCache
-                ? "open"
-                : "not open",
+            legacyStoreStatus: "not used (frozen backup only)",
             userStateStoreStatus: manager.preparedUserStateContainer == nil ? "not open" : "open",
             cacheStoreStatus: manager.preparedCacheContainer == nil ? "not open" : "open",
             runtimeReadiness: String(describing: manager.runtimeStoreReadiness),
             migrationVersion: StoreSplitMigrationService.migrationVersion,
-            migrationPhase: manager.migrationCurrentPhase ?? "not observed",
-            migrationProgress: manager.migrationProgressSummary ?? "not observed",
+            migrationPhase: StoreCutoverState.isDeferredMigrationPending ? "copying to user state" : "complete",
+            migrationProgress: "not observed",
             pendingWork: Self.safePendingWork(manager.pendingSplitStoreWorkReason),
             runtimeQueuePlaylistCount: countSnapshot.runtimeQueuePlaylistCount,
             runtimeQueueEntryCount: countSnapshot.runtimeQueueEntryCount,
@@ -303,7 +294,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
     private static func installationClassification(_ mode: StoreBootstrapMode) -> String {
         switch mode {
         case .freshSplitInstall: "new split install"
-        case .legacyUpgrade, .postCutoverSplitInstall: "existing installation"
+        case .legacyUpgrade: "existing installation"
         case .existingLibraryUnavailable: "existing installation; library unavailable"
         }
     }
@@ -331,8 +322,6 @@ final class SupportDiagnosticsRecorder: ObservableObject {
     /// defaults only; it never opens a model container or changes sync state.
     static func launchReport() -> String {
         let fileSummary = storeFiles().map(\.displayValue).joined(separator: ", ")
-        let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID)
-        let quarantined = defaults?.bool(forKey: StoreDevelopmentConfiguration.legacyCloudMirrorQuarantinedKey) ?? false
         let configured = StoreDevelopmentConfiguration.legacyCloudSyncEnabled
         let onboarding = UserDefaults.standard.bool(forKey: "didCompleteOnboarding")
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unavailable"
@@ -352,13 +341,17 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         Runtime readiness: \(String(describing: manager.runtimeStoreReadiness))
         Bootstrap mode: \(manager.preparedContainer == nil ? "not yet adopted" : manager.bootstrapMode.rawValue)
         Initialization error recorded: \(manager.initializationError != nil || manager.userStateInitializationError != nil || manager.cacheInitializationError != nil)
+        User data copy pending: \(StoreCutoverState.isDeferredMigrationPending)
+        Runtime hydration: \(manager.lastHydrationSummary ?? "not finished")
+        Memory footprint: \(MemoryFootprint.current() / (1024 * 1024)) MB
+        Listening totals: \(ListeningTotalsDiagnostics.latest), deferred pending: \(StoreCutoverState.isDeferredMigrationPending)
+        Library build: \(ModelContainerManager.shared.lastHydrationSummary ?? "not this launch"), transcripts pending: \(StoreRuntimeProjection.isLibraryBackfillPending)
         Recent startup and hydration events (category and time only):
         \(startupEvents.isEmpty ? "none observed" : startupEvents)
         App Group available: \(ModelContainerManager.sharedContainerURL != nil)
         Onboarding previously completed: \(onboarding)
         Installation evidence: \(onboarding ? "existing installation" : "unknown/new installation")
         Legacy CloudKit attachment configured: \(configured)
-        Legacy CloudKit mirror quarantined: \(quarantined)
         SQLite files: \(fileSummary)
         """
     }
@@ -367,6 +360,9 @@ final class SupportDiagnosticsRecorder: ObservableObject {
     /// from a fixed startup allowlist, and event details/error text are omitted.
     private static func recentStartupEvents() -> String {
         let startupCategories: Set<String> = [
+            "Library migration started",
+            "Library migration ended",
+            "Deferred library migration ended",
             "Opening User State store",
             "Opening Podcast cache store",
             "Opening runtime library store",
@@ -492,7 +488,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         \(formatted("Snapshot %d · %@ · %d seconds since app session start", index, date, snapshot.elapsedSeconds))
         \(formatted("App %@ (%@) · %@ · %@", snapshot.appVersion, snapshot.appBuild, snapshot.osVersion, snapshot.deviceClass))
         \(formatted("Runtime: release phase=%@, bootstrap=%@, classification=%@, onboarding completed=%@, read authority=%@, %@, readiness=%@", snapshot.releasePhase, snapshot.bootstrapMode, snapshot.installationClassification, snapshot.onboardingCompleted ? "yes" : "no", snapshot.readAuthority, snapshot.runtimeKind, snapshot.runtimeReadiness))
-        \(formatted("App Group available=%@ · legacy CloudKit attachment configured=%@ · legacy mirror quarantined=%@", snapshot.appGroupAvailable ? "yes" : "no", snapshot.legacyCloudAttachmentConfigured ? "yes" : "no", snapshot.legacyCloudMirrorQuarantined ? "yes" : "no"))
+        \(formatted("App Group available=%@ · legacy CloudKit attachment configured=%@", snapshot.appGroupAvailable ? "yes" : "no", snapshot.legacyCloudAttachmentConfigured ? "yes" : "no"))
         \(formatted("SQLite files (approximate bytes): %@", snapshot.storeFiles.map(\.displayValue).joined(separator: ", ")))
         \(formatted("Stores: runtime=%@, legacy=%@, user state=%@, cache=%@", snapshot.runtimeStoreStatus, snapshot.legacyStoreStatus, snapshot.userStateStoreStatus, snapshot.cacheStoreStatus))
         \(formatted("Migration: version=%d, phase=%@, progress=%@, pending=%@", snapshot.migrationVersion, snapshot.migrationPhase, snapshot.migrationProgress, snapshot.pendingWork))

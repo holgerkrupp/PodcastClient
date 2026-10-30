@@ -118,22 +118,16 @@ final class StoreSplitBaselinePublicationTests: XCTestCase {
     }
 
     @MainActor
-    func testMissingBaselineBlocksWithoutPublishingAndRetriesAfterImport() async throws {
+    func testMissingBaselineIsPublishedFromTheFrozenSource() async throws {
         let stores = try makeStores()
         try completePhasesBefore(StoreSplitMigrationService.Phase.listeningBaselinePublication, cache: stores.cache)
         let cache = ModelContext(stores.cache)
         insertAggregate(feed: "https://example.com/save-failure.xml", seconds: 100, in: cache)
         try cache.save()
-        let failed = await StoreSplitMigrationService.runSlice(legacyContainer: stores.legacy, userStateContainer: stores.userState, cacheContainer: stores.cache)
-        XCTAssertEqual(failed.status, .failed)
-        XCTAssertEqual(failed.error, "baseline_publication_source_evidence_unresolved")
-        XCTAssertEqual(try ModelContext(stores.cache).fetchCount(FetchDescriptor<CachedListeningBaselineAggregate>()), 1)
-        XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<ListeningBaselineSync>()), 0)
-        stores.userState.mainContext.insert(ListeningBaselineSync(feedURL: "https://example.com/save-failure.xml", totalSeconds: 100, capturedByDeviceID: "other-device"))
-        try stores.userState.mainContext.save()
-        let retried = await StoreSplitMigrationService.runSlice(legacyContainer: stores.legacy, userStateContainer: stores.userState, cacheContainer: stores.cache)
-        XCTAssertEqual(retried.status, .phaseCompleted)
-        XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<ListeningBaselineSync>()), 1)
+        let report = await StoreSplitMigrationService.runSlice(legacyContainer: stores.legacy, userStateContainer: stores.userState, cacheContainer: stores.cache)
+        XCTAssertEqual(report.status, .phaseCompleted)
+        let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(rows.map(\.totalSeconds), [100])
     }
 
     @MainActor
@@ -243,7 +237,7 @@ final class StoreSplitBaselinePublicationTests: XCTestCase {
     }
 
     @MainActor
-    func testUnresolvedBaselineDoesNotPreventHistoryAndEpisodeBackfill() async throws {
+    func testBaselinePublishesAlongsideHistoryAndEpisodeBackfill() async throws {
         let defaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
         let key = "storeSplit.verificationAttemptInvalidated.v1"
         let previous = defaults.object(forKey: key)
@@ -274,12 +268,10 @@ final class StoreSplitBaselinePublicationTests: XCTestCase {
             last = report
             if report.status == .failed || report.status == .completed || report.status == .cancelled { break }
         }
-        XCTAssertEqual(last?.phase, StoreSplitMigrationService.Phase.listeningBaselinePublication)
-        XCTAssertEqual(last?.status, .failed)
-        XCTAssertEqual(last?.error, "baseline_publication_source_evidence_unresolved")
+        XCTAssertEqual(last?.status, .completed)
         XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<ListeningHistorySync>()), 1)
         XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<EpisodeStateSync>()), 1)
-        XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<ListeningBaselineSync>()), 0)
+        XCTAssertEqual(try ModelContext(stores.userState).fetchCount(FetchDescriptor<ListeningBaselineSync>()), 1)
         for phase in [StoreSplitMigrationService.Phase.listeningHistory, StoreSplitMigrationService.Phase.episodeStates, StoreSplitMigrationService.Phase.aiTranscripts, StoreSplitMigrationService.Phase.aiChapters, StoreSplitMigrationService.Phase.listeningHistoryVerification] {
             let id = StoreSplitMigrationService.checkpointID(for: phase)
             let checkpoint = try XCTUnwrap(ModelContext(stores.cache).fetch(FetchDescriptor<StoreSplitMigrationCheckpoint>(predicate: #Predicate { $0.id == id })).first)

@@ -20,7 +20,8 @@ extension Notification.Name {
 
 @Model
 class PodcastSettings {
-    
+    static let globalSettingsTitle = "de.holgerkrupp.podbay.queue"
+
     var id = UUID()
     var title:String?
     var isEnabled:Bool = true
@@ -487,6 +488,9 @@ final class SideloadingCoordinator: NSObject {
         self.folderURL = folderURL
         isRunning = true
         clearMissingState()
+        // The in-memory runtime has no sideloaded episodes after a relaunch, and
+        // nothing else rediscovers them. Reconciling only adds rows; files stay.
+        scheduleRefresh(immediate: true)
     }
 
     func disable() {
