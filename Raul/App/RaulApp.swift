@@ -660,6 +660,14 @@ struct RaulApp: App {
                 Task {
                     await BackgroundRefreshScheduleSnapshotStore.shared.cancelForegroundRefresh()
                 }
+                // Initial container preparation may have been deferred while
+                // iOS ran the app in the background (for example, during an
+                // unfinished CloudKit export). Retry on foreground activation
+                // so the launch view cannot remain indefinitely without a
+                // container or an actionable error.
+                Task(priority: .userInitiated) {
+                    await modelContainerManager.prepareContainer()
+                }
                 guard modelContainerManager.preparedContainer != nil else { return }
                 if let container = modelContainerManager.preparedContainer {
                     foregroundScheduleSnapshotTask = Task(priority: .utility) {
