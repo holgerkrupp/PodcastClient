@@ -25986,6 +25986,22 @@
           }
         }
       }
+    },
+    "Your subscriptions and playlists can come back from iCloud. Anything that was only on this device stays missing unless its library returns." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Abos und Wiedergabelisten können aus iCloud zurückkommen. Was nur auf diesem Gerät gespeichert war, fehlt, solange seine Mediathek nicht zurückkehrt."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos abonnements et listes de lecture peuvent revenir depuis iCloud. Ce qui se trouvait uniquement sur cet appareil reste manquant tant que sa bibliothèque ne revient pas."
+          }
+        }
+      }
     }
   },
   "version" : "1.1"
