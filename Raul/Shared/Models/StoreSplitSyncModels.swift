@@ -438,6 +438,14 @@ final class ListeningBaselineSync: Identifiable {
 extension ListeningBaselineSync {
     /// The feed key used for the account-wide baseline row.
     static let allPodcastsFeedURL = "__all_podcasts__"
+
+    /// CloudKit can't keep `id` unique, so two devices can each publish a row for a
+    /// feed. They describe the same listening: totals count the latest one only.
+    static func oncePerFeed(_ rows: [ListeningBaselineSync]) -> [ListeningBaselineSync] {
+        Dictionary(grouping: rows, by: \.feedURL).values.compactMap { copies in
+            copies.max { ($0.capturedAt, $0.totalSeconds) < ($1.capturedAt, $1.totalSeconds) }
+        }
+    }
 }
 
 @Model

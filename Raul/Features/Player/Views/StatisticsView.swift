@@ -1966,7 +1966,7 @@ struct StatisticsView: View {
             // fallback; adding both would count the same listening twice.
             let perFeed = rows.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
             let scoped = perFeed.isEmpty ? rows : perFeed
-            return scoped.reduce(0) { $0 + max(0, $1.totalSeconds) }
+            return ListeningBaselineSync.oncePerFeed(scoped).reduce(0) { $0 + max(0, $1.totalSeconds) }
         }
         let selectedKeys = selectedURL.podcastFeedComparisonKeys
         let matching = rows.filter { row in
@@ -1974,7 +1974,7 @@ struct StatisticsView: View {
             return feed.podcastFeedComparisonKeys.isDisjoint(with: selectedKeys) == false
         }
         guard matching.isEmpty == false else { return nil }
-        return matching.reduce(0) { $0 + max(0, $1.totalSeconds) }
+        return ListeningBaselineSync.oncePerFeed(matching).reduce(0) { $0 + max(0, $1.totalSeconds) }
     }
 
     /// Which session rows a total is allowed to include.

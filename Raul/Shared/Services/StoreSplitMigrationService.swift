@@ -4496,7 +4496,7 @@ actor StoreSplitMigrationService {
         let context = makeContext(for: userStateContainer)
         let rows = try context.fetch(FetchDescriptor<ListeningBaselineSync>())
             .filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
-        let currentSum = rows.reduce(0) { $0 + $1.totalSeconds }
+        let currentSum = ListeningBaselineSync.oncePerFeed(rows).reduce(0) { $0 + $1.totalSeconds }
         guard currentSum > expectedSum * 1.25 || currentSum * 1.25 < expectedSum else { return 0 }
 
         let now = Date()

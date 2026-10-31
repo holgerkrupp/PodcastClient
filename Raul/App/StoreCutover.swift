@@ -107,7 +107,8 @@ enum ListeningTotalsDiagnostics {
         let account = ModelContext(userState)
         if let baselines = try? account.fetch(FetchDescriptor<ListeningBaselineSync>()) {
             let perFeed = baselines.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
-            parts.append("baseline rows=\(baselines.count) sum=\(hours(perFeed.reduce(0) { $0 + $1.totalSeconds }))")
+            let counted = ListeningBaselineSync.oncePerFeed(perFeed)
+            parts.append("baseline rows=\(baselines.count) sum=\(hours(counted.reduce(0) { $0 + $1.totalSeconds })) rawSum=\(hours(perFeed.reduce(0) { $0 + $1.totalSeconds }))")
             // Who wrote what, without device IDs: explains a total that moved after sync.
             let deviceID = ListeningDeviceIdentity.current().id
             func owner(_ row: ListeningBaselineSync) -> String {

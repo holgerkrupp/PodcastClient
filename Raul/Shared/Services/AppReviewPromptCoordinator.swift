@@ -103,7 +103,7 @@ actor AppReviewLifetimeListeningLoader {
                 $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL
             }
             let scopedRows = perFeed.isEmpty ? baselineRows : perFeed
-            return scopedRows.reduce(0) { $0 + max(0, $1.totalSeconds) }
+            return ListeningBaselineSync.oncePerFeed(scopedRows).reduce(0) { $0 + max(0, $1.totalSeconds) }
         }()
 
         let liveSeconds = ListeningHistoryAggregation.globalStatistics(

@@ -257,6 +257,37 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(rows.reduce(0) { $0 + $1.totalSeconds }, 3_600)
     }
 
+    func testDuplicateBaselineRowsCountOnceAndDoNotInflateTheRepairedTotal() throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        library.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: PlaySessionSummaryPeriod.month.rawValue,
+            periodStart: Date(timeIntervalSince1970: 0),
+            podcastFeed: feedURL,
+            totalSeconds: 3_600
+        ))
+        try library.save()
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
+        let userState = ModelContext(stores.userState)
+        for _ in 0..<3 {
+            userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 9_000))
+        }
+        try userState.save()
+
+        _ = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState
+        )
+        let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>())
+        XCTAssertEqual(rows.count, 3, "synced rows are not deleted")
+        XCTAssertEqual(ListeningBaselineSync.oncePerFeed(rows).reduce(0) { $0 + $1.totalSeconds }, 3_600)
+        XCTAssertEqual(try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState
+        ), 0, "a repaired baseline stays settled")
+    }
+
     func testAutomaticRepairLeavesAnotherDevicesRowsAndAnExplicitRebuildCorrectsThem() throws {
         let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let account = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
