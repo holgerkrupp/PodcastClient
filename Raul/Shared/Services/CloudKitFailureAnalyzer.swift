@@ -149,6 +149,7 @@ enum CloudKitFailureAnalyzer {
         ("schema", "schema_other")
     ]
 
+    private static let internalErrorDomain = "CKInternalErrorDomain"
     private static let maximumDepth = 16
     private static let maximumErrors = 512
     private static let maximumGroups = 24
@@ -170,6 +171,15 @@ enum CloudKitFailureAnalyzer {
             guard currentPath.insert(identity).inserted else { return }
             defer { currentPath.remove(identity) }
             processed += 1
+
+            // A CKError around a private code is one failure. Its public code is the
+            // one that can be interpreted, and the server's message may sit on either.
+            if nsError.domain == CKErrorDomain,
+               let inner = nsError.userInfo[NSUnderlyingErrorKey] as? NSError,
+               inner.domain == internalErrorDomain {
+                record(nsError, detailSources: [nsError, inner])
+                return
+            }
 
             var hasChildren = false
             if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
@@ -199,6 +209,10 @@ enum CloudKitFailureAnalyzer {
             if isPartialWrapper, hasChildren { return }
             if hasChildren { return }
 
+            record(nsError, detailSources: [nsError])
+        }
+
+        func record(_ nsError: NSError, detailSources: [NSError]) {
             let key = GroupKey(domain: safeDomain(nsError.domain), code: nsError.code)
             var value = accumulated[key, default: Accumulated()]
             value.count += 1
@@ -208,7 +222,9 @@ enum CloudKitFailureAnalyzer {
             if value.retryAfterSeconds == nil {
                 value.retryAfterSeconds = retryAfter(from: nsError)
             }
-            collectDetail(from: nsError, into: &value)
+            for source in detailSources {
+                collectDetail(from: source, into: &value)
+            }
             accumulated[key] = value
         }
 

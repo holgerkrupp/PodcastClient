@@ -74,6 +74,36 @@ final class CloudKitFailureAnalyzerTests: XCTestCase {
         XCTAssertEqual(report.groups.map(\.code), [CKError.Code.quotaExceeded.rawValue])
     }
 
+    func testPrivateCodesReportThePublicCodeAndTheServerMessageOnEitherLevel() throws {
+        func wrapped(_ code: CKError.Code, internalCode: Int, inner: [String: Any] = [:]) -> NSError {
+            cloudError(code, userInfo: [
+                NSUnderlyingErrorKey: NSError(domain: "CKInternalErrorDomain", code: internalCode, userInfo: inner)
+            ])
+        }
+        var failures: [String: NSError] = [:]
+        for index in 0..<253 {
+            failures["batch-\(index)"] = wrapped(.batchRequestFailed, internalCode: 2024)
+        }
+        for index in 0..<2 {
+            failures["bad-\(index)"] = wrapped(.invalidArguments, internalCode: 2006, inner: [
+                "ServerErrorDescription": "Cannot create new type CD_SubscriptionSync in production schema for My Private Show"
+            ])
+        }
+
+        let report = CloudKitFailureAnalyzer.analyze(cloudError(.partialFailure, userInfo: [
+            CKPartialErrorsByItemIDKey: failures
+        ]))
+
+        XCTAssertEqual(report.groups.first?.name, "invalidArguments")
+        XCTAssertEqual(report.groups.first?.count, 2)
+        XCTAssertEqual(report.batchFailureCount, 253)
+        let detail = try XCTUnwrap(report.groups.first?.detail)
+        XCTAssertTrue(detail.contains("schema_not_in_production"))
+        XCTAssertTrue(detail.contains("CD_SubscriptionSync"))
+        let persisted = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
+        XCTAssertFalse(persisted.contains("My Private Show"))
+    }
+
     func testBatchOnlyErrorExplainsRootCauseWasNotIncluded() {
         let error = cloudError(.partialFailure, userInfo: [
             CKPartialErrorsByItemIDKey: ["record": cloudError(.batchRequestFailed)]
