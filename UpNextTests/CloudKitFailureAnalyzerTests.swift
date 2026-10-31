@@ -49,6 +49,31 @@ final class CloudKitFailureAnalyzerTests: XCTestCase {
         XCTAssertFalse(report.groups.first?.reason?.contains("private-record-id") ?? true)
     }
 
+    func testPartialFailureWithoutChildrenKeepsSafeDetailAndDropsRecordValues() throws {
+        let error = NSError(domain: CKErrorDomain, code: CKError.Code.partialFailure.rawValue, userInfo: [
+            "ServerErrorDescription": "Cannot create new type CD_SubscriptionSync in production schema for My Private Show",
+            NSLocalizedDescriptionKey: "Partial Failure"
+        ])
+
+        let report = CloudKitFailureAnalyzer.analyze(error)
+        let detail = try XCTUnwrap(report.groups.first?.detail)
+        XCTAssertTrue(detail.contains("schema_not_in_production"))
+        XCTAssertTrue(detail.contains("CD_SubscriptionSync"))
+        XCTAssertTrue(detail.contains("ServerErrorDescription"))
+
+        let persisted = String(decoding: try JSONEncoder().encode(report), as: UTF8.self)
+        XCTAssertTrue(persisted.contains("schema_not_in_production"))
+        XCTAssertFalse(persisted.contains("My Private Show"))
+    }
+
+    func testMultipleUnderlyingErrorsAreVisited() {
+        let child = NSError(domain: CKErrorDomain, code: CKError.Code.quotaExceeded.rawValue)
+        let report = CloudKitFailureAnalyzer.analyze(NSError(
+            domain: NSCocoaErrorDomain, code: 134_400, userInfo: [NSMultipleUnderlyingErrorsKey: [child]]
+        ))
+        XCTAssertEqual(report.groups.map(\.code), [CKError.Code.quotaExceeded.rawValue])
+    }
+
     func testBatchOnlyErrorExplainsRootCauseWasNotIncluded() {
         let error = cloudError(.partialFailure, userInfo: [
             CKPartialErrorsByItemIDKey: ["record": cloudError(.batchRequestFailed)]

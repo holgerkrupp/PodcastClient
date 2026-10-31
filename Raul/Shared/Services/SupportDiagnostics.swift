@@ -414,7 +414,10 @@ final class SupportDiagnosticsRecorder: ObservableObject {
                 return event.succeeded ? "last observed success" : "last observed failure"
             }
             func categories(_ report: CloudKitFailureAnalyzer.Report?) -> [String] {
-                (report?.groups ?? []).prefix(6).map { "\($0.displayName) × \($0.count)" }
+                (report?.groups ?? []).prefix(6).map { group in
+                    let detail = group.detail.map { " [\($0)]" } ?? ""
+                    return "\(group.displayName) × \(group.count)\(detail)"
+                }
             }
             let active = activeEvents.filter { $0.storeKind == store }
             let setup = latest(.setup)

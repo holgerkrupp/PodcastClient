@@ -1216,7 +1216,8 @@ class ModelContainerManager: ObservableObject {
             if isLocalLibrary, let userState {
                 _ = try? StoreSplitMigrationService.repairInflatedBaseline(
                     libraryContainer: runtime,
-                    userStateContainer: userState
+                    userStateContainer: userState,
+                    includingOtherDevices: true
                 )
             }
         }

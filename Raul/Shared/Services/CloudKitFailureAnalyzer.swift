@@ -12,6 +12,8 @@ enum CloudKitFailureAnalyzer {
         let reason: String?
         let retryAfterSeconds: Double?
         let isBatchFailure: Bool
+        /// Fixed reason categories and schema names only, so it is safe to persist.
+        var detail: String?
 
         var id: String { "\(domain):\(code)" }
 
@@ -93,7 +95,8 @@ enum CloudKitFailureAnalyzer {
                     count: $0.count,
                     reason: nil,
                     retryAfterSeconds: $0.retryAfterSeconds,
-                    isBatchFailure: $0.isBatchFailure
+                    isBatchFailure: $0.isBatchFailure,
+                    detail: $0.detail
                 )
             }
             try container.encode(safeGroups, forKey: .groups)
@@ -111,12 +114,46 @@ enum CloudKitFailureAnalyzer {
         var count = 0
         var reason: String?
         var retryAfterSeconds: Double?
+        var reasonCategories = Set<String>()
+        var schemaNames = Set<String>()
+        var userInfoKeys = Set<String>()
+
+        var detail: String? {
+            func list(_ values: Set<String>) -> String {
+                values.sorted().prefix(maximumDetailValues).joined(separator: ",")
+            }
+            var parts: [String] = []
+            if reasonCategories.isEmpty == false { parts.append("reasons=\(list(reasonCategories))") }
+            if schemaNames.isEmpty == false { parts.append("schema=\(list(schemaNames))") }
+            if userInfoKeys.isEmpty == false { parts.append("keys=\(list(userInfoKeys))") }
+            return parts.isEmpty ? nil : parts.joined(separator: " ")
+        }
     }
+
+    /// Server messages can quote record values, so only these fixed labels and
+    /// Core Data's own `CD_` schema names ever leave the transient error.
+    private static let reasonCategories: [(phrase: String, category: String)] = [
+        ("production schema", "schema_not_in_production"),
+        ("cannot create new type", "schema_not_in_production"),
+        ("invalid attempt to set value type", "field_type_mismatch"),
+        ("not marked indexable", "field_not_indexable"),
+        ("not marked queryable", "field_not_queryable"),
+        ("too large", "too_large"),
+        ("exceeds", "limit_exceeded"),
+        ("quota", "quota"),
+        ("zone not found", "zone_missing"),
+        ("zone does not exist", "zone_missing"),
+        ("oplock", "record_conflict"),
+        ("already exists", "already_exists"),
+        ("permission", "permission"),
+        ("schema", "schema_other")
+    ]
 
     private static let maximumDepth = 16
     private static let maximumErrors = 512
     private static let maximumGroups = 24
     private static let maximumReasonLength = 240
+    private static let maximumDetailValues = 8
 
     static func analyze(_ error: Error) -> Report {
         var currentPath = Set<ObjectIdentifier>()
@@ -143,6 +180,13 @@ enum CloudKitFailureAnalyzer {
                 visit(underlying as NSError, depth: depth + 1)
             }
 
+            if let multiple = nsError.userInfo[NSMultipleUnderlyingErrorsKey] as? [NSError] {
+                hasChildren = hasChildren || multiple.isEmpty == false
+                for child in multiple {
+                    visit(child, depth: depth + 1)
+                }
+            }
+
             if let partialErrors = partialErrorValues(nsError.userInfo[CKPartialErrorsByItemIDKey]) {
                 hasChildren = true
                 for child in partialErrors {
@@ -164,6 +208,7 @@ enum CloudKitFailureAnalyzer {
             if value.retryAfterSeconds == nil {
                 value.retryAfterSeconds = retryAfter(from: nsError)
             }
+            collectDetail(from: nsError, into: &value)
             accumulated[key] = value
         }
 
@@ -177,7 +222,8 @@ enum CloudKitFailureAnalyzer {
                 reason: value.reason,
                 retryAfterSeconds: value.retryAfterSeconds,
                 isBatchFailure: key.domain == CKErrorDomain
-                    && key.code == CKError.Code.batchRequestFailed.rawValue
+                    && key.code == CKError.Code.batchRequestFailed.rawValue,
+                detail: value.detail
             )
         }
         .sorted {
@@ -191,6 +237,25 @@ enum CloudKitFailureAnalyzer {
             visitedErrorCount: processed,
             wasTruncated: truncated || groups.count > maximumGroups
         )
+    }
+
+    private static func collectDetail(from error: NSError, into value: inout Accumulated) {
+        for (key, item) in error.userInfo {
+            // Keys are framework identifiers. Their names show what the error
+            // carried even when nothing in it can be read safely.
+            if key.count <= 64,
+               key.unicodeScalars.allSatisfy({ CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-")).contains($0) }) {
+                value.userInfoKeys.insert(key)
+            }
+            guard let text = item as? String else { continue }
+            let lowered = text.lowercased()
+            if let match = reasonCategories.first(where: { lowered.contains($0.phrase) }) {
+                value.reasonCategories.insert(match.category)
+            }
+            for match in text.matches(of: /\bCD_[A-Za-z0-9_]{1,64}\b/) {
+                value.schemaNames.insert(String(match.output))
+            }
+        }
     }
 
     private static func partialErrorValues(_ value: Any?) -> [NSError]? {

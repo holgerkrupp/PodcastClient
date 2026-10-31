@@ -245,7 +245,7 @@ final class StoreCutoverTests: XCTestCase {
         try library.save()
         let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
         let userState = ModelContext(stores.userState)
-        userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 9_000, capturedByDeviceID: "other"))
+        userState.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 9_000, capturedByDeviceID: ListeningDeviceIdentity.current().id))
         userState.insert(ListeningBaselineSync(feedURL: "https://example.com/old-tier.xml", totalSeconds: 9_000))
         try userState.save()
 
@@ -255,6 +255,40 @@ final class StoreCutoverTests: XCTestCase {
         )
         let rows = try ModelContext(stores.userState).fetch(FetchDescriptor<ListeningBaselineSync>())
         XCTAssertEqual(rows.reduce(0) { $0 + $1.totalSeconds }, 3_600)
+    }
+
+    func testAutomaticRepairLeavesAnotherDevicesRowsAndAnExplicitRebuildCorrectsThem() throws {
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let account = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let feed = URL(string: "https://example.com/owners.xml")!
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
+        let localOnly = "https://example.com/only-on-the-other-device.xml"
+        let summary = PlaySessionSummary()
+        summary.periodKind = PlaySessionSummaryPeriod.month.rawValue
+        summary.periodStart = Date(timeIntervalSince1970: 1_700_000_000)
+        summary.podcastFeed = feed
+        summary.totalSeconds = 3_600
+        library.mainContext.insert(summary)
+        try library.mainContext.save()
+        account.mainContext.insert(ListeningBaselineSync(feedURL: feedKey, totalSeconds: 9_000, capturedByDeviceID: "other"))
+        account.mainContext.insert(ListeningBaselineSync(feedURL: localOnly, totalSeconds: 500, capturedByDeviceID: "other"))
+        try account.mainContext.save()
+
+        func total(_ feedURL: String) throws -> Double {
+            try ModelContext(account).fetch(FetchDescriptor<ListeningBaselineSync>())
+                .first { $0.feedURL == feedURL }?.totalSeconds ?? -1
+        }
+        _ = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: library, userStateContainer: account
+        )
+        XCTAssertEqual(try total(feedKey), 9_000)
+        XCTAssertEqual(try total(localOnly), 500)
+
+        _ = try StoreSplitMigrationService.repairInflatedBaseline(
+            libraryContainer: library, userStateContainer: account, includingOtherDevices: true
+        )
+        XCTAssertEqual(try total(feedKey), 3_600)
+        XCTAssertEqual(try total(localOnly), 500)
     }
 
     func testBaselineCloseToTheSummariesIsLeftAlone() throws {

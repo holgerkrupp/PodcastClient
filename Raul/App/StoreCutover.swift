@@ -108,6 +108,19 @@ enum ListeningTotalsDiagnostics {
         if let baselines = try? account.fetch(FetchDescriptor<ListeningBaselineSync>()) {
             let perFeed = baselines.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
             parts.append("baseline rows=\(baselines.count) sum=\(hours(perFeed.reduce(0) { $0 + $1.totalSeconds }))")
+            // Who wrote what, without device IDs: explains a total that moved after sync.
+            let deviceID = ListeningDeviceIdentity.current().id
+            func owner(_ row: ListeningBaselineSync) -> String {
+                guard let id = row.capturedByDeviceID else { return "unknown" }
+                return id == deviceID ? "own" : "other"
+            }
+            let owners = Dictionary(grouping: perFeed, by: owner).sorted { $0.key < $1.key }
+                .map { "\($0.key)=\($0.value.count)/\(hours($0.value.reduce(0) { $0 + $1.totalSeconds }))" }
+                .joined(separator: ",")
+            let otherDevices = Set(perFeed.compactMap(\.capturedByDeviceID)).subtracting([deviceID]).count
+            let duplicateFeeds = Dictionary(grouping: perFeed, by: \.feedURL).values.filter { $0.count > 1 }.count
+            let latest = perFeed.map(\.capturedAt).max().map { $0.formatted(.iso8601) } ?? "n/a"
+            parts.append("baseline owners \(owners) otherDevices=\(otherDevices) duplicateFeeds=\(duplicateFeeds) latestCapture=\(latest)")
         }
         if let library,
            let podcasts = try? ModelContext(library).fetch(FetchDescriptor<Podcast>()),

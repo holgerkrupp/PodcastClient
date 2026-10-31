@@ -4456,9 +4456,15 @@ actor StoreSplitMigrationService {
     /// can't otherwise be corrected, because publication only visits feeds the summaries
     /// mention. A modest gap is left alone.
     @discardableResult
+    ///
+    /// Baselines are account-wide but this library is one device's view. Automatic
+    /// runs therefore touch only this device's rows and rows with no recorded owner.
+    /// `includingOtherDevices` is for the user's explicit rebuild; even then a row
+    /// this library knows nothing about is left alone.
     nonisolated static func repairInflatedBaseline(
         libraryContainer: ModelContainer,
-        userStateContainer: ModelContainer
+        userStateContainer: ModelContainer,
+        includingOtherDevices: Bool = false
     ) throws -> Int {
         guard let kind = try selectedBaselinePeriodKind(in: ModelContext(libraryContainer)) else { return 0 }
         let summaries = try ModelContext(libraryContainer).fetch(FetchDescriptor<PlaySessionSummary>(
@@ -4495,8 +4501,12 @@ actor StoreSplitMigrationService {
 
         let now = Date()
         var changed = 0
+        let deviceID = ListeningDeviceIdentity.current().id
         for row in rows {
+            let isOwnRow = row.capturedByDeviceID == nil || row.capturedByDeviceID == deviceID
+            guard isOwnRow || (includingOtherDevices && expected[row.feedURL] != nil) else { continue }
             let value = expected[row.feedURL] ?? Totals()
+            row.capturedByDeviceID = deviceID
             row.totalSeconds = value.total
             row.silenceGapTimeSavedSeconds = value.silence
             row.playbackRateTimeSavedSeconds = value.rate
@@ -4512,7 +4522,7 @@ actor StoreSplitMigrationService {
                 silenceGapTimeSavedSeconds: value.silence,
                 playbackRateTimeSavedSeconds: value.rate,
                 capturedAt: now,
-                capturedByDeviceID: ListeningDeviceIdentity.current().id
+                capturedByDeviceID: deviceID
             ))
             changed += 1
         }
