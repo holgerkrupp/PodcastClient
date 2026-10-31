@@ -4456,6 +4456,22 @@
         }
       }
     },
+    "Continue with iCloud Data" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit iCloud-Daten fortfahren"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Continuer avec les données iCloud"
+          }
+        }
+      }
+    },
     "Continues the paused download" : {
       "localizations" : {
         "de" : {

@@ -11,7 +11,7 @@ long on a real 4.68 GB library.
 | --- | --- |
 | `UserState.sqlite` | The only CloudKit-backed store. Subscriptions, shared preferences, playback state, queue and playlists, bookmarks, listening history and baselines. |
 | `SharedDatabase.sqlite` | Upgraded devices: the local library the UI reads and writes. Never attached to CloudKit again. |
-| `LibraryRuntime.sqlite` + `PodcastCache.sqlite` | Devices with no legacy store (fresh installs): the same role. The runtime file is derived and built once. Its first build holds every podcast plus Inbox, playlist, bookmarked, downloaded and recently played episodes; the rest comes from a full fetch of each subscribed feed after opening. Saved transcripts then follow from the cache. Until that finishes, routine feed refresh and automatic transcription are off, and an episode with no lines never overwrites cached ones. |
+| `LibraryRuntime.sqlite` + `PodcastCache.sqlite` | Devices with no legacy store (fresh installs): the same role. The runtime file is derived and built once. Its first build holds every podcast plus Inbox, playlist, bookmarked, downloaded and recently played episodes; the rest comes from a full fetch of each subscribed feed after opening. Saved transcripts then follow from the cache. Until that finishes, routine feed refresh and automatic transcription are off, and an episode with no lines never overwrites cached ones. Installs from older builds with UserState and no legacy store take this path, unless a copy checkpoint, the store lineage or a saved CloudKit state proves a legacy library existed; those stop at an error whose button continues from iCloud data. A missing PodcastCache never blocks opening. |
 
 ## Startup
 

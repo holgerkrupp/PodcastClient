@@ -1,4 +1,5 @@
 import SwiftData
+import SQLite3
 import SwiftUI
 import Synchronization
 import CloudKitSyncMonitor
@@ -47,8 +48,14 @@ enum StoreBootstrapEvidence {
     static func hasSplitOnlyLibrary(
         standardDefaults: UserDefaults,
         appGroupDefaults: UserDefaults?,
-        files: Set<String>
+        files: Set<String>,
+        cacheURL: URL? = nil
     ) -> Bool {
+        if let cacheURL,
+           files.contains(cacheURL.lastPathComponent),
+           cacheRecordsLegacyCopy(at: cacheURL) {
+            return false
+        }
         guard files.contains("UserState.sqlite"),
               files.contains(where: { $0.hasPrefix("SharedDatabase.sqlite") }) == false,
               standardDefaults.bool(forKey: persistentLibraryOpenedKey) == false,
@@ -57,6 +64,38 @@ enum StoreBootstrapEvidence {
               ) == nil else { return false }
         let lineage = standardDefaults.stringArray(forKey: StoreLineage.key) ?? []
         return lineage.contains("SharedDatabase.sqlite") == false
+    }
+
+    /// Copy checkpoints that scanned rows prove a legacy library was on this device,
+    /// and unlike UserState they don't sync in from another one. Read before any
+    /// container opens; a cache that can't be read counts as proof.
+    static func cacheRecordsLegacyCopy(at url: URL) -> Bool {
+        var database: OpaquePointer?
+        defer { sqlite3_close(database) }
+        guard sqlite3_open_v2(url.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            return true
+        }
+        func hasRow(_ sql: String) -> Bool? {
+            var statement: OpaquePointer?
+            defer { sqlite3_finalize(statement) }
+            guard sqlite3_prepare_v2(database, sql, -1, &statement, nil) == SQLITE_OK else { return nil }
+            switch sqlite3_step(statement) {
+            case SQLITE_ROW: return true
+            case SQLITE_DONE: return false
+            default: return nil
+            }
+        }
+        guard let hasTable = hasRow(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'ZSTORESPLITMIGRATIONCHECKPOINT'"
+        ) else { return true }
+        guard hasTable else { return false }
+        return hasRow("SELECT 1 FROM ZSTORESPLITMIGRATIONCHECKPOINT WHERE ZSCANNEDCOUNT > 0 LIMIT 1") ?? true
+    }
+
+    /// The owner's choice on the launch error when the legacy library is gone. This
+    /// deletes nothing, and a legacy store that comes back is used again.
+    static func continueWithoutLegacyLibrary(defaults: UserDefaults = .standard) {
+        defaults.set(true, forKey: freshSplitInstallReadyKey)
     }
 
     static func mayHaveExistingLibrary(
@@ -154,6 +193,12 @@ enum StoreSplitPendingImportLedger {
 /// (which also returns false for protected/unavailable storage).
 enum StoreLineage {
     static let key = "storeSplit.openedPersistentStores.v1"
+
+    /// PodcastCache holds only what the feeds can restore, so losing it must not
+    /// stop the app from opening.
+    static func requiredStores(_ opened: [String]) -> [String] {
+        opened.filter { $0 != "PodcastCache.sqlite" }
+    }
 
     static func directoryContentsWithRetry(
         directory: () -> URL?,
@@ -1008,7 +1053,7 @@ class ModelContainerManager: ObservableObject {
             do {
                 files = try StoreLineage.directoryContentsWithRetry(
                     directory: { Self.sharedContainerURL },
-                    expected: expectedStores
+                    expected: StoreLineage.requiredStores(expectedStores)
                 )
             } catch {
                 throw StoreBootstrapError.persistentStoreUnavailable
@@ -1019,7 +1064,8 @@ class ModelContainerManager: ObservableObject {
             ) || StoreBootstrapEvidence.hasSplitOnlyLibrary(
                 standardDefaults: .standard,
                 appGroupDefaults: appGroupDefaults,
-                files: files
+                files: files,
+                cacheURL: Self.sharedContainerURL?.appendingPathComponent("PodcastCache.sqlite")
             )
             let hasExistingLibraryEvidence = StoreBootstrapEvidence.mayHaveExistingLibrary(
                 standardDefaults: .standard,

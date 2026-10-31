@@ -49,6 +49,16 @@ struct ModelContainerLaunchView: View {
                             .foregroundStyle(.secondary)
                         Button("Try Again", action: retry)
                             .buttonStyle(.borderedProminent)
+                        if errorMessage == StoreBootstrapError.existingLibraryUnavailable.errorDescription {
+                            Text("Your subscriptions and playlists can come back from iCloud. Anything that was only on this device stays missing unless its library returns.")
+                                .font(.footnote)
+                                .multilineTextAlignment(.center)
+                                .foregroundStyle(.secondary)
+                            Button("Continue with iCloud Data") {
+                                StoreBootstrapEvidence.continueWithoutLegacyLibrary()
+                                retry()
+                            }
+                        }
                     } else {
                         Text("Restoring your saved library…")
                             .font(.headline)

@@ -73,6 +73,79 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
         ))
     }
 
+    func testCopyCheckpointsThatScannedRowsProveALegacyLibrary() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("PodcastCache.sqlite")
+        let container = try ModelContainerManager.makeCacheContainer(storageURL: url)
+        let context = ModelContext(container)
+        context.insert(StoreSplitMigrationCheckpoint(id: "empty", migrationVersion: 1, phase: "subscriptions"))
+        try context.save()
+        XCTAssertFalse(StoreBootstrapEvidence.cacheRecordsLegacyCopy(at: url))
+
+        context.insert(StoreSplitMigrationCheckpoint(
+            id: "scanned", migrationVersion: 1, phase: "playlists", scannedCount: 5
+        ))
+        try context.save()
+        XCTAssertTrue(StoreBootstrapEvidence.cacheRecordsLegacyCopy(at: url))
+
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults,
+            appGroupDefaults: defaults,
+            files: ["UserState.sqlite", "PodcastCache.sqlite"],
+            cacheURL: url
+        ))
+    }
+
+    func testUnreadableCacheCountsAsProof() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("PodcastCache.sqlite")
+        try Data("not a database".utf8).write(to: url)
+        XCTAssertTrue(StoreBootstrapEvidence.cacheRecordsLegacyCopy(at: url))
+    }
+
+    func testContinuingWithoutTheLegacyLibraryOpensAndALegacyStoreStillWins() throws {
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        StoreBootstrapEvidence.continueWithoutLegacyLibrary(defaults: defaults)
+        let hasRecord = StoreBootstrapEvidence.hasFreshSplitInstallRecord(defaults: defaults)
+
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: false,
+                installationWasPreviouslyInitialized: !hasRecord
+            ),
+            .freshSplitInstall
+        )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: true,
+                installationWasPreviouslyInitialized: !hasRecord
+            ),
+            .legacyUpgrade
+        )
+    }
+
+    func testMissingPodcastCacheDoesNotBlockOpeningButMissingUserStateDoes() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data().write(to: directory.appendingPathComponent("UserState.sqlite"))
+        let opened = ["UserState.sqlite", "PodcastCache.sqlite"]
+
+        XCTAssertNoThrow(try StoreLineage.validate(
+            directory: directory,
+            expected: StoreLineage.requiredStores(opened)
+        ))
+        try FileManager.default.removeItem(at: directory.appendingPathComponent("UserState.sqlite"))
+        XCTAssertThrowsError(try StoreLineage.validate(
+            directory: directory,
+            expected: StoreLineage.requiredStores(opened)
+        ))
+    }
+
     /// The feed cache may be empty: everything the user made comes from UserState.
     @MainActor
     func testSubscriptionsAndPlaylistsSurviveARebuildWithAnEmptyCache() async throws {
