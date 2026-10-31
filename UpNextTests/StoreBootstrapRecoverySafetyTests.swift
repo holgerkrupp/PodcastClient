@@ -29,6 +29,99 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
         )
     }
 
+    func testSplitOnlyInstallFromAnOlderBuildIsRecognized() throws {
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(true, forKey: "didCompleteOnboarding")
+        let files: Set<String> = ["UserState.sqlite", "PodcastCache.sqlite"]
+
+        XCTAssertTrue(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults, appGroupDefaults: defaults, files: files
+        ))
+
+        defaults.set(["UserState.sqlite", "PodcastCache.sqlite"], forKey: StoreLineage.key)
+        XCTAssertTrue(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults, appGroupDefaults: defaults, files: files
+        ), "2026.36 recorded the split stores in its lineage")
+    }
+
+    func testAnySignOfALegacyStoreStaysUnavailable() throws {
+        let files: Set<String> = ["UserState.sqlite", "PodcastCache.sqlite"]
+        let signs: [(UserDefaults) -> Void] = [
+            { $0.set(["SharedDatabase.sqlite"], forKey: StoreLineage.key) },
+            { $0.set(false, forKey: StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey) },
+            { $0.set(true, forKey: StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey) },
+            { $0.set(true, forKey: StoreBootstrapEvidence.persistentLibraryOpenedKey) }
+        ]
+        for sign in signs {
+            let (suiteName, defaults) = try makeDefaults()
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            sign(defaults)
+            XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+                standardDefaults: defaults, appGroupDefaults: defaults, files: files
+            ))
+        }
+
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults, appGroupDefaults: defaults, files: ["PodcastCache.sqlite"]
+        ), "without UserState there is nothing to restore subscriptions from")
+        XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults, appGroupDefaults: defaults,
+            files: files.union(["SharedDatabase.sqlite-wal"])
+        ))
+    }
+
+    /// The feed cache may be empty: everything the user made comes from UserState.
+    @MainActor
+    func testSubscriptionsAndPlaylistsSurviveARebuildWithAnEmptyCache() async throws {
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let feed = "https://example.com/split-only.xml"
+        let subscription = SubscriptionSync(feedURL: feed)
+        subscription.isSubscribed = true
+        userState.mainContext.insert(subscription)
+        userState.mainContext.insert(PlaylistSync(
+            id: Playlist.defaultQueueSyncID,
+            title: Playlist.defaultQueueTitle,
+            symbolName: Playlist.defaultQueueSymbolName,
+            sortIndex: 0,
+            kindRawValue: Playlist.Kind.manual.rawValue
+        ))
+        userState.mainContext.insert(PlaylistEntrySync(
+            playlistID: Playlist.defaultQueueSyncID,
+            feedURL: feed,
+            episodeID: "not-fetched-yet",
+            sortIndex: 0
+        ))
+        try userState.mainContext.save()
+
+        XCTAssertEqual(
+            StoreSplitCompatibilityProjectionService.rebuild(
+                cacheContainer: cache,
+                runtimeContainer: runtime
+            ).failed,
+            0
+        )
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: userState,
+            authoritativePlaylists: true
+        )
+
+        XCTAssertEqual(result.failed, 0)
+        XCTAssertEqual(result.feedsToBootstrap.map(\.absoluteString), [feed])
+        let podcasts = try ModelContext(runtime).fetch(FetchDescriptor<Podcast>())
+        XCTAssertEqual(podcasts.filter { $0.metaData?.isSubscribed == true }.count, 1)
+        let account = ModelContext(userState)
+        XCTAssertEqual(try account.fetch(FetchDescriptor<SubscriptionSync>()).filter(\.isSubscribed).count, 1)
+        let entries = try account.fetch(FetchDescriptor<PlaylistEntrySync>())
+        XCTAssertEqual(entries.map(\.episodeID), ["not-fetched-yet"])
+        XCTAssertTrue(entries.allSatisfy { $0.isDeleted == false })
+    }
+
     func testCompletedFreshSplitMarkerAllowsFreshInstallDespiteOldOnboardingEvidence() throws {
         let (suiteName, defaults) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }

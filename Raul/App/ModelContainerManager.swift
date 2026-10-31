@@ -39,6 +39,26 @@ enum StoreBootstrapEvidence {
         defaults.bool(forKey: freshSplitInstallReadyKey)
     }
 
+    /// Builds up to 2026.36 ran a device with no legacy store from UserState and
+    /// PodcastCache without leaving the fresh-install record. Their subscriptions
+    /// and playlists are in UserState, and feed data comes back from the feeds.
+    /// Any sign that a legacy store was ever opened on disk rules this out: the
+    /// in-memory graph of those builds recorded neither of these.
+    static func hasSplitOnlyLibrary(
+        standardDefaults: UserDefaults,
+        appGroupDefaults: UserDefaults?,
+        files: Set<String>
+    ) -> Bool {
+        guard files.contains("UserState.sqlite"),
+              files.contains(where: { $0.hasPrefix("SharedDatabase.sqlite") }) == false,
+              standardDefaults.bool(forKey: persistentLibraryOpenedKey) == false,
+              appGroupDefaults?.object(
+                  forKey: StoreDevelopmentConfiguration.legacyCloudSyncLastStateKey
+              ) == nil else { return false }
+        let lineage = standardDefaults.stringArray(forKey: StoreLineage.key) ?? []
+        return lineage.contains("SharedDatabase.sqlite") == false
+    }
+
     static func mayHaveExistingLibrary(
         standardDefaults: UserDefaults,
         appGroupDefaults: UserDefaults?,
@@ -996,6 +1016,10 @@ class ModelContainerManager: ObservableObject {
             let appGroupDefaults = UserDefaults(suiteName: Self.appGroupID)
             let hasFreshSplitInstallRecord = StoreBootstrapEvidence.hasFreshSplitInstallRecord(
                 defaults: .standard
+            ) || StoreBootstrapEvidence.hasSplitOnlyLibrary(
+                standardDefaults: .standard,
+                appGroupDefaults: appGroupDefaults,
+                files: files
             )
             let hasExistingLibraryEvidence = StoreBootstrapEvidence.mayHaveExistingLibrary(
                 standardDefaults: .standard,
