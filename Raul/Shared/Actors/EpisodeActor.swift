@@ -2427,7 +2427,36 @@ actor EpisodeActor {
         for episode: Episode,
         fileURL: URL,
         force: Bool,
+        isRetry: Bool = false,
         progress: (@Sendable (String) -> Void)? = nil
+    ) async -> Bool {
+        guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
+        // Automatic triggers fire again on every download and chapter refresh. An
+        // existing generated set is only replaced on request.
+        if force == false, isRetry == false,
+           (episode.chapters ?? []).contains(where: { $0.type == .ai }) {
+            return false
+        }
+
+        let registry = GeneratedChapterWorkRegistry.shared
+        if case .completed(let result) = await registry.claim(fileURL) {
+            return result
+        }
+        let didGenerate = await generateClaimedEpisodeChapters(
+            for: episode,
+            fileURL: fileURL,
+            force: force,
+            progress: progress
+        )
+        await registry.finish(fileURL, result: Task.isCancelled ? nil : didGenerate)
+        return didGenerate
+    }
+
+    private func generateClaimedEpisodeChapters(
+        for episode: Episode,
+        fileURL: URL,
+        force: Bool,
+        progress: (@Sendable (String) -> Void)?
     ) async -> Bool {
         let transcriptLines = episode.transcriptLines ?? []
         let audioVariantID = AudioVariantIdentity.make(
@@ -2439,13 +2468,24 @@ actor EpisodeActor {
             audioVariantID: audioVariantID
         )
 
-        guard force || shouldGenerateTranscriptChapters(for: episode) else { return false }
-
         var editorialCandidates: [GeneratedEditorialChapterCandidate] = []
         var advertisementCandidates: [GeneratedAdvertisementCandidate] = []
         if transcriptLines.isEmpty == false {
             progress?(String(localized: "Preparing transcript chapters…"))
-            let extractedData = await generateAIChapters(from: transcriptLines, progress: progress)
+            // Optional automatic runs wait out thermal and memory pressure.
+            let (extractedData, retryReason) = await generateAIChapters(
+                from: transcriptLines,
+                yieldsToSystemPressure: force == false,
+                progress: progress
+            )
+            if let retryReason {
+                // A requested pass reports its failure to the user instead.
+                if force == false {
+                    await GeneratedChapterRetryQueue.shared.enqueue(fileURL, reason: retryReason)
+                }
+                return false
+            }
+            await GeneratedChapterRetryQueue.shared.remove(fileURL)
             guard Task.isCancelled == false else { return false }
             editorialCandidates = extractedData.compactMap { timecode, title in
                 guard let start = timecode.durationAsSeconds else { return nil }
@@ -2497,6 +2537,8 @@ actor EpisodeActor {
             audioVariantID: resolvedAudioVariantID
         )
         guard proposals.isEmpty == false, Task.isCancelled == false else { return false }
+        // Rewriting an identical set only causes store writes and a UI refresh.
+        if Self.generatedChapters(episode.chapters ?? [], match: proposals) { return true }
 
         let newChapters = proposals.map { proposal in
             let chapter = Marker(
@@ -2522,6 +2564,24 @@ actor EpisodeActor {
             generatedAt: .now
         )
         return true
+    }
+
+    static func generatedChapters(
+        _ chapters: [Marker],
+        match proposals: [GeneratedChapterProposal]
+    ) -> Bool {
+        let existing = chapters.filter { $0.type == .ai || $0.type == .extracted }
+        guard existing.allSatisfy({ $0.type == .ai }),
+              existing.count == proposals.count else { return false }
+        let sorted = existing.sorted { ($0.start ?? 0) < ($1.start ?? 0) }
+        return zip(sorted, proposals.sorted { $0.start < $1.start }).allSatisfy { chapter, proposal in
+            guard let start = chapter.start,
+                  abs(start - proposal.start) < 0.01,
+                  chapter.title == proposal.title else { return false }
+            // Editorial ends come from the following chapter, not the proposal.
+            guard let end = proposal.end, proposal.kind == .advertisement else { return true }
+            return chapter.end.map { abs($0 - end) < 0.01 } ?? false
+        }
     }
 
     private func shouldAutomaticallyGenerateChapters() async -> Bool {
@@ -2578,8 +2638,12 @@ actor EpisodeActor {
         // Keep an existing transcript-derived result when there are no actual
         // timestamps in the shownotes. The AI fallback below is only useful when
         // no better generated chapter set already exists.
+        // The model can only reformat timestamps that are present. Without this
+        // check every new episode cost a model call, even with the setting off.
         if extractedData == nil,
-           (episode.chapters ?? []).contains(where: { $0.type == .ai }) == false {
+           (episode.chapters ?? []).contains(where: { $0.type == .ai }) == false,
+           ChapterSourcePolicy.mayContainChapterTimecodes(text),
+           await shouldAutomaticallyGenerateChapters() {
             extractedData = await generateAIChapters(from: text)
         }
        
@@ -2614,13 +2678,14 @@ actor EpisodeActor {
     }
     
     func generateAIChapters(from transcript: [TranscriptLineAndTime]) async -> [String: String] {
-        await generateAIChapters(from: transcript, progress: nil)
+        await generateAIChapters(from: transcript, yieldsToSystemPressure: false, progress: nil).chapters
     }
 
     func generateAIChapters(
         from transcript: [TranscriptLineAndTime],
+        yieldsToSystemPressure: Bool,
         progress: (@Sendable (String) -> Void)?
-    ) async -> [String: String] {
+    ) async -> (chapters: [String: String], retryReason: GeneratedChapterRetryReason?) {
         let chapterGenerator = AIChapterGenerator()
         let orderedTranscript = transcript.enumerated().sorted { left, right in
             if left.element.startTime != right.element.startTime {
@@ -2637,8 +2702,12 @@ actor EpisodeActor {
                 endTime: $0.endTime
             )
         }
-        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(snapshots, progress: progress)
-        return aiChapters
+        let aiChapters = await chapterGenerator.createChaptersFromTranscriptLines(
+            snapshots,
+            yieldsToSystemPressure: yieldsToSystemPressure,
+            progress: progress
+        )
+        return (aiChapters, await chapterGenerator.retryReason)
     }
     
     private func shouldGenerateTranscriptChapters(for episode: Episode) -> Bool {
@@ -2652,6 +2721,25 @@ actor EpisodeActor {
         await updateChapterDurations(episodeURL: episodeURL)
         await applyAutoSkipWords(episodeURL: episodeURL)
         return didGenerate
+    }
+
+    /// Runs a chapter pass that stopped earlier. Drops the entry when the episode no
+    /// longer needs one, for example because the publisher added chapters meanwhile.
+    func retryGeneratedChapters(for episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
+              shouldGenerateTranscriptChapters(for: episode) else {
+            await GeneratedChapterRetryQueue.shared.remove(episodeURL)
+            return
+        }
+        let didGenerate = await generateEpisodeChapters(
+            for: episode,
+            fileURL: episodeURL,
+            force: false,
+            isRetry: true
+        )
+        guard didGenerate else { return }
+        await updateChapterDurations(episodeURL: episodeURL)
+        await applyAutoSkipWords(episodeURL: episodeURL)
     }
 
     @discardableResult
@@ -2996,7 +3084,8 @@ actor EpisodeActor {
         with snapshots: [TranscriptLineSnapshot],
         source: CachedTranscriptSource
     ) async throws {
-        let batchSize = 100
+        // Each save is a store commit, and a one-hour transcript is thousands of rows.
+        let batchSize = 500
         let episodeID = episode.persistentModelID
 
         // Do not touch episode.transcriptLines here. Reading or assigning the
@@ -3452,6 +3541,11 @@ fileprivate func firstNonEmptyString(in value: Any?) -> String? {
 }
 
 enum ChapterSourcePolicy {
+    /// A usable chapter list needs at least two timestamps.
+    static func mayContainChapterTimecodes(_ text: String) -> Bool {
+        text.matches(of: /\b\d{1,2}:\d{2}\b/).count >= 2
+    }
+
     static func shouldExtractShownotes(from chapters: [Marker]) -> Bool {
         let timelineChapters = chapters.filter { $0.type != .soundbite }
         guard timelineChapters.isEmpty == false else { return true }

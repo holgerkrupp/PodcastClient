@@ -1707,7 +1707,16 @@ class Player {
         let transcriptLines = (episode.transcriptLines ?? []).map {
             TranscriptDetectionLine(text: $0.text, start: $0.startTime, end: nil)
         }
-        let transcriptProvider = RollingSpeechTranscriptProvider(existingLines: transcriptLines)
+        let shouldRunPCM = AdDetectionWorkPolicy.shouldRunPCM(
+            applicationIsActive: applicationIsActive,
+            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
+            sourceIsLocal: mediaURL.isFileURL
+        )
+        // The speech fallback is the most expensive signal, so it follows the same policy.
+        let transcriptProvider = RollingSpeechTranscriptProvider(
+            existingLines: transcriptLines,
+            allowsSpeechFallback: shouldRunPCM
+        )
         let audioSource: any AudioAnalysisSource
 #if !os(watchOS)
         audioSource = AudioAnalysisSourceFactory.make(for: mediaURL)
@@ -1722,11 +1731,6 @@ class Player {
             TranscriptAdvertisementSignalProvider(transcriptProvider: transcriptProvider),
             SemanticAdvertisementSignalProvider(transcriptProvider: transcriptProvider)
         ]
-        let shouldRunPCM = AdDetectionWorkPolicy.shouldRunPCM(
-            applicationIsActive: applicationIsActive,
-            lowPowerModeEnabled: ProcessInfo.processInfo.isLowPowerModeEnabled,
-            sourceIsLocal: mediaURL.isFileURL
-        )
         if shouldRunPCM {
             providers.append(CombinedAudioAdvertisementSignalProvider(
                 audioSource: audioSource,

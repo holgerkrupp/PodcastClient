@@ -15,18 +15,24 @@ protocol AdTranscriptProvider: Sendable {
 struct RollingSpeechTranscriptProvider: AdTranscriptProvider, Sendable {
     let existingLines: [TranscriptDetectionLine]
     let coordinator: AdDetectionTranscriptWorkCoordinator
+    /// When `false`, only existing lines are used and no analyzer runs.
+    let allowsSpeechFallback: Bool
 
     init(
         existingLines: [TranscriptDetectionLine] = [],
-        coordinator: AdDetectionTranscriptWorkCoordinator = .shared
+        coordinator: AdDetectionTranscriptWorkCoordinator = .shared,
+        allowsSpeechFallback: Bool = true
     ) {
         self.existingLines = existingLines.sorted { $0.start < $1.start }
         self.coordinator = coordinator
+        self.allowsSpeechFallback = allowsSpeechFallback
     }
 
     func lines(for request: AdDetectionRequest) async throws -> [TranscriptDetectionLine] {
         let requested = existingLines.filter { $0.range.overlaps(request.range, tolerance: 0.1) }
-        if requested.isEmpty == false || request.mediaURL.isFileURL == false {
+        if requested.isEmpty == false
+            || request.mediaURL.isFileURL == false
+            || allowsSpeechFallback == false {
             return requested
         }
 
@@ -181,6 +187,9 @@ struct AdSemanticAssessment: Codable, Equatable, Sendable {
 }
 
 actor AdvertisementSemanticClassifier {
+    /// Shared so results survive the provider rebuild on every player reconfiguration.
+    static let shared = AdvertisementSemanticClassifier()
+
     private var cache: [String: AdSemanticAssessment] = [:]
 
     func assess(text: String, context: String) async -> AdSemanticAssessment {
@@ -276,7 +285,7 @@ struct SemanticAdvertisementSignalProvider: AdSignalProvider {
 
     init(
         transcriptProvider: any AdTranscriptProvider,
-        classifier: AdvertisementSemanticClassifier = AdvertisementSemanticClassifier()
+        classifier: AdvertisementSemanticClassifier = .shared
     ) {
         self.transcriptProvider = transcriptProvider
         self.classifier = classifier
@@ -285,13 +294,17 @@ struct SemanticAdvertisementSignalProvider: AdSignalProvider {
     func observations(for request: AdDetectionRequest) async throws -> [AdDetectionObservation] {
         let lines = try await transcriptProvider.lines(for: request)
         guard lines.isEmpty == false else { return [] }
-        let windowDuration = max(request.configuration.windowDuration, 20)
-        let hopDuration = max(request.configuration.hopDuration, 10)
+        // Each window is one language-model session. Overlapping 30-second windows
+        // cost 20 sessions per five minutes of audio, and a sponsor read is long
+        // enough to be recognised in one minute of text. The acoustic and textual
+        // signals refine the boundaries.
+        let windowDuration = max(request.configuration.windowDuration, 60)
+        let hopDuration = windowDuration
         var results: [AdDetectionObservation] = []
         var windowStart = request.range.start
         let lastEnd = request.range.end ?? (lines.compactMap(\.end).max() ?? windowStart)
 
-        while windowStart <= lastEnd {
+        while windowStart < lastEnd {
             try Task.checkCancellation()
             let window = AdTimeRange(start: windowStart, end: min(windowStart + windowDuration, lastEnd))
             let windowLines = lines.filter { $0.range.overlaps(window, tolerance: 0.1) }

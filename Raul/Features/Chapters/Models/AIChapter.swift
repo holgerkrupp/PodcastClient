@@ -15,6 +15,59 @@ struct TranscriptLineSnapshot: Sendable {
     let endTime: TimeInterval?
 }
 
+/// Merges short transcript cues into blocks before they reach the language model.
+///
+/// On-device transcripts hold a cue every few words, so timestamps took up about
+/// half of each prompt. Chapter boundaries are coarse, and fewer timestamps mean
+/// more transcript per chunk and fewer model calls per episode.
+enum TranscriptPromptCoalescer {
+    static let maximumBlockDuration: TimeInterval = 20
+    static let minimumSentenceBlockDuration: TimeInterval = 6
+    static let maximumBlockBytes = 1_200
+
+    static func coalesce(_ lines: [TranscriptLineSnapshot]) -> [TranscriptLineSnapshot] {
+        var blocks: [TranscriptLineSnapshot] = []
+        var first: TranscriptLineSnapshot?
+        var text = ""
+        var endTime: TimeInterval?
+
+        func flush() {
+            guard let block = first else { return }
+            blocks.append(TranscriptLineSnapshot(
+                speaker: block.speaker,
+                text: text,
+                startTime: block.startTime,
+                endTime: endTime
+            ))
+            first = nil
+            text = ""
+            endTime = nil
+        }
+
+        for line in lines {
+            if let block = first {
+                let elapsed = line.startTime - block.startTime
+                let endsSentence = text.last.map { ".!?".contains($0) } ?? false
+                if line.speaker != block.speaker
+                    || elapsed >= maximumBlockDuration
+                    || (endsSentence && elapsed >= minimumSentenceBlockDuration)
+                    || text.utf8.count + line.text.utf8.count >= maximumBlockBytes {
+                    flush()
+                }
+            }
+            if first == nil {
+                first = line
+                text = line.text
+            } else {
+                text += " " + line.text
+            }
+            endTime = line.endTime ?? endTime
+        }
+        flush()
+        return blocks
+    }
+}
+
 private struct ChapterCarryOverContext: Sendable {
     let timecode: String
     let title: String
@@ -29,6 +82,9 @@ actor AIChapterGenerator{
     /// This is deliberately low: a chapter should describe a substantial section of
     /// an episode rather than every conversational turn inside that section.
     private let maxChaptersPerChunk = 2
+
+    /// Set when a transcript pass stopped for a reason that will clear, with no result.
+    private(set) var retryReason: GeneratedChapterRetryReason?
     
     
     
@@ -111,10 +167,15 @@ actor AIChapterGenerator{
 
     func createChaptersFromTranscriptLines(
         _ transcriptLines: [TranscriptLineSnapshot],
+        yieldsToSystemPressure: Bool = false,
         progress: (@Sendable (String) -> Void)? = nil
     ) async -> [String:String] {
         let model = SystemLanguageModel.default
         guard model.isAvailable else {
+            // Apple Intelligence being off or unsupported won't clear by waiting.
+            if case .unavailable(.modelNotReady) = model.availability {
+                retryReason = .transient
+            }
             return [:]
         }
         guard transcriptLines.isEmpty == false else { return [:] }
@@ -155,7 +216,9 @@ actor AIChapterGenerator{
             chunkBudget = 1600
         }
 
-        let chunks = await chunkTranscriptLines(orderedTranscriptLines, tokenBudget: chunkBudget, model: model)
+        let promptLines = TranscriptPromptCoalescer.coalesce(orderedTranscriptLines)
+        let tokensPerByte = await calibratedTokensPerByte(for: promptLines, model: model)
+        let chunks = chunkTranscriptLines(promptLines, tokenBudget: chunkBudget, tokensPerByte: tokensPerByte)
 
         #if DEBUG
         print("AI transcript chapter generation will process \(orderedTranscriptLines.count) transcript line(s) in \(chunks.count) chunk(s) using \(usesExactTokenCounting ? "exact" : "estimated") token counting and will keep up to \(maxChaptersPerChunk) broad chapter boundary/boundaries per chunk.")
@@ -165,7 +228,13 @@ actor AIChapterGenerator{
         var carryOverContext: ChapterCarryOverContext?
 
         for (index, chunk) in chunks.enumerated() {
-            guard Task.isCancelled == false else { return [:] }
+            if yieldsToSystemPressure {
+                await SystemPressureGate.shared.waitUntilIdle()
+            }
+            guard Task.isCancelled == false else {
+                retryReason = .cancelled
+                return [:]
+            }
             let chunkLabel = "\(index + 1)/\(chunks.count)"
             progress?(String(localized: "Generating chapters, section \(chunkLabel)…"))
             let chunkResult = await generateChapters(
@@ -173,14 +242,21 @@ actor AIChapterGenerator{
                 instructions: instructions,
                 model: model,
                 chunkLabel: chunkLabel,
+                tokensPerByte: tokensPerByte,
                 previousChapterContext: carryOverContext
             )
+            // The remaining chunks would fail the same way.
+            if retryReason != nil { return [:] }
             mergedChapters.merge(chunkResult.chapters, uniquingKeysWith: { first, _ in first })
             if let lastChapter = chunkResult.lastChapter {
                 carryOverContext = lastChapter
             }
         }
 
+        if Task.isCancelled {
+            retryReason = .cancelled
+            return [:]
+        }
         return mergedChapters
     }
 
@@ -193,14 +269,14 @@ actor AIChapterGenerator{
     private func chunkTranscriptLines(
         _ transcriptLines: [TranscriptLineSnapshot],
         tokenBudget: Int,
-        model: SystemLanguageModel
-    ) async -> [TranscriptChunk] {
+        tokensPerByte: Double
+    ) -> [TranscriptChunk] {
         guard transcriptLines.isEmpty == false else { return [] }
 
-        let normalizedLines = await expandTranscriptLines(
+        let normalizedLines = expandTranscriptLines(
             transcriptLines,
             tokenBudget: tokenBudget,
-            model: model
+            tokensPerByte: tokensPerByte
         )
 
         var chunks: [TranscriptChunk] = []
@@ -209,7 +285,7 @@ actor AIChapterGenerator{
 
         for line in normalizedLines {
             let linePrompt = formattedTranscriptLine(for: line)
-            let lineTokenCount = await tokenCount(for: linePrompt, model: model)
+            let lineTokenCount = estimatedTokenCount(for: linePrompt, tokensPerByte: tokensPerByte)
 
             if currentLines.isEmpty {
                 currentLines = [line]
@@ -218,7 +294,7 @@ actor AIChapterGenerator{
             }
 
             if currentTokenCount + 1 + lineTokenCount > tokenBudget {
-                chunks.append(await makeTranscriptChunk(lines: currentLines, model: model))
+                chunks.append(makeTranscriptChunk(lines: currentLines, tokensPerByte: tokensPerByte))
                 currentLines = [line]
                 currentTokenCount = lineTokenCount
             } else {
@@ -228,7 +304,7 @@ actor AIChapterGenerator{
         }
 
         if currentLines.isEmpty == false {
-            chunks.append(await makeTranscriptChunk(lines: currentLines, model: model))
+            chunks.append(makeTranscriptChunk(lines: currentLines, tokensPerByte: tokensPerByte))
         }
 
         return chunks
@@ -237,16 +313,16 @@ actor AIChapterGenerator{
     private func expandTranscriptLines(
         _ transcriptLines: [TranscriptLineSnapshot],
         tokenBudget: Int,
-        model: SystemLanguageModel
-    ) async -> [TranscriptLineSnapshot] {
+        tokensPerByte: Double
+    ) -> [TranscriptLineSnapshot] {
         var expandedLines: [TranscriptLineSnapshot] = []
         expandedLines.reserveCapacity(transcriptLines.count)
 
         for line in transcriptLines {
-            let linePieces = await splitTranscriptLineIfNeeded(
+            let linePieces = splitTranscriptLineIfNeeded(
                 line,
                 tokenBudget: tokenBudget,
-                model: model
+                tokensPerByte: tokensPerByte
             )
             expandedLines.append(contentsOf: linePieces)
         }
@@ -257,10 +333,10 @@ actor AIChapterGenerator{
     private func splitTranscriptLineIfNeeded(
         _ line: TranscriptLineSnapshot,
         tokenBudget: Int,
-        model: SystemLanguageModel
-    ) async -> [TranscriptLineSnapshot] {
+        tokensPerByte: Double
+    ) -> [TranscriptLineSnapshot] {
         let prompt = formattedTranscriptLine(for: line)
-        let tokenCount = await tokenCount(for: prompt, model: model)
+        let tokenCount = estimatedTokenCount(for: prompt, tokensPerByte: tokensPerByte)
         let characterThreshold = max((tokenBudget * 3) / 2, 240)
 
         guard tokenCount > tokenBudget || line.text.utf8.count > characterThreshold else {
@@ -288,10 +364,10 @@ actor AIChapterGenerator{
 
     private func makeTranscriptChunk(
         lines: [TranscriptLineSnapshot],
-        model: SystemLanguageModel
-    ) async -> TranscriptChunk {
+        tokensPerByte: Double
+    ) -> TranscriptChunk {
         let prompt = lines.map(formattedTranscriptLine(for:)).joined(separator: "\n")
-        let tokenCount = await tokenCount(for: prompt, model: model)
+        let tokenCount = estimatedTokenCount(for: prompt, tokensPerByte: tokensPerByte)
         return TranscriptChunk(lines: lines, prompt: prompt, tokenCount: tokenCount)
     }
 
@@ -448,22 +524,35 @@ actor AIChapterGenerator{
         return normalizedTitle
     }
 
-    private func estimatedTokenCount(for text: String) -> Int {
-        max(1, text.utf8.count / 2)
+    private func estimatedTokenCount(for text: String, tokensPerByte: Double) -> Int {
+        max(1, Int((Double(text.utf8.count) * tokensPerByte).rounded(.up)))
     }
 
-    private func tokenCount(for text: String, model: SystemLanguageModel) async -> Int {
+    /// Counts tokens for one sample and estimates the rest from that ratio. Exact
+    /// counting per line meant thousands of calls into the model service per
+    /// episode. A chunk that still overflows is split in `generateChapters`.
+    private func calibratedTokensPerByte(
+        for lines: [TranscriptLineSnapshot],
+        model: SystemLanguageModel
+    ) async -> Double {
+        let fallback = 0.5
         if #available(iOS 26.4, macOS 26.4, *) {
+            var sample = ""
+            for line in lines where sample.utf8.count < 4_000 {
+                sample += formattedTranscriptLine(for: line) + "\n"
+            }
+            guard sample.isEmpty == false else { return fallback }
             do {
-                return try await model.tokenCount(for: text)
+                let tokens = try await model.tokenCount(for: sample)
+                // A margin for later parts of the episode that tokenize worse.
+                return min(Double(tokens) / Double(sample.utf8.count) * 1.15, fallback)
             } catch {
                 #if DEBUG
                 print("AI transcript token counting failed, falling back to estimate: \(error)")
                 #endif
             }
         }
-
-        return estimatedTokenCount(for: text)
+        return fallback
     }
 
     private func formattedTranscriptLine(for line: TranscriptLineSnapshot) -> String {
@@ -478,6 +567,7 @@ actor AIChapterGenerator{
         instructions: String,
         model: SystemLanguageModel,
         chunkLabel: String,
+        tokensPerByte: Double,
         previousChapterContext: ChapterCarryOverContext?
     ) async -> TranscriptChunkGenerationResult {
         guard chunk.lines.isEmpty == false, Task.isCancelled == false else {
@@ -542,14 +632,15 @@ actor AIChapterGenerator{
                 }
 
                 let midpoint = chunk.lines.count / 2
-                let leftChunk = await makeTranscriptChunk(lines: Array(chunk.lines[..<midpoint]), model: model)
-                let rightChunk = await makeTranscriptChunk(lines: Array(chunk.lines[midpoint...]), model: model)
+                let leftChunk = makeTranscriptChunk(lines: Array(chunk.lines[..<midpoint]), tokensPerByte: tokensPerByte)
+                let rightChunk = makeTranscriptChunk(lines: Array(chunk.lines[midpoint...]), tokensPerByte: tokensPerByte)
 
                 let leftResult = await generateChapters(
                     from: leftChunk,
                     instructions: instructions,
                     model: model,
                     chunkLabel: "\(chunkLabel)A",
+                    tokensPerByte: tokensPerByte,
                     previousChapterContext: previousChapterContext
                 )
                 let rightResult = await generateChapters(
@@ -557,6 +648,7 @@ actor AIChapterGenerator{
                     instructions: instructions,
                     model: model,
                     chunkLabel: "\(chunkLabel)B",
+                    tokensPerByte: tokensPerByte,
                     previousChapterContext: leftResult.lastChapter ?? previousChapterContext
                 )
 
@@ -564,6 +656,9 @@ actor AIChapterGenerator{
                     chapters: leftResult.chapters.merging(rightResult.chapters, uniquingKeysWith: { first, _ in first }),
                     lastChapter: rightResult.lastChapter ?? leftResult.lastChapter ?? previousChapterContext
                 )
+            case .assetsUnavailable, .rateLimited, .concurrentRequests:
+                retryReason = .transient
+                return TranscriptChunkGenerationResult(chapters: [:], lastChapter: previousChapterContext)
             default:
                 #if DEBUG
                 print("AI transcript chunk \(chunkLabel) failed: \(generationError)")

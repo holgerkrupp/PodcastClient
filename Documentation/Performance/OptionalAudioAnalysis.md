@@ -23,3 +23,9 @@ memory total. The matching app-image dSYM was not present in the available
 local archives. Physical-device A/B measurements are still required before
 assigning the report to this DEBUG-only path or declaring the write budget
 verified.
+
+Overlapping PCM windows now decode only the audio past the previous window. The
+semantic detector uses one language-model session per non-overlapping minute
+instead of one per 15 seconds and shares its cache across player reconfiguration.
+The speech fallback follows the PCM policy: active app, no Low Power Mode, local
+file. Detection still covers only the first five minutes of an episode.

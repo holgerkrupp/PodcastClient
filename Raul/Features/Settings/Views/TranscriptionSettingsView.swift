@@ -457,6 +457,9 @@ struct TranscriptionSettingsView: View {
         case .active:
             Label("Active", systemImage: "waveform")
                 .foregroundStyle(.green)
+        case .generatingChapters:
+            Label("Generating chapters", systemImage: "sparkles")
+                .foregroundStyle(.green)
         case .queued(let position):
             Text(position == 1 ? "Next" : "#\(position)")
                 .foregroundStyle(.secondary)

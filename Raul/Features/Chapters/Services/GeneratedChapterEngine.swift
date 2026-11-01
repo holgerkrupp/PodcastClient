@@ -28,6 +28,39 @@ struct GeneratedChapterProposal: Equatable, Sendable {
     let audioVariantID: String?
 }
 
+/// Ensures one language-model pass per episode. "Transcribe & generate chapters"
+/// otherwise runs the automatic pass and the requested pass side by side.
+actor GeneratedChapterWorkRegistry {
+    static let shared = GeneratedChapterWorkRegistry()
+
+    enum Claim: Equatable {
+        case owner
+        case completed(Bool)
+    }
+
+    private var waiters: [URL: [CheckedContinuation<Bool?, Never>]] = [:]
+
+    /// Returns `.owner` when the caller must do the work and then call `finish`,
+    /// or the result of the pass that was already running.
+    func claim(_ episodeURL: URL) async -> Claim {
+        while waiters[episodeURL] != nil {
+            let result = await withCheckedContinuation { continuation in
+                waiters[episodeURL, default: []].append(continuation)
+            }
+            if let result { return .completed(result) }
+        }
+        waiters[episodeURL] = []
+        return .owner
+    }
+
+    /// `result` is `nil` when the owner was cancelled, which hands the work to
+    /// the next waiter instead of reporting that no chapters exist.
+    func finish(_ episodeURL: URL, result: Bool?) {
+        let pending = waiters.removeValue(forKey: episodeURL) ?? []
+        pending.forEach { $0.resume(returning: result) }
+    }
+}
+
 /// Merges semantic transcript boundaries with already-confirmed ad ranges.
 /// This layer is deterministic: ML work happens in the existing transcript and
 /// ad-detection services, while precedence and persistence decisions stay here.

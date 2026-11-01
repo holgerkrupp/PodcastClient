@@ -9,24 +9,76 @@ import Foundation
 import AVFoundation
 import Speech
 import OSLog
+import os
+
+/// The supported languages only change with an OS or asset update. Short sampling
+/// runs create one transcriber per seven seconds of audio, each of which used to
+/// repeat this XPC query.
+private actor SupportedSpeechLocales {
+    static let shared = SupportedSpeechLocales()
+    private var locales: [Locale]?
+
+    func value() async -> [Locale] {
+        if let locales { return locales }
+        let fetched = await SpeechTranscriber.supportedLocales
+        locales = fetched
+        return fetched
+    }
+}
 
 @Observable
 class AITranscripts {
     private static let ioLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PodcastClient", category: "TranscriptionIO")
     /// Controls input throttling (duty-cycling) while feeding audio to the analyzer.
-    /// Automatic/background runs use a non-zero pause so the Speech XPC's rolling CPU
+    /// Automatic/background runs pause between chunks so the Speech XPC's rolling CPU
     /// average stays under iOS's 50%/180s background CPU monitor. Manual runs use `.none`.
+    ///
+    /// The pause follows the analyzer's measured speed. A fixed pause has to assume a
+    /// slow device, which left a fast one idle most of the time: an hour of audio took
+    /// 72 minutes, longer than a background window, and the work was often cancelled
+    /// before it finished. The total analyzer work is the same either way.
     struct Throttle: Sendable {
         /// Seconds of audio fed per chunk before pausing.
         var chunkSeconds: Double
-        /// Seconds to sleep between chunks. `0` means continuous (no throttling).
-        var pauseSeconds: Double
+        /// Slowest pace, from one chunk to the next. `0` means no throttling.
+        var maximumCycleSeconds: Double
+        /// Fastest pace. Five seconds per 15-second chunk fits an hour of audio
+        /// into a 20-minute background pass.
+        var minimumCycleSeconds: Double
+        /// Share of each cycle the analyzer may be busy, well under the monitor's 50%.
+        var targetDutyCycle: Double
 
-        static let none = Throttle(chunkSeconds: 0, pauseSeconds: 0)
-        /// ~45% duty cycle, assuming on-device transcription runs near 1× realtime.
-        static let backgroundFriendly = Throttle(chunkSeconds: 15, pauseSeconds: 18)
+        static let none = Throttle(
+            chunkSeconds: 0,
+            maximumCycleSeconds: 0,
+            minimumCycleSeconds: 0,
+            targetDutyCycle: 1
+        )
+        static let backgroundFriendly = Throttle(
+            chunkSeconds: 15,
+            maximumCycleSeconds: 18,
+            minimumCycleSeconds: 5,
+            targetDutyCycle: 0.25
+        )
 
-        var isEnabled: Bool { chunkSeconds > 0 && pauseSeconds > 0 }
+        var isEnabled: Bool { chunkSeconds > 0 && maximumCycleSeconds > 0 }
+
+        /// How long to sleep after a chunk. `elapsed` has already passed since it was fed.
+        func pauseSeconds(estimatedBusySeconds: Double, elapsed: Double) -> Double {
+            let cycle = min(
+                max(estimatedBusySeconds / targetDutyCycle, minimumCycleSeconds),
+                maximumCycleSeconds
+            )
+            return max(cycle - elapsed, 1)
+        }
+
+        /// The analyzer's busy time for a whole chunk, scaled up from the part it has
+        /// reported. Results end on sentence boundaries, so the last words of a chunk
+        /// may only be reported once the next chunk arrives.
+        func estimatedBusySeconds(elapsed: Double, coveredAudioSeconds: Double) -> Double {
+            guard coveredAudioSeconds > 0 else { return elapsed }
+            return elapsed * chunkSeconds / coveredAudioSeconds
+        }
     }
 
     //MARK: INPUT
@@ -37,6 +89,9 @@ class AITranscripts {
     let analyzerPriority: TaskPriority
     let throttle: Throttle
     let allowModelDownload: Bool
+    let modelRetention: SpeechAnalyzer.Options.ModelRetention
+    /// Throttled runs save progress and resume from it; a finished run clears it.
+    let usesCheckpoint: Bool
     /// Identifies the feature path in local diagnostics without recording media URLs or transcript text.
     let diagnosticPurpose: String
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
@@ -45,9 +100,8 @@ class AITranscripts {
     //MARK: OUTPUT
     var transcript: [SFTranscriptionSegment] = []
 
-    // Cached async lookups — each Speech framework query is an XPC round-trip, and the
-    // old code re-fetched supported/installed locales several times per job.
-    private var cachedSupportedLocales: [Locale]?
+    // Cached async lookup — each Speech framework query is an XPC round-trip, and the
+    // old code re-fetched installed locales several times per job.
     private var cachedInstalledLocaleIDs: Set<String>?
     private var didResolveLanguage = false
 
@@ -59,7 +113,9 @@ class AITranscripts {
         analyzerPriority: TaskPriority = .userInitiated,
         throttle: Throttle = .none,
         allowModelDownload: Bool = true,
+        modelRetention: SpeechAnalyzer.Options.ModelRetention = .whileInUse,
         diagnosticPurpose: String = "unspecified",
+        usesCheckpoint: Bool = false,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
     ) async {
         self.url = url
@@ -68,6 +124,8 @@ class AITranscripts {
         self.analyzerPriority = analyzerPriority
         self.throttle = throttle
         self.allowModelDownload = allowModelDownload
+        self.modelRetention = modelRetention
+        self.usesCheckpoint = usesCheckpoint
         self.diagnosticPurpose = diagnosticPurpose
         self.progressHandler = progressHandler
         self.language = language.map { Locale(identifier: $0) } ?? Locale.current
@@ -81,12 +139,8 @@ class AITranscripts {
         didResolveLanguage = true
     }
 
-    /// `SpeechTranscriber.supportedLocales` is an expensive async (XPC) property; cache it.
     private func supportedLocales() async -> [Locale] {
-        if let cachedSupportedLocales { return cachedSupportedLocales }
-        let locales = await SpeechTranscriber.supportedLocales
-        cachedSupportedLocales = locales
-        return locales
+        await SupportedSpeechLocales.shared.value()
     }
     
     func requestAuthorization() async {
@@ -230,11 +284,39 @@ class AITranscripts {
         
     print("1")
         
+        let checkpoint = usesCheckpoint
+            ? TranscriptionCheckpoint(
+                mediaURL: url,
+                localeIdentifier: locale.identifier(.bcp47),
+                maxSnippetDurationSeconds: maxSnippetDurationSeconds,
+                maxWordsPerSnippet: maxWordsPerSnippet
+            )
+            : nil
+        if checkpoint != nil {
+            TranscriptionCheckpoint.removeStale()
+        }
+        // Only the chunked path can start partway through the file.
+        let savingCheckpoint = throttle.isEnabled ? checkpoint : nil
+        var savedSegments = savingCheckpoint?.load() ?? []
+        if let lastEnd = savedSegments.last?.end, lastEnd >= audioDuration - 1 {
+            savedSegments = []
+            checkpoint?.remove()
+        }
+        let resumedSegments = savedSegments
+        let resumeSeconds = resumedSegments.last?.end ?? 0
+        if resumeSeconds > 0 {
+            Self.ioLogger.info("transcription_resumed purpose=\(self.diagnosticPurpose, privacy: .public) audio_seconds=\(resumeSeconds, format: .fixed(precision: 2))")
+        }
+
         let progressReporter = self.progressHandler
         let configuredMaxSnippetDurationSeconds = self.maxSnippetDurationSeconds
         let configuredMaxWordsPerSnippet = self.maxWordsPerSnippet
+        let reportedAudioEnd = OSAllocatedUnfairLock(initialState: resumeSeconds)
         async let transcriptionFuture = Self.collectTranscriptionResults(
             from: transcriber,
+            resumedSegments: resumedSegments,
+            checkpoint: savingCheckpoint,
+            reportedAudioEnd: reportedAudioEnd,
             audioDuration: audioDuration,
             maxSnippetDurationSeconds: configuredMaxSnippetDurationSeconds,
             maxWordsPerSnippet: configuredMaxWordsPerSnippet,
@@ -255,7 +337,7 @@ class AITranscripts {
         // job ends to keep the resident footprint small.
         let analyzer = SpeechAnalyzer(
             modules: [transcriber],
-            options: SpeechAnalyzer.Options(priority: analyzerPriority, modelRetention: .whileInUse)
+            options: SpeechAnalyzer.Options(priority: analyzerPriority, modelRetention: modelRetention)
         )
 
         print(transcriber.selectedLocales)
@@ -270,7 +352,9 @@ class AITranscripts {
                     analyzer: analyzer,
                     audioFile: audioFile,
                     analyzerFormat: analyzerFormat,
-                    throttle: throttle
+                    throttle: throttle,
+                    resumeSeconds: resumeSeconds,
+                    reportedAudioEnd: reportedAudioEnd
                 )
             } else if let lastSample = try await analyzer.analyzeSequence(from: audioFile) {
                 // Continuous path: fastest wall-clock, used for user-initiated runs.
@@ -286,6 +370,7 @@ class AITranscripts {
         try Task.checkCancellation()
         await reportProgress(0.92, status: "Finalizing transcript…")
         let transcription = try await transcriptionFuture
+        checkpoint?.remove()
 
         let elapsed = startedAt.duration(to: .now).components
         let elapsedSeconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
@@ -301,15 +386,23 @@ class AITranscripts {
         analyzer: SpeechAnalyzer,
         audioFile: AVAudioFile,
         analyzerFormat: AVAudioFormat,
-        throttle: Throttle
+        throttle: Throttle,
+        resumeSeconds: Double,
+        reportedAudioEnd: OSAllocatedUnfairLock<Double>
     ) async throws {
         let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream()
         try await analyzer.start(inputSequence: inputSequence)
 
         let readingFormat = audioFile.processingFormat
         let sampleRate = readingFormat.sampleRate
+        // Result times stay absolute because each buffer carries its file position.
+        audioFile.framePosition = AVAudioFramePosition(resumeSeconds * sampleRate)
         let framesPerChunk = AVAudioFrameCount(max(sampleRate * throttle.chunkSeconds, 1))
         var fedFrames: Int64 = 0
+        let analyzerTimescale = CMTimeScale(analyzerFormat.sampleRate)
+        var analyzerFramePosition = Int64(resumeSeconds * analyzerFormat.sampleRate)
+        var cycleCount = 0
+        let feedStartedAt = ContinuousClock.now
         // One converter instance reused across chunks so sample-rate conversion state
         // carries over and there are no artifacts at chunk boundaries.
         let converter = readingFormat == analyzerFormat
@@ -324,13 +417,37 @@ class AITranscripts {
                 try audioFile.read(into: inputBuffer, frameCount: framesPerChunk)
                 guard inputBuffer.frameLength > 0 else { break }
 
-                let bufferStartTime = CMTime(value: startFrame, timescale: CMTimeScale(sampleRate))
                 let outputBuffer = try Self.convert(inputBuffer, using: converter, to: analyzerFormat)
+                // Count what the analyzer has received, not the position in the source
+                // file. A resampler's output length varies by a few frames per call, so
+                // a file-based time can overlap the previous buffer, which the analyzer
+                // rejects with "timestamp overlaps or precedes prior audio input".
+                let bufferStartTime = CMTime(value: analyzerFramePosition, timescale: analyzerTimescale)
+                analyzerFramePosition += Int64(outputBuffer.frameLength)
                 continuation.yield(AnalyzerInput(buffer: outputBuffer, bufferStartTime: bufferStartTime))
                 fedFrames += Int64(inputBuffer.frameLength)
 
                 if audioFile.framePosition >= audioFile.length { break }
-                try await Task.sleep(for: .seconds(throttle.pauseSeconds))
+                let chunkStart = Double(startFrame) / sampleRate
+                let chunkDuration = Double(inputBuffer.frameLength) / sampleRate
+                let chunkFedAt = ContinuousClock.now
+                var elapsed = 0.0
+                var covered = 0.0
+                // Half a chunk of results is enough to measure, and waiting for all
+                // of it would stall on a sentence that needs the next chunk to end.
+                while elapsed < throttle.maximumCycleSeconds, covered < chunkDuration / 2 {
+                    try await Task.sleep(for: .milliseconds(250))
+                    elapsed = Self.seconds(chunkFedAt.duration(to: .now))
+                    covered = reportedAudioEnd.withLock { $0 } - chunkStart
+                }
+                let busy = throttle.estimatedBusySeconds(elapsed: elapsed, coveredAudioSeconds: covered)
+                try await Task.sleep(for: .seconds(throttle.pauseSeconds(
+                    estimatedBusySeconds: busy,
+                    elapsed: elapsed
+                )))
+                cycleCount += 1
+                // Hold further audio while the device is hot or short on memory.
+                await SystemPressureGate.shared.waitUntilIdle()
             }
         } catch {
             continuation.finish()
@@ -340,7 +457,12 @@ class AITranscripts {
         continuation.finish()
         try await analyzer.finalizeAndFinishThroughEndOfInput()
         let fedBytes = fedFrames * Int64(readingFormat.channelCount) * Int64(MemoryLayout<Float>.size)
-        Self.ioLogger.info("transcription_audio_fed purpose=\(self.diagnosticPurpose, privacy: .public) frames=\(fedFrames) estimated_pcm_bytes=\(fedBytes) chunk_seconds=\(throttle.chunkSeconds, format: .fixed(precision: 1)) pause_seconds=\(throttle.pauseSeconds, format: .fixed(precision: 1))")
+        Self.ioLogger.info("transcription_audio_fed purpose=\(self.diagnosticPurpose, privacy: .public) frames=\(fedFrames) estimated_pcm_bytes=\(fedBytes) chunk_seconds=\(throttle.chunkSeconds, format: .fixed(precision: 1)) average_cycle_seconds=\(Self.seconds(feedStartedAt.duration(to: .now)) / Double(max(cycleCount, 1)), format: .fixed(precision: 1))")
+    }
+
+    private static func seconds(_ duration: Duration) -> Double {
+        let components = duration.components
+        return Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 
     /// Converts one PCM buffer to the analyzer's preferred format, reusing `converter`
@@ -438,7 +560,7 @@ class AITranscripts {
     static func installedLocale(matching languageIdentifier: String?) async -> String? {
         let requested = Locale(identifier: languageIdentifier ?? Locale.current.identifier)
         let requestedLanguage = requested.language.languageCode?.identifier.lowercased()
-        let supportedLocales = await SpeechTranscriber.supportedLocales
+        let supportedLocales = await SupportedSpeechLocales.shared.value()
         let supported = supportedLocales.first { locale in
             locale.identifier(.bcp47).lowercased() == requested.identifier(.bcp47).lowercased()
         } ?? supportedLocales.first { locale in
@@ -469,16 +591,32 @@ class AITranscripts {
 
     private static func collectTranscriptionResults(
         from transcriber: SpeechTranscriber,
+        resumedSegments: [TranscriptionCheckpoint.Segment],
+        checkpoint: TranscriptionCheckpoint?,
+        reportedAudioEnd: OSAllocatedUnfairLock<Double>,
         audioDuration: Double,
         maxSnippetDurationSeconds: Double,
         maxWordsPerSnippet: Int,
         progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
     ) async throws -> [(range: CMTimeRange, text: String)] {
-        var results: [(range: CMTimeRange, text: String)] = []
+        var results: [(range: CMTimeRange, text: String)] = resumedSegments.map { segment in
+            let start = CMTime(seconds: segment.start, preferredTimescale: 600)
+            let end = CMTime(seconds: segment.end, preferredTimescale: 600)
+            return (range: CMTimeRange(start: start, end: end), text: segment.text)
+        }
+        // Saved on a timer rather than per result, and once more on the way out,
+        // including when cancellation ends the loop.
+        var unsavedSegments: [TranscriptionCheckpoint.Segment] = []
+        var lastCheckpointSave = ContinuousClock.now
+        defer { checkpoint?.append(unsavedSegments) }
         var lastReportedProgress = 0.0
         var lastProgressReport = ContinuousClock.now
         for try await result in transcriber.results {
             try Task.checkCancellation()
+            let resultEnd = CMTimeGetSeconds(result.range.end)
+            if resultEnd.isFinite {
+                reportedAudioEnd.withLock { $0 = max($0, resultEnd) }
+            }
             let splitSegments = Self.splitResult(
                 range: result.range,
                 rawText: Self.plainTranscriptText(result.text),
@@ -486,6 +624,20 @@ class AITranscripts {
                 maxWordsPerSnippet: maxWordsPerSnippet
             )
             results.append(contentsOf: splitSegments)
+            if let checkpoint {
+                unsavedSegments.append(contentsOf: splitSegments.map {
+                    TranscriptionCheckpoint.Segment(
+                        start: CMTimeGetSeconds($0.range.start),
+                        end: CMTimeGetSeconds($0.range.end),
+                        text: $0.text
+                    )
+                })
+                if ContinuousClock.now - lastCheckpointSave >= .seconds(60) {
+                    checkpoint.append(unsavedSegments)
+                    unsavedSegments.removeAll(keepingCapacity: true)
+                    lastCheckpointSave = .now
+                }
+            }
             let update = Self.progressUpdate(resultEnd: result.range.end, audioDuration: audioDuration)
             // Speech can emit results much faster than SwiftUI can render them. Crossing
             // the main actor for every result caused a large observation backlog while

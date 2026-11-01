@@ -1271,6 +1271,7 @@ struct RaulApp: App {
             AppDiagnostics.log("automatic transcription sweep (\(reason)) started for \(startedEpisodeURL.redactedPodcastURLString)")
         } else {
             CrashBreadcrumbs.shared.record("automatic_transcription_sweep_idle", details: reason)
+            await TranscriptionManager.shared.retryPendingChapterGeneration()
         }
     }
 

@@ -12,6 +12,8 @@ enum TranscriptionStartOrigin: Sendable {
 struct TranscriptionQueueEntry: Identifiable, Sendable {
     enum QueueState: Sendable {
         case active
+        /// The transcript is saved and the job is generating its chapters.
+        case generatingChapters
         case queued(position: Int)
     }
 
@@ -91,6 +93,13 @@ actor TranscriptionManager {
     private let automaticScanLimit = AutomaticTranscriptionCandidateProvider.defaultLimit
     private let automaticSweepCooldown: TimeInterval = 30
     private let automaticRetryCooldown: TimeInterval = 60 * 60 * 6
+    /// A deferred episode resumes from its checkpoint once this has passed.
+    private let automaticDeferralCooldown: TimeInterval = 60 * 10
+    /// Sweeps fire on every app activation. When the last one found nothing, the
+    /// playlists are unlikely to have changed, and a finished download starts its
+    /// own transcription anyway.
+    private let automaticEmptySweepCooldown: TimeInterval = 60 * 15
+    private var lastEmptySweep: (at: Date, allowsAnalyzer: Bool)?
 
     // Serializes the heavy transcription work so at most one Speech analyzer runs at a
     // time. Two concurrent analyzers double the e-core pressure, memory, and the odds of
@@ -124,7 +133,8 @@ actor TranscriptionManager {
         origin: TranscriptionStartOrigin = .manual
     ) async -> TranscriptionItem? {
         if origin == .automatic,
-           await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+           await MainActor.run(body: { Player.hasActivePlaybackInProcess })
+            || Self.systemDefersAutomaticAnalysis {
             return nil
         }
         guard let container = await preparedModelContainer() else {
@@ -231,6 +241,7 @@ actor TranscriptionManager {
                     analyzerPriority: origin == .manual ? .userInitiated : .background,
                     throttle: origin == .manual ? .none : .backgroundFriendly,
                     diagnosticPurpose: origin == .manual ? "manual" : "automatic",
+                    usesCheckpoint: true,
                     progressHandler: { progress, status in
                         await MainActor.run {
                             let nextState: TranscriptionItem.State
@@ -292,11 +303,11 @@ actor TranscriptionManager {
                     uiItem.setState(.finished, progress: 1.0, status: "Finished")
                 }
 
-                // Generate chapters after the transcript has been committed. This keeps
-                // chapter enrichment from delaying the user's newly saved transcript.
-                Task(priority: .utility) {
-                    await episodeActor.finalizeTranscriptChapters(for: episodeURL)
-                }
+                // The transcript is committed and the item reports finished, so this
+                // delays nothing the user sees. It stays inside the job so the model
+                // and the next analyzer never run at once, and so a cancelled
+                // background pass stops it too.
+                await episodeActor.finalizeTranscriptChapters(for: episodeURL)
                 await self.cleanUp(episodeURL: episodeURL)
             } catch is CancellationError {
                 await MainActor.run {
@@ -316,6 +327,9 @@ actor TranscriptionManager {
     }
 
     func cancel(episodeURL: URL) async {
+        if tasks[episodeURL] != nil {
+            await GeneratedChapterRetryQueue.shared.dismiss(episodeURL)
+        }
         tasks[episodeURL]?.cancel()
         await transcriptionQueue.cancel(episodeURL)
         tasks[episodeURL] = nil
@@ -338,12 +352,16 @@ actor TranscriptionManager {
         if let active = snapshot.active,
            let episode = episodeSnapshots[active],
            tasks[active] != nil {
+            var hasFinishedTranscript = false
+            if let item = items[active] {
+                hasFinishedTranscript = await MainActor.run { item.state == .finished }
+            }
             entries.append(
                 TranscriptionQueueEntry(
                     episodeURL: active,
                     episodeTitle: episode.episodeTitle,
                     podcastTitle: episode.podcastTitle,
-                    state: .active
+                    state: hasFinishedTranscript ? .generatingChapters : .active
                 )
             )
         }
@@ -367,7 +385,10 @@ actor TranscriptionManager {
     }
 
     func cancelAutomaticTranscriptionsForBackground() async {
-        await cancelAutomaticTranscriptions(status: "Deferred until app is active")
+        await cancelAutomaticTranscriptions(
+            status: "Deferred until app is active",
+            includingChapterGeneration: true
+        )
     }
 
     func cancelAutomaticTranscriptionsForPlayback() async {
@@ -378,7 +399,10 @@ actor TranscriptionManager {
         await cancelAutomaticTranscriptions(status: "Deferred while cloud sync catches up")
     }
 
-    private func cancelAutomaticTranscriptions(status: String) async {
+    private func cancelAutomaticTranscriptions(
+        status: String,
+        includingChapterGeneration: Bool = false
+    ) async {
         let automaticEpisodeURLs = taskOrigins.compactMap { (episodeURL, origin) in
             origin == .automatic ? episodeURL : nil
         }
@@ -386,16 +410,61 @@ actor TranscriptionManager {
         guard automaticEpisodeURLs.isEmpty == false else { return }
 
         for episodeURL in automaticEpisodeURLs {
+            let item = items[episodeURL]
+            let isAnalyzing: Bool
+            if let item {
+                isAnalyzing = await MainActor.run { item.isTranscribing }
+            } else {
+                isAnalyzing = false
+            }
+            // A finished transcript only has the model pass left. That runs out of
+            // process and its result would otherwise be lost for good, because the
+            // episode no longer counts as a candidate.
+            guard isAnalyzing || includingChapterGeneration else { continue }
+
             tasks[episodeURL]?.cancel()
             await transcriptionQueue.cancel(episodeURL)
-            if let item = items[episodeURL] {
+            if let item, isAnalyzing {
                 await MainActor.run {
                     item.setState(.cancelled, status: status)
                 }
             }
             tasks[episodeURL] = nil
             taskOrigins[episodeURL] = nil
+            guard isAnalyzing else { continue }
+            // Forget the item so a later sweep can pick the episode up again. The
+            // item used to stay here and excluded it until the next launch.
+            items[episodeURL] = nil
+            episodeSnapshots[episodeURL] = nil
+            automaticRetryBlockedUntil[episodeURL] = Date().addingTimeInterval(automaticDeferralCooldown)
         }
+    }
+
+    /// Runs chapter passes that stopped earlier, one at a time and only while no
+    /// analyzer is working. Holding the turn keeps a new analyzer from overlapping.
+    @discardableResult
+    func retryPendingChapterGeneration(limit: Int = 2) async -> Int {
+        guard tasks.isEmpty,
+              Self.systemDefersAutomaticAnalysis == false,
+              await MainActor.run(body: { Player.hasActivePlaybackInProcess }) == false,
+              let container = await preparedModelContainer(),
+              await PodcastSettingsModelActor(modelContainer: container)
+                .getAutomaticChapterGenerationEnabled() else { return 0 }
+
+        let retryQueue = GeneratedChapterRetryQueue.shared
+        let episodeActor = EpisodeActor(modelContainer: container)
+        var attempted = Set<URL>()
+        while attempted.count < limit,
+              Task.isCancelled == false,
+              tasks.isEmpty,
+              let episodeURL = await retryQueue.nextDue(excluding: attempted) {
+            attempted.insert(episodeURL)
+            await transcriptionQueue.wait(for: episodeURL)
+            await retryQueue.clearDismissal(episodeURL)
+            await episodeActor.retryGeneratedChapters(for: episodeURL)
+            await transcriptionQueue.finish(episodeURL)
+        }
+        return attempted.count
     }
 
     /// Starts the next automatic transcription picked from the user's playlists.
@@ -456,6 +525,16 @@ actor TranscriptionManager {
         if allowsAnalyzer, await settingsActor.getAutomaticOnDeviceTranscriptionsRequiresCharging() {
             allowsAnalyzer = await isDeviceConnectedToPower()
         }
+        if Self.systemDefersAutomaticAnalysis {
+            allowsAnalyzer = false
+        }
+
+        if respectSweepCooldown,
+           let lastEmptySweep,
+           lastEmptySweep.allowsAnalyzer == allowsAnalyzer,
+           now.timeIntervalSince(lastEmptySweep.at) < automaticEmptySweepCooldown {
+            return nil
+        }
 
         automaticRetryBlockedUntil = automaticRetryBlockedUntil.filter { $0.value > now }
 
@@ -472,6 +551,7 @@ actor TranscriptionManager {
                 ModelContainerManager.shared.isCloudKitExportInProgress
             })
         ) == nil else { return nil }
+        lastEmptySweep = candidates.isEmpty ? (now, allowsAnalyzer) : nil
         guard candidates.isEmpty == false else { return nil }
 
         let episodeActor = EpisodeActor(modelContainer: container)
@@ -558,12 +638,34 @@ actor TranscriptionManager {
 
             // Wait for the analyzer to finish before picking the next episode:
             // two of them at once double e-core pressure and memory.
+            // The job is an unstructured task, so cancelling this pass does not
+            // reach it. Without the handler it kept running past a background
+            // task's expiration, which is when iOS's CPU limits apply.
             if let runningTask = tasks[episodeURL] {
-                await runningTask.value
+                await withTaskCancellationHandler {
+                    await runningTask.value
+                } onCancel: {
+                    Task { await self.cancelAutomaticTranscriptionsForBackground() }
+                }
             }
         }
 
+        if allowOnDeviceFallback,
+           Task.isCancelled == false,
+           deadline.map({ Date() < $0 }) ?? true {
+            await retryPendingChapterGeneration()
+        }
+
         return processedCount
+    }
+
+    /// Low Power Mode and thermal pressure are the system asking for less work.
+    /// Automatic analysis waits for them to clear; a request from the user does not.
+    private static var systemDefersAutomaticAnalysis: Bool {
+        let thermalState = ProcessInfo.processInfo.thermalState
+        return ProcessInfo.processInfo.isLowPowerModeEnabled
+            || thermalState == .serious
+            || thermalState == .critical
     }
 
     private func finish(episodeURL: URL, error: String) async {

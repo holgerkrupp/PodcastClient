@@ -125,6 +125,10 @@ struct AVAudioFileAnalysisSource: AudioAnalysisSource {
         let requestedFrames = min(max(sampleRate * window, 1), Double(maximumFrames))
         let windowFrames = AVAudioFrameCount(requestedFrames)
         var offset = start
+        // Windows overlap, so only the audio past the previous window is decoded.
+        // Re-reading each whole window decoded the file twice at the default hop.
+        var carriedSamples: [Float] = []
+        file.framePosition = AVAudioFramePosition((start * sampleRate).rounded())
 
         while offset < end {
             try Task.checkCancellation()
@@ -134,21 +138,26 @@ struct AVAudioFileAnalysisSource: AudioAnalysisSource {
             )
             let availableFrames = AVAudioFrameCount(availableFrameValue)
             let frameCount = min(windowFrames, max(availableFrames, 1))
-            guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: frameCount) else { break }
-            try Task.checkCancellation()
-            file.framePosition = AVAudioFramePosition((offset * sampleRate).rounded())
-            try file.read(into: buffer, frameCount: frameCount)
-            guard buffer.frameLength > 0 else { break }
-
-            let samples = Self.monoSamples(from: buffer)
-            if samples.isEmpty == false {
-                try await consume(PCMAnalysisChunk(
-                        start: offset,
-                        duration: Double(buffer.frameLength) / sampleRate,
-                        sampleRate: sampleRate,
-                        samples: samples
-                    ))
+            var samples = carriedSamples
+            // A read can return fewer frames than requested before the end of the file.
+            while samples.count < Int(frameCount) {
+                let framesToRead = frameCount - AVAudioFrameCount(samples.count)
+                guard let buffer = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: framesToRead) else { break }
+                try Task.checkCancellation()
+                try file.read(into: buffer, frameCount: framesToRead)
+                guard buffer.frameLength > 0 else { break }
+                samples.append(contentsOf: Self.monoSamples(from: buffer))
             }
+            guard samples.isEmpty == false else { break }
+
+            let hopFrames = Int((hop * sampleRate).rounded())
+            carriedSamples = hopFrames < samples.count ? Array(samples[hopFrames...]) : []
+            try await consume(PCMAnalysisChunk(
+                    start: offset,
+                    duration: Double(samples.count) / sampleRate,
+                    sampleRate: sampleRate,
+                    samples: samples
+                ))
             offset += hop
         }
     }

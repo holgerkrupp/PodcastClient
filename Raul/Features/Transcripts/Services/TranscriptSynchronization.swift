@@ -595,6 +595,8 @@ actor TranscriptSynchronizationService {
                     maxWordsPerSnippet: 30,
                     analyzerPriority: .utility,
                     allowModelDownload: false,
+                    // Up to 18 short runs in a row should not reload the model each time.
+                    modelRetention: .lingering,
                     diagnosticPurpose: "publisher_sync"
                 )
                 guard let results = try? await transcriber.transcribe(),
@@ -779,8 +781,48 @@ enum TranscriptAudioSampler {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let sampleURL = folder.appendingPathComponent("sample.caf")
         do {
-            let output = try AVAudioFile(forWriting: sampleURL, settings: format.settings)
-            try output.write(from: buffer)
+            // Speech needs 16 kHz mono at most. The source format wrote up to about
+            // 2.5 MB per snippet, or 44 MB of temporary files per episode.
+            let outputRate = min(format.sampleRate, 16_000)
+            guard let outputFormat = AVAudioFormat(
+                commonFormat: .pcmFormatFloat32,
+                sampleRate: outputRate,
+                channels: 1,
+                interleaved: false
+            ), let converter = AVAudioConverter(from: format, to: outputFormat),
+               let converted = AVAudioPCMBuffer(
+                pcmFormat: outputFormat,
+                frameCapacity: AVAudioFrameCount(ceil(Double(buffer.frameLength) * outputRate / format.sampleRate) + 1_024)
+               ) else {
+                throw TranscriptAudioSnippetError.invalidFormat
+            }
+            var didSupplyInput = false
+            var conversionError: NSError?
+            let status = converter.convert(to: converted, error: &conversionError) { _, inputStatus in
+                guard didSupplyInput == false else {
+                    inputStatus.pointee = .noDataNow
+                    return nil
+                }
+                didSupplyInput = true
+                inputStatus.pointee = .haveData
+                return buffer
+            }
+            if let conversionError { throw conversionError }
+            guard status != .error else { throw TranscriptAudioSnippetError.invalidFormat }
+            let output = try AVAudioFile(
+                forWriting: sampleURL,
+                settings: [
+                    AVFormatIDKey: kAudioFormatLinearPCM,
+                    AVSampleRateKey: outputRate,
+                    AVNumberOfChannelsKey: 1,
+                    AVLinearPCMBitDepthKey: 16,
+                    AVLinearPCMIsFloatKey: false,
+                    AVLinearPCMIsBigEndianKey: false
+                ],
+                commonFormat: .pcmFormatFloat32,
+                interleaved: false
+            )
+            try output.write(from: converted)
             Self.logger.info("publisher_sync_snippet_written duration_seconds=\(Double(buffer.frameLength) / format.sampleRate, format: .fixed(precision: 2)) estimated_pcm_bytes=\(estimatedPCMBytes)")
             return Snippet(url: sampleURL, startTime: startTime)
         } catch {
