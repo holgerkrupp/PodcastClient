@@ -374,6 +374,10 @@ actor StoreSplitPortableWriteOutbox {
                     }
                 }
                 result.succeeded += 1
+            } catch is CancellationError {
+                // Playback or the app leaving stopped this save. The entry stays due.
+                result.hasPending = true
+                return result
             } catch {
                 result.failed += 1
                 result.failureOperationKinds.append(Self.operationKind(original.operation))

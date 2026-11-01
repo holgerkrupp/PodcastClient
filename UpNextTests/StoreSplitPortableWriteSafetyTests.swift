@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 import XCTest
 @testable import UpNext
@@ -279,6 +280,31 @@ final class StoreSplitPortableWriteSafetyTests: XCTestCase {
         let state = try XCTUnwrap(ModelContext(container).fetch(FetchDescriptor<EpisodeStateSync>()).first)
         XCTAssertEqual(state.playPosition, 90)
         XCTAssertEqual(state.updatedAt, newer)
+    }
+
+    @MainActor
+    func testDrainStoppedDuringSaveIsNotAFailureAndKeepsTheEntry() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let outbox = StoreSplitPortableWriteOutbox(directoryURL: directory)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+        try await outbox.enqueue(.episodeState(state("stopped"), date), now: date)
+        let container = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let calls = OSAllocatedUnfairLock(initialState: 0)
+
+        // Allowed through the two checks before the write, stopped at its save.
+        let result = try await outbox.drain(userStateContainer: container, now: date, shouldContinue: {
+            calls.withLock { count in
+                count += 1
+                return count <= 2
+            }
+        })
+
+        XCTAssertEqual(result.failed, 0)
+        XCTAssertTrue(result.failureCategories.isEmpty)
+        XCTAssertTrue(result.hasPending)
+        let queued = try await outbox.queueCount()
+        XCTAssertEqual(queued, 1)
     }
 
     @MainActor

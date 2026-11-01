@@ -788,6 +788,7 @@ class ModelContainerManager: ObservableObject {
     private var analyticsRebuildTask: Task<Void, Never>?
     private var libraryFillTask: Task<Bool, Never>?
     private static let maximumForegroundDrainPasses = 160
+    private static let maximumQueueForPlaybackWriteRebuild = 256
     private var playbackWriteRebuildTask: Task<Bool, Never>?
     private var openedExistingProjection = false
     @Published private(set) var isDeferredMigrationRunning = false
@@ -1500,7 +1501,8 @@ class ModelContainerManager: ObservableObject {
         await rebuildUnqueuedPlaybackWritesIfNeeded()
     }
 
-    /// Once the queue has emptied, restores from the library what it had no room for.
+    /// Once the queue has room again, restores from the library what it had no room
+    /// for. Entries still queued are newer writes that merge by date either way.
     /// Devices without a legacy library have no complete source, so they stay flagged.
     private func rebuildUnqueuedPlaybackWritesIfNeeded() async {
         let monitor = PortableWriteFailureMonitor.shared
@@ -1513,7 +1515,8 @@ class ModelContainerManager: ObservableObject {
               StoreSplitPlaybackGate.shared.isActive == false,
               let library = preparedContainer,
               let userState = preparedUserStateContainer,
-              (try? await StoreSplitPortableWriteOutbox.shared.queueCount()) == 0,
+              let queued = try? await StoreSplitPortableWriteOutbox.shared.queueCount(),
+              queued < Self.maximumQueueForPlaybackWriteRebuild,
               let permit = acquireMaintenancePermit(operation: "portable_write_rebuild") else { return }
         defer { permit.release() }
         let task = Task.detached(priority: .utility) { () -> Bool in
