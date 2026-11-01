@@ -10,7 +10,7 @@ struct ModelContainerLaunchView: View {
     let errorMessage: String?
     let retry: () -> Void
     @State private var copiedDiagnostics = false
-    @State private var showStalledStatus = false
+    @State private var launchWait = LaunchWait.brief
     @ObservedObject private var manager = ModelContainerManager.shared
 
     var body: some View {
@@ -38,7 +38,20 @@ struct ModelContainerLaunchView: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
                 .padding()
                 .accessibilityElement(children: .combine)
-            } else if errorMessage != nil || showStalledStatus {
+            } else if errorMessage == nil, launchWait == .noticeable {
+                VStack(spacing: 12) {
+                    Text("Still opening your library…")
+                        .font(.headline)
+                    Text("This can take a few minutes with a large library. Keep Up Next open until it finishes.")
+                        .font(.footnote)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(24)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .padding()
+                .accessibilityElement(children: .combine)
+            } else if errorMessage != nil || launchWait == .stalled {
                 VStack(spacing: 12) {
                     if let errorMessage {
                         Text("Up Next could not open its library.")
@@ -86,12 +99,21 @@ struct ModelContainerLaunchView: View {
             }
         }
         .task(id: errorMessage == nil) {
-            showStalledStatus = false
+            launchWait = .brief
             guard errorMessage == nil else { return }
             try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled, errorMessage == nil else { return }
-            showStalledStatus = true
+            guard !Task.isCancelled else { return }
+            launchWait = .noticeable
+            try? await Task.sleep(for: .seconds(5 * 60))
+            guard !Task.isCancelled else { return }
+            launchWait = .stalled
         }
+    }
+
+    /// Opening can legitimately take minutes when a large write-ahead log has to
+    /// be merged first, so diagnostics are only offered once it looks stuck.
+    private enum LaunchWait {
+        case brief, noticeable, stalled
     }
 
     private static func copyDiagnostics() {

@@ -89,5 +89,5 @@ The player, macOS menu, CarPlay and bookmark App Intent wait for a local save an
 
 - Mount the main app shell directly when its runtime container is available, without a decorative launch curtain. During local hydration, show **Restoring your saved library…** without obscuring navigation. Saved playlist references awaiting episode data use the contextual playlist recovery state.
 - Initial local hydration belongs to the container manager and survives removal of the launch view. Background interruption resumes on foreground activation; it is not an initialization error.
-- If the initial launch screen remains visible for ten seconds, it offers **Copy Diagnostics** and **Share Diagnostics**. These actions read local status and never upload automatically or reset stores.
+- If the initial launch screen remains visible for ten seconds, it says the library is still opening; after five minutes more it offers **Copy Diagnostics** and **Share Diagnostics**. These actions read local status and never upload automatically or reset stores.
 - A genuine initialization failure offers **Try Again**. Rendering the error screen does not automatically restart initialization or repeatedly replay the launch animation.

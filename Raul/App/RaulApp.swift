@@ -515,6 +515,7 @@ struct RaulApp: App {
     @State private var foregroundCleanupTask: Task<Void, Never>?
     @State private var foregroundStorageTask: Task<Void, Never>?
     @State private var foregroundTranscriptionTask: Task<Void, Never>?
+    @State private var foregroundWriteAheadLogTask: Task<Void, Never>?
     @State private var foregroundScheduleSnapshotTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var phase
 #if os(macOS)
@@ -613,6 +614,8 @@ struct RaulApp: App {
                 foregroundStorageTask = nil
                 foregroundTranscriptionTask?.cancel()
                 foregroundTranscriptionTask = nil
+                foregroundWriteAheadLogTask?.cancel()
+                foregroundWriteAheadLogTask = nil
                 modelContainerManager.pauseSplitStoreWorkForBackground()
                 deferredStoreSplitTask?.cancel()
                 deferredStoreSplitTask = nil
@@ -725,6 +728,14 @@ struct RaulApp: App {
                           isAppActiveForForegroundWork else { return }
                     await RaulApp.runAutomaticTranscriptionSweep(reason: "active")
                 }
+                foregroundWriteAheadLogTask?.cancel()
+                foregroundWriteAheadLogTask = Task(priority: .utility) {
+                    try? await Task.sleep(for: .seconds(30))
+                    while Task.isCancelled == false, isAppActiveForForegroundWork {
+                        await StoreWriteAheadLog.trimLibraryStores()
+                        try? await Task.sleep(for: StoreWriteAheadLog.foregroundCheckInterval)
+                    }
+                }
           
                 
             case .inactive:
@@ -741,6 +752,8 @@ struct RaulApp: App {
                 foregroundStorageTask = nil
                 foregroundTranscriptionTask?.cancel()
                 foregroundTranscriptionTask = nil
+                foregroundWriteAheadLogTask?.cancel()
+                foregroundWriteAheadLogTask = nil
             @unknown default: break
             }
         })

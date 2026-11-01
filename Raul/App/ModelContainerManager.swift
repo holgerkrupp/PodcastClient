@@ -1099,7 +1099,13 @@ class ModelContainerManager: ObservableObject {
                 guard let storeURL = Self.sharedStoreURL else {
                     throw StoreBootstrapError.persistentStoreUnavailable
                 }
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Checking library indexes")
+                }
                 LegacyStoreIndexBackfill.run(storeURL: storeURL)
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Opening runtime library store")
+                }
                 let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
                     try Self.makeLegacyContainer(storageURL: storeURL)
                 }

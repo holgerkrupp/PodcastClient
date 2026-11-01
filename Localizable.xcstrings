@@ -8658,12 +8658,12 @@
     "If an episode is missing, refresh the show directly and check its latest published item and any visible feed or sign-in error. Scheduled work has no guaranteed interval." : {
 
     },
-    "If the launch logo remains visible for about ten seconds, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
+    "Opening a large library can take a few minutes. If the launch logo remains visible for more than five minutes, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wenn das Startlogo etwa zehn Sekunden lang sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
+            "value" : "Das Öffnen einer großen Mediathek kann einige Minuten dauern. Wenn das Startlogo länger als fünf Minuten sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
           }
         }
       }
@@ -21392,6 +21392,16 @@
     "Steps" : {
 
     },
+    "Still opening your library…" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mediathek wird noch geöffnet …"
+          }
+        }
+      }
+    },
     "Stop after a duration or after the current episode." : {
       "localizations" : {
         "de" : {
@@ -22892,6 +22902,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ce diffuseur n'est pas disponible dans cette version."
+          }
+        }
+      }
+    },
+    "This can take a few minutes with a large library. Keep Up Next open until it finishes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei einer großen Mediathek kann das einige Minuten dauern. Lass Up Next geöffnet, bis es fertig ist."
           }
         }
       }

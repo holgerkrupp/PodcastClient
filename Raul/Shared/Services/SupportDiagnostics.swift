@@ -367,6 +367,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             "Deferred library migration ended",
             "Opening User State store",
             "Opening Podcast cache store",
+            "Checking library indexes",
             "Opening runtime library store",
             "Runtime library store opened",
             "User State store preparation",
