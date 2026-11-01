@@ -2417,11 +2417,12 @@ class ModelContainerManager: ObservableObject {
         if Task.isCancelled || result.failed > 0 || result.interruptedByPlayback {
             lastSplitStoreReconcileSummary = "User State import was interrupted or failed"
             pendingSplitStoreWorkReason = "User State import needs retry"
-            if reason.contains("cloud_import") || authoritativePlaylists {
+            // A newer import or playback stopping this pass is routine and retried.
+            if result.failed > 0, reason.contains("cloud_import") || authoritativePlaylists {
                 StoreCloudKitActivityMonitor.shared.recordReconciliation(
                     for: .userState,
                     succeeded: false,
-                    summary: "User State import was interrupted or failed"
+                    summary: "User State import failed"
                 )
             }
             return result.interruptedByPlayback ? .deferredForPlayback : .skipped

@@ -104,6 +104,12 @@ final class CloudKitFailureAnalyzerTests: XCTestCase {
         XCTAssertFalse(persisted.contains("My Private Show"))
     }
 
+    func testOnlyTheSystemDeferralCodeIsTreatedAsDeferred() {
+        XCTAssertTrue(CloudKitFailureAnalyzer.isSystemDeferral(NSError(domain: NSCocoaErrorDomain, code: 134_419)))
+        XCTAssertFalse(CloudKitFailureAnalyzer.isSystemDeferral(NSError(domain: NSCocoaErrorDomain, code: 134_400)))
+        XCTAssertFalse(CloudKitFailureAnalyzer.isSystemDeferral(cloudError(.partialFailure)))
+    }
+
     func testBatchOnlyErrorExplainsRootCauseWasNotIncluded() {
         let error = cloudError(.partialFailure, userInfo: [
             CKPartialErrorsByItemIDKey: ["record": cloudError(.batchRequestFailed)]

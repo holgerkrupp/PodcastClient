@@ -156,6 +156,12 @@ enum CloudKitFailureAnalyzer {
     private static let maximumReasonLength = 240
     private static let maximumDetailValues = 8
 
+    /// The system put off this sync and runs it again itself: not a failure.
+    static func isSystemDeferral(_ error: Error) -> Bool {
+        let error = error as NSError
+        return error.domain == NSCocoaErrorDomain && error.code == 134_419
+    }
+
     static func analyze(_ error: Error) -> Report {
         var currentPath = Set<ObjectIdentifier>()
         var accumulated: [GroupKey: Accumulated] = [:]

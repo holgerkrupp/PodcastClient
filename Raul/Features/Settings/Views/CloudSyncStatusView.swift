@@ -255,6 +255,19 @@ struct CloudSyncStatusDetailView: View {
     @StateObject private var supportDiagnostics = SupportDiagnosticsRecorder.shared
     @State private var expandedErrorDetails = false
     @State private var isCapturingSupportSnapshot = false
+    /// The monitor package only asks after the account changes, so it stays unset otherwise.
+    @State private var accountStatus: CKAccountStatus?
+
+    private var shouldBeSyncing: Bool {
+        accountStatus == .available
+            && syncMonitor.isNetworkAvailable == true
+            && syncMonitor.hasSyncError == false
+    }
+
+    private func refreshAccountStatus() async {
+        accountStatus = (try? await CKContainer(identifier: "iCloud.de.holgerkrupp.PodcastClient").accountStatus())
+            ?? .couldNotDetermine
+    }
 
     private var reportedErrors: [(title: String, error: Error)] {
         var errors: [(String, Error)] = []
@@ -268,7 +281,8 @@ struct CloudSyncStatusDetailView: View {
         if let error = syncMonitor.exportError {
             errors.append(("Upload Error", error))
         }
-        if errors.isEmpty, let error = syncMonitor.lastSyncError {
+        if errors.isEmpty, let error = syncMonitor.lastSyncError,
+           CloudKitFailureAnalyzer.isSystemDeferral(error) == false {
             errors.append(("Last Reported Error", error))
         }
         if let error = syncMonitor.iCloudAccountStatusError {
@@ -298,7 +312,7 @@ struct CloudSyncStatusDetailView: View {
                 }
 
                 LabeledContent("Network") {
-                    Label(
+                    environmentValue(
                         networkDescription,
                         systemImage: syncMonitor.isNetworkAvailable == false
                             ? "wifi.slash"
@@ -312,23 +326,23 @@ struct CloudSyncStatusDetailView: View {
                 }
 
                 LabeledContent("iCloud Account") {
-                    Label(
+                    environmentValue(
                         accountDescription,
-                        systemImage: syncMonitor.iCloudAccountStatus == .available
+                        systemImage: accountStatus == .available
                             ? "person.crop.circle.badge.checkmark"
                             : "person.crop.circle.badge.exclamationmark"
                     )
                     .foregroundStyle(
-                        syncMonitor.iCloudAccountStatus == .available
+                        accountStatus == .available
                             ? AnyShapeStyle(.secondary)
                             : AnyShapeStyle(.orange)
                     )
                 }
 
                 LabeledContent("Should Be Syncing") {
-                    Text(syncMonitor.shouldBeSyncing ? "Yes" : "No")
+                    Text(shouldBeSyncing ? "Yes" : "No")
                         .foregroundStyle(
-                            syncMonitor.shouldBeSyncing
+                            shouldBeSyncing
                                 ? AnyShapeStyle(.secondary)
                                 : AnyShapeStyle(.orange)
                         )
@@ -503,6 +517,17 @@ struct CloudSyncStatusDetailView: View {
         }
         .navigationTitle("iCloud Sync")
         .platformInlineNavigationTitle()
+        .task { await refreshAccountStatus() }
+        .onReceive(NotificationCenter.default.publisher(for: .CKAccountChanged)) { _ in
+            Task { await refreshAccountStatus() }
+        }
+    }
+
+    private func environmentValue(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: systemImage)
+            Text(title)
+        }
     }
 
     private var networkDescription: String {
@@ -517,7 +542,7 @@ struct CloudSyncStatusDetailView: View {
     }
 
     private var accountDescription: String {
-        guard let status = syncMonitor.iCloudAccountStatus else {
+        guard let status = accountStatus else {
             return "Checking"
         }
 
