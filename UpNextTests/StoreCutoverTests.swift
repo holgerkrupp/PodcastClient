@@ -257,6 +257,76 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(rows.reduce(0) { $0 + $1.totalSeconds }, 3_600)
     }
 
+    func testRebuildRestoresMissedPlaybackWritesAsLiveAndKeepsNewerAccountState() throws {
+        let stores = try makeStores(episodeCount: 3)
+        let cutoff = Date(timeIntervalSince1970: 5_000)
+        let library = ModelContext(stores.library)
+        let episodes = try library.fetch(FetchDescriptor<Episode>(sortBy: [SortDescriptor(\.guid)]))
+        episodes[0].metaData?.stateUpdatedAt = cutoff.addingTimeInterval(100)
+        episodes[1].metaData?.stateUpdatedAt = cutoff.addingTimeInterval(100)
+        episodes[2].metaData?.stateUpdatedAt = cutoff.addingTimeInterval(-100)
+        let session = PlaySession(
+            id: UUID(),
+            episode: episodes[0],
+            startTime: cutoff.addingTimeInterval(10),
+            endTime: cutoff.addingTimeInterval(70),
+            startPosition: 0,
+            endPosition: 60
+        )
+        library.insert(session)
+        let old = PlaySession(
+            id: UUID(),
+            episode: episodes[0],
+            startTime: cutoff.addingTimeInterval(-500),
+            endTime: cutoff.addingTimeInterval(-400),
+            startPosition: 0,
+            endPosition: 60
+        )
+        library.insert(old)
+        try library.save()
+
+        let newerKey = episodes[1].stableEpisodeIdentity
+        let userState = ModelContext(stores.userState)
+        let newer = EpisodeStateSync(
+            feedURL: newerKey.feedURL,
+            episodeID: newerKey.episodeID,
+            playPosition: 99,
+            updatedAt: cutoff.addingTimeInterval(1_000)
+        )
+        userState.insert(newer)
+        try userState.save()
+
+        for _ in 0..<2 {
+            XCTAssertTrue(try StoreSplitMigrationService.rebuildUnqueuedPlaybackWrites(
+                libraryContainer: stores.library,
+                userStateContainer: stores.userState,
+                since: cutoff,
+                shouldContinue: { true }
+            ))
+        }
+
+        let account = ModelContext(stores.userState)
+        let states = try account.fetch(FetchDescriptor<EpisodeStateSync>())
+        XCTAssertEqual(states.count, 2, "the older change belongs to the copy, and repeats add nothing")
+        XCTAssertEqual(states.first { $0.id == newerKey.key }?.playPosition, 99)
+        let history = try account.fetch(FetchDescriptor<ListeningHistorySync>())
+        XCTAssertEqual(history.count, 1)
+        XCTAssertEqual(history.first?.isLegacyMigrated, false)
+    }
+
+    func testRebuildStoppedPartWayReportsUnfinished() throws {
+        let stores = try makeStores(episodeCount: 1)
+        let library = ModelContext(stores.library)
+        try library.fetch(FetchDescriptor<Episode>()).first?.metaData?.stateUpdatedAt = .now
+        try library.save()
+        XCTAssertFalse(try StoreSplitMigrationService.rebuildUnqueuedPlaybackWrites(
+            libraryContainer: stores.library,
+            userStateContainer: stores.userState,
+            since: .distantPast,
+            shouldContinue: { false }
+        ))
+    }
+
     func testDuplicateBaselineRowsCountOnceAndDoNotInflateTheRepairedTotal() throws {
         let stores = try makeStores(episodeCount: 1)
         let library = ModelContext(stores.library)

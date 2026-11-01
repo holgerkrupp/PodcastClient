@@ -355,7 +355,7 @@ final class StoreCloudKitActivityMonitor: ObservableObject {
     static let shared = StoreCloudKitActivityMonitor()
 
     private static let historyKey = "storeSplit.cloudKitEventHistory.v1"
-    private static let reconciliationKey = "storeSplit.cloudKitReconciliations.v1"
+    private static let reconciliationKey = "storeSplit.cloudKitReconciliations.v2"
 
     @Published private(set) var activeEvents: [ActiveEvent] = []
     @Published private(set) var lastCompletedEvents: [CompletedEvent] = []
@@ -788,6 +788,7 @@ class ModelContainerManager: ObservableObject {
     private var analyticsRebuildTask: Task<Void, Never>?
     private var libraryFillTask: Task<Bool, Never>?
     private static let maximumForegroundDrainPasses = 160
+    private var playbackWriteRebuildTask: Task<Bool, Never>?
     private var openedExistingProjection = false
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
@@ -1495,6 +1496,52 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func retryPortableWritesIfSafe() async {
+        await drainPortableWritesIfSafe()
+        await rebuildUnqueuedPlaybackWritesIfNeeded()
+    }
+
+    /// Once the queue has emptied, restores from the library what it had no room for.
+    /// Devices without a legacy library have no complete source, so they stay flagged.
+    private func rebuildUnqueuedPlaybackWritesIfNeeded() async {
+        let monitor = PortableWriteFailureMonitor.shared
+        guard monitor.canRebuildFromLibrary,
+              playbackWriteRebuildTask == nil,
+              let since = StoreCutoverState.localLibraryStartedAt,
+              runtimeStoreReadiness == .ready,
+              runtimeProjectsFromCache == false,
+              heavyStoreWorkMayRunInCurrentAppState,
+              StoreSplitPlaybackGate.shared.isActive == false,
+              let library = preparedContainer,
+              let userState = preparedUserStateContainer,
+              (try? await StoreSplitPortableWriteOutbox.shared.queueCount()) == 0,
+              let permit = acquireMaintenancePermit(operation: "portable_write_rebuild") else { return }
+        defer { permit.release() }
+        let task = Task.detached(priority: .utility) { () -> Bool in
+            let finished = try? StoreSplitMigrationService.rebuildUnqueuedPlaybackWrites(
+                libraryContainer: library,
+                userStateContainer: userState,
+                since: since,
+                shouldContinue: {
+                    Task.isCancelled == false
+                        && permit.yieldReason(
+                            playbackActive: StoreSplitPlaybackGate.shared.isActive,
+                            cloudKitExportActive: false
+                        ) == nil
+                }
+            )
+            return finished == true
+        }
+        playbackWriteRebuildTask = task
+        let finished = await task.value
+        playbackWriteRebuildTask = nil
+        SupportDiagnosticsRecorder.shared.record(
+            "Playback data rebuild ended",
+            detail: finished ? "completed" : "will retry"
+        )
+        if finished { monitor.recordRebuildFromLibrary() }
+    }
+
+    private func drainPortableWritesIfSafe() async {
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               let userStateContainer = preparedUserStateContainer,

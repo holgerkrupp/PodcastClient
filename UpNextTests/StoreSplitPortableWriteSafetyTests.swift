@@ -47,6 +47,31 @@ final class StoreSplitPortableWriteSafetyTests: XCTestCase {
         XCTAssertNotNil(reopened.state.lastSuccessfulRepairAt)
     }
 
+    @MainActor
+    func testRebuildClearsOverflowButNotAnInvalidEntryOrWaitingWrites() throws {
+        let suite = "PortableWriteRebuildTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let monitor = PortableWriteFailureMonitor(defaults: defaults)
+        XCTAssertFalse(monitor.canRebuildFromLibrary)
+
+        let operation = StoreSplitPortableWriteOutbox.Operation.episodeState(state("waiting"), .now)
+        for _ in 0...512 {
+            monitor.reportFailure(operation: operation, error: StoreSplitPortableWriteOutbox.OutboxError.full)
+        }
+        XCTAssertEqual(monitor.state.status, .requiresAttention)
+        XCTAssertFalse(monitor.canRebuildFromLibrary, "waiting writes go first")
+
+        monitor.pendingOperations().forEach { monitor.acknowledgeFallbackOperation($0.id) }
+        XCTAssertTrue(monitor.canRebuildFromLibrary)
+        monitor.recordRebuildFromLibrary()
+        XCTAssertFalse(monitor.needsRecovery)
+        XCTAssertEqual(monitor.state.status, .recovered)
+
+        monitor.recordDrainFailures(operationKinds: ["bookmark_upsert"], categories: ["outbox_invalid_entry"])
+        XCTAssertFalse(monitor.canRebuildFromLibrary)
+    }
+
     private func state(_ id: String, position: Double = 10) -> StoreSplitEpisodeStateSnapshot {
         StoreSplitEpisodeStateSnapshot(
             identity: EpisodeStableIdentity(feedURL: "https://example.com/feed", episodeID: "guid:\(id)"),

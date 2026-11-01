@@ -198,6 +198,25 @@ final class PortableWriteFailureMonitor: ObservableObject {
         persist()
     }
 
+    /// Only episode state and listening history can be rebuilt from the library. An
+    /// invalid outbox entry could have been a bookmark, so that one stays flagged.
+    var canRebuildFromLibrary: Bool {
+        state.requiresReconstruction
+            && state.pendingOperations.isEmpty
+            && state.incidents.contains { $0.errorCategory == "outbox_invalid_entry" } == false
+    }
+
+    func recordRebuildFromLibrary() {
+        let now = Date()
+        state.requiresReconstruction = false
+        state.repairNeeded = false
+        state.lastSuccessfulRepairAt = now
+        state.lastRetryAt = now
+        state.firstRetryAt = nil
+        state.latestDrainFailureCategory = nil
+        persist()
+    }
+
     func refresh() {
         if let data = defaults.data(forKey: Self.key),
            let saved = try? JSONDecoder().decode(State.self, from: data) {

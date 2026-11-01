@@ -4530,6 +4530,125 @@ actor StoreSplitMigrationService {
         return changed
     }
 
+    /// Writes what a full outbox had no room for back into UserState from the library,
+    /// which kept it. Only changes since the local library started can be missing: the
+    /// copy covers everything older. Merges by date and is safe to run again; returns
+    /// false if stopped before the end, so the caller starts over later.
+    nonisolated static func rebuildUnqueuedPlaybackWrites(
+        libraryContainer: ModelContainer,
+        userStateContainer: ModelContainer,
+        since cutoff: Date,
+        shouldContinue: @Sendable () -> Bool
+    ) throws -> Bool {
+        let pageSize = 200
+        let library = makeContext(for: libraryContainer)
+        let account = makeContext(for: userStateContainer)
+
+        var offset = 0
+        while true {
+            var descriptor = FetchDescriptor<EpisodeMetaData>(
+                predicate: #Predicate {
+                    if let updatedAt = $0.stateUpdatedAt { updatedAt >= cutoff } else { false }
+                },
+                sortBy: [SortDescriptor(\.stateUpdatedAt)]
+            )
+            descriptor.fetchLimit = pageSize
+            descriptor.fetchOffset = offset
+            let page = try library.fetch(descriptor)
+            for metadata in page {
+                guard shouldContinue() else { return false }
+                guard let episode = metadata.episode,
+                      episode.podcast?.feed != nil,
+                      hasMeaningfulEpisodeState(metadata) else { continue }
+                let identity = episode.stableEpisodeIdentity
+                let updatedAt = metadata.effectiveStateUpdatedAt ?? .distantPast
+                if let destination = fetchEpisodeState(id: identity.key, in: account) {
+                    guard StoreSplitMergePolicy.prefersIncoming(
+                        existingUpdatedAt: destination.updatedAt,
+                        incomingUpdatedAt: updatedAt
+                    ) else { continue }
+                    let flags = episodeStateFlags(metadata)
+                    applyEpisodeState(
+                        metadata: metadata,
+                        episode: episode,
+                        identity: identity,
+                        isPlayed: flags.isPlayed,
+                        isArchived: flags.isArchived,
+                        updatedAt: updatedAt,
+                        to: destination
+                    )
+                } else {
+                    account.insert(episodeStateRow(metadata: metadata, episode: episode, identity: identity))
+                }
+            }
+            if account.hasChanges { try account.save() }
+            guard page.count == pageSize else { break }
+            offset += pageSize
+        }
+
+        let device = ListeningDeviceIdentity.current()
+        offset = 0
+        while true {
+            var descriptor = FetchDescriptor<PlaySession>(
+                predicate: #Predicate {
+                    if let startedAt = $0.startTime { startedAt >= cutoff } else { false }
+                },
+                sortBy: [SortDescriptor(\.startTime)]
+            )
+            descriptor.fetchLimit = pageSize
+            descriptor.fetchOffset = offset
+            let page = try library.fetch(descriptor)
+            for session in page {
+                guard shouldContinue() else { return false }
+                guard let episode = session.episode,
+                      episode.podcast?.feed != nil,
+                      let startedAt = session.startTime,
+                      let endedAt = session.endTime,
+                      endedAt > startedAt,
+                      historyIdentityValuesAreValid(
+                          startedAt: startedAt,
+                          endedAt: endedAt,
+                          startPosition: session.startPosition ?? 0,
+                          endPosition: session.endPosition ?? 0
+                      ) else { continue }
+                let identity = episode.stableEpisodeIdentity
+                let id = ListeningHistoryIdentity.make(
+                    feedURL: identity.feedURL,
+                    episodeID: identity.episodeID,
+                    startedAt: startedAt,
+                    endedAt: endedAt,
+                    startPosition: session.startPosition ?? 0,
+                    endPosition: session.endPosition ?? 0
+                )
+                guard try fetchListeningHistory(id: id, in: account) == nil else { continue }
+                // Recorded after the split, so it counts as live, not as part of the baseline.
+                account.insert(ListeningHistorySync(
+                    id: id,
+                    feedURL: identity.feedURL,
+                    episodeID: identity.episodeID,
+                    podcastName: session.podcastName ?? episode.displayPodcastTitle,
+                    episodeTitle: episode.title,
+                    sourceDeviceID: session.sourceDeviceID ?? device.id,
+                    sourceDeviceName: session.sourceDeviceName ?? device.displayName,
+                    deviceModel: session.deviceModel,
+                    startedAt: startedAt,
+                    endedAt: endedAt,
+                    startPosition: session.startPosition ?? 0,
+                    endPosition: session.endPosition ?? 0,
+                    listenedSeconds: endedAt.timeIntervalSince(startedAt),
+                    silenceGapTimeSavedSeconds: session.silenceGapTimeSavedSeconds ?? 0,
+                    playbackRateTimeSavedSeconds: PlaybackRateSavingsCalculator.secondsSaved(in: session),
+                    endedCleanly: session.endedCleanly == true,
+                    updatedAt: endedAt
+                ))
+            }
+            if account.hasChanges { try account.save() }
+            guard page.count == pageSize else { break }
+            offset += pageSize
+        }
+        return true
+    }
+
     /// Tombstones active subscriptions this library has no podcast for and that
     /// predate its switch to local-only: until then legacy CloudKit kept the library
     /// complete, so these aren't subscriptions, and a new device would restore them
