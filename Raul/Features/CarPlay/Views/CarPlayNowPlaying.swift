@@ -115,8 +115,8 @@ class CarPlayNowPlaying {
         
         
         
-        let rateButton = CPNowPlayingPlaybackRateButton { _ in
-            player.switchPlayBackSpeed()
+        let rateButton = CPNowPlayingPlaybackRateButton { [weak self] _ in
+            self?.showPlaybackRatePicker()
         }
         
         buttons.append(rateButton)
@@ -136,6 +136,33 @@ class CarPlayNowPlaying {
 
         
         template.updateNowPlayingButtons(buttons)
+    }
+
+    private func showPlaybackRatePicker() {
+        let rates: [Float] = [0.5, 1.0, 1.5, 2.0]
+        let items = rates.map { rate in
+            let label = rate.formatted(.number.precision(.fractionLength(0...1))) + "×"
+            let isCurrent = abs(player.playbackRate - rate) < 0.01
+            let item = CPListItem(
+                text: label,
+                detailText: isCurrent ? String(localized: "Current") : nil,
+                image: nil
+            )
+            item.handler = { [weak self] _, completion in
+                guard let self else { completion(); return }
+                // Use the ordinary player rate setter so existing persistence,
+                // Now Playing information, and remote-command state stay in sync.
+                self.player.playbackRate = rate
+                completion()
+                self.interfaceController.popTemplate(animated: true, completion: nil)
+            }
+            return item
+        }
+        let speedTemplate = CPListTemplate(
+            title: String(localized: "Playback Speed"),
+            sections: [CPListSection(items: items)]
+        )
+        interfaceController.pushTemplate(speedTemplate, animated: true, completion: nil)
     }
 
     private func showBookmarkError(_ message: String) {
