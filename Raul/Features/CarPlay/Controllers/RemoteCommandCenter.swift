@@ -33,7 +33,7 @@ class RemoteCommandCenter {
         
         RCC.playCommand.isEnabled = true
         RCC.playCommand.addTarget { _ in
-            
+            CarPlayDiagnostics.noteCommand("play")
             if !self.player.isPlaying {
                 self.player.play()
                 return .success
@@ -46,7 +46,7 @@ class RemoteCommandCenter {
         // Add handler for Pause Command
         RCC.pauseCommand.isEnabled = true
         RCC.pauseCommand.addTarget { _ in
-            
+            CarPlayDiagnostics.noteCommand("pause")
             if self.player.isPlaying{
                 self.player.pause()
                 return .success
@@ -60,13 +60,14 @@ class RemoteCommandCenter {
             guard let event = event as? MPChangePlaybackRateCommandEvent else {
                 return .commandFailed
             }
-
+            CarPlayDiagnostics.noteCommand("rate")
             self.player.setRate(event.playbackRate)
             return .success
         }
         
         RCC.skipForwardCommand.isEnabled = true
         RCC.skipForwardCommand.addTarget { _ in
+            CarPlayDiagnostics.noteCommand("skipForward")
             self.player.remoteSkipForward()
             return.success
         }
@@ -76,6 +77,7 @@ class RemoteCommandCenter {
         // <<
         RCC.skipBackwardCommand.isEnabled = true
         RCC.skipBackwardCommand.addTarget { _ in
+            CarPlayDiagnostics.noteCommand("skipBack")
             self.player.remoteSkipBack()
             return.success
         }
@@ -91,7 +93,7 @@ class RemoteCommandCenter {
         
         RCC.changePlaybackPositionCommand.isEnabled = settingLockScreenScrubbing
         RCC.changePlaybackPositionCommand.addTarget { event in
-            
+            CarPlayDiagnostics.noteCommand("seek")
                 if let event = event as? MPChangePlaybackPositionCommandEvent {
                     Task{
                         let time = CMTime(seconds: event.positionTime, preferredTimescale: 1000000).seconds
@@ -106,12 +108,14 @@ class RemoteCommandCenter {
         
         RCC.nextTrackCommand.isEnabled = true
         RCC.nextTrackCommand.addTarget { _ in
+            CarPlayDiagnostics.noteCommand("nextTrack")
             self.player.remoteSkipForward()
             return .success
         }
         
         RCC.previousTrackCommand.isEnabled = true
         RCC.previousTrackCommand.addTarget { _ in
+            CarPlayDiagnostics.noteCommand("previousTrack")
             self.player.remoteSkipBack()
             return .success
         }

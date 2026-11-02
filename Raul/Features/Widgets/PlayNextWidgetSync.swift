@@ -528,7 +528,68 @@ enum PlayNextWidgetSync {
     }
 }
 
+/// Decides which widget timelines a new playback snapshot invalidates. Writing
+/// the snapshot is cheap; every reload makes the system re-render the widget,
+/// so gradual progress during playback reloads only every few minutes.
+enum WidgetPlaybackReloadPolicy {
+    static let progressOnlyReloadInterval: TimeInterval = 5 * 60
+    /// A position further from the expected one than this is a seek.
+    static let seekTolerance: Double = 20
+
+    struct Decision: Equatable {
+        let reloadNowPlaying: Bool
+        let reloadQueue: Bool
+    }
+
+    static func decision(
+        previous: WidgetPlaybackSnapshot?,
+        next: WidgetPlaybackSnapshot,
+        lastNowPlayingReloadAt: Date?
+    ) -> Decision {
+        guard let previous else { return Decision(reloadNowPlaying: true, reloadQueue: true) }
+        // The queue widget refreshes progress on its own timeline.
+        let reloadQueue = previous.episodeID != next.episodeID || previous.isPlaying != next.isPlaying
+        if previous.positionSeconds == next.positionSeconds {
+            return Decision(reloadNowPlaying: true, reloadQueue: reloadQueue)
+        }
+        let samePlaybackContent = previous.hasSamePlaybackContent(as: WidgetPlaybackSnapshot(
+            updatedAt: next.updatedAt,
+            episodeID: next.episodeID,
+            isPlaying: next.isPlaying,
+            positionSeconds: previous.positionSeconds,
+            durationSeconds: next.durationSeconds,
+            playbackRate: next.playbackRate,
+            title: next.title,
+            podcastTitle: next.podcastTitle,
+            coverFileName: next.coverFileName,
+            backgroundFileName: next.backgroundFileName,
+            skipBackSymbol: next.skipBackSymbol,
+            skipForwardSymbol: next.skipForwardSymbol,
+            skipBackSeconds: next.skipBackSeconds,
+            skipForwardSeconds: next.skipForwardSeconds
+        ))
+        guard samePlaybackContent, isGradualProgress(from: previous, to: next) else {
+            return Decision(reloadNowPlaying: true, reloadQueue: reloadQueue)
+        }
+        let isDue = lastNowPlayingReloadAt.map {
+            next.updatedAt.timeIntervalSince($0) >= progressOnlyReloadInterval
+        } ?? true
+        return Decision(reloadNowPlaying: isDue, reloadQueue: false)
+    }
+
+    private static func isGradualProgress(from previous: WidgetPlaybackSnapshot, to next: WidgetPlaybackSnapshot) -> Bool {
+        guard previous.isPlaying, next.isPlaying,
+              let oldPosition = previous.positionSeconds,
+              let newPosition = next.positionSeconds else { return false }
+        let elapsed = max(0, next.updatedAt.timeIntervalSince(previous.updatedAt))
+        let expected = oldPosition + elapsed * (next.playbackRate ?? 1)
+        return abs(newPosition - expected) <= seekTolerance
+    }
+}
+
 private actor WidgetPlaybackSnapshotWriter {
+    private var lastNowPlayingReloadAt: Date?
+
     func write(_ snapshot: WidgetPlaybackSnapshot, appGroupID: String, fileName: String) {
         guard let url = FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
@@ -550,15 +611,19 @@ private actor WidgetPlaybackSnapshotWriter {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(snapshot) else { return }
-        let shouldReloadQueue = previousSnapshot == nil ||
-            previousSnapshot?.episodeID != snapshot.episodeID ||
-            previousSnapshot?.isPlaying != snapshot.isPlaying ||
-            previousSnapshot?.playbackProgress != snapshot.playbackProgress
+        let decision = WidgetPlaybackReloadPolicy.decision(
+            previous: previousSnapshot,
+            next: snapshot,
+            lastNowPlayingReloadAt: lastNowPlayingReloadAt
+        )
         do {
             try data.write(to: url, options: .atomic)
             #if canImport(WidgetKit)
-            WidgetCenter.shared.reloadTimelines(ofKind: "UpNextNowPlayingWidget")
-            if shouldReloadQueue {
+            if decision.reloadNowPlaying {
+                lastNowPlayingReloadAt = snapshot.updatedAt
+                WidgetCenter.shared.reloadTimelines(ofKind: "UpNextNowPlayingWidget")
+            }
+            if decision.reloadQueue {
                 WidgetCenter.shared.reloadTimelines(ofKind: "PlayNextQueueWidget")
             }
             #endif

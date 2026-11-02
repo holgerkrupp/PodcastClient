@@ -1,6 +1,7 @@
 import Foundation
 import CarPlay
 import SwiftData
+import os
 
 private final class CarPlayPlayNextNotificationObserver: @unchecked Sendable {
     private let token: NSObjectProtocol
@@ -10,6 +11,12 @@ private final class CarPlayPlayNextNotificationObserver: @unchecked Sendable {
 
 @MainActor
 class CarPlayPlayNext {
+    /// Rows past this keep text only; a long queue otherwise hands the
+    /// CarPlay host dozens of images at once.
+    static let artworkRowLimit = 24
+    /// Library notifications arrive in bursts; one template update covers them.
+    static let notificationCoalescingDelay: Duration = .milliseconds(500)
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "UpNext", category: "CarPlayScene")
     var playlistActor: PlaylistModelActor
     let interfaceController: CPInterfaceController
     var template: CPListTemplate
@@ -23,6 +30,9 @@ class CarPlayPlayNext {
     private var generation = 0
     private var selectedPlaylistID: UUID?
     private var selectedPlaylistTitle: String = Playlist.defaultQueueDisplayName
+    /// What the template shows now, so an identical refresh leaves the host alone.
+    private var publishedSignature: [String]?
+    private var artworkHandoffCount = 0
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
         self.playlistActor = playlistActor
@@ -62,7 +72,7 @@ class CarPlayPlayNext {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.scheduleRefresh() }
+            Task { @MainActor [weak self] in self?.scheduleRefresh(after: Self.notificationCoalescingDelay) }
         }
         notificationObserver = CarPlayPlayNextNotificationObserver(token: token)
         let artworkToken = NotificationCenter.default.addObserver(
@@ -75,15 +85,19 @@ class CarPlayPlayNext {
         artworkSettingsObserver = CarPlayPlayNextNotificationObserver(token: artworkToken)
     }
 
-    private func scheduleRefresh() {
+    private func scheduleRefresh(after delay: Duration? = nil) {
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
+            if let delay {
+                try? await Task.sleep(for: delay)
+                guard Task.isCancelled == false else { return }
+            }
             await self?.setupTemplate()
         }
     }
 
     private func setupTemplate() async {
-        artworkTask?.cancel()
+        let startedAt = ContinuousClock.now
         generation &+= 1
         let requestGeneration = generation
         await refreshEpisodeList()
@@ -101,6 +115,18 @@ class CarPlayPlayNext {
         let needsMoreRow = currentCount + playbackActionsCount + queueEpisodes.count > totalLimit
         let availableQueueCount = max(0, totalLimit - currentCount - playbackActionsCount - (needsMoreRow ? 1 : 0))
         let displayedEpisodes = Array(queueEpisodes.prefix(availableQueueCount))
+        let signature = [
+            "\(CarPlayArtworkSettings.showArtwork)|\(needsMoreRow)|\(ObjectIdentifier(template).hashValue)",
+            "current|\(currentEpisodeURL?.absoluteString ?? "")|\(current?.title ?? "")"
+        ] + displayedEpisodes.map { episode in
+            "\(episode.url?.absoluteString ?? "")|\(episode.title ?? "")|\(episode.desc ?? "")|\(episode.cover?.absoluteString ?? episode.podcastCover?.absoluteString ?? "")"
+        }
+        guard signature != publishedSignature else {
+            logger.debug("Queue template unchanged; update skipped")
+            return
+        }
+        artworkTask?.cancel()
+        publishedSignature = signature
         var sections: [CPListSection] = []
         var imageTargets: [(item: CPListItem, url: URL)] = []
 
@@ -186,12 +212,18 @@ class CarPlayPlayNext {
 
         template.updateSections(sections)
         configureNavigationButtons()
+        let rowCount = sections.reduce(0) { $0 + $1.items.count }
+        logger.info("Queue template published; rows=\(rowCount) elapsedMs=\(Self.milliseconds(since: startedAt))")
 
+        guard CarPlayArtworkSettings.showArtwork else { return }
         let displayScale = interfaceController.carTraitCollection.displayScale
         let maxPixelSize = CarPlayArtworkProvider.pixelBudget(displayScale: displayScale)
-        let targets = imageTargets
+        let targets = Array(imageTargets.prefix(Self.artworkRowLimit))
         let activeTemplate = template
+        let logger = logger
         artworkTask = Task { [weak self] in
+            let artworkStartedAt = ContinuousClock.now
+            self?.artworkHandoffCount = 0
             await CarPlayArtworkProvider.loadBounded(
                 requests: targets.enumerated().map { (index: $0.offset, url: $0.element.url) },
                 maxPixelSize: maxPixelSize
@@ -201,8 +233,16 @@ class CarPlayPlayNext {
                       self.template === activeTemplate,
                       Task.isCancelled == false else { return }
                 targets[index].item.setImage(image)
+                self.artworkHandoffCount += 1
             }
+            let handedOff = self?.artworkHandoffCount ?? 0
+            logger.info("Queue artwork handed off; images=\(handedOff) requested=\(targets.count) cancelled=\(Task.isCancelled, privacy: .public) elapsedMs=\(Self.milliseconds(since: artworkStartedAt))")
         }
+    }
+
+    nonisolated static func milliseconds(since start: ContinuousClock.Instant) -> Int {
+        let elapsed = ContinuousClock.now - start
+        return Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000)
     }
 
     private func showTextPlaybackActions() {
@@ -298,6 +338,7 @@ class CarPlayPlayNext {
         selectedPlaylistTitle = title
         UserDefaults.standard.set(id.uuidString, forKey: PlaylistPreferenceKeys.selectedPlaylistID)
         artworkTask?.cancel()
+        publishedSignature = nil
         template = CPListTemplate(title: selectedPlaylistTitle, sections: [])
         interfaceController.setRootTemplate(template, animated: true, completion: nil)
         scheduleRefresh()

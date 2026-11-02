@@ -595,6 +595,7 @@ class Player {
             guard isPlaying != oldValue else { return }
             let playbackStarted = isPlaying
             Self.hasActivePlaybackInProcess = playbackStarted
+            CarPlayDiagnostics.notePlaybackStateChange(isPlaying: playbackStarted)
             StoreSplitPlaybackGate.shared.setActive(playbackStarted)
             // Detached local-cache workers check this between episodes and
             // before saving, so playback preempts long charging backfills.

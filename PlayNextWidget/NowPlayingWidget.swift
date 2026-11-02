@@ -23,6 +23,36 @@ private struct NowPlayingSnapshot: Decodable {
     let skipForwardSymbol: String?
     let skipBackSeconds: Int?
     let skipForwardSeconds: Int?
+
+    /// The app only reloads this widget every few minutes for progress alone,
+    /// so a playing snapshot is advanced locally from its timestamp.
+    func advanced(to date: Date) -> NowPlayingSnapshot {
+        guard isPlaying, progressFraction == nil,
+              let positionSeconds, positionSeconds.isFinite else { return self }
+        let elapsed = max(0, date.timeIntervalSince(updatedAt)) * max(playbackRate ?? 1, 0.1)
+        var position = positionSeconds + elapsed
+        if let durationSeconds, durationSeconds.isFinite, durationSeconds > 0 {
+            position = min(position, durationSeconds)
+        }
+        return NowPlayingSnapshot(
+            schemaVersion: schemaVersion,
+            updatedAt: updatedAt,
+            episodeID: episodeID,
+            isPlaying: isPlaying,
+            positionSeconds: position,
+            durationSeconds: durationSeconds,
+            progressFraction: progressFraction,
+            playbackRate: playbackRate,
+            title: title,
+            podcastTitle: podcastTitle,
+            coverFileName: coverFileName,
+            backgroundFileName: backgroundFileName,
+            skipBackSymbol: skipBackSymbol,
+            skipForwardSymbol: skipForwardSymbol,
+            skipBackSeconds: skipBackSeconds,
+            skipForwardSeconds: skipForwardSeconds
+        )
+    }
 }
 
 private struct NowPlayingEntry: TimelineEntry {
@@ -43,7 +73,17 @@ private struct NowPlayingProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<NowPlayingEntry>) -> Void) {
-        completion(Timeline(entries: [entry()], policy: .never))
+        let current = entry()
+        guard let snapshot = current.snapshot, snapshot.isPlaying, snapshot.positionSeconds != nil else {
+            completion(Timeline(entries: [current], policy: .never))
+            return
+        }
+        // Covers the gap between the app's coarse progress reloads.
+        let entries = (0..<10).map { minute in
+            let date = current.date.addingTimeInterval(TimeInterval(minute * 60))
+            return NowPlayingEntry(date: date, snapshot: snapshot.advanced(to: date), visualStyle: current.visualStyle)
+        }
+        completion(Timeline(entries: entries, policy: .never))
     }
 
     private func entry() -> NowPlayingEntry {
