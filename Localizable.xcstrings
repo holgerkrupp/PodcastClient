@@ -20,16 +20,6 @@
         }
       }
     },
-    "%@ of %@ episodes" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%1$@ von %2$@ Episoden"
-          }
-        }
-      }
-    },
     "-%@" : {
       "localizations" : {
         "de" : {
@@ -290,6 +280,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ enregistrements locaux d'environ %@"
+          }
+        }
+      }
+    },
+    "%@ of %@ episodes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ von %2$@ Episoden"
           }
         }
       }
@@ -1315,6 +1315,9 @@
           }
         }
       }
+    },
+    "Add Bookmark" : {
+
     },
     "Add credentials" : {
       "localizations" : {
@@ -3297,6 +3300,16 @@
         }
       }
     },
+    "Bookmarked at %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen bei %@ gesetzt"
+          }
+        }
+      }
+    },
     "Bookmarks" : {
       "localizations" : {
         "de" : {
@@ -3890,6 +3903,26 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Chapitres"
+          }
+        }
+      }
+    },
+    "Check every subscribed feed for new episodes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sucht in allen abonnierten Feeds nach neuen Episoden."
+          }
+        }
+      }
+    },
+    "Check for new episodes in Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach neuen Episoden suchen in Up Next"
           }
         }
       }
@@ -6154,6 +6187,7 @@
       }
     },
     "Dual sync backfill" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9509,6 +9543,7 @@
       }
     },
     "Legacy library sync stopped on this device" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9525,6 +9560,7 @@
       }
     },
     "Legacy library sync will stop after you close and reopen Up Next. Your local library stays on this phone; User State continues syncing to iCloud." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9541,6 +9577,7 @@
       }
     },
     "Legacy local snapshot: playlists=%@, playlist entries=%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9551,6 +9588,7 @@
       }
     },
     "Legacy Sync Recovery" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11820,6 +11858,9 @@
         }
       }
     },
+    "Next predicted release: Unavailable" : {
+
+    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -12967,14 +13008,7 @@
       }
     },
     "Older listening history is still being moved after the update, so totals may be incomplete for now." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Älterer Hörverlauf wird nach dem Update noch übertragen. Die Summen können deshalb vorerst unvollständig sein."
-          }
-        }
-      }
+
     },
     "On" : {
       "localizations" : {
@@ -14541,6 +14575,16 @@
         }
       }
     },
+    "Play Episode Title in Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Episodentitel abspielen in Up Next"
+          }
+        }
+      }
+    },
     "Play from %@" : {
       "localizations" : {
         "de" : {
@@ -14665,6 +14709,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Jouez ma playlist Commute dans À suivre"
+          }
+        }
+      }
+    },
+    "Play my queue in Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Warteschlange abspielen in Up Next"
           }
         }
       }
@@ -14799,6 +14853,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Écoutez le dernier épisode de ${podcast}"
+          }
+        }
+      }
+    },
+    "Play the latest episode of Podcast Name in Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode von Podcastname abspielen in Up Next"
           }
         }
       }
@@ -17017,17 +17081,8 @@
         }
       }
     },
-    "Rebuilding analytics… You can keep using Up Next." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Statistik wird neu berechnet … Du kannst Up Next weiter verwenden."
-          }
-        }
-      }
-    },
     "Rebuilding analytics…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17039,6 +17094,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Reconstruire l'analyse..."
+          }
+        }
+      }
+    },
+    "Rebuilding analytics… You can keep using Up Next." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Statistik wird neu berechnet … Du kannst Up Next weiter verwenden."
           }
         }
       }
@@ -17266,6 +17331,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Actualisez un flux d'abonné sélectionné sans actualiser la bibliothèque."
+          }
+        }
+      }
+    },
+    "Refresh All Podcasts" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle Podcasts aktualisieren"
           }
         }
       }
@@ -18033,6 +18108,7 @@
       }
     },
     "Repeated launches have ended before the legacy library could finish syncing. If this is your only active Up Next device, you can stop mirroring that library on the next launch. Keep using this phone until the move to User State is complete before adding another device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18686,6 +18762,7 @@
       }
     },
     "Runtime-visible Up Next (local snapshot): playlists=%@, entries=%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18696,6 +18773,7 @@
       }
     },
     "Runtime: bootstrap=%@, read authority=%@, %@, readiness=%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19339,6 +19417,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Serverantwort"
+          }
+        }
+      }
+    },
+    "Set a sleep timer in Up Next" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlaftimer stellen in Up Next"
           }
         }
       }
@@ -20339,6 +20427,16 @@
         }
       }
     },
+    "Siri phrases must include the app name, such as “Up Next bookmark this.” Wording can vary, and everything below is also available as an action in Shortcuts." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Siri-Phrasen müssen den App-Namen enthalten, zum Beispiel „Up Next merk dir das“. Der Wortlaut kann variieren, und alles hier ist auch als Aktion in Kurzbefehlen verfügbar."
+          }
+        }
+      }
+    },
     "Siri wording can vary. The examples below are suggestions; the same capabilities are also available as actions in Shortcuts." : {
       "localizations" : {
         "de" : {
@@ -21274,6 +21372,9 @@
         }
       }
     },
+    "Starting download" : {
+
+    },
     "Starts playback at %@" : {
       "localizations" : {
         "de" : {
@@ -21451,6 +21552,7 @@
       }
     },
     "Stop Legacy Library Sync on This Device" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21467,6 +21569,7 @@
       }
     },
     "Stop legacy library sync on this device?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21515,6 +21618,7 @@
       }
     },
     "Stop on Next Launch" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -22515,6 +22619,7 @@
       }
     },
     "The local library remains available. User State continues syncing to iCloud. Finish the move to User State on this device before adding another Up Next device." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -23550,6 +23655,16 @@
         }
       }
     },
+    "To say just “Bookmark this,” create a shortcut with that name in the Shortcuts app and add the Up Next action. Siri runs a shortcut when you say its name." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um nur „Lesezeichen setzen“ zu sagen, erstelle in der Kurzbefehle-App einen Kurzbefehl mit diesem Namen und füge die Up-Next-Aktion hinzu. Siri führt einen Kurzbefehl aus, wenn du seinen Namen sagst."
+          }
+        }
+      }
+    },
     "Top Charts" : {
       "localizations" : {
         "fr" : {
@@ -24428,6 +24543,16 @@
         }
       }
     },
+    "Up Next bookmark this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next merk dir das"
+          }
+        }
+      }
+    },
     "Up Next could not open its library." : {
       "localizations" : {
         "de" : {
@@ -24936,6 +25061,7 @@
       }
     },
     "Use this only when no other device is using the legacy library sync. This one-way change keeps the local library and User State sync, but the old library will no longer exchange updates with other devices." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25032,6 +25158,7 @@
       }
     },
     "User State local snapshot: PlaylistSync active/tombstones=%@/%@, PlaylistEntrySync active/tombstones=%@/%@, QueueEntrySync active/tombstones=%@/%@, unresolved episode references=%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25291,6 +25418,7 @@
       }
     },
     "Waiting for saved Up Next episodes to restore from iCloud…" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

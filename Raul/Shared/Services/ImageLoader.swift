@@ -537,6 +537,13 @@ class ImageLoaderAndCache: ObservableObject {
             return .failure(.permanentHTTP)
         }
 
+        if url.isFileURL {
+            guard let data = try? Data(contentsOf: url), isImageData(data) else {
+                return .failure(.permanentHTTP)
+            }
+            return .success(data)
+        }
+
         guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: url, purpose: .artwork) else {
             return .failure(.permanentHTTP)
         }

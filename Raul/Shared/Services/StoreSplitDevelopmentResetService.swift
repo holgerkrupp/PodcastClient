@@ -42,6 +42,10 @@ actor StoreSplitDevelopmentResetService {
             from: userStateContext
         )
         result.userStateRecordsDeleted += try deleteAll(
+            PlaybackSessionSync.self,
+            from: userStateContext
+        )
+        result.userStateRecordsDeleted += try deleteAll(
             EpisodeStateSync.self,
             from: userStateContext
         )

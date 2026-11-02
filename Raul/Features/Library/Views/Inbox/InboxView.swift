@@ -59,6 +59,9 @@ struct InboxListView: View {
     @State private var errorMessage: String?
     @State private var liveNotificationFeed: URL?
     @State private var showLiveNotificationPodcast = false
+#if DEBUG
+    @State private var showReleaseCalendar = false
+#endif
     @Environment(\.modelContext) private var modelContext
     @State private var refreshProgress = PodcastRefreshCoordinator.shared.progress
     @Query private var podcasts: [Podcast]
@@ -153,6 +156,16 @@ struct InboxListView: View {
             refreshProgress = PodcastRefreshCoordinator.shared.progress
         }
         .toolbar {
+#if DEBUG
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showReleaseCalendar = true
+                } label: {
+                    Label("Release prediction", systemImage: "calendar")
+                }
+                .accessibilityHint("Shows predicted release dates for subscribed podcasts")
+            }
+#endif
             ToolbarItem(placement: .primaryAction) {
                 Button(action: {
                     Task {
@@ -228,6 +241,13 @@ struct InboxListView: View {
                 .hidden()
             }
         }
+#if DEBUG
+        .sheet(isPresented: $showReleaseCalendar) {
+            NavigationStack {
+                DebugReleaseCalendarView(podcasts: podcasts)
+            }
+        }
+#endif
     }
 
     // MARK: - Data Loading

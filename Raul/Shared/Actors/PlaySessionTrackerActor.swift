@@ -127,6 +127,19 @@ final class RateSegment: Identifiable {
 
 @Model
 final class PlaySession: Identifiable {
+    var historyPodcastFeed: URL? { episode?.podcast?.feed ?? detachedPodcastFeed }
+    var historyEpisodeTitle: String? { episode?.title ?? detachedEpisodeTitle }
+
+    /// `Episode.playSessions` doesn't nullify on delete, so a session left
+    /// pointing at a deleted episode would hold a dead reference.
+    func detachFromEpisode() {
+        guard let episode else { return }
+        detachedPodcastFeed = episode.podcast?.feed ?? detachedPodcastFeed
+        detachedEpisodeTitle = episode.title
+        if podcastName == nil { podcastName = episode.displayPodcastTitle }
+        self.episode = nil
+    }
+
     /// Play sessions are always read in time order — statistics, the resume
     /// logic, and the `listening_history` migration phase, which pages ten rows
     /// at a time and so issues the most sorted fetches of any phase. See the
@@ -141,6 +154,9 @@ final class PlaySession: Identifiable {
     // Explicit inverse relationship is required for proper syncing.
     @Relationship(inverse: \Episode.playSessions) var episode: Episode?
     var podcastName: String?
+    /// Kept once `episode` is gone, so history outlives a deleted podcast.
+    var detachedPodcastFeed: URL?
+    var detachedEpisodeTitle: String?
     var sourceDeviceID: String?
     var sourceDeviceName: String?
     var deviceModel: String?
@@ -326,7 +342,7 @@ actor PlaySessionTrackerActor {
 
         recordSilenceGapTimeSavedForEpisode(session)
         let touchedHours = recordListeningStats(for: session)
-        rebuildSummaries(forHourStarts: touchedHours, podcastFeed: session.episode?.podcast?.feed, podcastName: session.podcastName)
+        rebuildSummaries(forHourStarts: touchedHours, podcastFeed: session.historyPodcastFeed, podcastName: session.podcastName)
         pruneOldSessionsIfNeeded()
         saveSession()
         let localAnalyticsSnapshot = localAnalyticsSnapshot(from: session)
@@ -543,7 +559,7 @@ actor PlaySessionTrackerActor {
     private func recordListeningStats(for session: PlaySession) -> [Date] {
         guard let start = session.startTime, let end = session.endTime, end > start else { return [] }
 
-        let podcastFeed = session.episode?.podcast?.feed
+        let podcastFeed = session.historyPodcastFeed
         let podcastName = session.podcastName
         let sessionDuration = end.timeIntervalSince(start)
         let savedSecondsTotal = max(0, session.silenceGapTimeSavedSeconds ?? 0)
@@ -782,7 +798,7 @@ actor PlaySessionTrackerActor {
                 let blockDuration = blockEnd.timeIntervalSince(cursor)
                 let key = PlaybackRateStatKey(
                     startOfHour: hourStart,
-                    podcastFeed: session.episode?.podcast?.feed
+                    podcastFeed: session.historyPodcastFeed
                 )
                 if let stat = statsByKey[key] {
                     stat.playbackRateTimeSavedSeconds =
@@ -906,7 +922,7 @@ actor PlaySessionTrackerActor {
     private func recordMissingListeningStats(for session: PlaySession) {
         guard let start = session.startTime, let end = session.endTime, end > start else { return }
 
-        let podcastFeed = session.episode?.podcast?.feed
+        let podcastFeed = session.historyPodcastFeed
         let podcastName = session.podcastName
         let sessionDuration = end.timeIntervalSince(start)
         let savedSecondsTotal = max(0, session.silenceGapTimeSavedSeconds ?? 0)

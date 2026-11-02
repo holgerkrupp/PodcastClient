@@ -2619,6 +2619,7 @@ actor PodcastModelActor {
                 cacheContainer: cache
             )
         }
+        currentEpisode.playSessions?.forEach { $0.detachFromEpisode() }
         modelContext.delete(currentEpisode)
         try modelContext.save()
     }
@@ -2636,6 +2637,26 @@ actor PodcastModelActor {
               let feedURL = podcast.feed else { return }
         let profile = storedPodcastAccessProfile(for: podcast)
 
+        // A duplicate shares its feed's cache, download folder and subscription
+        // record with the row that stays. Removing those for one copy would
+        // unsubscribe the podcast on every device.
+        let feedKeys = feedURL.podcastFeedComparisonKeys
+        let sameFeedPodcasts = try modelContext.fetch(FetchDescriptor<Podcast>()).filter { other in
+            other.persistentModelID != podcastID
+                && other.feed.map { $0.podcastFeedComparisonKeys.isDisjoint(with: feedKeys) == false } == true
+        }
+        let sharesFeedData = sameFeedPodcasts.isEmpty == false
+        let staysSubscribed = sameFeedPodcasts.contains { $0.metaData?.isSubscribed != false }
+        if let imageURL = podcast.imageURL {
+            // Before the folder holding the artwork goes away.
+            await PodcastCoverArchive.shared.archive(
+                imageURL: imageURL,
+                feed: feedURL,
+                title: podcast.title,
+                profile: profile
+            )
+        }
+
         // Query children directly instead of faulting `podcast.episodes`.
         // The player must release a current episode before this cascade delete
         // can invalidate the SwiftData model it retains.
@@ -2647,32 +2668,64 @@ actor PodcastModelActor {
         let episodeURLs = Set(try modelContext.fetch(episodeDescriptor).compactMap(\.url))
         await Player.shared.prepareForLibraryDeletion(episodeURLs: episodeURLs)
 
-        if let cache = await preparedCacheContainerForMirroring() {
+        if sharesFeedData == false, let cache = await preparedCacheContainerForMirroring() {
             try StoreSplitFeedCacheWriter.deletePodcast(feedURL: feedURL, cacheContainer: cache)
         }
-        guard try deletePodcastRow(podcastID) != nil else { return }
-        _ = try await updateSplitSubscription(
-            feedURL: feedURL,
-            isSubscribed: false,
-            accessProfile: profile
-        )
-        await SubscriptionManifestSync.publishCurrentSubscriptions(
-            modelContainer: modelContainer,
-            allowEmpty: true
-        )
+        // Record the unsubscribe first. Removing a large podcast takes a while,
+        // and an interruption must not bring it back on the next launch.
+        if staysSubscribed == false {
+            _ = try await updateSplitSubscription(
+                feedURL: feedURL,
+                isSubscribed: false,
+                accessProfile: profile
+            )
+        }
+        try deleteEpisodesInBatches(of: podcastID)
+        await Task.yield()
+        guard try deletePodcastRow(podcastID, sharesFeedData: sharesFeedData) != nil else { return }
+        if staysSubscribed == false {
+            await SubscriptionManifestSync.publishCurrentSubscriptions(
+                modelContainer: modelContainer,
+                allowEmpty: true
+            )
+        }
     }
 
-    private func deletePodcastRow(_ podcastID: PersistentIdentifier) throws -> URL? {
+    /// Small saves keep the store available to the UI during a large delete. One
+    /// cascade across every episode, chapter and transcript line held it for the
+    /// whole operation.
+    private func deleteEpisodesInBatches(of podcastID: PersistentIdentifier) throws {
+        let batchSize = 25
+        let identifiers = try modelContext.fetchIdentifiers(FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                episode.podcast?.persistentModelID == podcastID
+            }
+        ))
+        for start in stride(from: 0, to: identifiers.count, by: batchSize) {
+            for identifier in identifiers[start..<min(start + batchSize, identifiers.count)] {
+                if let episode: Episode = modelContext.existingModel(for: identifier) {
+                    episode.playSessions?.forEach { $0.detachFromEpisode() }
+                    modelContext.delete(episode)
+                }
+            }
+            try modelContext.save()
+        }
+    }
+
+    private func deletePodcastRow(
+        _ podcastID: PersistentIdentifier,
+        sharesFeedData: Bool
+    ) throws -> URL? {
         guard let podcast: Podcast = modelContext.existingModel(for: podcastID),
               let feedURL = podcast.feed else { return nil }
 
-        // Drop the feed from the manifest before the cascade delete starts.
-        // Removing a podcast walks every episode, chapter and bookmark it owns,
-        // and anything that interrupts that work would otherwise leave a
-        // manifest that restores the podcast on the next launch.
-        SubscriptionManifestSync.forgetFeed(feedURL)
-        if let episodeFolder = podcast.directoryURL {
-            try? FileManager.default.removeItem(at: episodeFolder)
+        if sharesFeedData == false {
+            // Drop the feed from the manifest before the row goes, so an
+            // interruption can't leave a manifest that restores the podcast.
+            SubscriptionManifestSync.forgetFeed(feedURL)
+            if let episodeFolder = podcast.directoryURL {
+                try? FileManager.default.removeItem(at: episodeFolder)
+            }
         }
         modelContext.delete(podcast)
         try modelContext.save()

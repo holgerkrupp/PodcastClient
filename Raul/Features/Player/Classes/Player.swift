@@ -605,11 +605,17 @@ class Player {
                 )
                 if playbackStarted {
                     await TranscriptionManager.shared.cancelAutomaticTranscriptionsForPlayback()
+                } else {
+                    await ModelContainerManager.shared.playbackDidStop()
                 }
             }
         }
     }
     var isPlayerSheetPresented: Bool = false
+    private var lastPublishedPlaybackSession: (url: URL, position: Double, isPlaying: Bool)?
+    private var isFollowingRemoteSession = false
+    /// A seek made while loading an episode isn't the listener moving it.
+    private var isLoadingEpisodePosition = false
     private(set) var livePlaybackState: LivePlaybackState = .ended
     private(set) var currentLiveItem: PodcastLiveItem?
 
@@ -2060,6 +2066,11 @@ class Player {
                 "player_playback_state_store_write_skipped",
                 details: "reason=store_write_gate"
             )
+            // Pausing from the lock screen lands here. The outbox write touches
+            // no SQLite, and it keeps other devices from waiting until the next
+            // pause on this one.
+            await enqueueCurrentEpisodeStateForLaterPublish()
+            await publishPlaybackSessionIfChanged()
             return
         }
         let currentPlayPosition = sanitizedPosition(playPosition)
@@ -2085,6 +2096,116 @@ class Player {
         if didPersist {
             PlaybackProgressDefaultsStore.removeProgress(for: currentEpisodeURL)
         }
+        await publishPlaybackSessionIfChanged()
+    }
+
+    private func enqueueCurrentEpisodeStateForLaterPublish() async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              let episode = currentEpisode,
+              let metadata = episode.metaData else { return }
+        let position = sanitizedPosition(playPosition)
+        let now = Date()
+        let snapshot = StoreSplitEpisodeStateSnapshot(
+            identity: episode.stableEpisodeIdentity,
+            playPosition: position,
+            maxPlayPosition: max(position, sanitizedPosition(metadata.maxPlayposition)),
+            duration: episode.duration,
+            isPlayed: metadata.completionDate != nil || metadata.isHistory == true,
+            isArchived: metadata.isArchived == true || metadata.status == .archived,
+            wasSkipped: metadata.wasSkipped,
+            completedAt: metadata.completionDate,
+            archivedAt: metadata.archivedAt,
+            firstPlayedAt: metadata.firstListenDate,
+            lastPlayedAt: now
+        )
+        let operation = StoreSplitPortableWriteOutbox.Operation.episodeState(snapshot, now)
+        do {
+            try await StoreSplitPortableWriteOutbox.shared.enqueue(operation)
+        } catch {
+            CrashBreadcrumbs.shared.record("store_split_portable_write_retry_enqueue_failed")
+            _ = PortableWriteFailureMonitor.shared.reportFailure(operation: operation, error: error)
+        }
+    }
+
+    /// Publishes only real changes. Saves also run on idle lifecycle events, and
+    /// stamping those as new would pull other devices back to a stale session.
+    private func publishPlaybackSessionIfChanged() async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              currentPlaybackSource != .liveRemote,
+              let episode = currentEpisode,
+              let episodeURL = currentEpisodeURL else { return }
+        let position = sanitizedPosition(playPosition)
+        if let lastPublishedPlaybackSession,
+           lastPublishedPlaybackSession.url == episodeURL,
+           lastPublishedPlaybackSession.isPlaying == isPlaying,
+           abs(lastPublishedPlaybackSession.position - position) < 2 {
+            return
+        }
+        lastPublishedPlaybackSession = (episodeURL, position, isPlaying)
+        let now = Date()
+        PlaybackSessionSyncPolicy.handledThrough = now
+        let snapshot = PlaybackSessionSnapshot(
+            identity: episode.stableEpisodeIdentity,
+            episodeURL: episodeURL.absoluteString,
+            position: position,
+            isPlaying: isPlaying
+        )
+        if ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite,
+           let container = ModelContainerManager.shared.preparedUserStateContainer {
+            do {
+                try await PlaybackSessionSyncWriter(modelContainer: container).upsert(snapshot, at: now)
+                return
+            } catch {
+                CrashBreadcrumbs.shared.record("playback_session_write_failed")
+            }
+        }
+        // A lost session is replaced by the next one, so no fallback is needed.
+        try? await StoreSplitPortableWriteOutbox.shared.enqueue(.playbackSession(snapshot, now))
+    }
+
+    /// Moves a paused player to what another device did more recently. Never
+    /// starts audio, and leaves a playing device or a SharePlay session alone.
+    func followRemotePlaybackSessionIfNeeded() async {
+        guard StoreDevelopmentConfiguration.splitStoresEnabled,
+              isPlaying == false,
+              isInSharedListeningSession == false,
+              currentPlaybackSource != .liveRemote,
+              PlaybackProgressDefaultsStore.pendingCompletion() == nil,
+              ModelContainerManager.shared.heavyStoreWorkMayRunInCurrentAppState,
+              let container = ModelContainerManager.shared.preparedUserStateContainer,
+              let session = PlaybackSessionSyncPolicy.newestRemoteSession(
+                in: container,
+                excludingDeviceID: ListeningDeviceIdentity.current().id
+              ),
+              PlaybackSessionSyncPolicy.shouldFollow(
+                session,
+                handledThrough: PlaybackSessionSyncPolicy.handledThrough
+              ),
+              let episodeURL = URL(string: session.episodeURL),
+              // Not in this library yet: retry after a later import brings it in.
+              let episode = await fetchEpisode(with: episodeURL),
+              isPlaying == false else { return }
+
+        PlaybackSessionSyncPolicy.handledThrough = session.updatedAt
+        guard episode.metaData?.completionDate == nil else { return }
+
+        let position = sanitizedPosition(session.position)
+        isFollowingRemoteSession = true
+        defer { isFollowingRemoteSession = false }
+        if episodeURL == currentEpisodeURL {
+            guard abs(position - sanitizedPosition(playPosition)) >= 2 else { return }
+            await jumpTo(time: position, protectLargeSeek: false)
+            currentEpisode?.metaData?.playPosition = position
+            PlaybackProgressDefaultsStore.removeProgress(for: episodeURL)
+        } else {
+            await playEpisode(
+                episodeURL,
+                playDirectly: false,
+                startingAt: position,
+                skipProtectionBehavior: .ignore
+            )
+        }
+        lastPublishedPlaybackSession = (episodeURL, position, false)
     }
 
     func cachePlaybackStateForRecovery() {
@@ -2616,6 +2737,7 @@ class Player {
         // playing it), the coordinator moves us to the group's position;
         // seeking to our own resume position would move the group instead.
         let loadingForSharedSession = isInSharedListeningSession && playDirectly == false
+        isLoadingEpisodePosition = true
         if targetStartTime > 0, loadingForSharedSession == false {
             await jumpTo(time: targetStartTime, protectLargeSeek: false)
         } else {
@@ -2627,6 +2749,11 @@ class Player {
         }
         _ = updateCurrentChapter()
         await skipOverChapters()
+        isLoadingEpisodePosition = false
+        if playDirectly == false {
+            // Loading isn't listening, so it shouldn't count as a new session.
+            lastPublishedPlaybackSession = (episodeURL, sanitizedPosition(playPosition), false)
+        }
         setupStaticNowPlayingInfo()
         // Switching podcasts may select a different speed; ordinary pause/resume
         // must keep the current in-memory selection without reloading settings.
@@ -3197,6 +3324,7 @@ class Player {
         updateNowPlayingInfo()
         Task { @MainActor in
             await PlayNextWidgetSync.publishPlaybackState()
+            await publishPlaybackSessionIfChanged()
         }
         loadSkipDurations()
         startPlaybackUpdates()
@@ -3393,6 +3521,9 @@ class Player {
         updateChapterProgress()
         cacheCurrentPlaybackState()
         await skipOverChapters()
+        if isPlaying == false, isFollowingRemoteSession == false, isLoadingEpisodePosition == false {
+            await saveCurrentPlaybackState(force: true)
+        }
     }
     
     func setRate(_ rate: Float){

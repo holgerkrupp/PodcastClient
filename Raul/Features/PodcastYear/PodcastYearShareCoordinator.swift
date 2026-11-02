@@ -197,6 +197,8 @@ final class PodcastYearShareCoordinator: ObservableObject {
         let coverURLsByTitle = Dictionary(grouping: podcasts, by: \.title)
             .mapValues { $0.first?.imageURL }
 
+        let archivedCovers = PodcastCoverArchive.coverFiles()
+
         let requestPodcasts = rollups
             .sorted { $0.totalSeconds > $1.totalSeconds }
             .enumerated()
@@ -206,7 +208,10 @@ final class PodcastYearShareCoordinator: ObservableObject {
                     rank: index + 1,
                     title: rollup.title,
                     totalSeconds: rollup.totalSeconds,
-                    coverURL: feedString.flatMap { coverURLsByFeed[$0] } ?? coverURLsByTitle[rollup.title] ?? nil
+                    coverURL: feedString.flatMap { coverURLsByFeed[$0] }
+                        ?? coverURLsByTitle[rollup.title]
+                        ?? feedString.flatMap { archivedCovers.byFeed[$0] }
+                        ?? archivedCovers.byTitle[rollup.title]
                 )
             }
 

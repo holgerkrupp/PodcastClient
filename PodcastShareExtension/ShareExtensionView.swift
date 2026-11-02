@@ -1,5 +1,11 @@
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+private typealias ShareArtworkImage = UIImage
+#elseif canImport(AppKit)
+import AppKit
+private typealias ShareArtworkImage = NSImage
+#endif
 
 struct ShareExtensionView: View {
     @ObservedObject var viewModel: ShareExtensionViewModel
@@ -298,7 +304,7 @@ struct ShareExtensionView: View {
 private struct ShareProtectedArtwork: View {
     let url: URL
     let placeholder: AnyView
-    @State private var image: UIImage?
+    @State private var image: ShareArtworkImage?
 
     init(url: URL, @ViewBuilder placeholder: () -> some View) {
         self.url = url
@@ -308,7 +314,11 @@ private struct ShareProtectedArtwork: View {
     var body: some View {
         Group {
             if let image {
+                #if canImport(UIKit)
                 Image(uiImage: image).resizable().scaledToFill()
+                #else
+                Image(nsImage: image).resizable().scaledToFill()
+                #endif
             } else {
                 placeholder
             }
@@ -317,7 +327,7 @@ private struct ShareProtectedArtwork: View {
             do {
                 let (data, _) = try await ShareNetworkPrivacy.data(for: URLRequest(url: url))
                 guard Task.isCancelled == false else { return }
-                image = UIImage(data: data)
+                image = ShareArtworkImage(data: data)
             } catch {
                 image = nil
             }

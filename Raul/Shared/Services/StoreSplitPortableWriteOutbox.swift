@@ -15,6 +15,7 @@ actor StoreSplitPortableWriteOutbox {
         /// the bookmark. A failed or interrupted local delete leaves it intact.
         case bookmarkDeletionAfterLocalCommit(StoreSplitBookmarkSnapshot, Date)
         case listeningHistory(StoreSplitListeningHistorySnapshot)
+        case playbackSession(PlaybackSessionSnapshot, Date)
     }
 
     struct DrainResult: Sendable {
@@ -213,8 +214,20 @@ actor StoreSplitPortableWriteOutbox {
     }
 
     private func episodeCoalescingKey(_ operation: Operation) -> (String, Int64)? {
-        guard case let .episodeState(snapshot, date) = operation else { return nil }
-        let digest = SHA256.hash(data: Data(snapshot.identity.key.utf8))
+        let identity: String
+        let date: Date
+        switch operation {
+        case let .episodeState(snapshot, snapshotDate):
+            identity = snapshot.identity.key
+            date = snapshotDate
+        case let .playbackSession(_, snapshotDate):
+            // Only this device's latest session matters.
+            identity = "playback-session"
+            date = snapshotDate
+        default:
+            return nil
+        }
+        let digest = SHA256.hash(data: Data(identity.utf8))
         let key = digest.map { String(format: "%02x", $0) }.joined()
         let timestamp = Int64(max(0, date.timeIntervalSince1970 * 1_000))
         return (key, timestamp)
@@ -265,7 +278,7 @@ actor StoreSplitPortableWriteOutbox {
     private static func operationDate(_ operation: Operation) -> Date {
         switch operation {
         case let .episodeState(_, date), let .bookmarkUpsert(_, date),
-             let .bookmarkDeletionAfterLocalCommit(_, date): date
+             let .bookmarkDeletionAfterLocalCommit(_, date), let .playbackSession(_, date): date
         case let .listeningHistory(snapshot): snapshot.endedAt
         }
     }
@@ -366,6 +379,12 @@ actor StoreSplitPortableWriteOutbox {
                     })
                     try await StoreSplitListeningHistorySyncWriter(modelContainer: userStateContainer)
                         .upsert(snapshot, io: io)
+                case let .playbackSession(snapshot, date):
+                    try await PlaybackSessionSyncWriter(modelContainer: userStateContainer)
+                        .upsert(snapshot, at: date, save: { context in
+                            guard shouldContinue() else { throw CancellationError() }
+                            try context.save()
+                        })
                 }
                 guard shouldContinue() else { result.hasPending = true; return result }
                 try withFileLock { _ in
@@ -416,6 +435,7 @@ actor StoreSplitPortableWriteOutbox {
         case .bookmarkUpsert: "bookmark_upsert"
         case .bookmarkDeletionAfterLocalCommit: "bookmark_deletion"
         case .listeningHistory: "listening_history"
+        case .playbackSession: "playback_session"
         }
     }
 

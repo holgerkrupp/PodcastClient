@@ -1,7 +1,11 @@
 #if DEBUG
 import Foundation
 import SwiftUI
+#if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
 struct DevelopmentSettingsView: View {
     @ObservedObject private var modelContainerManager = ModelContainerManager.shared
@@ -76,7 +80,13 @@ struct DevelopmentSettingsView: View {
         Form {
             Section("Crash Diagnostics") {
                 Button(breadcrumbsCopied ? "Breadcrumbs Copied" : "Copy Persisted Breadcrumbs") {
-                    UIPasteboard.general.string = CrashBreadcrumbs.shared.recentSummary(limit: 80)
+                    let summary = CrashBreadcrumbs.shared.recentSummary(limit: 80)
+                    #if canImport(UIKit)
+                    UIPasteboard.general.string = summary
+                    #else
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(summary, forType: .string)
+                    #endif
                     breadcrumbsCopied = true
                 }
 

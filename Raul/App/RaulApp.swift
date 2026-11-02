@@ -706,6 +706,7 @@ struct RaulApp: App {
                     await Task.yield()
                     await Player.shared.enterForegroundPlaybackMode()
                     await Player.shared.reloadPlaybackStateFromPersistenceIfNeeded()
+                    await modelContainerManager.importRemotePlaybackState()
                 }
                 foregroundCleanupTask = Task(priority: .utility) {
                     try? await Task.sleep(for: .seconds(4))
@@ -762,7 +763,10 @@ struct RaulApp: App {
             scheduleStoreAwareCloudImportReconciliation(for: event.storeKind)
         }
         .onChange(of: storeCloudKitMonitor.isAnyStoreExporting) { _, exporting in
-            guard exporting else { return }
+            guard exporting else {
+                modelContainerManager.retryPortableWritesAfterExport()
+                return
+            }
             // An automatic transcript can add hundreds of related rows to the
             // legacy mirror. Stop it when Core Data starts draining history;
             // manual transcription remains under the user's control.
@@ -1145,6 +1149,7 @@ struct RaulApp: App {
             // hydrated. Calling directly avoids losing an import event
             // behind an app-side readiness check.
             await modelContainerManager.reconcileSplitRuntimePlaylists()
+            await modelContainerManager.importRemotePlaybackState()
             if StoreDevelopmentConfiguration.userStateImportEnabled {
                 await StoreSplitWorkCoordinator.shared.scheduleCloudImportReconcile()
             }

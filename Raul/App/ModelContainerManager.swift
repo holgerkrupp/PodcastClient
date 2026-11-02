@@ -815,6 +815,8 @@ class ModelContainerManager: ObservableObject {
     private var exportWasInProgress = false
     private var exporterPressureEvents = 0
     private var optionalSplitStoreWritesSuspended = false
+    private var optionalSplitStoreWritesSuspendedAt: Date?
+    private var playlistReconciliationDeferredForPlayback = false
     private var pendingSplitRuntimePlaylistReconciliation = false
     private let minimumAIContentImportInterval: TimeInterval = 60 * 15
     private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
@@ -1298,6 +1300,13 @@ class ModelContainerManager: ObservableObject {
               let library = preparedContainer,
               let userState = preparedUserStateContainer,
               let cache = preparedCacheContainer else { return }
+        // Before the copy, so duplicates from an old install stop showing even
+        // while it runs. See `hideDuplicatePodcasts` for why this can't
+        // unsubscribe the surviving podcast.
+        await StoreSplitUserStateImporter.hideDuplicateLibraryPodcasts(
+            legacyContainer: library,
+            userStateContainer: userState
+        )
         isDeferredMigrationRunning = true
         let task = Task.detached(priority: .utility) { () -> StoreCutoverOutcome in
             await StoreCutoverCoordinator.runDeferred(
@@ -1606,7 +1615,9 @@ class ModelContainerManager: ObservableObject {
                     succeeded: result.succeeded, failed: result.failed,
                     hasPending: result.hasPending, queueCount: after.count
                 )
+                #if canImport(UIKit)
                 if result.hasPending { AppDelegate.scheduleStoreSplitBackgroundProcessingIfNeeded() }
+                #endif
                 // Room just opened up, so move in what was waiting for it.
                 var moved = 0
                 for item in monitor.pendingOperations().prefix(max(1, result.succeeded)) {
@@ -2268,9 +2279,72 @@ class ModelContainerManager: ObservableObject {
     /// Admission control for writes that create CloudKit persistent-history
     /// work. Recovery snapshots deliberately do not use this gate.
     var mayStartCloudKitBackedStoreWrite: Bool {
+        reopenOptionalSplitStoreWritesIfCalm()
         guard mayStartOrdinaryStoreWrite,
               optionalSplitStoreWritesSuspended == false else { return false }
         return cloudKitExportInProgress() == false
+    }
+
+    /// The exporter safety valve must not stay shut for the rest of a long
+    /// session: a Mac may never leave the foreground to reset it, and position
+    /// writes wait behind it.
+    private func reopenOptionalSplitStoreWritesIfCalm() {
+        guard optionalSplitStoreWritesSuspended,
+              let suspendedAt = optionalSplitStoreWritesSuspendedAt,
+              Date().timeIntervalSince(suspendedAt) >= 60,
+              StoreCloudKitActivityMonitor.shared.isAnyStoreExporting == false else { return }
+        optionalSplitStoreWritesSuspended = false
+        optionalSplitStoreWritesSuspendedAt = nil
+        exporterPressureEvents = 0
+    }
+
+    /// Writes held back during an export are due as soon as it ends.
+    func retryPortableWritesAfterExport() {
+        Task(priority: .utility) { [weak self] in
+            await self?.retryPortableWritesIfSafe()
+        }
+    }
+
+    /// Fast path for "pick up on another device": imports only recently changed
+    /// episode state, ignoring the full reconcile's 10-minute throttle and its
+    /// playback pause, then lets a paused player follow the newest session.
+    func importRemotePlaybackState() async {
+        defer {
+            Task { await Player.shared.followRemotePlaybackSessionIfNeeded() }
+        }
+        guard StoreDevelopmentConfiguration.userStateImportEnabled,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
+              StoreCutoverState.isDeferredMigrationPending == false,
+              runtimeStoreReadiness == .ready,
+              heavyStoreWorkMayRunInCurrentAppState,
+              let runtime = preparedContainer,
+              let userState = preparedUserStateContainer,
+              let cache = preparedCacheContainer else { return }
+        if let userStateImportTask {
+            _ = await userStateImportTask.value
+        }
+        guard userStateImportTask == nil else { return }
+        let task = Task {
+            await StoreSplitUserStateImporter.apply(
+                legacyContainer: runtime,
+                userStateContainer: userState,
+                cacheContainer: cache,
+                authoritativePlaylists: false,
+                projectListeningHistoryToLegacy: false,
+                continuesDuringPlayback: true,
+                episodeStatesUpdatedSince: Date().addingTimeInterval(-24 * 60 * 60),
+                changedStreams: [.episodeState]
+            )
+        }
+        userStateImportTask = task
+        _ = await task.value
+        userStateImportTask = nil
+    }
+
+    func playbackDidStop() async {
+        guard playlistReconciliationDeferredForPlayback else { return }
+        playlistReconciliationDeferredForPlayback = false
+        await reconcileSplitRuntimePlaylists()
     }
 
     var isCloudKitExportInProgress: Bool {
@@ -2306,6 +2380,7 @@ class ModelContainerManager: ObservableObject {
 
     func resumeSplitStoreWorkForForeground() {
         optionalSplitStoreWritesSuspended = false
+        optionalSplitStoreWritesSuspendedAt = nil
         exporterPressureEvents = 0
         exportWasInProgress = false
         Task(priority: .utility) { [weak self] in
@@ -2682,6 +2757,7 @@ class ModelContainerManager: ObservableObject {
             exporterPressureEvents += 1
             if exporterPressureEvents >= 3 {
                 optionalSplitStoreWritesSuspended = true
+                optionalSplitStoreWritesSuspendedAt = .now
                 CrashBreadcrumbs.shared.record(
                     "cloudkit_export_pressure_safety_valve_closed",
                     details: "observations=\(exporterPressureEvents)"
@@ -2704,16 +2780,21 @@ class ModelContainerManager: ObservableObject {
     /// Lightweight playlist hydration for split-only runtimes. Legacy upgrade
     /// reads retain their shipping authority and background migration policy.
     func reconcileSplitRuntimePlaylists() async {
-        // Until this device's own data has reached UserState, the library is the
-        // more complete record; the migration imports when it finishes.
-        guard StoreCutoverState.isDeferredMigrationPending == false else { return }
         guard runtimeStoreReadiness == .ready,
               let runtime = preparedContainer,
               let userState = preparedUserStateContainer,
               let cache = preparedCacheContainer else {
-            pendingSplitRuntimePlaylistReconciliation = true
+            if StoreCutoverState.isDeferredMigrationPending == false {
+                pendingSplitRuntimePlaylistReconciliation = true
+            }
             return
         }
+        // Until this device's own data has reached UserState, the library is the
+        // more complete record; the migration imports when it finishes. The
+        // exception is an empty local queue, such as an old install coming back:
+        // it has nothing to lose, and the copy can take a long time or fail.
+        guard StoreCutoverState.isDeferredMigrationPending == false
+                || localDefaultQueueIsEmpty(in: runtime) else { return }
         SupportDiagnosticsRecorder.shared.record("Playlist hydration started")
         guard await buildCompatibilityProjectionIfNeeded() == .ready else {
             pendingSplitRuntimePlaylistReconciliation = true
@@ -2741,6 +2822,15 @@ class ModelContainerManager: ObservableObject {
         if result.failed > 0 {
             pendingSplitRuntimePlaylistReconciliation = true
         }
+        if result.interruptedByPlayback {
+            playlistReconciliationDeferredForPlayback = true
+        }
+        if result.failed == 0,
+           result.interruptedByPlayback == false,
+           await refreshFeedsForMissingPlaylistEpisodes(result.playlistFeedsToBootstrap, in: runtime) {
+            await reconcileSplitRuntimePlaylists()
+            return
+        }
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         SupportDiagnosticsRecorder.shared.record(
             "Playlist hydration finished",
@@ -2751,6 +2841,38 @@ class ModelContainerManager: ObservableObject {
             pendingSplitRuntimePlaylistReconciliation = false
             await reconcileSplitRuntimePlaylists()
         }
+    }
+
+    private func localDefaultQueueIsEmpty(in container: ModelContainer) -> Bool {
+        let playlists = (try? ModelContext(container).fetch(FetchDescriptor<Playlist>())) ?? []
+        guard let queue = playlists.first(where: { $0.title == Playlist.defaultQueueTitle }) else {
+            return true
+        }
+        return queue.items?.isEmpty != false
+    }
+
+    /// A stale library may not know a queued episode until its feed refreshes.
+    /// Returns whether a refresh ran, so the caller can import again.
+    private func refreshFeedsForMissingPlaylistEpisodes(
+        _ feeds: [URL],
+        in container: ModelContainer
+    ) async -> Bool {
+        let now = Date()
+        let due = feeds.filter { feed in
+            let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
+            guard let lastAttempt = missingFeedRefreshAttempts[key] else { return true }
+            return now.timeIntervalSince(lastAttempt) >= 60 * 15
+        }
+        var didRefreshAny = false
+        for feed in due.prefix(15) {
+            guard Task.isCancelled == false else { break }
+            missingFeedRefreshAttempts[PodcastFeedIdentity.normalizedFeedURLString(feed)] = now
+            if (try? await PodcastModelActor(modelContainer: container)
+                .updatePodcast(feed, policy: .validatedImport, silent: true)) == true {
+                didRefreshAny = true
+            }
+        }
+        return didRefreshAny
     }
 
     private func applySyncedUserStateIfPossible(
@@ -3310,7 +3432,8 @@ class ModelContainerManager: ObservableObject {
             BookmarkSync.self,
             PodcastPreferenceSync.self,
             ListeningBaselineSync.self,
-            ListeningHistorySync.self
+            ListeningHistorySync.self,
+            PlaybackSessionSync.self
         ])
         let configuration: ModelConfiguration
 

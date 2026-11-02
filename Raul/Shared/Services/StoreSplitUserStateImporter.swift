@@ -34,6 +34,9 @@ actor StoreSplitUserStateImporter {
     private let userStateContainer: ModelContainer
     private let cacheContainer: ModelContainer?
     private let isInitialRuntimeHydration: Bool
+    /// Narrow imports touch few rows, so they don't have to wait out playback.
+    private let continuesDuringPlayback: Bool
+    private let episodeStatesUpdatedSince: Date?
     /// Upgraded devices only: see `StoreCutoverState.localLibraryStartedAt`.
     private let subscriptionCreationCutoff: Date?
     private let credentialStore: any PodcastCredentialStore
@@ -70,8 +73,12 @@ actor StoreSplitUserStateImporter {
         userStateContainer: ModelContainer,
         credentialStore: any PodcastCredentialStore,
         cacheContainer: ModelContainer? = nil,
-        isInitialRuntimeHydration: Bool = false
+        isInitialRuntimeHydration: Bool = false,
+        continuesDuringPlayback: Bool = false,
+        episodeStatesUpdatedSince: Date? = nil
     ) {
+        self.continuesDuringPlayback = continuesDuringPlayback
+        self.episodeStatesUpdatedSince = episodeStatesUpdatedSince
         self.legacyContainer = legacyContainer
         self.userStateContainer = userStateContainer
         self.cacheContainer = cacheContainer
@@ -94,6 +101,8 @@ actor StoreSplitUserStateImporter {
         projectListeningHistoryToLegacy: Bool = true,
         episodeStateProjectionRecencyCutoff: Date? = nil,
         isInitialRuntimeHydration: Bool = false,
+        continuesDuringPlayback: Bool = false,
+        episodeStatesUpdatedSince: Date? = nil,
         changedStreams: Set<StoreSplitUserStateStream> = Set(
             StoreSplitUserStateStream.allCases
         )
@@ -107,7 +116,9 @@ actor StoreSplitUserStateImporter {
             userStateContainer: userStateContainer,
             credentialStore: credentialStore,
             cacheContainer: cacheContainer,
-            isInitialRuntimeHydration: isInitialRuntimeHydration
+            isInitialRuntimeHydration: isInitialRuntimeHydration,
+            continuesDuringPlayback: continuesDuringPlayback,
+            episodeStatesUpdatedSince: episodeStatesUpdatedSince
         )
         var result = await importer.run(
             authoritativePlaylists: authoritativePlaylists,
@@ -1284,6 +1295,7 @@ actor StoreSplitUserStateImporter {
     ) async {
         var seenHistoryKeys = Set<String>()
         var offset = 0
+        let activeSubscriptionKeys = activeSubscriptionComparisonKeys()
 
         while true {
             let page = fetchPage(
@@ -1337,13 +1349,30 @@ actor StoreSplitUserStateImporter {
                     feedURL: record.feedURL,
                     episodeID: record.episodeID
                 )
-                guard let episode = episodesByIdentity[episodeIdentity] else {
+                let episode = episodesByIdentity[episodeIdentity]
+                if episode == nil, expectsEpisodes(forFeed: record.feedURL, activeSubscriptionKeys: activeSubscriptionKeys) {
                     appendMissingFeed(record.feedURL, to: &result)
                     missing.append(.init(stream: .listeningHistory, sourceRecordID: record.id,
                                          feedURL: record.feedURL, episodeID: record.episodeID,
                                          sourceUpdatedAt: record.updatedAt,
                                          payloadDigest: StoreSplitMissingEpisodeFingerprint.history(record)))
                     continue
+                }
+                if episode == nil {
+                    if let projected = sessionsByUUID[deterministicID], projected.detachedPodcastFeed != nil {
+                        result.listeningHistoryApplied += 1
+                        continue
+                    }
+                    // A session this device recorded itself is better evidence
+                    // than the synced copy: leave it and keep the retry.
+                    if sessionsByUUID[deterministicID] != nil
+                        || (try? equivalentLocalSession(for: record, episode: nil)) != nil {
+                        missing.append(.init(stream: .listeningHistory, sourceRecordID: record.id,
+                                             feedURL: record.feedURL, episodeID: record.episodeID,
+                                             sourceUpdatedAt: record.updatedAt,
+                                             payloadDigest: StoreSplitMissingEpisodeFingerprint.history(record)))
+                        continue
+                    }
                 }
 
                 let session: PlaySession
@@ -1364,13 +1393,18 @@ actor StoreSplitUserStateImporter {
                 }
                 sessionsByUUID[deterministicID] = session
                 setIfChanged(session, \.id, deterministicID)
-                if session.episode?.persistentModelID != episode.persistentModelID {
-                    session.episode = episode
+                if let episode {
+                    if session.episode?.persistentModelID != episode.persistentModelID {
+                        session.episode = episode
+                    }
+                } else if session.episode == nil {
+                    setIfChanged(session, \.detachedPodcastFeed, URL(string: record.feedURL))
+                    setIfChanged(session, \.detachedEpisodeTitle, record.episodeTitle)
                 }
                 setIfChanged(
                     session,
                     \.podcastName,
-                    record.podcastName ?? episode.displayPodcastTitle
+                    record.podcastName ?? episode?.displayPodcastTitle
                 )
                 setIfChanged(session, \.sourceDeviceID, record.sourceDeviceID)
                 setIfChanged(session, \.sourceDeviceName, record.sourceDeviceName)
@@ -1410,6 +1444,25 @@ actor StoreSplitUserStateImporter {
 
         // A local absence from a partial or delayed CloudKit delivery is not
         // evidence of deletion. Never prune destination-only history here.
+    }
+
+    /// History for a podcast that was deleted or unsubscribed must not fetch the
+    /// feed: that would bring it back, including into libraries that never had it.
+    private func expectsEpisodes(forFeed feedURL: String, activeSubscriptionKeys: Set<String>) -> Bool {
+        guard let feed = URL(string: feedURL) else { return false }
+        let keys = feed.podcastFeedComparisonKeys
+        return keys.isDisjoint(with: activeSubscriptionKeys) == false
+            || keys.contains { podcastsByComparisonKey[$0] != nil }
+    }
+
+    private func activeSubscriptionComparisonKeys() -> Set<String> {
+        let descriptor = FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.isSubscribed })
+        let subscriptions = (try? userStateContext.fetch(descriptor)) ?? []
+        return subscriptions.reduce(into: Set<String>()) { keys, subscription in
+            if let feed = URL(string: subscription.feedURL) {
+                keys.formUnion(feed.podcastFeedComparisonKeys)
+            }
+        }
     }
 
     private func equivalentLocalSession(
@@ -1631,9 +1684,44 @@ actor StoreSplitUserStateImporter {
                     metadata.isSubscribed = false
                     hidden += 1
                 }
+                // The library copy keeps the row with the newest subscription
+                // date for a feed. Moving the date to the survivor stops this
+                // hidden row from unsubscribing the feed on every device.
+                let survivorMetadata = ensureMetadata(for: survivor)
+                if survivorMetadata.subscriptionDate == nil {
+                    survivorMetadata.subscriptionDate = metadata.subscriptionDate ?? .now
+                }
+                metadata.subscriptionDate = nil
             }
         }
         return hidden
+    }
+
+    /// Local cleanup only: reads and writes nothing from synced subscriptions.
+    @discardableResult
+    nonisolated static func hideDuplicateLibraryPodcasts(
+        legacyContainer: ModelContainer,
+        userStateContainer: ModelContainer
+    ) async -> Int {
+        let importer = StoreSplitUserStateImporter(
+            legacyContainer: legacyContainer,
+            userStateContainer: userStateContainer,
+            credentialStore: PodcastCredentialStoreProvider.current
+        )
+        return await importer.hideDuplicatesAndSave()
+    }
+
+    private func hideDuplicatesAndSave() -> Int {
+        guard let podcasts = try? legacyContext.fetch(FetchDescriptor<Podcast>()) else { return 0 }
+        let hidden = hideDuplicatePodcasts(podcasts)
+        guard legacyContext.hasChanges else { return hidden }
+        do {
+            try legacyContext.save()
+            return hidden
+        } catch {
+            legacyContext.rollback()
+            return 0
+        }
     }
 
     private func ensureMetadata(for podcast: Podcast) -> PodcastMetaData {
@@ -1692,7 +1780,7 @@ actor StoreSplitUserStateImporter {
     /// promptly releases the shared-container SQLite lock before suspension.
     private func shouldStop() async -> Bool {
         if Task.isCancelled { return true }
-        if isInitialRuntimeHydration { return false }
+        if isInitialRuntimeHydration || continuesDuringPlayback { return false }
         return await shouldPauseForPlayback()
     }
 
@@ -2059,7 +2147,10 @@ actor StoreSplitUserStateImporter {
     }
 
     private func fetchEpisodeStatePage(offset: Int, limit: Int) -> [EpisodeStateSync] {
-        let cursorDate = previousImportCursors[.episodeState]?.importedThrough
+        let cursorDate = [
+            previousImportCursors[.episodeState]?.importedThrough,
+            episodeStatesUpdatedSince
+        ].compactMap { $0 }.max()
         let predicate: Predicate<EpisodeStateSync>? = cursorDate.map { date in
             #Predicate<EpisodeStateSync> { $0.updatedAt >= date }
         }

@@ -239,6 +239,7 @@ final class PortableWriteFailureMonitor: ObservableObject {
         case .bookmarkUpsert: "bookmark_upsert"
         case .bookmarkDeletionAfterLocalCommit: "bookmark_deletion"
         case .listeningHistory: "listening_history"
+        case .playbackSession: "playback_session"
         }
     }
 

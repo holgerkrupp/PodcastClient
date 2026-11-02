@@ -106,6 +106,7 @@ struct PodcastSettingsView: View {
 
     @Environment(\.modelContext) private var context
     @Environment(\.openURL) private var openURL
+    @Environment(\.openPodcastSettings) private var openSettings
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
     @AppStorage(PodcastNetworkPrivacyPolicy.settingKey, store: UserDefaults(suiteName: PodcastNetworkPrivacyPolicy.appGroupID) ?? .standard)
     private var networkTrackingProtectionEnabled = true
@@ -467,11 +468,27 @@ struct PodcastSettingsView: View {
                         Label("All Settings", systemImage: "gearshape")
                     }
                 } else {
+#if os(iOS)
+                    if embedInNavigationStack {
+                        Button {
+                            openSettings(.global)
+                        } label: {
+                            Label("All Settings", systemImage: "gearshape")
+                        }
+                    } else {
+                        NavigationLink {
+                            GlobalPodcastSettingsScreen()
+                        } label: {
+                            Label("All Settings", systemImage: "gearshape")
+                        }
+                    }
+#else
                     NavigationLink {
                         GlobalPodcastSettingsScreen()
                     } label: {
                         Label("All Settings", systemImage: "gearshape")
                     }
+#endif
                 }
             } footer: {
                 Text("Open all settings for queue behavior, podcasts, transcriptions, appearance, integrations, and storage.")
@@ -1680,17 +1697,42 @@ struct PodcastSettingsView: View {
 
     private var globalSettingsShortcutSection: some View {
         Section("Global Settings") {
+#if os(iOS)
+            if embedInNavigationStack {
+                Button {
+                    openSettings(.global)
+                } label: {
+                    SettingsNavigationRow(
+                        title: "Open Global Settings",
+                        summary: "App controls, transcriptions, notifications, storage, and podcast override management.",
+                        detail: "Use the global settings screen for anything that should affect the whole app instead of just this one podcast.",
+                        systemImage: "globe"
+                    )
+                }
+            } else {
+                NavigationLink {
+                    GlobalPodcastSettingsScreen()
+                } label: {
+                    globalSettingsShortcutRow
+                }
+            }
+#else
             NavigationLink {
                 GlobalPodcastSettingsScreen()
             } label: {
-                SettingsNavigationRow(
-                    title: "Open Global Settings",
-                    summary: "App controls, transcriptions, notifications, storage, and podcast override management.",
-                    detail: "Use the global settings screen for anything that should affect the whole app instead of just this one podcast.",
-                    systemImage: "globe"
-                )
+                globalSettingsShortcutRow
             }
+#endif
         }
+    }
+
+    private var globalSettingsShortcutRow: some View {
+        SettingsNavigationRow(
+            title: "Open Global Settings",
+            summary: "App controls, transcriptions, notifications, storage, and podcast override management.",
+            detail: "Use the global settings screen for anything that should affect the whole app instead of just this one podcast.",
+            systemImage: "globe"
+        )
     }
 
     private var podcastManagementSection: some View {

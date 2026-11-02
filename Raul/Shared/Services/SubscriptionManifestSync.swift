@@ -171,6 +171,13 @@ enum SubscriptionManifestSync {
         guard var manifest = loadManifest(credentialStore: credentialStore),
               manifest.entries.isEmpty == false else { return nil }
 
+        // The manifest is one shared copy that the last device to write it owns.
+        // A device with a library follows UserState instead: restoring here let
+        // an old install re-create stale feeds on every other device, and
+        // re-subscribed duplicates the import had hidden.
+        let manifestActor = SubscriptionManifestModelActor(modelContainer: modelContainer)
+        guard await manifestActor.libraryHasSubscriptions() == false else { return nil }
+
         // KVS is recovery/bootstrap data. Once a per-feed authoritative row
         // exists, its current value (including an unsubscribe tombstone) wins
         // over an older device's manifest.
@@ -185,7 +192,7 @@ enum SubscriptionManifestSync {
         }
         guard manifest.entries.isEmpty == false else { return nil }
 
-        let restoreResult = await SubscriptionManifestModelActor(modelContainer: modelContainer)
+        let restoreResult = await manifestActor
             .restoreWithStatus(
                 manifest,
                 deletedFeeds: deletedFeeds(),
@@ -430,6 +437,14 @@ actor SubscriptionManifestModelActor {
             deletedFeeds: deletedFeeds,
             credentialStore: credentialStore
         ).feedsToBootstrap
+    }
+
+    func libraryHasSubscriptions() -> Bool {
+        var descriptor = FetchDescriptor<Podcast>(
+            predicate: #Predicate<Podcast> { $0.metaData?.isSubscribed != false }
+        )
+        descriptor.fetchLimit = 1
+        return ((try? modelContext.fetchCount(descriptor)) ?? 0) > 0
     }
 
     func restoreWithStatus(

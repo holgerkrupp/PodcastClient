@@ -21,7 +21,12 @@ class PodcastListViewModel: ObservableObject {
     @discardableResult
     func deletePodcast(_ podcastID: PersistentIdentifier) async -> Bool {
         do {
-            try await podcastActor.deletePodcast(podcastID)
+            // A model actor created on the main thread does its work there, and
+            // this view model is. Deleting a large podcast froze the app.
+            let modelContainer = modelContainer
+            try await Task.detached(priority: .userInitiated) {
+                try await PodcastModelActor(modelContainer: modelContainer).deletePodcast(podcastID)
+            }.value
             return true
         } catch {
             errorMessage = "Failed to delete podcast: \(error.localizedDescription)"

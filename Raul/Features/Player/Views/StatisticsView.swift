@@ -863,7 +863,7 @@ struct StatisticsView: View {
             .map { session in
                 RecentListeningSession(
                     id: session.id?.uuidString ?? "\(session.startTime?.timeIntervalSinceReferenceDate ?? 0)-\(session.podcastName ?? "unknown")",
-                    episodeTitle: session.episode?.title ?? "Unknown Episode",
+                    episodeTitle: session.historyEpisodeTitle ?? "Unknown Episode",
                     podcastName: session.podcastName ?? "Unknown Podcast",
                     listenedSeconds: listenedSeconds(for: session),
                     startTime: session.startTime ?? Date(),
@@ -899,6 +899,7 @@ struct StatisticsView: View {
         if selectedPodcastFeedString == nil {
             updateHistoryLoadingProgress(0.48, "Preparing podcast totals")
             await Task.yield()
+            let archivedCovers = PodcastCoverArchive.coverFiles()
             let podcastCoversByFeed = Dictionary(
                 grouping: podcasts.compactMap { podcast -> (String, URL?)? in
                     guard let feed = podcast.feed?.absoluteString else { return nil }
@@ -907,9 +908,11 @@ struct StatisticsView: View {
                 by: \.0
             )
             .mapValues { $0.first?.1 }
+            .merging(archivedCovers.byFeed.mapValues(Optional.some)) { library, archived in library ?? archived }
 
             let podcastCoversByTitle = Dictionary(grouping: podcasts, by: \.title)
                 .mapValues { $0.first?.imageURL }
+                .merging(archivedCovers.byTitle.mapValues(Optional.some)) { library, archived in library ?? archived }
 
             updateHistoryLoadingProgress(0.60, "Preparing share timeline")
             await Task.yield()
@@ -982,7 +985,7 @@ struct StatisticsView: View {
                 podcastBreakdown = Dictionary(grouping: selectedPeriodRawSessions.compactMap { session -> (String, URL?, String, Double)? in
                     let listenedSeconds = listenedSeconds(for: session)
                     guard listenedSeconds > 0 else { return nil }
-                    let feed = session.episode?.podcast?.feed
+                    let feed = session.historyPodcastFeed
                     let name = session.podcastName ?? "Unknown Podcast"
                     let key = feed?.absoluteString ?? name
                     return (key, feed, name, listenedSeconds)
@@ -1234,7 +1237,7 @@ struct StatisticsView: View {
             guard let startTime = session.startTime else { return nil }
             let totalSeconds = listenedSeconds(for: session)
             guard totalSeconds > 0 else { return nil }
-            let feed = session.episode?.podcast?.feed
+            let feed = session.historyPodcastFeed
             let name = session.podcastName ?? "Unknown Podcast"
             let hourStart = calendar.dateInterval(of: .hour, for: startTime)?.start ?? startTime
             return TopPodcastShareTimelineRollup(
@@ -2199,7 +2202,7 @@ struct StatisticsView: View {
 
         let applyPodcastFilter: ([PlaySession]) -> [PlaySession] = { sessions in
             sessions.filter { session in
-                selectedPodcastFeedString == nil || session.episode?.podcast?.feed?.absoluteString == selectedPodcastFeedString
+                selectedPodcastFeedString == nil || session.historyPodcastFeed?.absoluteString == selectedPodcastFeedString
             }
         }
 

@@ -200,7 +200,8 @@ final class StoreSplitUserStateSchemaUpgradeTests: XCTestCase {
             BookmarkSync.self,
             PodcastPreferenceSync.self,
             ListeningBaselineSync.self,
-            ListeningHistorySync.self
+            ListeningHistorySync.self,
+            PlaybackSessionSync.self
         ])
         return try ModelContainer(
             for: schema,

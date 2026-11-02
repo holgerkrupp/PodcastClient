@@ -216,12 +216,16 @@ enum PlayNextWidgetSync {
         let artworkURL = podcastArtworkURL ?? episode?.url
         let backgroundFileName = podcastArtworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
         let coverFileName: String?
+        #if canImport(UIKit)
         if let artwork = player.currentArtworkImage, let artworkURL {
             coverFileName = persistCurrentArtworkThumbnail(artwork, for: artworkURL)
                 ?? cachedCoverThumbnailName(for: artworkURL)
         } else {
             coverFileName = artworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
         }
+        #else
+        coverFileName = artworkURL.flatMap { cachedCoverThumbnailName(for: $0) }
+        #endif
         let snapshot = WidgetPlaybackSnapshot(
             updatedAt: .now,
             episodeID: player.currentEpisodeURL.flatMap(publicWidgetEpisodeID),

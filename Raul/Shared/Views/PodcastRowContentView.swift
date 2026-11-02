@@ -188,6 +188,20 @@ struct PodcastRowContentView: View {
     private var styledRow: some View {
         let rowContent = content
             .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
+            .overlay(alignment: .topLeading) {
+                if let diagnosticBadge = presentation.diagnosticBadge {
+                    Text(diagnosticBadge)
+                        .font(.caption2.weight(.bold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(.black.opacity(0.85), in: UnevenRoundedRectangle(bottomTrailingRadius: 8))
+                        .accessibilityLabel(presentation.diagnosticMessage ?? diagnosticBadge)
+                        .help(presentation.diagnosticMessage ?? diagnosticBadge)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 if let diagnosticMessage = presentation.diagnosticMessage,
                    presentation.diagnosticBadge == nil {
@@ -288,15 +302,6 @@ struct PodcastRowContentView: View {
                     Label(status.title, systemImage: status.symbolName)
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(status.color)
-                }
-
-                if let diagnosticBadge = presentation.diagnosticBadge {
-                    Label(diagnosticBadge, systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.orange)
-                        .lineLimit(1)
-                        .accessibilityLabel(presentation.diagnosticMessage ?? diagnosticBadge)
-                        .help(presentation.diagnosticMessage ?? diagnosticBadge)
                 }
 
                 Spacer(minLength: 0)

@@ -3,6 +3,11 @@ import SwiftUI
 import UIKit
 #endif
 
+private struct TopPodcastShareSheetRequest: Identifiable {
+    let id = UUID()
+    let activityItems: [Any]
+}
+
 struct TopPodcastShareGalleryView: View {
     let rollups: [PodcastRollup]
     let timelineRollups: [TopPodcastShareTimelineRollup]
@@ -14,10 +19,8 @@ struct TopPodcastShareGalleryView: View {
 
     @State private var renderedImages: [TopPodcastShareDesign: UIImage] = [:]
     @State private var selectedDesigns: Set<TopPodcastShareDesign> = []
-    @State private var shareActivityItems: [Any] = []
+    @State private var shareSheetRequest: TopPodcastShareSheetRequest?
     @State private var shareTempFileURLs: [URL] = []
-    @State private var shareSheetID = UUID()
-    @State private var showShareSheet = false
     @State private var isRendering = false
     @State private var renderedPreviewCount = 0
     @State private var previewRenderCount = 0
@@ -147,9 +150,8 @@ struct TopPodcastShareGalleryView: View {
         .task(id: renderSignature) {
             await renderPreviews()
         }
-        .sheet(isPresented: $showShareSheet, onDismiss: cleanUpShareTemporaryFiles) {
-            ShareSheet(activityItems: shareActivityItems)
-                .id(shareSheetID)
+        .sheet(item: $shareSheetRequest, onDismiss: cleanUpShareTemporaryFiles) { request in
+            ShareSheet(activityItems: request.activityItems)
         }
     }
 
@@ -170,13 +172,11 @@ struct TopPodcastShareGalleryView: View {
 
         if let fileURLs = writeShareImagesToTemporaryFiles(items) {
             shareTempFileURLs = fileURLs
-            shareActivityItems = fileURLs
+            shareSheetRequest = TopPodcastShareSheetRequest(activityItems: fileURLs)
         } else {
             shareTempFileURLs = []
-            shareActivityItems = items.map(\.1)
+            shareSheetRequest = TopPodcastShareSheetRequest(activityItems: items.map(\.1))
         }
-        shareSheetID = UUID()
-        showShareSheet = true
     }
 
     private func writeShareImagesToTemporaryFiles(_ items: [(TopPodcastShareDesign, UIImage)]) -> [URL]? {
@@ -217,7 +217,6 @@ struct TopPodcastShareGalleryView: View {
             try? FileManager.default.removeItem(at: directory)
         }
         shareTempFileURLs = []
-        shareActivityItems = []
     }
 
     @MainActor

@@ -1,5 +1,10 @@
 # Repository Instructions
 
+
+## Git workflow
+
+- Work directly on the `main` branch. Do not create or use a dedicated branch or worktree unless the prompt explicitly says otherwise.
+- If the prompt explicitly names another branch or worktree, follow that instruction.
 ## Engineering Philosophy — Pragmatic Solo Developer
 
 This project is maintained by a solo developer, often as a free, open-source application with a small user base. Optimize for useful, reliable software with minimal complexity and maintenance effort. Do not apply big-company processes or engineering standards unless explicitly requested.

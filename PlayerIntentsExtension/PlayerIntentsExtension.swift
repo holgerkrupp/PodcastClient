@@ -142,10 +142,13 @@ struct BookmarkCurrentPlaybackIntent: AppIntent {
     static let title: LocalizedStringResource = "Bookmark This"
     static let description = IntentDescription("Create a bookmark at the current playback position.")
     
-    func perform() async throws -> some IntentResult {
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         let player = try await preparedIntentPlayer()
+        let seconds = Int(player.playPosition)
         try await player.createBookmark()
-        return .result()
+        let time = Duration.seconds(seconds).formatted(.time(pattern: seconds >= 3600 ? .hourMinuteSecond : .minuteSecond))
+        return .result(dialog: IntentDialog(LocalizedStringResource("Bookmarked at \(time)")))
     }
 }
 
@@ -490,72 +493,129 @@ struct BookmarkCurrentPlaybackShortcut: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: BookmarkCurrentPlaybackIntent(),
-            phrases: ["Bookmark this in \(.applicationName)", "Save a bookmark in \(.applicationName)", "Bookmark the current position in \(.applicationName)"],
+            phrases: [
+                "Bookmark this in \(.applicationName)",
+                "\(.applicationName) bookmark this",
+                "Save a bookmark in \(.applicationName)",
+                "Add a bookmark in \(.applicationName)",
+                "Bookmark this moment in \(.applicationName)",
+                "Bookmark the current position in \(.applicationName)",
+                "Remember this in \(.applicationName)",
+                "Mark this spot in \(.applicationName)"
+            ],
             shortTitle: "Bookmark",
             systemImageName: "bookmark"
         )
 
         AppShortcut(
             intent: ResumePlaybackIntent(),
-            phrases: ["Resume playback in \(.applicationName)", "Play last episode in \(.applicationName)"],
+            phrases: [
+                "Resume playback in \(.applicationName)",
+                "\(.applicationName) resume",
+                "Play last episode in \(.applicationName)",
+                "Continue listening in \(.applicationName)",
+                "Keep playing in \(.applicationName)"
+            ],
             shortTitle: "Resume",
             systemImageName: "play.circle"
         )
 
         AppShortcut(
             intent: SkipForwardIntent(),
-            phrases: ["Skip forward in \(.applicationName)", "Jump ahead in \(.applicationName)"],
+            phrases: [
+                "Skip forward in \(.applicationName)",
+                "\(.applicationName) skip ahead",
+                "Skip ahead in \(.applicationName)",
+                "Jump ahead in \(.applicationName)",
+                "Fast forward in \(.applicationName)"
+            ],
             shortTitle: "Forward",
             systemImageName: "arrow.forward.circle"
         )
 
         AppShortcut(
             intent: SkipBackwardIntent(),
-            phrases: ["Skip back in \(.applicationName)", "Jump back in \(.applicationName)"],
+            phrases: [
+                "Skip back in \(.applicationName)",
+                "\(.applicationName) go back",
+                "Go back in \(.applicationName)",
+                "Jump back in \(.applicationName)",
+                "Rewind in \(.applicationName)",
+                "What did they say in \(.applicationName)"
+            ],
             shortTitle: "Back",
             systemImageName: "arrow.backward.circle"
         )
 
         AppShortcut(
             intent: PlayFirstUpNextIntent(),
-            phrases: ["Play Up Next in \(.applicationName)", "Start Up Next in \(.applicationName)"],
+            phrases: [
+                "Play Up Next in \(.applicationName)",
+                "Start Up Next in \(.applicationName)",
+                "Play my queue in \(.applicationName)",
+                "Start my queue in \(.applicationName)",
+                "Play my podcasts in \(.applicationName)",
+                "Start listening in \(.applicationName)"
+            ],
             shortTitle: "Play Up Next",
             systemImageName: "text.line.first.and.arrowtriangle.forward"
         )
 
         AppShortcut(
             intent: PlayEpisodeIntent(),
-            phrases: ["Play \(\.$episode) in \(.applicationName)"],
+            phrases: [
+                "Play \(\.$episode) in \(.applicationName)",
+                "Listen to \(\.$episode) in \(.applicationName)",
+                "Start \(\.$episode) in \(.applicationName)"
+            ],
             shortTitle: "Play Episode",
             systemImageName: "play.circle"
         )
 
         AppShortcut(
             intent: PlayLatestEpisodeIntent(),
-            phrases: ["Play the latest episode of \(\.$podcast) in \(.applicationName)"],
+            phrases: [
+                "Play the latest episode of \(\.$podcast) in \(.applicationName)",
+                "Play the newest episode of \(\.$podcast) in \(.applicationName)",
+                "Play \(\.$podcast) in \(.applicationName)",
+                "Catch up on \(\.$podcast) in \(.applicationName)"
+            ],
             shortTitle: "Play Latest",
             systemImageName: "sparkles"
         )
 
         AppShortcut(
             intent: SetSleepTimerIntent(),
-            phrases: ["Set a sleep timer in \(.applicationName)"],
+            phrases: [
+                "Set a sleep timer in \(.applicationName)",
+                "Start a sleep timer in \(.applicationName)",
+                "Sleep timer in \(.applicationName)",
+                "Stop playing later in \(.applicationName)"
+            ],
             shortTitle: "Sleep Timer",
             systemImageName: "zzz"
         )
 
         AppShortcut(
             intent: RefreshPodcastFeedsIntent(),
-            phrases: ["Refresh \(.applicationName)", "Refresh podcasts in \(.applicationName)"],
+            phrases: [
+                "Refresh \(.applicationName)",
+                "Refresh podcasts in \(.applicationName)",
+                "Check for new episodes in \(.applicationName)",
+                "Update my podcasts in \(.applicationName)"
+            ],
             shortTitle: "Refresh Podcasts",
             systemImageName: "arrow.clockwise"
         )
 
         AppShortcut(
-            intent: GeneratePodcastShareImageIntent(),
-            phrases: ["Generate a podcast share image in \(.applicationName)"],
-            shortTitle: "Share Image",
-            systemImageName: "photo"
+            intent: GetNowPlayingIntent(),
+            phrases: [
+                "What am I listening to in \(.applicationName)",
+                "What's playing in \(.applicationName)"
+            ],
+            shortTitle: "Now Playing",
+            systemImageName: "waveform"
         )
 
     }

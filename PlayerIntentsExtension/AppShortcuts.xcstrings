@@ -1,0 +1,476 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "${applicationName} bookmark this" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} merk dir das"
+          }
+        }
+      }
+    },
+    "${applicationName} go back" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} geh zurück"
+          }
+        }
+      }
+    },
+    "${applicationName} resume" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} weiter"
+          }
+        }
+      }
+    },
+    "${applicationName} skip ahead" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} spring vor"
+          }
+        }
+      }
+    },
+    "Add a bookmark in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen hinzufügen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Bookmark the current position in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Position als Lesezeichen sichern in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Bookmark this in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen setzen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Bookmark this moment in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diesen Moment als Lesezeichen sichern in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Catch up on ${podcast} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${podcast} nachhören in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Check for new episodes in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach neuen Episoden suchen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Continue listening in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiter hören in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Fast forward in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorspulen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Go back in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Geh zurück in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Jump ahead in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach vorne springen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Jump back in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach hinten springen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Keep playing in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weiterspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Listen to ${episode} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episode} hören in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Mark this spot in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Stelle markieren in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play ${episode} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episode} abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play ${podcast} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${podcast} abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play last episode in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Letzte Episode abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play my podcasts in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Podcasts abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play my queue in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Warteschlange abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play the latest episode of ${podcast} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neueste Episode von ${podcast} abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play the newest episode of ${podcast} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktuelle Episode von ${podcast} abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Play Up Next in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes abspielen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Refresh ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${applicationName} aktualisieren"
+          }
+        }
+      }
+    },
+    "Refresh podcasts in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podcasts aktualisieren in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Remember this in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merk dir das in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Resume playback in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiedergabe fortsetzen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Rewind in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurückspulen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Save a bookmark in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lesezeichen speichern in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Set a sleep timer in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlaftimer stellen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Skip ahead in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorspringen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Skip back in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zurückspringen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Skip forward in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vorwärts springen in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Sleep timer in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlaftimer in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Start ${episode} in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "${episode} starten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Start a sleep timer in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schlaftimer starten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Start listening in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hören starten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Start my queue in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Warteschlange starten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Start Up Next in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Als Nächstes starten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Stop playing later in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Später anhalten in ${applicationName}"
+          }
+        }
+      }
+    },
+    "Update my podcasts in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meine Podcasts aktualisieren in ${applicationName}"
+          }
+        }
+      }
+    },
+    "What am I listening to in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was höre ich gerade in ${applicationName}"
+          }
+        }
+      }
+    },
+    "What did they say in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was wurde gerade gesagt in ${applicationName}"
+          }
+        }
+      }
+    },
+    "What's playing in ${applicationName}" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was läuft gerade in ${applicationName}"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -2,6 +2,28 @@ import Foundation
 import SwiftData
 import CryptoKit
 
+/// One row per device, keyed by its installation ID. See `PlaybackSessionSyncPolicy`.
+@Model
+final class PlaybackSessionSync: Identifiable {
+    var id: String = ""
+    var feedURL: String = ""
+    var episodeID: String = ""
+    var episodeURL: String = ""
+    var position: Double = 0
+    var isPlaying: Bool = false
+    var updatedAt: Date = Date.distantPast
+
+    init(deviceID: String, snapshot: PlaybackSessionSnapshot, updatedAt: Date) {
+        self.id = deviceID
+        self.feedURL = snapshot.identity.feedURL
+        self.episodeID = snapshot.identity.episodeID
+        self.episodeURL = snapshot.episodeURL
+        self.position = snapshot.position
+        self.isPlaying = snapshot.isPlaying
+        self.updatedAt = updatedAt
+    }
+}
+
 @Model
 final class SubscriptionSync: Identifiable {
     var id: String = ""
