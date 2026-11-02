@@ -679,6 +679,8 @@ struct RaulApp: App {
                               isAppActiveForForegroundWork else { return }
                         await BackgroundRefreshScheduleSnapshotCoordinator.refreshIfSafe(using: container)
                         foregroundScheduleSnapshotTask = nil
+                        // Chapter reads that new episodes skipped in the background.
+                        EpisodeActor.resumeSkippedRemoteChapterFetches(modelContainer: container)
                     }
                 }
                 SiriShortcutVocabularyCoordinator.scheduleRefresh()

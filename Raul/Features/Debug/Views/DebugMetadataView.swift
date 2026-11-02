@@ -237,7 +237,7 @@ private enum EpisodeDebugEnrichmentAction: String, CaseIterable, Identifiable {
         case .localAudioChapters:
             return "Read Local MP3/M4A Chapters"
         case .remoteMP3Chapters:
-            return "Read Remote MP3 Chapters"
+            return "Read Remote MP3/M4A Chapters"
         case .externalJSONChapters:
             return "Read External JSON Chapters"
         case .transcriptChapters:
@@ -287,7 +287,9 @@ private enum EpisodeDebugEnrichmentAction: String, CaseIterable, Identifiable {
         case .localAudioChapters:
             return await actor.rerunLocalAudioChapters(for: episodeURL).statusMessage(for: title)
         case .remoteMP3Chapters:
-            return await actor.extractRemoteMP3Chapters(episodeURL).statusMessage(for: title)
+            let changed = await actor.extractRemoteEmbeddedChapters(episodeURL)
+            let outcome = await RemoteChapterDiagnostics.shared.latest(for: episodeURL)?.summary ?? "No result recorded"
+            return changed.statusMessage(for: title) + " " + outcome + "."
         case .externalJSONChapters:
             return await actor.rerunExternalJSONChapters(for: episodeURL).statusMessage(for: title)
         case .transcriptChapters:

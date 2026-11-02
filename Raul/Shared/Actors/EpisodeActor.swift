@@ -7,6 +7,7 @@
 import SwiftData
 import Foundation
 import CryptoKit
+import os
 import mp3ChapterReader
 
 import AVFoundation
@@ -163,10 +164,38 @@ actor EpisodeActor {
             let isBackgrounded = await MainActor.run {
                 UIApplication.shared.applicationState != .active
             }
-            guard isBackgrounded == false else { return }
+            guard isBackgrounded == false else {
+                skippedRemoteChapterFetches.withLock { urls in
+                    guard urls.contains(episodeURL) == false else { return }
+                    urls.append(episodeURL)
+                    if urls.count > maximumSkippedRemoteChapterFetches { urls.removeFirst() }
+                }
+                await RemoteEmbeddedChapterLoader.record(.skippedInBackground, for: episodeURL)
+                return
+            }
 #endif
             await EpisodeActor(modelContainer: modelContainer)
                 .getRemoteChapters(episodeURL: episodeURL)
+        }
+    }
+
+    private static let maximumSkippedRemoteChapterFetches = 20
+    private static let skippedRemoteChapterFetches = OSAllocatedUnfairLock<[URL]>(initialState: [])
+
+    /// Runs the chapter reads that `scheduleRemoteChapterFetch` skipped while
+    /// the app was in the background, one at a time.
+    static func resumeSkippedRemoteChapterFetches(modelContainer: ModelContainer) {
+        let urls = skippedRemoteChapterFetches.withLock { urls in
+            defer { urls.removeAll() }
+            return urls
+        }
+        guard urls.isEmpty == false else { return }
+        Task.detached(priority: .utility) {
+            let actor = EpisodeActor(modelContainer: modelContainer)
+            for url in urls {
+                guard Task.isCancelled == false else { return }
+                await actor.getRemoteChapters(episodeURL: url)
+            }
         }
     }
 
@@ -1420,12 +1449,16 @@ actor EpisodeActor {
             return }
         guard let url = episode.url else { return }
 
+        let hasEmbeddedChapters = (episode.chapters ?? []).contains { $0.type == .mp3 || $0.type == .mp4 }
+
         // Remote episodes do not pass through markEpisodeAvailable(), so run the
-        // regular chapter creation flow here before attempting MP3-only remote
+        // regular chapter creation flow here before attempting remote embedded
         // extraction. This keeps shownotes/external JSON chapters available for
         // streamed episodes published without embedded chapter metadata.
         _ = await createChapters(url)
-        await extractRemoteMP3Chapters(url)
+        if hasEmbeddedChapters == false {
+            await extractRemoteEmbeddedChapters(url)
+        }
         await applyAutoSkipWords(episodeURL: episodeURL)
     }
     
@@ -1949,15 +1982,10 @@ actor EpisodeActor {
                 }
             }
         } else if let remoteURL = snapshot.remoteURL {
-            let lowercasedExtension = remoteURL.pathExtension.lowercased()
-            if lowercasedExtension == "mp3" {
-                sources.append(contentsOf: await remoteMP3ChapterSourceData(from: remoteURL))
-            } else if ChapterImageStorageConfiguration.mpeg4Extensions.contains(lowercasedExtension) {
-                sources.append(contentsOf: await m4aChapterSourceData(
-                    from: remoteURL,
-                    profile: snapshot.profile
-                ))
-            }
+            sources.append(contentsOf: await remoteEmbeddedChapterSourceData(
+                from: remoteURL,
+                profile: snapshot.profile
+            ))
         }
 
         return sources
@@ -2003,17 +2031,16 @@ actor EpisodeActor {
         }
     }
 
-    private func remoteMP3ChapterSourceData(from url: URL) async -> [SendableChapterSourceData] {
-        guard let mp3Reader = await mp3ChapterReader.fromRemoteURL(url),
-              let chapters = parse(chapters: mp3Reader.getID3Dict()) else {
-            return []
-        }
-
+    private func remoteEmbeddedChapterSourceData(
+        from url: URL,
+        profile: PodcastAccessProfile?
+    ) async -> [SendableChapterSourceData] {
+        let chapters = await ChapterExtractionHooks.loadRemoteEmbeddedChapters(url, profile)
         return chapters.map {
             SendableChapterSourceData(
                 title: $0.title,
                 start: $0.start ?? 0,
-                type: .mp3,
+                type: $0.type,
                 imageURL: nil,
                 imageData: $0.imageData
             )
@@ -2248,19 +2275,19 @@ actor EpisodeActor {
     }
     
     @discardableResult
-    func extractRemoteMP3Chapters(_ fileURL: URL) async -> Bool {
+    func extractRemoteEmbeddedChapters(_ fileURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
         guard let remoteURL = episode.url else { return false }
         let episodeID = episode.persistentModelID
 
-        let chapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(
+        let chapters = await ChapterExtractionHooks.loadRemoteEmbeddedChapters(
             remoteURL,
             accessProfile(for: episode)
         )
         guard chapters.isEmpty == false else { return false }
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
 
-        replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
+        replaceChapters(on: episode, replacingTypes: Set(chapters.map(\.type)), with: chapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
         await MainActor.run {
@@ -3601,35 +3628,49 @@ enum ChapterExtractionHooks {
         }
     }
 
-    nonisolated(unsafe) static var loadRemoteMP3Chapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
-        if let profile {
-            guard let (data, _) = try? await PodcastHTTPClient.shared.data(for: url, profile: profile, purpose: .chapter) else {
-                return []
+    /// Embedded chapters of a remote episode, read with byte-range requests:
+    /// ID3 for MP3 and AVFoundation for MPEG-4. The file's first bytes decide
+    /// the format, so extensionless or mislabelled enclosure URLs work too.
+    nonisolated(unsafe) static var loadRemoteEmbeddedChapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
+        let outcome: RemoteChapterOutcome
+        var chapters: [Marker] = []
+        do {
+            let isMPEG4 = ChapterImageStorageConfiguration.mpeg4Extensions.contains(url.pathExtension.lowercased())
+            let probe: RemoteMediaProbe = isMPEG4
+                ? .mpeg4
+                : try await RemoteEmbeddedChapterLoader.probe(url, profile: profile)
+            switch probe {
+            case .id3Tag(let tag):
+                chapters = mp3ChapterReader(fromData: tag)
+                    .flatMap { parseMP3Chapters(from: $0.getID3Dict()) } ?? []
+                outcome = chapters.isEmpty
+                    ? .noEmbeddedChapters(format: .mp3)
+                    : .success(format: .mp3, chapterCount: chapters.count, bytes: tag.count)
+            case .mpeg4:
+                let chapterData = try await MetadataLoader.loadChapters(from: url, profile: profile)
+                chapters = mpeg4Markers(from: chapterData)
+                outcome = chapters.isEmpty
+                    ? .noEmbeddedChapters(format: .mpeg4)
+                    : .success(format: .mpeg4, chapterCount: chapters.count, bytes: 0)
+            case .untaggedAudio:
+                outcome = .noEmbeddedChapters(format: .mp3)
             }
-            let temporaryURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent(UUID().uuidString)
-                .appendingPathExtension("mp3")
-            do {
-                try data.write(to: temporaryURL, options: .atomic)
-                defer { try? FileManager.default.removeItem(at: temporaryURL) }
-                guard let mp3Reader = mp3ChapterReader(with: temporaryURL) else { return [] }
-                return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
-            } catch {
-                try? FileManager.default.removeItem(at: temporaryURL)
-                return []
-            }
+        } catch {
+            outcome = RemoteChapterOutcome.classify(error)
         }
-
-        guard let mp3Reader = await mp3ChapterReader.fromRemoteURL(url) else { return [] }
-        return parseMP3Chapters(from: mp3Reader.getID3Dict()) ?? []
+        await RemoteEmbeddedChapterLoader.record(outcome, for: url)
+        return chapters
     }
 
     nonisolated(unsafe) static var loadM4AChapters: (URL, PodcastAccessProfile?) async -> [Marker] = { url, profile in
         guard let chapterData = try? await MetadataLoader.loadChapters(from: url, profile: profile) else {
             return []
         }
+        return mpeg4Markers(from: chapterData)
+    }
 
-        return chapterData.map { data in
+    private static func mpeg4Markers(from chapterData: [SendableChapterData]) -> [Marker] {
+        chapterData.map { data in
             let chapter = Marker()
             chapter.title = data.title
             chapter.start = data.start

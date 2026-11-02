@@ -2764,10 +2764,9 @@ class Player {
         if playDirectly {
             await playPreparedEpisode()
         }
-        if playback.source == .remote,
-           playback.usesAlternateMedia == false,
-           episode.url?.pathExtension.lowercased() == "mp3" {
-            if episode.duration.map({ $0.isFinite && $0 > 0 }) != true {
+        if playback.source == .remote, playback.usesAlternateMedia == false {
+            if episode.url?.pathExtension.lowercased() == "mp3",
+               episode.duration.map({ $0.isFinite && $0 > 0 }) != true {
                 Task(priority: .utility) { [weak self] in
                     await self?.fillMissingRemoteMP3Duration(
                         for: episodeURL,
@@ -2776,10 +2775,12 @@ class Player {
                     )
                 }
             }
-            if (episode.chapters ?? []).contains(where: { $0.type == .mp3 }) == false {
+            // Any remote enclosure: the loader detects MP3 or MPEG-4 from the
+            // file itself, so extensionless and mislabelled URLs are covered.
+            if (episode.chapters ?? []).contains(where: { $0.type == .mp3 || $0.type == .mp4 }) == false {
                 let podcastFeed = episode.podcast?.feed
                 Task(priority: .utility) { [weak self] in
-                    await self?.loadRemoteMP3Chapters(
+                    await self?.loadRemoteEmbeddedChapters(
                         for: episodeURL,
                         podcastFeed: podcastFeed,
                         generation: playbackGeneration,
@@ -2825,13 +2826,13 @@ class Player {
         updateNowPlayingInfo()
     }
 
-    private func loadRemoteMP3Chapters(
+    private func loadRemoteEmbeddedChapters(
         for episodeURL: URL,
         podcastFeed: URL?,
         generation: UInt64,
         item: AVPlayerItem
     ) async {
-        let remoteChapters = await ChapterExtractionHooks.loadRemoteMP3Chapters(
+        let remoteChapters = await ChapterExtractionHooks.loadRemoteEmbeddedChapters(
             episodeURL,
             currentEpisode.flatMap { accessProfile(for: $0) }
         )
@@ -2844,7 +2845,7 @@ class Player {
 
         EpisodeChapterMerger.replaceChapters(
             on: episode,
-            replacingTypes: [.mp3],
+            replacingTypes: Set(remoteChapters.map(\.type)),
             with: remoteChapters
         )
         _ = ChapterSkipKeywordPolicy.apply(skipRules, to: episode.chapters ?? [])

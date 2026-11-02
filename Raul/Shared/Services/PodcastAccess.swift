@@ -1030,6 +1030,16 @@ protocol PodcastHTTPTransport: Sendable {
         resolver: PodcastAccessResolver,
         purpose: PodcastNetworkPrivacyPolicy.Purpose
     ) async throws -> (Data, URLResponse)
+
+    /// Like `data`, but stops reading the body after `maximumByteCount` bytes,
+    /// so a server that ignores a Range header cannot stream a whole episode.
+    func boundedData(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose,
+        maximumByteCount: Int
+    ) async throws -> (Data, URLResponse)
 }
 
 extension PodcastHTTPTransport {
@@ -1041,6 +1051,17 @@ extension PodcastHTTPTransport {
     ) async throws -> (Data, URLResponse) {
         try await data(for: request, profile: profile, resolver: resolver)
     }
+
+    func boundedData(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose,
+        maximumByteCount: Int
+    ) async throws -> (Data, URLResponse) {
+        let (data, response) = try await data(for: request, profile: profile, resolver: resolver, purpose: purpose)
+        return (Data(data.prefix(maximumByteCount)), response)
+    }
 }
 
 enum PodcastURLSessionTransportError: Error, Sendable {
@@ -1048,6 +1069,11 @@ enum PodcastURLSessionTransportError: Error, Sendable {
 }
 
 struct PodcastHTTPNotModified: Error, Sendable {}
+
+enum PodcastRangeRequestError: Error, Sendable, Equatable {
+    /// A byte-range response did not contain the requested bytes.
+    case rangeNotSatisfied
+}
 
 /// Device-local response validators become reusable only after the caller has
 /// successfully parsed and committed the feed. The key contains no endpoint
@@ -1317,6 +1343,35 @@ struct URLSessionPodcastHTTPTransport: PodcastHTTPTransport {
         defer { session.finishTasksAndInvalidate() }
         return try await podcastURLSessionData(for: request, using: session)
     }
+
+    func boundedData(
+        for request: URLRequest,
+        profile: PodcastAccessProfile?,
+        resolver: PodcastAccessResolver,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose,
+        maximumByteCount: Int
+    ) async throws -> (Data, URLResponse) {
+        let delegate = PodcastRedirectDelegate(resolver: resolver, profile: profile, purpose: purpose)
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieAcceptPolicy = .never
+        let session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (bytes, response) = try await session.bytes(for: request)
+        defer { bytes.task.cancel() }
+        // An error status is classified by the caller; its body isn't needed.
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            return (Data(), response)
+        }
+        var data = Data()
+        data.reserveCapacity(min(maximumByteCount, 1024 * 1024))
+        for try await byte in bytes {
+            data.append(byte)
+            if data.count >= maximumByteCount { break }
+        }
+        return (data, response)
+    }
 }
 
 final class PodcastHTTPClient: @unchecked Sendable {
@@ -1377,6 +1432,47 @@ final class PodcastHTTPClient: @unchecked Sendable {
         )
     }
 
+    /// Returns exactly the bytes of `range` from a media resource, reading at
+    /// most `range.upperBound` bytes even when the server answers 200 with the
+    /// whole file. Throws `PodcastRangeRequestError.rangeNotSatisfied` when neither a
+    /// matching 206 nor a 200 from byte 0 arrives.
+    func rangeData(
+        for url: URL,
+        range: Range<Int>,
+        profile: PodcastAccessProfile?,
+        purpose: PodcastNetworkPrivacyPolicy.Purpose = .chapter
+    ) async throws -> (Data, HTTPURLResponse) {
+        let activeResolver = resolver
+        var request = try activeResolver.request(for: url, profile: profile)
+        request.setValue("bytes=\(range.lowerBound)-\(range.upperBound - 1)", forHTTPHeaderField: "Range")
+        let (data, response) = try await perform(
+            request: request,
+            profile: profile,
+            resolver: activeResolver,
+            purpose: purpose,
+            maximumByteCount: range.upperBound
+        )
+        return (try Self.slice(data, of: range, from: response), response)
+    }
+
+    static func slice(_ data: Data, of range: Range<Int>, from response: HTTPURLResponse) throws -> Data {
+        switch response.statusCode {
+        case 206:
+            if let contentRange = response.value(forHTTPHeaderField: "Content-Range"),
+               let start = contentRange.split(separator: " ").last?.split(separator: "-").first.flatMap({ Int($0) }),
+               start != range.lowerBound {
+                throw PodcastRangeRequestError.rangeNotSatisfied
+            }
+            return Data(data.prefix(range.count))
+        case 200:
+            // The server ignored Range and started at byte 0.
+            guard data.count > range.lowerBound else { return Data() }
+            return Data(data.dropFirst(range.lowerBound).prefix(range.count))
+        default:
+            throw PodcastRangeRequestError.rangeNotSatisfied
+        }
+    }
+
     private func requestUsingCurrentCredential(
         for request: URLRequest,
         profile: PodcastAccessProfile?,
@@ -1423,17 +1519,29 @@ final class PodcastHTTPClient: @unchecked Sendable {
         request: URLRequest,
         profile: PodcastAccessProfile?,
         resolver: PodcastAccessResolver,
-        purpose: PodcastNetworkPrivacyPolicy.Purpose
+        purpose: PodcastNetworkPrivacyPolicy.Purpose,
+        maximumByteCount: Int? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let preparedRequest = try PodcastNetworkPrivacyPolicy.prepare(request, purpose: purpose)
         let requestedURL = preparedRequest.url ?? URL(string: "about:blank")!
         let (data, response) = try await PodcastHostRequestLimiter.shared.withPermit(for: requestedURL) {
-            let result = try await self.transport.data(
-                for: preparedRequest,
-                profile: profile,
-                resolver: resolver,
-                purpose: purpose
-            )
+            let result: (Data, URLResponse)
+            if let maximumByteCount {
+                result = try await self.transport.boundedData(
+                    for: preparedRequest,
+                    profile: profile,
+                    resolver: resolver,
+                    purpose: purpose,
+                    maximumByteCount: maximumByteCount
+                )
+            } else {
+                result = try await self.transport.data(
+                    for: preparedRequest,
+                    profile: profile,
+                    resolver: resolver,
+                    purpose: purpose
+                )
+            }
             if let http = result.1 as? HTTPURLResponse, http.statusCode == 429 {
                 await PodcastHostRequestLimiter.shared.pause(
                     for: requestedURL,
@@ -1461,7 +1569,8 @@ final class PodcastHTTPClient: @unchecked Sendable {
                 retryAfter: retryAfter
             )
         }
-        if preparedRequest.httpMethod?.uppercased() == "GET" && httpResponse.statusCode == 200 {
+        if preparedRequest.httpMethod?.uppercased() == "GET" && httpResponse.statusCode == 200,
+           maximumByteCount == nil {
             await PodcastHTTPValidatorStore.shared.stage(httpResponse, for: requestedURL, profile: profile)
         }
         return (data, httpResponse)
@@ -1520,6 +1629,11 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
                     redirected.url = protectedURL
                 }
                 redirected.setValue(nil, forHTTPHeaderField: "Referer")
+                // The rebuilt request carries only credentials; keep the
+                // caller's byte range so a redirect doesn't fetch the whole file.
+                if let range = request.value(forHTTPHeaderField: "Range") {
+                    redirected.setValue(range, forHTTPHeaderField: "Range")
+                }
                 if redirected.value(forHTTPHeaderField: "User-Agent") == nil {
                     redirected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
                 }

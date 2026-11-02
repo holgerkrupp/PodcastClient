@@ -177,9 +177,9 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         episode.publishDate = Calendar.current.date(byAdding: .day, value: -30, to: Date())
         try fixture.context.save()
 
-        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
-        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in
+        let originalLoader = ChapterExtractionHooks.loadRemoteEmbeddedChapters
+        defer { ChapterExtractionHooks.loadRemoteEmbeddedChapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteEmbeddedChapters = { _, _ in
             [Marker(start: 5, title: "Remote Chapter", type: .mp3, duration: 60)]
         }
 
@@ -244,15 +244,15 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         episode.metaData?.lastPlayed = Date(timeIntervalSince1970: 1_000)
         try fixture.context.save()
 
-        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
-        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in
+        let originalLoader = ChapterExtractionHooks.loadRemoteEmbeddedChapters
+        defer { ChapterExtractionHooks.loadRemoteEmbeddedChapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteEmbeddedChapters = { _, _ in
             [Marker(start: 45, title: "Remote Chapter", type: .mp3, duration: 120)]
         }
 
         let actor = EpisodeActor(modelContainer: fixture.container)
-        await actor.getRemoteChapters(episodeURL: episodeURL)
-        await actor.getRemoteChapters(episodeURL: episodeURL)
+        await actor.extractRemoteEmbeddedChapters(episodeURL)
+        await actor.extractRemoteEmbeddedChapters(episodeURL)
 
         let reloaded = try fetchEpisode(in: fixture.container, url: episodeURL)
         let chapters = try XCTUnwrap(reloaded.chapters)
@@ -292,9 +292,9 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         """
         try fixture.context.save()
 
-        let originalLoader = ChapterExtractionHooks.loadRemoteMP3Chapters
-        defer { ChapterExtractionHooks.loadRemoteMP3Chapters = originalLoader }
-        ChapterExtractionHooks.loadRemoteMP3Chapters = { _, _ in [] }
+        let originalLoader = ChapterExtractionHooks.loadRemoteEmbeddedChapters
+        defer { ChapterExtractionHooks.loadRemoteEmbeddedChapters = originalLoader }
+        ChapterExtractionHooks.loadRemoteEmbeddedChapters = { _, _ in [] }
 
         await EpisodeActor(modelContainer: fixture.container).getRemoteChapters(episodeURL: episodeURL)
 
