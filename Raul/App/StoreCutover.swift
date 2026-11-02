@@ -1,6 +1,45 @@
 import Foundation
 import SwiftData
 
+/// Where the library in `SharedDatabase.sqlite` came from.
+///
+/// Today a file at that path always means an upgraded device. Once other devices
+/// build a library there, this is what must keep them out of the upgrade-only
+/// passes: the copy into UserState and `cleanUpStaleSubscriptionsIfNeeded`, which
+/// would remove real subscriptions a half-built library doesn't hold yet.
+enum StoreLibraryOrigin: String {
+    /// An existing library from before the store split.
+    case legacy
+    /// Built on this device from UserState, the cache and feeds.
+    case built
+
+    static let key = "storeSplit.libraryOrigin.v1"
+
+    private static var appGroupDefaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+
+    /// A file with no record is legacy: no build has recorded otherwise.
+    static func current(
+        libraryFileExists: Bool,
+        defaults: UserDefaults = appGroupDefaults
+    ) -> StoreLibraryOrigin? {
+        guard libraryFileExists else { return nil }
+        return defaults.string(forKey: key).flatMap(StoreLibraryOrigin.init(rawValue:)) ?? .legacy
+    }
+
+    static func recordExistingLibraryOpened(defaults: UserDefaults = appGroupDefaults) {
+        guard defaults.string(forKey: key) == nil else { return }
+        defaults.set(StoreLibraryOrigin.legacy.rawValue, forKey: key)
+    }
+
+    /// Must run before a built file appears at the final path. A crash in between
+    /// leaves a record with no file, which is harmless; the reverse reads as legacy.
+    static func recordBuilt(defaults: UserDefaults = appGroupDefaults) {
+        defaults.set(StoreLibraryOrigin.built.rawValue, forKey: key)
+    }
+}
+
 /// Tracks the one-time copy of an upgraded device's user data into UserState.
 /// The app runs from its existing local library throughout, so this never holds
 /// up startup; it only decides what may be imported back.

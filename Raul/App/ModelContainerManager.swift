@@ -1089,11 +1089,15 @@ class ModelContainerManager: ObservableObject {
             await MainActor.run {
                 SupportDiagnosticsRecorder.shared.record("Opening User State store")
             }
+            let libraryLogBytes = Self.sharedStoreURL.map(StoreWriteAheadLog.sizeInBytes(storeURL:)) ?? 0
+            var timer = StoreLaunchTimer()
             let userState = try Self.makeUserStateContainerWithRetry()
+            timer.mark("user_state")
             await MainActor.run {
                 SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
             }
             let cache = try Self.makeCacheContainerWithRetry()
+            timer.mark("cache")
             if bootstrapMode == .legacyUpgrade {
                 // The device's own library stays what the UI reads, local-only.
                 guard let storeURL = Self.sharedStoreURL else {
@@ -1103,12 +1107,16 @@ class ModelContainerManager: ObservableObject {
                     SupportDiagnosticsRecorder.shared.record("Checking library indexes")
                 }
                 LegacyStoreIndexBackfill.run(storeURL: storeURL)
+                timer.mark("index_check")
                 await MainActor.run {
                     SupportDiagnosticsRecorder.shared.record("Opening runtime library store")
                 }
                 let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
                     try Self.makeLegacyContainer(storageURL: storeURL)
                 }
+                timer.mark("library")
+                timer.finish(libraryLogBytes: libraryLogBytes)
+                StoreLibraryOrigin.recordExistingLibraryOpened()
                 StoreCutoverState.beginLocalLibrary()
                 StoreRuntimeProjection.discardUnused()
                 StoreSplitLaunchHealth.markRuntimeReady()
@@ -1129,6 +1137,8 @@ class ModelContainerManager: ObservableObject {
                 at: runtimeURL,
                 isCurrent: StoreRuntimeProjection.isFileCurrent
             )
+            timer.mark("library")
+            timer.finish(libraryLogBytes: libraryLogBytes)
             StoreSplitLaunchHealth.markRuntimeReady()
             return RuntimeContainerPreparation(
                 container: runtimeContainer,

@@ -188,6 +188,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         }
         sections.append("Listening totals and subscriptions: \(ListeningTotalsDiagnostics.latest)")
         sections.append("User data copy pending: \(StoreCutoverState.isDeferredMigrationPending), phase: \(StoreCutoverState.currentCopyPhase)")
+        sections.append(Self.libraryStoreSummary)
         sections.append(NSLocalizedString("Recent event timeline (last five minutes)", comment: "Heading for recent app events in support report"))
         let visibleEvents = events.filter { $0.at >= Date().addingTimeInterval(-eventWindow) }
         sections.append(contentsOf: visibleEvents.map {
@@ -205,6 +206,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         storeMonitor: StoreCloudKitActivityMonitor
     ) async {
         let now = Date()
+        await StoreLaunchDiagnostics.refreshLibraryContentsIfDue()
         let countSnapshot = await SupportDiagnosticsStoreCounter(
             runtimeContainer: modelContainer,
             legacyContainer: nil,
@@ -320,6 +322,17 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         }
     }
 
+    private static var libraryStoreSummary: String {
+        let fileExists = ModelContainerManager.sharedStoreURL
+            .map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        let origin = StoreLibraryOrigin.current(libraryFileExists: fileExists)?.rawValue ?? "no library file"
+        return """
+        Library origin: \(origin)
+        Last completed store opening: \(StoreLaunchDiagnostics.latestTimings)
+        Library contents: \(StoreLaunchDiagnostics.libraryContents)
+        """
+    }
+
     /// Safe to call from the launch recovery screen. Reads metadata and
     /// defaults only; it never opens a model container or changes sync state.
     static func launchReport() -> String {
@@ -355,6 +368,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         Installation evidence: \(onboarding ? "existing installation" : "unknown/new installation")
         Legacy CloudKit attachment configured: \(configured)
         SQLite files: \(fileSummary)
+        \(libraryStoreSummary)
         """
     }
 

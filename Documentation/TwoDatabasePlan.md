@@ -1,6 +1,7 @@
 # Two Databases on Every Device
 
-Status: proposed, 1 Nov 2026. Nothing here is implemented yet. The file-level audit
+Status: steps 1 and 2 implemented, 2 Nov 2026, apart from the size findings a device report
+will give; the rest is proposed. The file-level audit
 below comes from reading schemas and call sites; items marked **verify** still need
 checking against the code or a real store before their step ships.
 

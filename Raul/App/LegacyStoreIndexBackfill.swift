@@ -52,12 +52,24 @@ enum LegacyStoreIndexBackfill {
         )
     ]
 
+    /// Bump when `indexes` gains an entry, so existing stores get it too.
+    private static let version = 1
+    private static let completedVersionKey = "legacyStoreIndexBackfill.completedVersion"
+
     /// Best effort, and deliberately silent on failure: a store that is missing,
     /// still locked by another app-group process, or not yet created keeps
     /// whatever indexes it has and is retried on the next launch. The container
     /// open must never depend on this.
-    static func run(storeURL: URL) {
-        guard FileManager.default.fileExists(atPath: storeURL.path) else { return }
+    ///
+    /// Stops once every index exists. If this were the store's only connection,
+    /// closing it would merge the whole write-ahead log, on the launch path. A
+    /// store created later gets the same indexes from SwiftData itself.
+    static func run(
+        storeURL: URL,
+        defaults: UserDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    ) {
+        guard defaults.integer(forKey: completedVersionKey) < version,
+              FileManager.default.fileExists(atPath: storeURL.path) else { return }
 
         var handle: OpaquePointer?
         guard sqlite3_open_v2(storeURL.path, &handle, SQLITE_OPEN_READWRITE, nil) == SQLITE_OK,
@@ -72,7 +84,10 @@ enum LegacyStoreIndexBackfill {
         sqlite3_busy_timeout(handle, 2_000)
 
         let missing = indexes.filter { existingIndexNames(handle).contains($0.name) == false }
-        guard missing.isEmpty == false else { return }
+        guard missing.isEmpty == false else {
+            defaults.set(version, forKey: completedVersionKey)
+            return
+        }
 
         let started = Date()
         var created: [String] = []
@@ -90,6 +105,9 @@ enum LegacyStoreIndexBackfill {
             created.append(index.name)
         }
 
+        if created.count == missing.count {
+            defaults.set(version, forKey: completedVersionKey)
+        }
         guard created.isEmpty == false else { return }
         CrashBreadcrumbs.shared.record(
             "legacy_store_index_backfill_completed",
