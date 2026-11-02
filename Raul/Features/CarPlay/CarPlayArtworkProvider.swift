@@ -83,29 +83,38 @@ enum CarPlayArtworkProvider {
 
     @MainActor
     static func buttonImage(systemName: String, displayScale: CGFloat) -> UIImage? {
-        guard CarPlayArtworkSettings.showArtwork else { return nil }
+        // CarPlay limits UIImage dimensions in points. Display scale affects only
+        // the bitmap resolution; multiplying the canvas size by scale shrinks
+        // these icons when CarPlay fits them into its Now Playing buttons.
+        let size = CPNowPlayingButtonMaximumImageSize
         let scale = max(displayScale, 1)
-        let maximum = Int(min(512, max(24, ceil(CPNowPlayingButtonMaximumImageSize.width * scale))))
-        let config = UIImage.SymbolConfiguration(pointSize: CGFloat(maximum) / scale, weight: .regular)
-        guard let symbol = UIImage(systemName: systemName, withConfiguration: config)?.withTintColor(.white, renderingMode: .alwaysOriginal) else { return nil }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 1
-        format.opaque = false
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: maximum, height: maximum), format: format)
-        let bitmap = renderer.image { _ in
-            let ratio = min(CGFloat(maximum) / max(symbol.size.width, 1), CGFloat(maximum) / max(symbol.size.height, 1))
-            let size = CGSize(width: symbol.size.width * ratio, height: symbol.size.height * ratio)
-            let rect = CGRect(
-                x: (CGFloat(maximum) - size.width) / 2,
-                y: (CGFloat(maximum) - size.height) / 2,
-                width: size.width,
-                height: size.height
-            )
-            symbol.draw(in: rect)
+        let config = UIImage.SymbolConfiguration(
+            pointSize: min(size.width, size.height) * 0.8,
+            weight: .medium
+        )
+        guard let symbol = UIImage(systemName: systemName, withConfiguration: config)?
+            .withTintColor(.white, renderingMode: .alwaysOriginal) else {
+            return nil
         }
-        guard isDisplayable(bitmap, maxPixelSize: maximum) else { return nil }
-        CarPlayArtworkSettings.logger.info("Artwork ready; source=button size=\(maximum)x\(maximum) budget=\(maximum)")
-        return bitmap
+
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = scale
+        format.opaque = false
+        let renderer = UIGraphicsImageRenderer(size: size, format: format)
+        let bitmap = renderer.image { _ in
+            let side = min(size.width, size.height) * 0.84
+            let ratio = min(side / max(symbol.size.width, 1), side / max(symbol.size.height, 1))
+            let symbolSize = CGSize(width: symbol.size.width * ratio, height: symbol.size.height * ratio)
+            symbol.draw(in: CGRect(
+                x: (size.width - symbolSize.width) / 2,
+                y: (size.height - symbolSize.height) / 2,
+                width: symbolSize.width,
+                height: symbolSize.height
+            ))
+        }
+        let pixelBudget = Int(ceil(max(size.width, size.height) * scale))
+        guard isDisplayable(bitmap, maxPixelSize: pixelBudget) else { return nil }
+        return bitmap.withRenderingMode(.alwaysTemplate)
     }
 
     @MainActor

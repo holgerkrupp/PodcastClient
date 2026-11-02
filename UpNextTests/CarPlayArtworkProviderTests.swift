@@ -34,6 +34,32 @@ final class CarPlayArtworkProviderTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(oneX, 32)
     }
 
+    func testNowPlayingButtonImagesUsePointSizeAtEveryDisplayScale() async {
+        await MainActor.run {
+            let maximumSize = CPNowPlayingButtonMaximumImageSize
+            for scale in [CGFloat(1), CGFloat(2), CGFloat(3)] {
+                for symbol in ["list.bullet", "backward.end.alt", "forward.end.alt", "bookmark"] {
+                    guard let image = CarPlayArtworkProvider.buttonImage(
+                        systemName: symbol, displayScale: scale
+                    ) else {
+                        XCTFail("Missing CarPlay button image for \(symbol)")
+                        continue
+                    }
+                    XCTAssertEqual(image.size.width, maximumSize.width, accuracy: 0.01)
+                    XCTAssertEqual(image.size.height, maximumSize.height, accuracy: 0.01)
+                    XCTAssertEqual(image.scale, scale, accuracy: 0.01)
+                    XCTAssertNotNil(image.cgImage)
+                    XCTAssertLessThanOrEqual(
+                        image.cgImage?.width ?? 0, Int(ceil(maximumSize.width * scale))
+                    )
+                    XCTAssertLessThanOrEqual(
+                        image.cgImage?.height ?? 0, Int(ceil(maximumSize.height * scale))
+                    )
+                }
+            }
+        }
+    }
+
     func testValidImageIsAccepted() {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32))
         let image = renderer.image { context in
