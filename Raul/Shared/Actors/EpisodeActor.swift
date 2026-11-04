@@ -3757,7 +3757,7 @@ private struct MetadataLoader {
         if let authorization = request.value(forHTTPHeaderField: "Authorization") {
             options["AVURLAssetHTTPHeaderFieldsKey"] = ["Authorization": authorization]
         }
-        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
+        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0"
         return AVURLAsset(url: request.url ?? protectedURL, options: options)
     }
 }

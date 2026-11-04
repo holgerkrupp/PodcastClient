@@ -53,7 +53,7 @@ enum WatchNetworkURLPolicy {
         defer { session.finishTasksAndInvalidate() }
         guard let protectedURL = resolve(url, enabled: enabled) else { throw URLError(.unsupportedURL) }
         var request = URLRequest(url: protectedURL)
-        request.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+        request.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
         return try await session.data(for: request)
     }
 
@@ -104,7 +104,7 @@ enum WatchNetworkURLPolicy {
             protected.url = protectedURL
             protected.setValue(nil, forHTTPHeaderField: "Referer")
             if protected.value(forHTTPHeaderField: "User-Agent") == nil {
-                protected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                protected.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
             }
             completionHandler(protected)
         }

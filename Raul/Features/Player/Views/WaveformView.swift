@@ -512,7 +512,7 @@ extension WaveformView {
         }
         let asset = AVURLAsset(
             url: assetURL,
-            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0"]
         )
         guard let track = try? await asset.loadTracks(withMediaType: .audio).first else { return fallback }
         guard let assetReader = try? AVAssetReader(asset: asset) else { return fallback }

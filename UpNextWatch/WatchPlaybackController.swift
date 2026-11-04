@@ -438,7 +438,7 @@ final class WatchPlaybackController: ObservableObject {
         }
         let asset = AVURLAsset(
             url: protectedURL,
-            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0"]
         )
         let item = AVPlayerItem(asset: asset)
         player.replaceCurrentItem(with: item)

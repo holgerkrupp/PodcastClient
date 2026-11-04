@@ -60,7 +60,7 @@ enum ShareNetworkPrivacy {
         }
         request.setValue(nil, forHTTPHeaderField: "Referer")
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
-            request.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+            request.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
         }
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
@@ -91,7 +91,7 @@ enum ShareNetworkPrivacy {
             var protected = request
             protected.url = protectedURL
             if protected.value(forHTTPHeaderField: "User-Agent") == nil {
-                protected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                protected.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
             }
             protected.setValue(nil, forHTTPHeaderField: "Referer")
             if let previousURL = task.currentRequest?.url,

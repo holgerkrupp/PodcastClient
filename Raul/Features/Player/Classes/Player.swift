@@ -658,9 +658,8 @@ class Player {
         Task {
             await retryPendingFinishedEpisode()
 
-            guard PlaybackProgressDefaultsStore.pendingCompletion() == nil else {
-                AppDiagnostics.log("Playback restoration deferred while a completion transaction is pending")
-                return
+            if PlaybackProgressDefaultsStore.pendingCompletion() != nil {
+                AppDiagnostics.log("Playback restoration continuing while completion recovery remains pending")
             }
 
             // Restoring the episode is what makes the player usable, so nothing
@@ -1365,16 +1364,10 @@ class Player {
     }
 
     private func currentPlaybackDuration() -> TimeInterval? {
-        let itemDuration = engine.currentItemDuration()
-        if let itemDuration, itemDuration > 0 {
-            return itemDuration
-        }
-        guard let episodeDuration = currentEpisode?.duration,
-              episodeDuration.isFinite,
-              episodeDuration > 0 else {
-            return nil
-        }
-        return episodeDuration
+        PlaybackTrimPolicy.validatedDuration(
+            itemDuration: engine.currentItemDuration(),
+            expectedDuration: currentEpisode?.duration
+        )
     }
 
     private func configureOutroBoundaryObserver() {
@@ -2310,7 +2303,7 @@ class Player {
             return AVPlayerItem(asset: AVURLAsset(url: URL(fileURLWithPath: "/dev/null")))
         }
         requestURL = protectedURL
-        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
+        options["AVURLAssetHTTPUserAgentKey"] = "UpNext/1.0"
         let asset = AVURLAsset(url: requestURL, options: options)
         return AVPlayerItem(asset: asset)
     }
@@ -2661,8 +2654,13 @@ class Player {
         let item = playback.item
 
         let duration = item.duration.seconds
-        if duration.isNormal && currentEpisode?.duration != duration {
-            currentEpisode?.duration = duration
+        if duration.isNormal,
+           let acceptedDuration = PlaybackTrimPolicy.validatedDuration(
+                itemDuration: duration,
+                expectedDuration: currentEpisode?.duration
+           ),
+           currentEpisode?.duration != acceptedDuration {
+            currentEpisode?.duration = acceptedDuration
         }
 
         let snapshot = await episodeActor?.playbackStateSnapshot(for: episodeURL)
@@ -3130,6 +3128,8 @@ class Player {
     }
 
     private func observeEnginePlaybackState() {
+        playbackStatusObservation?.invalidate()
+        playbackRateObservation?.invalidate()
         playbackStatusObservation = videoPlayer.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor [weak self] in
                 self?.syncPlaybackStateFromObservedPlayer(player)
@@ -3140,6 +3140,37 @@ class Player {
             Task { @MainActor [weak self] in
                 self?.syncPlaybackStateFromObservedPlayer(player)
             }
+        }
+    }
+
+    private func rebuildAudioEngine(reason: String) {
+        guard currentPlaybackSource != .liveRemote else { return }
+        let position = sanitizedPosition(engine.currentTime())
+        let item = engine.avPlayer.currentItem
+        let episodeToken = currentEpisodeURL.map {
+            SHA256.hash(data: Data($0.absoluteString.utf8)).prefix(6)
+                .map { String(format: "%02x", $0) }.joined()
+        } ?? "none"
+        AppDiagnostics.log(
+            "audio_engine_rebuild reason=\(reason) episode=\(episodeToken) position=\(position) rate=\(playbackRate)"
+        )
+        transitionToPaused(pauseEngine: false)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.engine.rebuildPlayer(at: position)
+            self.observeEnginePlaybackState()
+            self.configureChapterBoundaryObserver()
+            self.configureOutroBoundaryObserver()
+            if let item, let episodeURL = self.currentEpisodeURL {
+                await self.resetPlaybackAudioProcessing(for: item)
+                self.schedulePlaybackAudioProcessing(
+                    for: item,
+                    episodeURL: episodeURL,
+                    generation: self.playbackLoadGeneration
+                )
+            }
+            self.playPosition = position
+            self.updateNowPlayingInfo()
         }
     }
 
@@ -3410,13 +3441,16 @@ class Player {
                         self.resumeAfterInterruption()
                     }
                 case .activationFailed(let description):
-                    AppDiagnostics.log("Audio Session Activation Failed: \(description)")
+                    AppDiagnostics.log("audio_session_activation_failed detail=\(description)")
                     if self.currentPlaybackSource == .liveRemote {
                         self.livePlaybackState = .failed(description)
                     }
                     if self.isPlaying {
                         self.transitionToPaused(pauseEngine: true)
                     }
+                    self.rebuildAudioEngine(reason: "activation_failed")
+                case .mediaServicesReset:
+                    self.rebuildAudioEngine(reason: "media_services_reset")
                 case .finished:
                     self.handlePlaybackEndedEvent(source: "interruption_finished_event")
                 }
@@ -3644,21 +3678,11 @@ class Player {
         let episodeDuration = sanitizedPosition(currentEpisode?.duration)
         let itemDuration = sanitizedPosition(observedDuration)
         let observedPlaybackPosition = sanitizedPosition(observedPosition)
-        let resolvedDuration: Double
-        if itemDuration > 0 {
-            resolvedDuration = itemDuration
-        } else if episodeDuration > 0 {
-            resolvedDuration = episodeDuration
-        } else if trustedEndEvent {
-            resolvedDuration = observedPlaybackPosition
-        } else {
-            resolvedDuration = 0
-        }
-        let resolvedPosition = max(
-            playPosition,
-            observedPlaybackPosition,
-            trustedEndEvent ? resolvedDuration : 0
-        )
+        let resolvedDuration = PlaybackTrimPolicy.validatedDuration(
+            itemDuration: itemDuration > 0 ? itemDuration : nil,
+            expectedDuration: episodeDuration > 0 ? episodeDuration : nil
+        ) ?? 0
+        let resolvedPosition = max(playPosition, observedPlaybackPosition)
 
         guard resolvedDuration > 0 else {
             AppDiagnostics.log("Ignoring ended event from \(source): episode duration unavailable")
@@ -3666,9 +3690,19 @@ class Player {
         }
 
         let finishThreshold = max(resolvedDuration * progressThreshold, resolvedDuration - 2.0)
-        guard trustedEndEvent || resolvedPosition >= finishThreshold else {
+        guard resolvedPosition >= finishThreshold else {
+            playPosition = resolvedPosition
+            cacheCurrentPlaybackState()
+            let episodeToken = currentEpisodeURL.map {
+                SHA256.hash(data: Data($0.absoluteString.utf8)).prefix(6)
+                    .map { String(format: "%02x", $0) }.joined()
+            } ?? "none"
+            CrashBreadcrumbs.shared.record(
+                "playback_early_end_ignored",
+                details: "episode=\(episodeToken) source=\(source) position=\(resolvedPosition) item_duration=\(itemDuration) expected_duration=\(episodeDuration)"
+            )
             AppDiagnostics.log(
-                "near_end_unconfirmed source=\(source) position=\(resolvedPosition) duration=\(resolvedDuration)"
+                "early_end_ignored source=\(source) position=\(resolvedPosition) duration=\(resolvedDuration) item_duration=\(itemDuration) episode_duration=\(episodeDuration) trusted_signal=\(trustedEndEvent)"
             )
             return
         }
@@ -4077,8 +4111,13 @@ class Player {
 
         let replacementItem = AVPlayerItem(url: localFile)
         let replacementDuration = replacementItem.duration.seconds
-        if replacementDuration.isNormal && currentEpisode?.duration != replacementDuration {
-            currentEpisode?.duration = replacementDuration
+        if replacementDuration.isNormal,
+           let acceptedDuration = PlaybackTrimPolicy.validatedDuration(
+                itemDuration: replacementDuration,
+                expectedDuration: currentEpisode?.duration
+           ),
+           currentEpisode?.duration != acceptedDuration {
+            currentEpisode?.duration = acceptedDuration
         }
 
         let preservedPosition = max(0, playPosition)

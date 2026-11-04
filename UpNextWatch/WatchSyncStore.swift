@@ -302,7 +302,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
             return
         }
         var request = URLRequest(url: protectedURL)
-        request.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+        request.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
         let task = downloadSession.downloadTask(with: request)
         let key = Self.directDownloadKey(for: downloadSession, task: task)
         directDownloadSessions[key] = downloadSession

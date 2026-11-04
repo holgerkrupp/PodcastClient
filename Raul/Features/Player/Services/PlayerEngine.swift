@@ -8,6 +8,7 @@ enum PlaybackInterruptionEvent: Sendable {
     case pause
     case resume
     case activationFailed(String)
+    case mediaServicesReset
 }
 
 enum AudioSessionActivationRetryPolicy {
@@ -62,10 +63,11 @@ private enum AudioSessionConfigurator {
 
 @MainActor
 final class PlayerEngine {
-    let avPlayer = AVPlayer()
+    private(set) var avPlayer = AVPlayer()
     private var interruptionHandler: (@Sendable (PlaybackInterruptionEvent) -> Void)?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
+    private var mediaServicesResetObserver: NSObjectProtocol?
     private var endObserver: NSObjectProtocol?
     private var endObserverGeneration: UInt64 = 0
     private var endHandler: (@MainActor @Sendable () -> Void)?
@@ -87,6 +89,7 @@ final class PlayerEngine {
          Task {
              self.addInterruptionObserver()
              self.addRouteChangeObserver()
+             self.addMediaServicesResetObserver()
          }
 #endif
         
@@ -154,6 +157,20 @@ final class PlayerEngine {
         }
 #endif
     }
+
+    private func addMediaServicesResetObserver() {
+#if os(iOS)
+        mediaServicesResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.interruptionHandler?(.mediaServicesReset)
+            }
+        }
+#endif
+    }
     
     func sendInterrupt(type: PlaybackInterruptionEvent){
         // print("sendInterrupt type: \(type)")
@@ -166,7 +183,7 @@ final class PlayerEngine {
             self.interruptionHandler?(.pause)
         case .resume:
             self.interruptionHandler?(.resume)
-        case .finished, .activationFailed:
+        case .finished, .activationFailed, .mediaServicesReset:
             break
         }
     }
@@ -188,6 +205,28 @@ final class PlayerEngine {
         removeEndObserver()
         avPlayer.replaceCurrentItem(with: item)
         installEndObserver(for: item)
+    }
+
+    /// Recreates the AVPlayer after the media server has reset or activation
+    /// has repeatedly failed. Keep the item and position, but leave playback
+    /// paused so the user remains in control of audio focus.
+    func rebuildPlayer(at position: TimeInterval) async {
+        let item = avPlayer.currentItem
+        invalidatePendingPlaybackRequests()
+        removeBoundaryTimeObserver()
+        removeOutroBoundaryTimeObserver()
+        removeEndObserver()
+        removePeriodicTimeObserver()
+        avPlayer.pause()
+        avPlayer.replaceCurrentItem(with: nil)
+
+        let replacement = AVPlayer()
+        replacement.automaticallyWaitsToMinimizeStalling = false
+        replacement.replaceCurrentItem(with: item)
+        avPlayer = replacement
+        installEndObserver(for: item)
+        guard position.isFinite, position > 0 else { return }
+        await seek(to: CMTime(seconds: position, preferredTimescale: 600))
     }
 
     func setEndHandler(_ handler: (@MainActor @Sendable () -> Void)?) {

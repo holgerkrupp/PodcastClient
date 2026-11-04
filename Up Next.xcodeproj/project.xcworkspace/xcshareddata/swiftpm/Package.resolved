@@ -7,7 +7,7 @@
       "location" : "https://github.com/holgerkrupp/CloudDataPresence",
       "state" : {
         "branch" : "main",
-        "revision" : "822dbe3ccaaed19c09d9a54b22347a5c06ca8efe"
+        "revision" : "0d7efe236c278664da879076f08e9a0aa3b5a6f3"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/nuPlay/RichText/",
       "state" : {
-        "revision" : "3d645782db67d09c6e7f16481c0c0e6b9787e45b",
-        "version" : "3.0.0"
+        "revision" : "d9c343949b677ba250319074abb4fa91b68f6838",
+        "version" : "3.1.1"
       }
     },
     {
@@ -43,7 +43,7 @@
       "location" : "https://github.com/holgerkrupp/SwiftDeviceInfo.git",
       "state" : {
         "branch" : "main",
-        "revision" : "c917442072d9e9fd64e299f1e5b261f210383191"
+        "revision" : "9fccc44a554dbf50eaa46e78eb2ebfe32728e1c5"
       }
     }
   ],

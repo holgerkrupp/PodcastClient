@@ -62,11 +62,27 @@
       }
     },
     "Bookmark this in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Lesezeichen setzen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Bookmark this in ${applicationName}",
+              "${applicationName} bookmark this",
+              "Save a bookmark in ${applicationName}",
+              "Add a bookmark in ${applicationName}",
+              "Bookmark this moment in ${applicationName}",
+              "Bookmark the current position in ${applicationName}",
+              "Remember this in ${applicationName}",
+              "Mark this spot in ${applicationName}"
+            ]
           }
         }
       }
@@ -182,11 +198,22 @@
       }
     },
     "Play ${episode} in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "${episode} abspielen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Play ${episode} in ${applicationName}",
+              "Listen to ${episode} in ${applicationName}",
+              "Start ${episode} in ${applicationName}"
+            ]
           }
         }
       }
@@ -232,11 +259,23 @@
       }
     },
     "Play the latest episode of ${podcast} in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Neueste Episode von ${podcast} abspielen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Play the latest episode of ${podcast} in ${applicationName}",
+              "Play the newest episode of ${podcast} in ${applicationName}",
+              "Play ${podcast} in ${applicationName}",
+              "Catch up on ${podcast} in ${applicationName}"
+            ]
           }
         }
       }
@@ -252,21 +291,47 @@
       }
     },
     "Play Up Next in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Als Nächstes abspielen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Play Up Next in ${applicationName}",
+              "Start Up Next in ${applicationName}",
+              "Play my queue in ${applicationName}",
+              "Start my queue in ${applicationName}",
+              "Play my podcasts in ${applicationName}",
+              "Start listening in ${applicationName}"
+            ]
           }
         }
       }
     },
     "Refresh ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "${applicationName} aktualisieren"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Refresh ${applicationName}",
+              "Refresh podcasts in ${applicationName}",
+              "Check for new episodes in ${applicationName}",
+              "Update my podcasts in ${applicationName}"
+            ]
           }
         }
       }
@@ -292,11 +357,24 @@
       }
     },
     "Resume playback in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Wiedergabe fortsetzen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Resume playback in ${applicationName}",
+              "${applicationName} resume",
+              "Play last episode in ${applicationName}",
+              "Continue listening in ${applicationName}",
+              "Keep playing in ${applicationName}"
+            ]
           }
         }
       }
@@ -322,11 +400,23 @@
       }
     },
     "Set a sleep timer in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Schlaftimer stellen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Set a sleep timer in ${applicationName}",
+              "Start a sleep timer in ${applicationName}",
+              "Sleep timer in ${applicationName}",
+              "Stop playing later in ${applicationName}"
+            ]
           }
         }
       }
@@ -342,21 +432,48 @@
       }
     },
     "Skip back in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Zurückspringen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Skip back in ${applicationName}",
+              "${applicationName} go back",
+              "Go back in ${applicationName}",
+              "Jump back in ${applicationName}",
+              "Rewind in ${applicationName}",
+              "What did they say in ${applicationName}"
+            ]
           }
         }
       }
     },
     "Skip forward in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Vorwärts springen in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "Skip forward in ${applicationName}",
+              "${applicationName} skip ahead",
+              "Skip ahead in ${applicationName}",
+              "Jump ahead in ${applicationName}",
+              "Fast forward in ${applicationName}"
+            ]
           }
         }
       }
@@ -442,11 +559,21 @@
       }
     },
     "What am I listening to in ${applicationName}" : {
+      "extractionState" : "extracted_with_value",
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Was höre ich gerade in ${applicationName}"
+          }
+        },
+        "en" : {
+          "stringSet" : {
+            "state" : "new",
+            "values" : [
+              "What am I listening to in ${applicationName}",
+              "What's playing in ${applicationName}"
+            ]
           }
         }
       }

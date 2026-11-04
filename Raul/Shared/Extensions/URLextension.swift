@@ -92,7 +92,7 @@ extension URLRequest {
         // Some feed hosts serve an HTML reader page to browser user agents.
         // Identify this request as a podcast client so the raw RSS/Atom
         // representation is returned, including after redirects.
-        "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"
+        "UpNext/1.0"
     }
 
     /// Creates a feed request and carries credentials embedded in the URL as

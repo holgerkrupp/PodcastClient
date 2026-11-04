@@ -26,7 +26,11 @@ private final class ArtworkConnectivityMonitor: @unchecked Sendable {
             self.wasAvailable = available
             self.lock.unlock()
             if recovered {
-                NotificationCenter.default.post(name: .artworkConnectivityRecovered, object: nil)
+                // SwiftUI views mutate retry state in response, so publish from
+                // the main actor rather than the Network framework's queue.
+                Task { @MainActor in
+                    NotificationCenter.default.post(name: .artworkConnectivityRecovered, object: nil)
+                }
             }
         }
         monitor.start(queue: queue)

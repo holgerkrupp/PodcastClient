@@ -1635,7 +1635,7 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
                     redirected.setValue(range, forHTTPHeaderField: "Range")
                 }
                 if redirected.value(forHTTPHeaderField: "User-Agent") == nil {
-                    redirected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                    redirected.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
                 }
                 completionHandler(redirected)
             } else {
@@ -1648,7 +1648,7 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
                 redirectedRequest.url = wireURL
                 redirectedRequest.setValue(nil, forHTTPHeaderField: "Referer")
                 if redirectedRequest.value(forHTTPHeaderField: "User-Agent") == nil {
-                    redirectedRequest.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                    redirectedRequest.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
                 }
                 if previousURL.host?.lowercased() != url.host?.lowercased() {
                     redirectedRequest.setValue(nil, forHTTPHeaderField: "Authorization")

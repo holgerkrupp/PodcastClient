@@ -161,7 +161,7 @@ enum PodcastNetworkPrivacyPolicy {
         if let url = request.url { request.url = try wireURL(for: url, purpose: purpose) }
         request.setValue(nil, forHTTPHeaderField: "Referer")
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
-            request.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+            request.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
         }
         return request
     }
@@ -198,7 +198,7 @@ enum PodcastNetworkPrivacyPolicy {
             protected.url = decision.url
             protected.setValue(nil, forHTTPHeaderField: "Referer")
             if protected.value(forHTTPHeaderField: "User-Agent") == nil {
-                protected.setValue("UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)", forHTTPHeaderField: "User-Agent")
+                protected.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")
             }
             let previousURL = task.currentRequest?.url ?? response.url
             protected.setValue(nil, forHTTPHeaderField: "Referer")

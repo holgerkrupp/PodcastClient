@@ -1,6 +1,20 @@
 import Foundation
 
 enum PlaybackTrimPolicy {
+    /// Prefer the feed's established duration when a newly created item reports
+    /// a suspiciously short or transient timeline. Longer item durations remain
+    /// usable because publishers sometimes correct stale feed metadata.
+    static func validatedDuration(
+        itemDuration: TimeInterval?,
+        expectedDuration: TimeInterval?
+    ) -> TimeInterval? {
+        let item = itemDuration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        let expected = expectedDuration.flatMap { $0.isFinite && $0 > 0 ? $0 : nil }
+        guard let item else { return expected }
+        guard let expected, item >= expected * 0.9 else { return expected ?? item }
+        return item
+    }
+
     /// Historical progress is not proof that the current completion transaction
     /// succeeded. Only an explicit replay of an episode with a durable
     /// completion date starts at zero; unfinished near-end positions survive.

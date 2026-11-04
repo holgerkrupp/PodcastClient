@@ -154,6 +154,16 @@
         }
       }
     },
+    "%@ %@, %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@, %3$@"
+          }
+        }
+      }
+    },
     "%@ • %@" : {
       "localizations" : {
         "de" : {
@@ -2604,6 +2614,7 @@
       }
     },
     "Archive this episode in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4713,6 +4724,9 @@
         }
       }
     },
+    "Cover art for %@" : {
+
+    },
     "Cover Cloud" : {
       "localizations" : {
         "de" : {
@@ -4990,6 +5004,9 @@
         }
       }
     },
+    "Current and scheduled live items from subscribed podcasts will appear here." : {
+
+    },
     "Current caption" : {
       "localizations" : {
         "de" : {
@@ -5109,6 +5126,7 @@
 
     },
     "Currently live subscribed podcasts will appear here." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6945,6 +6963,7 @@
       }
     },
     "Export a clip from Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -7903,6 +7922,9 @@
         }
       }
     },
+    "Generating chapters" : {
+
+    },
     "Generating chapters, section %@…" : {
       "localizations" : {
         "de" : {
@@ -8691,16 +8713,6 @@
     },
     "If an episode is missing, refresh the show directly and check its latest published item and any visible feed or sign-in error. Scheduled work has no guaranteed interval." : {
 
-    },
-    "Opening a large library can take a few minutes. If the launch logo remains visible for more than five minutes, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Das Öffnen einer großen Mediathek kann einige Minuten dauern. Wenn das Startlogo länger als fünf Minuten sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
-          }
-        }
-      }
     },
     "Import / Export" : {
       "localizations" : {
@@ -9944,6 +9956,7 @@
       }
     },
     "Live %@, %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -10664,6 +10677,7 @@
       }
     },
     "Mark this played in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11301,6 +11315,7 @@
       }
     },
     "Move this episode to the end in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11794,6 +11809,7 @@
 
     },
     "Next chapter in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -11857,9 +11873,6 @@
           }
         }
       }
-    },
-    "Next predicted release: Unavailable" : {
-
     },
     "Next transcript match" : {
       "localizations" : {
@@ -13649,6 +13662,16 @@
         }
       }
     },
+    "Opening a large library can take a few minutes. If the launch logo remains visible for more than five minutes, use Copy Diagnostics or Share Diagnostics on the restoration screen. Keep Up Next installed; local restoration and iCloud upload status are separate." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Öffnen einer großen Mediathek kann einige Minuten dauern. Wenn das Startlogo länger als fünf Minuten sichtbar bleibt, verwende auf dem Wiederherstellungsbildschirm „Diagnosedaten kopieren“ oder „Diagnosedaten teilen“. Lass Up Next installiert; die lokale Wiederherstellung und der iCloud-Upload-Status sind voneinander unabhängig."
+          }
+        }
+      }
+    },
     "Opens a file picker and copies the selected audio file into the sideloading folder" : {
       "localizations" : {
         "de" : {
@@ -13681,7 +13704,11 @@
         }
       }
     },
+    "Opens current and scheduled live podcasts" : {
+
+    },
     "Opens currently live subscribed podcasts" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14170,6 +14197,7 @@
 
     },
     "Pause playback in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14698,6 +14726,7 @@
       }
     },
     "Play my Commute playlist in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14868,6 +14897,7 @@
       }
     },
     "Play the latest episode of this podcast" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14916,6 +14946,7 @@
       }
     },
     "Play this episode in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14932,6 +14963,7 @@
       }
     },
     "Play this episode next in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14964,6 +14996,7 @@
       }
     },
     "Play Up Next at 1.5 times" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -17528,6 +17561,7 @@
       }
     },
     "Refresh this podcast in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -18259,6 +18293,7 @@
       }
     },
     "Restart this chapter in Up Next" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -19653,6 +19688,7 @@
       }
     },
     "Share Image" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20438,6 +20474,7 @@
       }
     },
     "Siri wording can vary. The examples below are suggestions; the same capabilities are also available as actions in Shortcuts." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21667,6 +21704,7 @@
       }
     },
     "Stop Up Next after this episode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -21683,6 +21721,7 @@
       }
     },
     "Stop Up Next in 20 minutes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -24273,6 +24312,9 @@
         }
       }
     },
+    "Unable to load Up Next" : {
+
+    },
     "Unarchive" : {
       "localizations" : {
         "de" : {
@@ -25589,6 +25631,7 @@
       }
     },
     "What is next in Up Next?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -25608,6 +25651,7 @@
 
     },
     "What podcasts are live in Up Next?" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

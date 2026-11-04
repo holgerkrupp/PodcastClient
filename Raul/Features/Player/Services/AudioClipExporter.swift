@@ -229,7 +229,7 @@ enum AudioClipExporter {
             : try PodcastNetworkPrivacyPolicy.wireURL(for: videoURL, purpose: .audio)
         let asset = AVURLAsset(
             url: protectedVideoURL,
-            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+            options: ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0"]
         )
         let composition = AVMutableComposition()
         let sanitizedPlaybackRate = max(Double(playbackRate), 0.1)
@@ -506,7 +506,7 @@ enum AudioClipExporter {
         let protectedAudioURL = audioURL.isFileURL
             ? audioURL
             : try PodcastNetworkPrivacyPolicy.wireURL(for: audioURL, purpose: .audio)
-        let options = ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)"]
+        let options = ["AVURLAssetHTTPUserAgentKey": "UpNext/1.0"]
         let videoAsset = AVURLAsset(url: protectedVideoURL, options: options)
         let audioAsset = AVURLAsset(url: protectedAudioURL, options: options)
 

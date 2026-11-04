@@ -112,7 +112,7 @@ final class PodcastNetworkPrivacyPolicyTests: XCTestCase {
         let sent = try XCTUnwrap(capturedRequest)
         XCTAssertEqual(URLComponents(url: try XCTUnwrap(sent.url), resolvingAgainstBaseURL: false)?.percentEncodedQuery, "token=keep")
         XCTAssertNil(sent.value(forHTTPHeaderField: "Referer"))
-        XCTAssertEqual(sent.value(forHTTPHeaderField: "User-Agent"), "UpNext/1.0 (+https://github.com/holgerkrupp/PodcastClient)")
+        XCTAssertEqual(sent.value(forHTTPHeaderField: "User-Agent"), "UpNext/1.0")
         XCTAssertEqual(sent.value(forHTTPHeaderField: "Authorization"), "Bearer fake-test-token")
         XCTAssertEqual(sent.value(forHTTPHeaderField: "Range"), "bytes=0-4")
         XCTAssertEqual(sent.value(forHTTPHeaderField: "If-None-Match"), "fake-etag")
