@@ -716,6 +716,19 @@ actor StorageManagementService {
 }
 
 extension StorageManagementService {
+    /// Every store and its sidecars: the library, UserState, PodcastCache and the
+    /// runtime library. Listing only `SharedDatabase.sqlite` let cleanup delete the rest.
+    static func isStoreFile(_ name: String) -> Bool {
+        name.contains(".sqlite")
+    }
+
+    /// The App Group container also holds the stores, preferences, the write outbox
+    /// and the share extension's pending imports. Cleanup there is limited to
+    /// files that belong to an episode.
+    static func isManagedFile(in root: StorageFileRoot, belongsToEpisode: Bool) -> Bool {
+        root != .shared || belongsToEpisode
+    }
+
     static func filesOutsideUpNext(in report: StorageUsageReport) -> [StorageFileEntry] {
         report.files.filter { file in
             guard let episodeURLString = file.associatedEpisodeURL?.absoluteString else {
@@ -782,7 +795,6 @@ private extension StorageManagementService {
             return []
         }
 
-        let storeFileName = ModelContainerManager.sharedStoreURL?.lastPathComponent ?? "SharedDatabase.sqlite"
         let resourceKeys: Set<URLResourceKey> = [
             .isRegularFileKey,
             .totalFileAllocatedSizeKey,
@@ -797,7 +809,7 @@ private extension StorageManagementService {
         )) ?? []
 
         return urls.compactMap { url in
-            guard url.lastPathComponent.hasPrefix(storeFileName) else { return nil }
+            guard isStoreFile(url.lastPathComponent) else { return nil }
             let values = try? url.resourceValues(forKeys: resourceKeys)
             guard values?.isRegularFile == true else { return nil }
 
@@ -856,6 +868,9 @@ private extension StorageManagementService {
                 }
 
                 let association = associationsByFileURL[standardizedURL]
+                guard isManagedFile(in: root, belongsToEpisode: association != nil) else {
+                    continue
+                }
                 entries.append(
                     StorageFileEntry(
                         url: standardizedURL,

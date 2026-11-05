@@ -96,6 +96,7 @@ enum StoreBootstrapEvidence {
     /// deletes nothing, and a legacy store that comes back is used again.
     static func continueWithoutLegacyLibrary(defaults: UserDefaults = .standard) {
         defaults.set(true, forKey: freshSplitInstallReadyKey)
+        StoreLineage.acceptLastMissingStores(defaults: defaults)
     }
 
     static func mayHaveExistingLibrary(
@@ -127,9 +128,9 @@ enum StoreBootstrapError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .existingLibraryUnavailable:
-            return "Up Next could not access this installation’s existing library. Startup did not delete or replace it. Keep Up Next installed and try again when storage is available."
+            return String(localized: "Up Next could not access this installation’s existing library. Startup did not delete or replace it. Keep Up Next installed and try again when storage is available.")
         case .persistentStoreUnavailable:
-            return "Up Next could not access persistent storage. Startup did not reset or replace a store. Keep Up Next installed and try again when storage is available."
+            return String(localized: "Up Next could not access persistent storage. Startup did not reset or replace a store. Keep Up Next installed and try again when storage is available.")
         }
     }
 }
@@ -191,8 +192,36 @@ enum StoreSplitPendingImportLedger {
 
 /// Absence must be established by a successful directory read, not fileExists
 /// (which also returns false for protected/unavailable storage).
+/// The directory was read, and stores this installation opened before are not in
+/// it. Unlike an unreadable directory, retrying won't bring them back.
+struct StoreLineageMissingStores: Error, Equatable {
+    let names: [String]
+}
+
 enum StoreLineage {
     static let key = "storeSplit.openedPersistentStores.v1"
+    private static let lastMissingKey = "storeSplit.lastMissingStores.v1"
+    private static let acceptedMissingKey = "storeSplit.acceptedMissingStores.v1"
+
+    /// Stores the owner chose to continue without. A name is dropped once its
+    /// file exists again, so a later loss stops startup again.
+    static func acceptedMissingStores(defaults: UserDefaults = .standard) -> Set<String> {
+        Set(defaults.stringArray(forKey: acceptedMissingKey) ?? [])
+    }
+
+    static func recordMissingStores(_ names: [String], defaults: UserDefaults = .standard) {
+        defaults.set(names, forKey: lastMissingKey)
+    }
+
+    static func acceptLastMissingStores(defaults: UserDefaults = .standard) {
+        let missing = defaults.stringArray(forKey: lastMissingKey) ?? []
+        defaults.set(Array(acceptedMissingStores(defaults: defaults).union(missing)), forKey: acceptedMissingKey)
+    }
+
+    static func forgetAcceptedStores(present files: Set<String>, defaults: UserDefaults = .standard) {
+        let stillMissing = acceptedMissingStores(defaults: defaults).subtracting(files)
+        defaults.set(Array(stillMissing), forKey: acceptedMissingKey)
+    }
 
     /// PodcastCache holds only what the feeds can restore, so losing it must not
     /// stop the app from opening.
@@ -232,8 +261,9 @@ enum StoreLineage {
     }
 
     private static func validate(files: Set<String>, expected: [String]) throws {
-        for name in expected where !files.contains(name) {
-            throw PlaylistPersistenceError.storageUnavailable
+        let missing = expected.filter { files.contains($0) == false }
+        if missing.isEmpty == false {
+            throw StoreLineageMissingStores(names: missing)
         }
         if !files.contains("SharedDatabase.sqlite"),
            files.contains("SharedDatabase.sqlite-wal") || files.contains("SharedDatabase.sqlite-shm") {
@@ -1053,14 +1083,26 @@ class ModelContainerManager: ObservableObject {
             // Read the App Group directory successfully before making any
             // store-selection decision. `fileExists` returns false for several
             // inaccessible-storage cases, so it cannot establish a fresh install.
+            let acceptedMissing = StoreLineage.acceptedMissingStores()
             let files: Set<String>
             do {
                 files = try StoreLineage.directoryContentsWithRetry(
                     directory: { Self.sharedContainerURL },
-                    expected: StoreLineage.requiredStores(expectedStores)
+                    expected: StoreLineage.requiredStores(expectedStores).filter { acceptedMissing.contains($0) == false }
                 )
+            } catch let missing as StoreLineageMissingStores {
+                // Gone, not unreadable: retrying can't help. Offer the owner the
+                // choice to continue from iCloud instead of stopping on every launch.
+                StoreLineage.recordMissingStores(missing.names)
+                CrashBreadcrumbs.shared.record("store_lineage_missing", details: missing.names.joined(separator: ","))
+                throw StoreBootstrapError.existingLibraryUnavailable
             } catch {
                 throw StoreBootstrapError.persistentStoreUnavailable
+            }
+            StoreLineage.forgetAcceptedStores(present: files)
+            // A build record without its file would open an empty library as finished.
+            if files.contains("LibraryRuntime.sqlite") == false {
+                StoreRuntimeProjection.forgetBuild()
             }
             let appGroupDefaults = UserDefaults(suiteName: Self.appGroupID)
             let hasFreshSplitInstallRecord = StoreBootstrapEvidence.hasFreshSplitInstallRecord(

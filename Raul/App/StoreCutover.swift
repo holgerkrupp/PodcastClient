@@ -292,6 +292,14 @@ enum StoreRuntimeProjection {
         return passes >= 3
     }
 
+    /// Back to the state of a device that never built one.
+    nonisolated static func forgetBuild() {
+        for key in [readyVersionKey, fileVersionKey, cursorKey, feedFillDoneKey, feedFillPassesKey,
+                    transcriptBackfillPendingKey, libraryBackfillCursorKey] {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
     /// An upgraded device reads its own library, so a projection from an earlier
     /// build is unused. This file is derived; nothing else is removed here.
     nonisolated static func discardUnused() {

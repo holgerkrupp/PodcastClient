@@ -24595,6 +24595,38 @@
         }
       }
     },
+    "Up Next could not access persistent storage. Startup did not reset or replace a store. Keep Up Next installed and try again when storage is available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next konnte nicht auf den dauerhaften Speicher zugreifen. Beim Start wurde keine Datenbank zurückgesetzt oder ersetzt. Lass Up Next installiert und versuche es erneut, wenn der Speicher verfügbar ist."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next n’a pas pu accéder au stockage permanent. Le démarrage n’a réinitialisé ni remplacé aucune base de données. Gardez Up Next installé et réessayez lorsque le stockage sera disponible."
+          }
+        }
+      }
+    },
+    "Up Next could not access this installation’s existing library. Startup did not delete or replace it. Keep Up Next installed and try again when storage is available." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next konnte nicht auf die vorhandene Mediathek dieser Installation zugreifen. Beim Start wurde nichts gelöscht oder ersetzt. Lass Up Next installiert und versuche es erneut, wenn der Speicher verfügbar ist."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Up Next n’a pas pu accéder à la bibliothèque existante de cette installation. Le démarrage ne l’a ni supprimée ni remplacée. Gardez Up Next installé et réessayez lorsque le stockage sera disponible."
+          }
+        }
+      }
+    },
     "Up Next could not open its library." : {
       "localizations" : {
         "de" : {
