@@ -816,6 +816,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var cutoverProgress: StoreCutoverProgress?
     private var pendingRuntimeContainer: ModelContainer?
     private var analyticsRebuildTask: Task<Void, Never>?
+    private var analyticsRebuildPending = false
     private var launchStoreCleanupTask: Task<Void, Never>?
     private var libraryFillTask: Task<Bool, Never>?
     private static let maximumForegroundDrainPasses = 160
@@ -1085,7 +1086,7 @@ class ModelContainerManager: ObservableObject {
             // store-selection decision. `fileExists` returns false for several
             // inaccessible-storage cases, so it cannot establish a fresh install.
             let acceptedMissing = StoreLineage.acceptedMissingStores()
-            let files: Set<String>
+            var files: Set<String>
             do {
                 files = try StoreLineage.directoryContentsWithRetry(
                     directory: { Self.sharedContainerURL },
@@ -1286,6 +1287,14 @@ class ModelContainerManager: ObservableObject {
         }
         analyticsRebuildTask = task
         await task.value
+        if task.isCancelled {
+            // Rebuilding is idempotent: the next foreground pass starts by
+            // replacing the derived rows again, so a checkpointed partial pass
+            // can safely resume without changing authoritative listening data.
+            analyticsRebuildPending = true
+        } else {
+            analyticsRebuildPending = false
+        }
         analyticsRebuildTask = nil
     }
 
@@ -2453,6 +2462,11 @@ class ModelContainerManager: ObservableObject {
         optionalSplitStoreWritesSuspendedAt = nil
         exporterPressureEvents = 0
         exportWasInProgress = false
+        if analyticsRebuildPending {
+            Task(priority: .utility) { [weak self] in
+                await self?.rebuildAllAnalytics()
+            }
+        }
         Task(priority: .utility) { [weak self] in
             async let transcripts: Void? = self?.runLibraryBackfillIfNeeded()
             async let writes: Void? = self?.retryPortableWritesIfSafe()

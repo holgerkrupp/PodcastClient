@@ -815,10 +815,14 @@ actor PlaySessionTrackerActor {
     }
 
     func rebuildListeningStats() {
+        guard Task.isCancelled == false else { return }
         let preservedSummaries = playSessionSummarySnapshots()
+        guard Task.isCancelled == false else { return }
 
         replaceListeningStatsFromRawSessions()
+        guard Task.isCancelled == false else { return }
         rebuildSummariesFromListeningStats(preservedSummaries: preservedSummaries)
+        guard Task.isCancelled == false else { return }
         modelContext.saveIfNeeded()
         repairPlaybackRateSavingsIfNeeded()
     }
@@ -828,6 +832,7 @@ actor PlaySessionTrackerActor {
     /// buckets or a previous reconcile from being counted twice.
     private func replaceListeningStatsFromRawSessions() {
         while true {
+            guard Task.isCancelled == false else { return }
             var descriptor = FetchDescriptor<ListeningStat>()
             descriptor.fetchLimit = analyticsBatchSize
             let page = (try? modelContext.fetch(descriptor)) ?? []
@@ -839,6 +844,7 @@ actor PlaySessionTrackerActor {
 
         var offset = 0
         while true {
+            guard Task.isCancelled == false else { return }
             var descriptor = FetchDescriptor<PlaySession>(
                 sortBy: [SortDescriptor(\PlaySession.startTime, order: .forward)]
             )
@@ -858,6 +864,7 @@ actor PlaySessionTrackerActor {
         var offset = 0
 
         while true {
+            guard Task.isCancelled == false else { return snapshots }
             var descriptor = FetchDescriptor<PlaySessionSummary>(
                 sortBy: [SortDescriptor(\.periodStart, order: .forward)]
             )
@@ -980,7 +987,9 @@ actor PlaySessionTrackerActor {
 
     private func rebuildSummariesFromListeningStats(preservedSummaries: [PlaySessionSummarySnapshot] = []) {
         var aggregations = summaryAggregationsFromListeningStats()
+        guard Task.isCancelled == false else { return }
         restoreFallbackSummaries(from: preservedSummaries, into: &aggregations)
+        guard Task.isCancelled == false else { return }
         replaceSummaries(with: aggregations)
     }
 
@@ -989,6 +998,7 @@ actor PlaySessionTrackerActor {
         var offset = 0
 
         while true {
+            guard Task.isCancelled == false else { return aggregations }
             var descriptor = FetchDescriptor<ListeningStat>(
                 sortBy: [SortDescriptor(\.startOfHour, order: .forward)]
             )
@@ -1108,6 +1118,7 @@ actor PlaySessionTrackerActor {
     /// Replaces year rows with the sum of their months, which match session history.
     /// Does nothing without month rows: the existing year rows are then all there is.
     func rebuildYearSummariesFromMonths() {
+        guard Task.isCancelled == false else { return }
         let monthKind = PlaySessionSummaryPeriod.month.rawValue
         let yearKind = PlaySessionSummaryPeriod.year.rawValue
         let months = (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>(
@@ -1117,6 +1128,7 @@ actor PlaySessionTrackerActor {
         struct Key: Hashable { let start: Date; let feed: URL? }
         var years: [Key: PlaySessionSummary] = [:]
         for month in months {
+            guard Task.isCancelled == false else { return }
             guard let start = month.periodStart else { continue }
             let key = Key(start: summaryPeriodStart(for: .year, containing: start), feed: month.podcastFeed)
             let year = years[key] ?? PlaySessionSummary(
@@ -1137,6 +1149,7 @@ actor PlaySessionTrackerActor {
             year.activeHourCount = (year.activeHourCount ?? 0) + (month.activeHourCount ?? 0)
             years[key] = year
         }
+        guard Task.isCancelled == false else { return }
         for row in (try? modelContext.fetch(FetchDescriptor<PlaySessionSummary>(
             predicate: #Predicate { $0.periodKind == yearKind }
         ))) ?? [] {
