@@ -140,11 +140,19 @@ enum ListeningTotalsDiagnostics {
             .string(forKey: key) ?? "not captured"
     }
 
-    nonisolated static func capture(userState: ModelContainer, library: ModelContainer?) {
+    nonisolated static func capture(
+        userState: ModelContainer,
+        library: ModelContainer?,
+        appState: String = "unknown"
+    ) {
+        let startedAt = Date()
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        var fetchedRows = 0
         func hours(_ seconds: Double) -> String { "\(Int(seconds / 3_600))h" }
         var parts: [String] = []
         let account = ModelContext(userState)
         if let baselines = try? account.fetch(FetchDescriptor<ListeningBaselineSync>()) {
+            fetchedRows += baselines.count
             let perFeed = baselines.filter { $0.feedURL != ListeningBaselineSync.allPodcastsFeedURL }
             let counted = ListeningBaselineSync.oncePerFeed(perFeed)
             parts.append("baseline rows=\(baselines.count) sum=\(hours(counted.reduce(0) { $0 + $1.totalSeconds })) rawSum=\(hours(perFeed.reduce(0) { $0 + $1.totalSeconds }))")
@@ -167,6 +175,7 @@ enum ListeningTotalsDiagnostics {
            let subscriptions = try? account.fetch(FetchDescriptor<SubscriptionSync>(
                predicate: #Predicate { $0.isSubscribed }
            )) {
+            fetchedRows += podcasts.count + subscriptions.count
             let known = Set(podcasts.compactMap(\.feed).flatMap(\.podcastFeedComparisonKeys))
             let unknown = subscriptions.filter { row in
                 guard let url = URL(string: row.feedURL) else { return true }
@@ -178,6 +187,7 @@ enum ListeningTotalsDiagnostics {
             parts.append("subscriptions library=\(podcasts.count) librarySubscribed=\(podcasts.filter(\.isSubscribed).count) active=\(subscriptions.count) notInLibrary=\(unknown.count) byYear=\(years)")
         }
         if let history = try? account.fetch(FetchDescriptor<ListeningHistorySync>()) {
+            fetchedRows += history.count
             let migrated = history.filter(\.isLegacyMigrated)
             func total(_ rows: [ListeningHistorySync]) -> Double {
                 rows.reduce(0) { $0 + max(0, $1.listenedSeconds) }
@@ -186,6 +196,7 @@ enum ListeningTotalsDiagnostics {
         }
         if let library,
            let summaries = try? ModelContext(library).fetch(FetchDescriptor<PlaySessionSummary>()) {
+            fetchedRows += summaries.count
             for (kind, rows) in Dictionary(grouping: summaries, by: { $0.periodKind ?? "?" }).sorted(by: { $0.key < $1.key }) {
                 var best: [String: Double] = [:]
                 for row in rows {
@@ -199,6 +210,12 @@ enum ListeningTotalsDiagnostics {
         }
         (UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard)
             .set(parts.joined(separator: "; "), forKey: key)
+        let cpuDelta = max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt)
+        let stores = library == nil ? "user_state" : "user_state,shared_database"
+        let completedAt = Date()
+        AppDiagnostics.log(
+            "database_work operation=listening_totals_diagnostics source=support_diagnostics stores=\(stores) started_at=\(startedAt.formatted(.iso8601)) completed_at=\(completedAt.formatted(.iso8601)) duration_ms=\(Int(completedAt.timeIntervalSince(startedAt) * 1_000)) records=\(fetchedRows) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) app_state=\(appState) cancelled=false"
+        )
     }
 }
 

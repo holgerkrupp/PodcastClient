@@ -206,6 +206,17 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         storeMonitor: StoreCloudKitActivityMonitor
     ) async {
         let now = Date()
+        // This is an explicit user action. The listening totals calculation is
+        // intentionally kept out of launch maintenance because it reads every
+        // history row and several whole-library tables.
+        if let userState = manager.preparedUserStateContainer {
+            let library = manager.runtimeProjectsFromCache ? nil : manager.preparedContainer
+            ListeningTotalsDiagnostics.capture(
+                userState: userState,
+                library: library,
+                appState: manager.databaseWorkAppState
+            )
+        }
         await StoreLaunchDiagnostics.refreshLibraryContentsIfDue()
         let countSnapshot = await SupportDiagnosticsStoreCounter(
             runtimeContainer: modelContainer,

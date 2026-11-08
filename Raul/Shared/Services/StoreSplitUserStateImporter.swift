@@ -61,6 +61,7 @@ actor StoreSplitUserStateImporter {
     /// Rescanning a feed already walked end to end cannot find anything new.
     private var fullyScannedFeeds: Set<String> = []
 #if DEBUG
+    nonisolated(unsafe) static var debugPodcastIndexBuildCount = 0
     /// Test hook: how many last-resort whole-feed scans have run in this process.
     /// The negative cache above is the only thing that keeps this bounded, so a
     /// regression in it shows up here and nowhere else — the import's output is
@@ -163,7 +164,7 @@ actor StoreSplitUserStateImporter {
         await awaitIdleWindow()
         // Episode resolution's last-resort feed scan needs this index; without it
         // history for episodes whose GUID/URL lookup misses would be dropped.
-        buildPodcastIndex()
+        await buildPodcastIndex()
 
         await applyListeningHistory(result: &result)
         saveLegacyChanges(phase: "recovery_listening_history", result: &result)
@@ -198,7 +199,7 @@ actor StoreSplitUserStateImporter {
             .preferences,
             .listeningHistory
         ]).isEmpty == false
-        let podcasts = needsPodcastIndex ? buildPodcastIndex() : []
+        let podcasts = needsPodcastIndex ? await buildPodcastIndex() : []
         // A failed index read must not look like an empty library: doing so
         // could create duplicate podcasts or commit incomplete projections.
         guard sourceReadFailed == false else { return result }
@@ -424,7 +425,12 @@ actor StoreSplitUserStateImporter {
     /// Episode resolution's last-resort feed scan depends on this map, so any
     /// entry point that projects episode-keyed rows has to build it first.
     @discardableResult
-    private func buildPodcastIndex() -> [Podcast] {
+    private func buildPodcastIndex() async -> [Podcast] {
+#if DEBUG
+        Self.debugPodcastIndexBuildCount += 1
+#endif
+        let startedAt = Date()
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
         let podcasts: [Podcast]
         do {
             podcasts = try legacyContext.fetch(FetchDescriptor<Podcast>())
@@ -454,6 +460,14 @@ actor StoreSplitUserStateImporter {
                 }
             }
         }
+        let cpuDelta = max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt)
+        let appState = await MainActor.run {
+            ModelContainerManager.shared.databaseWorkAppState
+        }
+        let completedAt = Date()
+        AppDiagnostics.log(
+            "database_work operation=user_state_import_podcast_index source=user_state_reconcile stores=shared_database started_at=\(startedAt.formatted(.iso8601)) completed_at=\(completedAt.formatted(.iso8601)) duration_ms=\(Int(completedAt.timeIntervalSince(startedAt) * 1_000)) records=\(podcasts.count) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) app_state=\(appState) cancelled=\(Task.isCancelled)"
+        )
         return podcasts
     }
 
@@ -2034,8 +2048,19 @@ actor StoreSplitUserStateImporter {
         // different episode of the same feed must not pay for it again.
         var remaining = expectedKeys
         var offset = 0
+        let startedAt = Date()
+        let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        var scannedRecords = 0
         while remaining.isEmpty == false {
-            if Task.isCancelled { return }
+            if Task.isCancelled {
+                await logFeedScan(
+                    startedAt: startedAt,
+                    cpuStartedAt: cpuStartedAt,
+                    records: scannedRecords,
+                    cancelled: true
+                )
+                return
+            }
             await awaitIdleWindow()
             let reachedEnd = autoreleasepool { () -> Bool in
                 var descriptor = FetchDescriptor<Episode>(
@@ -2060,6 +2085,7 @@ actor StoreSplitUserStateImporter {
                     return true
                 }
                 guard batch.isEmpty == false else { return true }
+                scannedRecords += batch.count
 
                 for episode in batch {
                     let identity = episode.stableEpisodeIdentity
@@ -2078,9 +2104,37 @@ actor StoreSplitUserStateImporter {
                 // Walked to the end of the feed, so the map now holds every
                 // identity it can offer.
                 fullyScannedFeeds.insert(normalizedFeedURL)
+                await logFeedScan(
+                    startedAt: startedAt,
+                    cpuStartedAt: cpuStartedAt,
+                    records: scannedRecords,
+                    cancelled: false
+                )
                 return
             }
         }
+        await logFeedScan(
+            startedAt: startedAt,
+            cpuStartedAt: cpuStartedAt,
+            records: scannedRecords,
+            cancelled: false
+        )
+    }
+
+    private func logFeedScan(
+        startedAt: Date,
+        cpuStartedAt: TimeInterval,
+        records: Int,
+        cancelled: Bool
+    ) async {
+        let cpuDelta = max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt)
+        let appState = await MainActor.run {
+            ModelContainerManager.shared.databaseWorkAppState
+        }
+        let completedAt = Date()
+        AppDiagnostics.log(
+            "database_work operation=user_state_episode_feed_scan source=user_state_reconcile stores=shared_database started_at=\(startedAt.formatted(.iso8601)) completed_at=\(completedAt.formatted(.iso8601)) duration_ms=\(Int(completedAt.timeIntervalSince(startedAt) * 1_000)) records=\(records) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) app_state=\(appState) cancelled=\(cancelled)"
+        )
     }
 
     private func decodeStableIdentityKey(

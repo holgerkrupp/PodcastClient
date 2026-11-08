@@ -226,6 +226,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         task.expirationHandler = {
+            CrashBreadcrumbs.shared.record(
+                "background_task_expired",
+                details: "operation=store_split_migration"
+            )
             processingTask.cancel()
         }
     }
@@ -699,6 +703,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         task.expirationHandler = {
+            CrashBreadcrumbs.shared.record(
+                "background_task_expired",
+                details: "operation=feed_processing"
+            )
             processingTask.cancel()
         }
     }

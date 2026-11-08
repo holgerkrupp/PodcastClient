@@ -816,6 +816,7 @@ class ModelContainerManager: ObservableObject {
     @Published private(set) var cutoverProgress: StoreCutoverProgress?
     private var pendingRuntimeContainer: ModelContainer?
     private var analyticsRebuildTask: Task<Void, Never>?
+    private var launchStoreCleanupTask: Task<Void, Never>?
     private var libraryFillTask: Task<Bool, Never>?
     private static let maximumForegroundDrainPasses = 160
     private static let maximumQueueForPlaybackWriteRebuild = 256
@@ -2095,6 +2096,10 @@ class ModelContainerManager: ObservableObject {
     }
 
     func runLaunchStoreMaintenance() async {
+        guard heavyStoreWorkMayRunInCurrentAppState else {
+            AppDiagnostics.log("database_work operation=launch_store_maintenance source=launch app_state=background_without_grant skipped=true")
+            return
+        }
 #if DEBUG
         // The unsigned simulator XCTest host has no usable CloudKit container.
         // Test cases create their own in-memory stores and must not start the
@@ -2109,6 +2114,12 @@ class ModelContainerManager: ObservableObject {
         }
 #endif
         await prepareSplitStores()
+        // Store preparation may suspend while the user backgrounds the app.
+        // Recheck before any optional library scans or reconciliation work.
+        guard heavyStoreWorkMayRunInCurrentAppState else {
+            AppDiagnostics.log("database_work operation=launch_store_maintenance source=launch app_state=background_without_grant skipped=true phase=after_store_preparation")
+            return
+        }
         if let userStateContainer = preparedUserStateContainer {
             await StoreSplitPlaylistPresenceStore.publish(
                 modelContainer: userStateContainer
@@ -2118,13 +2129,20 @@ class ModelContainerManager: ObservableObject {
         await splitStoreCoordinator.scheduleLaunchWork()
         if let userState = preparedUserStateContainer {
             let library = runtimeProjectsFromCache ? nil : preparedContainer
-            Task.detached(priority: .background) {
+            // Baseline repair and stale-subscription cleanup are one-time, small
+            // metadata operations. ListeningTotalsDiagnostics is intentionally
+            // excluded here: it walks the full listening history and belongs to
+            // the explicit Support Diagnostics capture action.
+            launchStoreCleanupTask?.cancel()
+            let cleanupTask = Task.detached(priority: .utility) {
+                guard Task.isCancelled == false else { return }
                 if let library {
                     StoreCutoverState.repairInflatedBaselineIfNeeded(library: library, userState: userState)
+                    guard Task.isCancelled == false else { return }
                     StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
                 }
-                ListeningTotalsDiagnostics.capture(userState: userState, library: library)
             }
+            launchStoreCleanupTask = cleanupTask
         }
         Task(priority: .utility) { [weak self] in
             async let transcripts: Void? = self?.runLibraryBackfillIfNeeded()
@@ -2280,6 +2298,8 @@ class ModelContainerManager: ObservableObject {
         // which has a budget and an expiration handler.
         deferredMigrationTask?.cancel()
         libraryFillTask?.cancel()
+        analyticsRebuildTask?.cancel()
+        launchStoreCleanupTask?.cancel()
         Task { await StoreSplitFeedCacheWriter.flushRequestedProjections() }
         userStateImportTask?.cancel()
         aiContentImportTask?.cancel()
@@ -2308,6 +2328,14 @@ class ModelContainerManager: ObservableObject {
 #else
         return true
 #endif
+    }
+
+    var databaseWorkAppState: String {
+        if isRunningBackgroundProcessingTask { return "background_processing_grant" }
+#if canImport(UIKit)
+        if UIApplication.shared.applicationState == .background { return "background" }
+#endif
+        return "foreground"
     }
 
     /// Ordinary model writes are not allowed to begin after the app has entered

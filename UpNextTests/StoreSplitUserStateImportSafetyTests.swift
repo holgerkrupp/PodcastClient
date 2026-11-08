@@ -57,4 +57,27 @@ final class StoreSplitUserStateImportSafetyTests: XCTestCase {
         let podcast = try XCTUnwrap(ModelContext(runtime).fetch(FetchDescriptor<Podcast>()).first)
         XCTAssertEqual(podcast.settings?.autoDownload, true)
     }
+
+    @MainActor
+    func testRepeatedNoChangeImportsDoNotFetchTheLibraryPodcastIndex() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        for index in 0..<300 {
+            runtime.mainContext.insert(Podcast(feed: URL(string: "https://example.com/\(index).xml")!))
+        }
+        try runtime.mainContext.save()
+
+        StoreSplitUserStateImporter.debugPodcastIndexBuildCount = 0
+        for _ in 0..<3 {
+            let result = await StoreSplitUserStateImporter.apply(
+                legacyContainer: runtime,
+                userStateContainer: userState,
+                projectListeningHistoryToLegacy: false,
+                changedStreams: []
+            )
+            XCTAssertEqual(result.failed, 0)
+        }
+        XCTAssertEqual(StoreSplitUserStateImporter.debugPodcastIndexBuildCount, 0)
+        XCTAssertEqual(try ModelContext(runtime).fetchCount(FetchDescriptor<Podcast>()), 300)
+    }
 }
