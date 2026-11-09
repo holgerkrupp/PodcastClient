@@ -69,14 +69,12 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         XCTAssertEqual(retained.count, 1)
         XCTAssertEqual(retained.first?.id, sessionID)
         XCTAssertEqual(retained.first?.appVersion, "original")
-        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
+        XCTAssertEqual(try ModelContext(legacy).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
     }
 
     @MainActor
     func testDrainLeaseExcludesAnotherWorkerWithoutBlockingEnqueue() async throws {
         let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
-        let user = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
-        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
         let directory = try XCTUnwrap(FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: ModelContainerManager.appGroupID
         ))
@@ -88,13 +86,11 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         guard lease >= 0 else { return }
         defer { flock(lease, LOCK_UN); close(lease) }
         XCTAssertEqual(flock(lease, LOCK_EX | LOCK_NB), 0)
-        try StoreSplitMissingEpisodeLedger.enqueue([reference(.episodeState, id: "state")], cacheContainer: cache)
-        let competing = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache
-        )
+        try StoreSplitMissingEpisodeLedger.enqueue([reference(.episodeState, id: "state")], libraryContainer: legacy)
+        let competing = await StoreSplitMissingEpisodeRetryService.runPage(libraryContainer: legacy)
         XCTAssertEqual(competing.failed, 1)
         XCTAssertEqual(competing.examined, 0)
-        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache).count, 1)
+        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: legacy).count, 1)
     }
 
     @MainActor
@@ -128,9 +124,9 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
 
         try StoreSplitMissingEpisodeLedger.enqueue([
             reference(.episodeState, id: state.id, digest: StoreSplitMissingEpisodeFingerprint.episodeState(state))
-        ], cacheContainer: cache)
+        ], libraryContainer: legacy)
         let retried = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache, now: timestamp
+            libraryContainer: legacy, now: timestamp
         )
         XCTAssertEqual(retried.failed, 0)
         XCTAssertTrue(retried.projectionBlocked)
@@ -151,7 +147,7 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         saved = try XCTUnwrap(ModelContext(legacy).fetch(FetchDescriptor<Episode>()).first?.metaData)
         XCTAssertEqual(saved.playPosition, 80)
         let equalRetry = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache,
+            libraryContainer: legacy,
             now: timestamp.addingTimeInterval(901)
         )
         XCTAssertEqual(equalRetry.failed, 0)
@@ -186,7 +182,7 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         )
         XCTAssertEqual(result.failed, 0)
         XCTAssertEqual(result.unresolvedStreams, [.episodeState, .bookmarks])
-        let page = try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache)
+        let page = try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: legacy)
         XCTAssertEqual(Set(page.map(\.stream)), [.episodeState, .bookmarks])
     }
 
@@ -211,7 +207,7 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         )
         XCTAssertEqual(result.failed, 0)
         XCTAssertTrue(result.unresolvedStreams.contains(.episodeState))
-        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 201)
+        XCTAssertEqual(try ModelContext(legacy).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 201)
     }
 
     @MainActor
@@ -219,10 +215,9 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let cacheURL = directory.appendingPathComponent("cache.sqlite")
-        let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let libraryURL = directory.appendingPathComponent("SharedDatabase.sqlite")
+        var legacy: ModelContainer? = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
         let user = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
-        let cache = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
         let bookmarkID = UUID().uuidString
         let state = EpisodeStateSync(feedURL: feed, episodeID: episodeID, playPosition: 42,
                                      maxPlayPosition: 45, updatedAt: timestamp)
@@ -234,29 +229,30 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         try StoreSplitMissingEpisodeLedger.enqueue([
             reference(.episodeState, id: state.id, digest: StoreSplitMissingEpisodeFingerprint.episodeState(state)),
             reference(.bookmarks, id: bookmarkID, digest: StoreSplitMissingEpisodeFingerprint.bookmark(bookmark))
-        ], cacheContainer: cache)
+        ], libraryContainer: try XCTUnwrap(legacy))
 
         let first = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache, now: timestamp
+            libraryContainer: try XCTUnwrap(legacy), now: timestamp
         )
         XCTAssertEqual(first.postponed, 2)
         XCTAssertEqual(first.applied, 0)
 
         let podcast = Podcast(feed: URL(string: feed)!)
         let episode = Episode(guid: "historical", title: "Historical", url: URL(string: "https://example.com/audio.mp3")!, podcast: podcast)
-        legacy.mainContext.insert(podcast)
-        legacy.mainContext.insert(episode)
-        try legacy.mainContext.save()
-        let reopened = try ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
+        try XCTUnwrap(legacy).mainContext.insert(podcast)
+        try XCTUnwrap(legacy).mainContext.insert(episode)
+        try XCTUnwrap(legacy).mainContext.save()
+        legacy = nil
+        let reopened = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
         let retry = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: reopened,
+            libraryContainer: reopened,
             now: timestamp.addingTimeInterval(901)
         )
         XCTAssertEqual(retry.failed, 0)
         XCTAssertTrue(retry.projectionBlocked)
         XCTAssertEqual(retry.applied, 0)
-        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: reopened, now: .distantFuture).count, 2)
-        let target = ModelContext(legacy)
+        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: reopened, now: .distantFuture).count, 2)
+        let target = ModelContext(reopened)
         let savedEpisode = try XCTUnwrap(target.fetch(FetchDescriptor<Episode>()).first)
         XCTAssertNotEqual(savedEpisode.metaData?.playPosition, 42)
         XCTAssertTrue(try target.fetch(FetchDescriptor<Bookmark>()).isEmpty)
@@ -264,24 +260,23 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
 
     @MainActor
     func testNewerRevisionSurvivesStaleAcknowledgementAndUnchangedEnqueue() throws {
-        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let old = reference(.episodeState, id: "state")
-        try StoreSplitMissingEpisodeLedger.enqueue([old], cacheContainer: cache)
-        let first = try XCTUnwrap(StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache).first)
-        try StoreSplitMissingEpisodeLedger.enqueue([old], cacheContainer: cache)
-        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache).first?.generation, first.generation)
+        try StoreSplitMissingEpisodeLedger.enqueue([old], libraryContainer: library)
+        let first = try XCTUnwrap(StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library).first)
+        try StoreSplitMissingEpisodeLedger.enqueue([old], libraryContainer: library)
+        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library).first?.generation, first.generation)
         try StoreSplitMissingEpisodeLedger.enqueue([
             reference(.episodeState, id: "state", updatedAt: timestamp.addingTimeInterval(10))
-        ], cacheContainer: cache)
-        XCTAssertFalse(try StoreSplitMissingEpisodeLedger.acknowledge(first, cacheContainer: cache))
-        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache).count, 1)
+        ], libraryContainer: library)
+        XCTAssertFalse(try StoreSplitMissingEpisodeLedger.acknowledge(first, libraryContainer: library))
+        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library).count, 1)
     }
 
     @MainActor
     func testSameTimestampPayloadChangeRemainsUnresolved() async throws {
         let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let user = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
-        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
         let podcast = Podcast(feed: URL(string: feed)!)
         let episode = Episode(guid: "historical", title: "Historical", url: URL(string: "https://example.com/audio.mp3")!, podcast: podcast)
         legacy.mainContext.insert(podcast)
@@ -292,16 +287,14 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         try user.mainContext.save()
         try StoreSplitMissingEpisodeLedger.enqueue([
             reference(.episodeState, id: state.id, digest: StoreSplitMissingEpisodeFingerprint.episodeState(state))
-        ], cacheContainer: cache)
+        ], libraryContainer: legacy)
         state.playPosition = 20
         try user.mainContext.save()
 
-        let result = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache, now: timestamp
-        )
+        let result = await StoreSplitMissingEpisodeRetryService.runPage(libraryContainer: legacy, now: timestamp)
         XCTAssertEqual(result.applied, 0)
         XCTAssertEqual(result.postponed, 1)
-        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
+        XCTAssertEqual(try ModelContext(legacy).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
         XCTAssertNotEqual(episode.metaData?.playPosition, 20)
     }
 
@@ -327,9 +320,9 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         try user.mainContext.save()
         try StoreSplitMissingEpisodeLedger.enqueue([
             reference(.episodeState, id: state.id, digest: StoreSplitMissingEpisodeFingerprint.episodeState(state))
-        ], cacheContainer: cache)
+        ], libraryContainer: legacy)
         let result = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache, now: timestamp
+            libraryContainer: legacy, now: timestamp
         )
         XCTAssertEqual(result.failed, 0)
         XCTAssertEqual(result.applied, 0)
@@ -338,41 +331,37 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         XCTAssertTrue(try ModelContext(legacy).fetch(FetchDescriptor<Episode>()).isEmpty)
         XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedChapter>()), 1)
         XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedTranscriptLine>()), 1)
-        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
+        XCTAssertEqual(try ModelContext(legacy).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
     }
 
     @MainActor
     func testCancellationAndUnsupportedReferenceRemainDurable() async throws {
         let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
-        let user = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
-        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
-        try StoreSplitMissingEpisodeLedger.enqueue([reference(.queueEntries, id: "queue")], cacheContainer: cache)
+        try StoreSplitMissingEpisodeLedger.enqueue([reference(.queueEntries, id: "queue")], libraryContainer: legacy)
         let cancelled = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache,
+            libraryContainer: legacy,
             shouldContinue: { false }
         )
         XCTAssertTrue(cancelled.cancelled)
-        let retry = await StoreSplitMissingEpisodeRetryService.runPage(
-            legacyContainer: legacy, userStateContainer: user, cacheContainer: cache, now: timestamp
-        )
+        let retry = await StoreSplitMissingEpisodeRetryService.runPage(libraryContainer: legacy, now: timestamp)
         XCTAssertEqual(retry.postponed, 1)
-        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
+        XCTAssertEqual(try ModelContext(legacy).fetchCount(FetchDescriptor<CachedMissingEpisodeReference>()), 1)
     }
 
     @MainActor
     func testPageBudgetAndPostponementAvoidStarvation() throws {
-        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let references = (0..<101).map { reference(.queueEntries, id: "queue-\($0)") }
-        try StoreSplitMissingEpisodeLedger.enqueue(Array(references.prefix(100)), cacheContainer: cache)
-        try StoreSplitMissingEpisodeLedger.enqueue(Array(references.suffix(1)), cacheContainer: cache)
-        let first = try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache, limit: 40, now: timestamp)
+        try StoreSplitMissingEpisodeLedger.enqueue(Array(references.prefix(100)), libraryContainer: library)
+        try StoreSplitMissingEpisodeLedger.enqueue(Array(references.suffix(1)), libraryContainer: library)
+        let first = try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library, limit: 40, now: timestamp)
         XCTAssertEqual(first.count, 40)
         let completed = try StoreSplitMissingEpisodeLedger.finishPage(
             projected: [], postponed: first, superseded: [],
-            now: timestamp, cacheContainer: cache
+            now: timestamp, libraryContainer: library
         )
         XCTAssertEqual(completed.postponed, 40)
-        let second = try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache, limit: 100, now: timestamp)
+        let second = try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library, limit: 100, now: timestamp)
         XCTAssertEqual(second.count, 61)
         XCTAssertTrue(Set(first.map(\.sourceRecordID)).isDisjoint(with: Set(second.map(\.sourceRecordID))))
     }
@@ -387,8 +376,6 @@ final class StoreSplitMissingEpisodeRetryTests: XCTestCase {
         let reopened = try ModelContainerManager.makeCacheContainer(storageURL: url)
         let feeds = try ModelContext(reopened).fetch(FetchDescriptor<CachedPodcast>())
         XCTAssertEqual(feeds.first?.feedURL, feed)
-        try StoreSplitMissingEpisodeLedger.enqueue([reference(.bookmarks, id: "old-store")], cacheContainer: reopened)
-        XCTAssertEqual(try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: reopened).count, 1)
     }
 
     @MainActor

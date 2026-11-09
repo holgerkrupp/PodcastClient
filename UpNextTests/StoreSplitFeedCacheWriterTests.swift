@@ -873,7 +873,7 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         XCTAssertTrue(projection.completed)
         XCTAssertEqual(projection.chaptersProcessed, 1, "projected chapters")
         XCTAssertEqual(projection.transcriptLinesProcessed, 1, "projected transcript lines")
-        XCTAssertEqual(projection.transcriptionRecordsProcessed, 1, "projected transcription records")
+        XCTAssertEqual(projection.transcriptionRecordsProcessed, 0, "transcription history stays in the library")
 
         let verification = ModelContext(cache)
         let cachedPodcast = try XCTUnwrap(
@@ -882,7 +882,7 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         XCTAssertEqual(cachedPodcast.cacheSchemaVersion, StoreSplitFeedCacheWriter.currentCacheSchemaVersion)
         XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedChapter>()), 1)
         XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedTranscriptLine>()), 1)
-        XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedTranscriptionRecord>()), 1)
+        XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedTranscriptionRecord>()), 0)
         XCTAssertEqual(try verification.fetchCount(FetchDescriptor<CachedDownloadRecord>()), 1)
 
         let cachedChapter = try XCTUnwrap(

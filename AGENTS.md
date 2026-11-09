@@ -5,6 +5,16 @@
 
 - Work directly on the `main` branch. Do not create or use a dedicated branch or worktree unless the prompt explicitly says otherwise.
 - If the prompt explicitly names another branch or worktree, follow that instruction.
+
+## Store architecture
+
+- The permanent runtime target is exactly two durable stores: `UserState.sqlite` is the only CloudKit-backed store, and `SharedDatabase.sqlite` is the local podcast library used by the app.
+- A `SharedDatabase.sqlite` with no `libraryOrigin` marker is an existing legacy library. Keep it local with CloudKit disabled; never attach it to CloudKit, overwrite it from cache, or copy the whole library as part of cutover.
+- A library created from split-install data must be marked `built` before it appears at the `SharedDatabase.sqlite` path. Built libraries must skip the legacy UserState copy and stale-subscription tombstone pass.
+- `PodcastCache.sqlite` and `LibraryRuntime.sqlite` are historical migration inputs only. Keep them intact while any live caller or resumable copy needs them; stop opening and writing them before considering a separate cleanup. Never let a missing obsolete store block a usable local library.
+- Preserve queue, playlist, bookmark, playback, download, transcript and listening-history references while moving their authoritative records. Reconcile portable state by stable identity and timestamps; do not infer deletion from incomplete feeds or cache state.
+- Follow `Documentation/TwoDatabasePlan.md` for the current implementation status and safe promotion rules. Older cache/runtime end-state proposals are historical and superseded.
+
 ## Engineering Philosophy — Pragmatic Solo Developer
 
 This project is maintained by a solo developer, often as a free, open-source application with a small user base. Optimize for useful, reliable software with minimal complexity and maintenance effort. Do not apply big-company processes or engineering standards unless explicitly requested.

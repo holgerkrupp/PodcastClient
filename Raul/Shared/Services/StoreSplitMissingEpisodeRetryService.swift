@@ -33,27 +33,19 @@ enum StoreSplitEpisodeStateComparison {
 /// Keeps a bounded page pending until a cross-writer consistency mechanism is
 /// available. No absence is a tombstone and this service cannot project state.
 actor StoreSplitMissingEpisodeRetryService {
-    private let legacy: ModelContainer
-    private let userState: ModelContainer
-    private let cache: ModelContainer
+    private let library: ModelContainer
 
-    private init(legacy: ModelContainer, userState: ModelContainer, cache: ModelContainer) {
-        self.legacy = legacy
-        self.userState = userState
-        self.cache = cache
+    private init(library: ModelContainer) {
+        self.library = library
     }
 
     nonisolated static func runPage(
-        legacyContainer: ModelContainer,
-        userStateContainer: ModelContainer,
-        cacheContainer: ModelContainer,
+        libraryContainer: ModelContainer,
         limit: Int = 40,
         now: Date = .now,
         shouldContinue: @escaping @Sendable () -> Bool = { !Task.isCancelled }
     ) async -> StoreSplitMissingEpisodeRetryResult {
-        let worker = StoreSplitMissingEpisodeRetryService(
-            legacy: legacyContainer, userState: userStateContainer, cache: cacheContainer
-        )
+        let worker = StoreSplitMissingEpisodeRetryService(library: libraryContainer)
         return await worker.runPage(limit: limit, now: now, shouldContinue: shouldContinue)
     }
 
@@ -67,13 +59,13 @@ actor StoreSplitMissingEpisodeRetryService {
         defer { StoreSplitMissingEpisodeLedger.endDrain(lease) }
         let page: [StoreSplitMissingEpisodeReference]
         do {
-            page = try StoreSplitMissingEpisodeLedger.duePage(cacheContainer: cache, limit: limit, now: now)
+            page = try StoreSplitMissingEpisodeLedger.duePage(libraryContainer: library, limit: limit, now: now)
         } catch {
             result.failed = 1
             return result
         }
         if page.isEmpty {
-            do { try StoreSplitMissingEpisodeLedger.reconcilePendingStatus(cacheContainer: cache) }
+            do { try StoreSplitMissingEpisodeLedger.reconcilePendingStatus(libraryContainer: library) }
             catch { result.failed = 1 }
             return result
         }
@@ -87,7 +79,7 @@ actor StoreSplitMissingEpisodeRetryService {
         do {
             let finished = try StoreSplitMissingEpisodeLedger.finishPage(
                 projected: [], postponed: page, superseded: [], contentPending: [],
-                now: now, cacheContainer: cache
+                now: now, libraryContainer: library
             )
             result.examined = page.count
             result.postponed = finished.postponed

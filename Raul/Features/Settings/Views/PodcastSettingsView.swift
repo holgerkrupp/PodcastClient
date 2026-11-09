@@ -2142,7 +2142,6 @@ struct PodcastSettingsView: View {
     private func publishPortableSettings() {
         let settings = podcast?.settings ?? globalSettings
         guard let settings else { return }
-        StoreSplitLocalSettingsWriter.persist(settings)
         guard let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer else {
             AppDiagnostics.log("Portable settings sync is pending because the UserState store is unavailable")
             return
@@ -3827,9 +3826,6 @@ private struct PodcastOverridesManagementView: View {
             try enableCustomSettings(for: podcast, in: context)
             try context.commitChangesIfNeeded()
             NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-            if let settings = podcast.settings {
-                StoreSplitLocalSettingsWriter.persist(settings)
-            }
             if let settings = podcast.settings, let feed = podcast.feed,
                let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
                 let snapshot = PortablePodcastPreferenceSnapshot.make(
@@ -3868,9 +3864,6 @@ private struct PodcastOverridesManagementView: View {
             pendingPodcast = nil
             settingsSaveError = nil
             NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
-            if let settings = podcast.settings {
-                StoreSplitLocalSettingsWriter.persist(settings)
-            }
             if let settings = podcast.settings, let feed = podcast.feed,
                let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer {
                 let snapshot = PortablePodcastPreferenceSnapshot.make(

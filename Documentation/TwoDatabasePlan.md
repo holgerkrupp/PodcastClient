@@ -1,177 +1,155 @@
 # Two Databases on Every Device
 
-Status: steps 1 and 2 implemented, 2 Nov 2026, apart from the size findings a device report
-will give; the rest is proposed. The file-level audit
-below comes from reading schemas and call sites; items marked **verify** still need
-checking against the code or a real store before their step ships.
+Status: the target is approved; implementation is in progress. Fresh installs now build their
+durable local library directly at `SharedDatabase.sqlite`. Older split-only installs with
+`LibraryRuntime.sqlite` retain a checkpointed promotion path. Cache compatibility and migration
+work still prevent full convergence; do not treat this document as an assertion that #394 is
+done.
 
-## Goal
+## Target
 
-Every device ends up with the same two stores, whatever state it starts in:
+Every installation uses the same two active durable stores:
 
-| Store | Role | iCloud |
+| Store | Permanent responsibility | CloudKit |
 | --- | --- | --- |
-| `UserState.sqlite` | Small, user-owned state | Syncs |
-| `SharedDatabase.sqlite` | The podcast library the UI reads and writes | Never |
+| `UserState.sqlite` | Portable user state: subscriptions and tombstones, podcast preferences, playback/progress, queue and playlists, bookmarks, and portable listening history/baselines/summaries | Yes; the only CloudKit-backed store |
+| `SharedDatabase.sqlite` | The local podcast library used directly by feeds, player, downloads, search and other features: podcast/episode metadata, chapters, show notes, local transcripts/AI content, artwork references and device-local information | Never |
 
-`PodcastCache.sqlite` and `LibraryRuntime.sqlite` go away. There is no merge at the end:
-`SharedDatabase.sqlite` is the permanent library.
+`PodcastCache.sqlite` and `LibraryRuntime.sqlite` are historical implementation files, not
+parts of the target runtime. Preserve existing files. Do not delete either file as part of
+this work; disk reclamation requires a separate decision after replacement paths are proven.
 
-## Where things are today
+An existing populated `SharedDatabase.sqlite` stays in place and opens locally with CloudKit
+disabled. Do not copy the whole library, reattach its legacy CloudKit mirror, or overwrite it
+with cache data.
 
-| Device | Library the UI uses | Also opened at launch |
-| --- | --- | --- |
-| Upgraded | `SharedDatabase.sqlite` | `UserState`, `PodcastCache` |
-| Fresh install, or split-only from an older build | `LibraryRuntime.sqlite`, built from the cache | `UserState`, `PodcastCache` |
+## Current implementation status
 
-Two facts make this tractable:
+- Upgraded installs open their existing `SharedDatabase.sqlite` directly with CloudKit off.
+- `libraryOrigin` distinguishes legacy and built libraries. A `SharedDatabase.sqlite` with no
+  origin marker is treated as legacy. Built libraries must not run the legacy UserState copy
+  or subscription cleanup against an incomplete feed library.
+- A fresh install writes the `built` origin before creating `SharedDatabase.sqlite` and builds
+  the durable library there. It may open `PodcastCache.sqlite` for first-build compatibility
+  hydration and migration; the UI still uses the durable SharedDatabase library.
+- An older split-only install with `LibraryRuntime.sqlite` keeps using that durable file until
+  its ready state is recorded. At a later launch, promotion checkpoints the SQLite WAL and
+  exclusively renames it to `SharedDatabase.sqlite`. If promotion cannot safely complete, the
+  runtime file remains available for retry.
+- Feed refresh, local edits and playback analytics no longer write normal cache mirrors.
+  Cache-backed compatibility hydration, one-time migration and deletion cleanup remain.
+- Cache-only alignment/jobs, missing-episode references, settings/bookmark details,
+  transcription history and AI transcripts/chapters migrate idempotently into the local
+  library. Older AI rows without revision manifests are included, with chapter progress and
+  play state retained. Cache rows remain intact as historical recovery data.
+- Once cache-local migrations, AI recovery, library backfill and any legacy UserState copy
+  complete, direct-library startup skips opening `PodcastCache.sqlite`. A fresh direct build
+  uses the cache only while its compatibility hydration/migrations are pending. An older
+  `LibraryRuntime` install may need it until the build is ready and promoted.
+- Transcript alignment/jobs, unresolved episode retry records, and the cache mirrors for local
+  settings/bookmark details now migrate idempotently to the local library; production callers
+  use the library. Feed-alias mirroring and unused raw extension-element writes are retired.
+  The runtime projection and migration-only cache readers still prevent full convergence.
 
-- `LibraryRuntime.sqlite` is opened with `makeLegacyContainer`, so it already has the same
-  schema as `SharedDatabase.sqlite`. A finished runtime file can become the library by being
-  moved, with no row copied.
-- `PodcastCacheRepository` has no callers outside its own file, so nothing in the UI reads
-  through it. **Verify** before removing it.
+The promotion step does not complete the epic by itself. The live cache dependencies below
+must be migrated before normal app and extension paths can stop opening or modifying the
+cache. `LibraryRuntime.sqlite` must remain usable until promotion succeeds; neither historical
+file may be discarded as a shortcut.
 
-## The trap: a library file currently means "legacy upgrade"
+## Remaining implementation checklist
 
-`StoreBootstrapMode.resolve` treats any `SharedDatabase.sqlite` as `legacyUpgrade`. Simply
-creating that file on a split-only device would therefore:
+### Bootstrap and promotion
 
-1. Start the deferred copy from the library into UserState, with a possibly incomplete library.
-2. Block imports from UserState until that copy finishes.
-3. Run `tombstoneSubscriptionsMissingFromLibrary`, which **removes subscriptions from iCloud,
-   on all devices,** for any podcast the library doesn't hold yet.
+- [x] Preserve existing `SharedDatabase.sqlite` as the local library and keep CloudKit off.
+- [x] Persist a `legacy` or `built` library origin; treat an unmarked existing library as
+  `legacy`.
+- [x] Add checkpointed, exclusive runtime-file promotion after the projection is ready, with
+  retry on a later launch if a safe checkpoint or rename is not possible.
+- [x] Confirm origin checks cover crash/relaunch and every app/extension entry point. A built
+  library must never trigger old-library-to-UserState copying or
+  `tombstoneSubscriptionsMissingFromLibrary` based on incomplete feed data.
+- [ ] Validate every starting state: populated legacy library; older split-only runtime;
+  UserState plus cache; UserState only; cache only; clean install; and missing/inaccessible
+  known library.
+  Preserve the existing fail-closed recovery choice when prior library evidence exists.
+- [ ] Confirm a completed promotion resumes any unfinished feed-fill cursor and preserves
+  queue, playlist, bookmark, playback and history references through interruption/relaunch.
 
-So the first step is recording where a library came from, not creating files:
+### Move live cache-only data and callers
 
-- New persisted value `libraryOrigin`: `legacy` or `built`.
-- It is written **before** a built file appears at the final path. A crash in between leaves
-  a value with no file, which is harmless; the reverse would look like a legacy library.
-- A file with no recorded origin is `legacy`, which is what every existing upgraded device is.
-- `built` libraries skip the deferred copy and the tombstone cleanup, and import from UserState
-  normally. They must also never attach to CloudKit; add a test next to the existing
-  re-attach guard.
+Audit each model and its production readers/writers before changing schemas or deleting code.
+Move required device-local data into `SharedDatabase.sqlite` or an appropriate local record,
+then switch all callers before stopping cache writes:
 
-## Every starting state converges
+- [x] `CachedTranscriptAlignment` and `CachedTranscriptSynchronizationJob`: transcript
+  alignment and its durable sync work.
+- [x] `CachedMissingEpisodeReference`: unresolved queue and playlist episode references.
+- [x] `FeedAlias`: redirected feed identity has no product reader; endpoint changes persist
+  directly on the local Podcast and publish the current subscription manifest.
+- [x] `CachedPodcastLocalSettings` and `CachedBookmarkDetail`: canonical settings and bookmark
+  fields are preserved; missing values are backfilled from cache before its row is retired.
+- [x] `CachedFeedExtensionElement`: no product reader consumes raw extensions; typed namespace
+  fields are already stored on the canonical podcast/episode models, so normal projection no
+  longer writes duplicate raw rows.
+- [x] Migrate existing AI transcripts, AI chapters and their progress to the local library,
+  including older materialized rows without revision manifests. The migration does not write
+  this content to UserState/CloudKit; cache source rows remain intact until separate cleanup.
+- [x] Stop normal feed/edit/playback flows from mirroring podcasts, episodes, chapters,
+  transcripts and analytics into cache. Cache projection is retained only for compatibility
+  hydration, migration and recovery.
+- [ ] Keep legacy copy/checkpoint readers only while an unfinished upgraded-device UserState
+  copy needs them. Resume partial copies without double-counting history or reviving deletions.
+- [ ] Audit RSS refresh, chapters, transcripts, downloads, search, playback, widgets, Watch,
+  CarPlay, App Intents and share extension reads/writes against the permanent library.
 
-Checked in this order at launch. Each path is resumable and safe to interrupt.
+Any necessary SwiftData schema change must be checked on a copy of a large real
+`SharedDatabase.sqlite` first. Avoid an unexpected multi-gigabyte migration or first-launch
+stall. Tests should use anonymized fixtures, never a user's database or private feed data.
 
-| Starting files | Action | Result |
-| --- | --- | --- |
-| `SharedDatabase` present | Open it. Origin stays as recorded, otherwise `legacy`. | Library unchanged |
-| `LibraryRuntime`, no `SharedDatabase` | Move it into place (below), keep the fill cursor | Built library, fill resumes |
-| `UserState` + `PodcastCache` only | Create the library, build it from the cache, then fetch feeds | Built library |
-| `UserState` only | Create the library from subscriptions, then fetch feeds | Built library |
-| `PodcastCache` only | Build from the cache. Subscriptions still come only from UserState and iCloud, and nothing in the cache is published to UserState. | Built library |
-| Nothing, no sign of an earlier library | Create an empty library | Built library |
-| No library, but evidence one existed | Keep today's stop screen. "Continue with iCloud Data" then takes one of the rows above. | Built library, by user choice |
+### Retire obsolete infrastructure after the caller audit
 
-The build reuses what exists: `StoreSplitCompatibilityProjectionService`,
-`StoreRuntimeProjection.fillFromFeeds` and the backfill cursor.
+- [x] Route normal feed parsing/refresh and local chapter, transcript and download metadata
+  through the active durable library. Portable user changes continue to commit durably to
+  `UserState.sqlite` and reconcile by stable identity.
+- [ ] Remove cache mirroring/backfill/rebuild tasks, `StoreSplitFeedCacheWriter`,
+  `PodcastCacheRepository`, obsolete cache-only migration slices and projection flags only
+  after their callers and retained data are handled.
+- [ ] Stop opening `PodcastCache.sqlite` and `LibraryRuntime.sqlite` in ordinary app or
+  extension startup after their first-build, migration and old-install recovery roles are
+  retired. Missing or corrupt obsolete files must not block a usable library.
+- [ ] Update `AGENTS.md`, user help, diagnostics and architecture/release documentation to
+  describe the shipped two-store behavior. Mark older `PodcastCache`/`LibraryRuntime`
+  end-state proposals as superseded history.
 
-**Moving a runtime file:** with no container open, run a truncate checkpoint through
-`StoreWriteAheadLog`, close, confirm no `-wal` remains, then rename the main file. The rename
-is atomic. If a log remains, don't move it; retry next launch and keep using the runtime file.
-Copy a file only if a rename is impossible. **Verify** the widget and share extension can't
-hold these files open at that moment; the backfill's comment says they can open the store.
+## Validation before calling #394 complete
 
-**A device with both files:** `SharedDatabase` wins, as it does today, and `discardUnused`
-removes the derived runtime file.
+- [ ] Existing populated upgrade preserves subscriptions, library/episodes, playlist order,
+  playback progress, bookmarks, downloads, transcripts and listening totals, with no whole-
+  library copy and no legacy CloudKit reattachment.
+- [ ] Existing split-only and fresh installs converge to the same two active stores. A second
+  device receives UserState changes and rebuilds local feed data without empty or stale
+  tombstones.
+- [ ] Interrupt promotion/backfill, relaunch and retry; verify SQLite/WAL consistency, origin,
+  late-arriving references and exactly-once portable history totals.
+- [ ] Cover background/foreground transitions and player, widget, Watch, CarPlay, App Intent
+  and share-extension entry points with focused tests.
+- [ ] Confirm ordinary launch remains usable and does not repeatedly scan or copy the whole
+  library. The under-two-second target in this plan is aspirational, not a release assertion.
+- [ ] Confirm normal app/extension paths no longer open or modify `PodcastCache.sqlite` or
+  `LibraryRuntime.sqlite` once first-build, migration and older split-only recovery are
+  complete. Preserve their files pending a separate cleanup decision.
+- [ ] Record physical-device and two-device checks tracked separately by #402; do not claim
+  those checks passed without evidence.
 
-Afterwards, delete the branching: `usesInMemoryRuntimeProjection` and
-`runtimeProjectsFromCache` (12 uses) disappear, and with them the second code path.
+## Safety constraints and separate work
 
-## What happens to each cache table
-
-### Copies of the library: stop writing, then remove
-
-`CachedPodcast`, `CachedEpisode`, `CachedChapter`, `CachedTranscriptLine`,
-`CachedTranscriptionRecord`, `CachedDownloadRecord`, `CachedPlaySession`, `CachedRateSegment`,
-`CachedHourlyListeningStat`.
-
-These stay the source for building a library on the split-only states above, until that
-device's build has finished. **Verify** the transcript and analytics fields round-trip, because
-saved transcripts and listening history can't be refetched from feeds.
-
-### Only here: move into the library
-
-| Table | Why it stays | Check |
-| --- | --- | --- |
-| `CachedTranscriptAlignment`, `CachedTranscriptSynchronizationJob` | Live feature; `TranscriptSynchronization` uses them | Your uncommitted edits touch this file |
-| `FeedAlias` | Redirected feed URLs | |
-| `CachedMissingEpisodeReference` | Queue and playlist entries whose episode isn't local yet | |
-| `CachedPodcastLocalSettings`, `CachedBookmarkDetail` | Read by the UserState importer | **Verify** whether `PodcastSettings` and `Bookmark` already hold everything; if so, drop instead |
-| `CachedFeedExtensionElement` | Written on feed refresh | **Verify** anyone reads it; if not, drop |
-
-Adding tables changes the library's schema, so the first launch after that update runs a
-Core Data migration on a store of up to about 5 GB. **Measure this on a copy of a real store
-before shipping.** If it's slow, it needs the existing progress screen or a smaller design.
-
-### AI content: probably unnecessary
-
-`AITranscriptSync`, `AITranscriptChunkSync`, `AIChapterSetSync`, `AppliedAIContentRevision`.
-
-Despite the names these live in the local-only cache, and AI content stays on one device by
-design. **Verify:** if the library already holds these transcripts and chapters, this copy
-serves no purpose. Removing that phase would also finish the copy on devices stuck at
-`ai_transcripts`, including the subscription cleanup that waits behind it.
-
-### Migration bookkeeping: remove once the copy is finished everywhere
-
-`StoreSplitMigrationCheckpoint`, `StoreSplitMigrationVerification`,
-`StoreSplitFeedCacheCheckpoint`, `CachedListeningBaselineAggregate`,
-`CachedListeningBaselineSource`.
-
-Upgraded devices still need these while their copy runs. The migration service reads the cache
-in many places, so it's rewritten last.
-
-## Order of work
-
-Each step ships alone and leaves every device working.
-
-1. **Faster launch now.** Run `LegacyStoreIndexBackfill` only until it has succeeded once, so
-   launch stops opening a separate connection; closing that connection can merge the whole log.
-   Measure each step using the logging from `a129bb51`. Also find out what fills 4.7 GB;
-   Core Data's old CloudKit history tables are one candidate, unconfirmed.
-2. **Record `libraryOrigin`.** No behaviour change, but every later step depends on it.
-3. **Decide on the AI copy** from the check above.
-4. **Converge fresh and split-only devices** using the table above, with one code path.
-5. **Move the unique tables** into the library and read them from there.
-6. **Stop writing the copied tables**, then stop opening `PodcastCache` once a device's build
-   and copy are complete.
-7. **Reclaim the disk space.** See the decision below.
-
-## Launch target
-
-Normal launch: library visible in under 2 seconds on a recent iPhone. This is a target, not a
-measurement. Removing the cache removes one of three store opens, but the size of the
-library's log and the index check may matter more, which is why step 1 comes first.
-
-## Tests
-
-- One fixture per row of the state table, asserting the same two stores and no lost
-  subscriptions, queue entries, bookmarks, transcripts or listening history.
-- Interrupt each path at each step and relaunch.
-- A built library never runs `tombstoneSubscriptionsMissingFromLibrary` or attaches to CloudKit.
-- Unset `libraryOrigin` with an existing file still behaves as `legacy`.
-- By hand, on real devices: one populated upgrade, one split-only device, one fresh install,
-  two devices on one account. Simulator tests can't stand in for these.
-
-## Risks
-
-- **Downgrades:** an older build sees `SharedDatabase.sqlite` and treats it as a legacy store,
-  which could attach it to CloudKit. The App Store doesn't offer downgrades, but TestFlight
-  can. Earlier re-attachment duplicated most of a library; see
-  `StoreSplitCloudReattachGuardTests`.
-- **Older devices on one account:** they keep writing UserState as they do now. This plan
-  doesn't change the UserState schema, so it needs no CloudKit schema deploy of its own.
-- **#395:** failing exports remain a separate release blocker.
-
-## Decisions needed
-
-1. **Deleting `PodcastCache.sqlite` (step 7).** Standing rule so far: never delete user
-   databases. Proposal: stop using it first, leave it in place for one full release, and delete
-   it only after a separate go-ahead. Until then the device keeps about 1 GB it doesn't need.
-2. **Filename.** Proposal: keep `SharedDatabase.sqlite` everywhere. Renaming a 4.7 GB store on
-   every upgraded device adds risk and only tidies a name. A new name would avoid the downgrade
-   risk on fresh devices but not on upgraded ones.
+- Never reattach `SharedDatabase.sqlite` to CloudKit, purge CloudKit metadata, reset a user's
+  library, or copy an unverified cache over newer local/user state.
+- Preserve queue/playlist identities, deletion tombstones, listen history and downloaded-file
+  paths. Missing or late episodes must not delete queued or synced intent.
+- Do not add a third persistent authority, a generic persistence framework, or a blocking
+  foreground migration screen. A usable local library opens promptly.
+- Keep obsolete database files intact. Stop using them first; any later file deletion needs a
+  separate explicit decision and validated recovery.
+- #395 (UserState CloudKit export evidence) and #359 (portable playlist identity) remain
+  separate issues. This plan does not close them or claim their work is complete.

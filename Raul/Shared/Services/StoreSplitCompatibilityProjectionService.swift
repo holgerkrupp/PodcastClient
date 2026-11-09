@@ -107,12 +107,6 @@ enum StoreSplitCompatibilityProjectionService {
                 podcast.metaData?.subscriptionDate = nil
                 runtime.insert(podcast)
                 result.podcasts += 1
-                restoreTranscriptionRecords(
-                    feedKey: feedKey,
-                    cacheContainer: cacheContainer,
-                    runtime: runtime,
-                    result: &result
-                )
 
                 if let priorityEpisodes {
                     let cache = ModelContext(cacheContainer)
@@ -381,34 +375,6 @@ enum StoreSplitCompatibilityProjectionService {
         podcast.metaData?.nextPredictedRefreshStartDate = cachedPodcast.nextPredictedRefreshStartDate
         podcast.metaData?.nextPredictedRefreshEndDate = cachedPodcast.nextPredictedRefreshEndDate
         podcast.metaData?.releasePredictionUpdatedAt = cachedPodcast.releasePredictionUpdatedAt
-    }
-
-    private static func restoreTranscriptionRecords(
-        feedKey: String,
-        cacheContainer: ModelContainer,
-        runtime: ModelContext,
-        result: inout StoreSplitCompatibilityProjectionResult
-    ) {
-        let cache = ModelContext(cacheContainer)
-        let rows = (try? cache.fetch(FetchDescriptor<CachedTranscriptionRecord>(
-            predicate: #Predicate { $0.feedURL == feedKey }
-        ))) ?? []
-        for row in rows {
-            guard let episodeURL = row.episodeURL else { continue }
-            let record = TranscriptionRecord(
-                episodeURL: episodeURL,
-                episodeTitle: row.episodeTitle,
-                podcastTitle: row.podcastTitle,
-                localeIdentifier: row.localeIdentifier,
-                startedAt: row.startedAt,
-                finishedAt: row.finishedAt,
-                audioDuration: row.audioDuration
-            )
-            record.id = UUID(uuidString: row.id) ?? record.id
-            record.transcriptionDuration = row.transcriptionDuration
-            runtime.insert(record)
-            result.transcriptionRecords += 1
-        }
     }
 
     /// Builds — but does not insert — the model-shaped episode for one cache row,

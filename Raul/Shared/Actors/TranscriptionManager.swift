@@ -282,7 +282,7 @@ actor TranscriptionManager {
                     uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
                 }
                 try Task.checkCancellation()
-                let transcriptSnapshots = try await episodeActor.decodeAndSetTranscript(
+                _ = try await episodeActor.decodeAndSetTranscript(
                     for: episodeURL,
                     vtt: vtt
                 )
@@ -295,8 +295,7 @@ actor TranscriptionManager {
                     for: snapshot,
                     localeIdentifier: transcriber.language.identifier(.bcp47),
                     startedAt: startedAt,
-                    finishedAt: finishedAt,
-                    transcriptSnapshots: transcriptSnapshots
+                    finishedAt: finishedAt
                 )
 
                 await MainActor.run {

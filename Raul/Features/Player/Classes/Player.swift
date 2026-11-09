@@ -3614,11 +3614,11 @@ class Player {
                   self.playbackPowerMode == .foreground,
                   self.currentPlaybackSource == .local,
                   TranscriptSynchronizationStore.shared.isEnabled,
-                  let cacheContainer = ModelContainerManager.shared.preparedCacheContainer else { return }
+                  let libraryContainer = ModelContainerManager.shared.preparedContainer else { return }
             await TranscriptSynchronizationService.shared.schedule(
                 input: input,
                 audioTime: audioTime,
-                cacheContainer: cacheContainer,
+                libraryContainer: libraryContainer,
                 episodeActor: self.episodeActor,
                 settingsActor: self.settingsActor
             )

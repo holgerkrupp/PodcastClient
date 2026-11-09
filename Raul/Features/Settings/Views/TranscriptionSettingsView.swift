@@ -404,9 +404,6 @@ struct TranscriptionSettingsView: View {
         do {
             try context.commitChangesIfNeeded()
             settingsSaveError = nil
-            if let globalSettings {
-                StoreSplitLocalSettingsWriter.persist(globalSettings)
-            }
             if notify {
                 NotificationCenter.default.post(name: .podcastSettingsDidChange, object: nil)
             }

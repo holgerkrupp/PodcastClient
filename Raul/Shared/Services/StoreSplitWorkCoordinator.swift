@@ -34,7 +34,6 @@ actor StoreSplitWorkCoordinator {
 
     enum Job: String, Sendable {
         case reconcile = "Reconcile user state"
-        case aiImport = "Import AI content"
     }
 
     private struct ReconcileRequest: Sendable {
@@ -62,7 +61,6 @@ actor StoreSplitWorkCoordinator {
 
     private var currentJob: Job?
     private var pendingReconcile: ReconcileRequest?
-    private var pendingAIImport = false
     private var pendingPlaybackIdleReconcile = false
     private var runnerTask: Task<Void, Never>?
     private var nextHeavyWorkAllowedAt = Date.distantPast
@@ -152,7 +150,6 @@ actor StoreSplitWorkCoordinator {
 
     private func clearAllPendingWork(reason: String) async {
         pendingReconcile = nil
-        pendingAIImport = false
         pendingPlaybackIdleReconcile = false
         currentJob = nil
         await MainActor.run {
@@ -247,16 +244,12 @@ actor StoreSplitWorkCoordinator {
                 if case .deferredForPlayback = result {
                     pendingPlaybackIdleReconcile = true
                 } else if case .completed = result {
-                    pendingAIImport = true
                     if importRequest.pending {
                         ModelContainerManager.clearPendingBackgroundUserStateImport(
                             generation: importRequest.generation
                         )
                     }
                 }
-            case .aiImport:
-                pendingAIImport = false
-                await ModelContainerManager.shared.performSplitStoreAIImportIfPossible()
             }
 
             maintenancePermit.release()
@@ -336,7 +329,6 @@ actor StoreSplitWorkCoordinator {
 
     private func nextPendingJob() -> Job? {
         if pendingReconcile != nil { return .reconcile }
-        if pendingAIImport { return .aiImport }
         return nil
     }
 
@@ -351,7 +343,7 @@ actor StoreSplitWorkCoordinator {
     /// asked for the reconcile goes away — this spun the actor's executor at
     /// 100% CPU until iOS killed the process on the 80%-over-60s limit.
     private func waitForIdle() async {
-        while currentJob != nil || pendingReconcile != nil || pendingAIImport {
+        while currentJob != nil || pendingReconcile != nil {
             // Nobody left to drain the queue: the work stays queued for the
             // next `.active` transition, and this caller stops waiting.
             guard runnerTask != nil else { return }
@@ -385,8 +377,6 @@ actor StoreSplitWorkCoordinator {
             pendingReason = pendingReconcile.reason
         } else if pendingPlaybackIdleReconcile {
             pendingReason = "waiting for playback to stop"
-        } else if pendingAIImport {
-            pendingReason = "ai import"
         } else {
             pendingReason = nil
         }

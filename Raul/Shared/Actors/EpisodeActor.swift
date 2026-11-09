@@ -222,7 +222,6 @@ actor EpisodeActor {
         with newChapters: [Marker]
     ) {
         EpisodeChapterMerger.replaceChapters(on: episode, replacingTypes: types, with: newChapters)
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
     }
 
     @discardableResult
@@ -412,7 +411,7 @@ actor EpisodeActor {
         }
         episode.metaData?.playbackStartTimes?.elements.append(date)
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
-        persistPlaybackAnalytics(of: episode)
+        persistPlaybackAnalytics()
     }
     
     func addPlaybackDuration(episodeURL: URL, duration: TimeInterval) async {
@@ -424,7 +423,7 @@ actor EpisodeActor {
         episode.metaData?.playbackDurations?.elements.append(duration)
         episode.metaData?.totalListenTime += duration
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
-        persistPlaybackAnalytics(of: episode)
+        persistPlaybackAnalytics()
     }
 
     func addPlaybackSpeed(episodeURL: URL, speed: Double) async {
@@ -433,15 +432,11 @@ actor EpisodeActor {
             episode.metaData?.playbackSpeeds = .init([])
         }
         episode.metaData?.playbackSpeeds?.elements.append(speed)
-        persistPlaybackAnalytics(of: episode)
+        persistPlaybackAnalytics()
     }
 
-    private func persistPlaybackAnalytics(of episode: Episode) {
+    private func persistPlaybackAnalytics() {
         modelContext.saveIfNeeded()
-        StoreSplitFeedCacheWriter.requestProjection(
-            for: episode,
-            delay: StoreSplitFeedCacheWriter.playbackProjectionInterval
-        )
     }
 
     func setCompletionDate(episodeURL: URL, date: Date? = nil) async {
@@ -1484,11 +1479,6 @@ actor EpisodeActor {
         )
         let publishedAt = Date()
         if StoreDevelopmentConfiguration.splitStoresEnabled {
-            if let cacheContainer = await preparedCacheContainer() {
-                let cacheContext = ModelContext(cacheContainer)
-                StoreSplitBookmarkDetailWriter.upsert(from: bookmark, id: bookmarkID, in: cacheContext)
-                try? cacheContext.save()
-            }
             let mayPublish = await MainActor.run {
                 ModelContainerManager.shared.mayStartCloudKitBackedStoreWrite
             }
@@ -1765,10 +1755,6 @@ actor EpisodeActor {
             modelContext.rollback()
             throw BookmarkSaveError.deleteFailed
         }
-        if StoreDevelopmentConfiguration.splitStoresEnabled,
-           let cacheContainer = await preparedCacheContainer() {
-            StoreSplitBookmarkDetailWriter.delete(id: markerID.uuidString, cacheContainer: cacheContainer)
-        }
     }
 
     @discardableResult
@@ -1895,9 +1881,6 @@ actor EpisodeActor {
             return false
         }
         let didChange = ChapterSkipKeywordPolicy.apply(skipWords, to: episode.chapters ?? [])
-        if didChange {
-            StoreSplitFeedCacheWriter.requestProjection(for: episode)
-        }
         if didChange {
             episode.refresh.toggle()
             modelContext.saveIfNeeded()
@@ -2585,11 +2568,6 @@ actor EpisodeActor {
         replaceChapters(on: episode, replacingTypes: generatedTypes, with: newChapters)
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
-        await writeAIChaptersToSplitStore(
-            episode: episode,
-            chapters: newChapters,
-            generatedAt: .now
-        )
         return true
     }
 
@@ -3073,7 +3051,6 @@ actor EpisodeActor {
         )
         episode.refresh.toggle()
         modelContext.saveIfNeeded()
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
         return true
     }
 
@@ -3162,8 +3139,6 @@ actor EpisodeActor {
             try Task.checkCancellation()
             try modelContext.save()
         }
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
-
 #if canImport(UIKit)
         if source == .publisher, let episodeURL = episode.url, episode.localFile != nil {
             await AppDelegate.enqueuePublisherTranscriptSynchronization(for: episodeURL)
@@ -3205,13 +3180,9 @@ actor EpisodeActor {
         }
         try modelContext.save()
         episode.refresh.toggle()
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
 
-        if let cacheContainer = await preparedCacheContainer() {
-            StoreSplitFeedCacheWriter.deleteTranscriptionRecords(
-                identity: identity,
-                cacheContainer: cacheContainer
-            )
+        if StoreSplitCacheAIContentMigration.isComplete == false,
+           let cacheContainer = await preparedCacheContainer() {
             await StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
                 .tombstoneTranscripts(identities: [identity])
         }
@@ -3247,6 +3218,7 @@ actor EpisodeActor {
 
         modelContext.saveIfNeeded()
         if generatedIdentities.isEmpty == false,
+           StoreSplitCacheAIContentMigration.isComplete == false,
            let cacheContainer = await preparedCacheContainer() {
             let writer = StoreSplitAIContentSyncWriter(
                 modelContainer: cacheContainer
@@ -3261,8 +3233,7 @@ actor EpisodeActor {
         for snapshot: TranscriptionEpisodeSnapshot,
         localeIdentifier: String,
         startedAt: Date,
-        finishedAt: Date,
-        transcriptSnapshots: [TranscriptLineSnapshot]
+        finishedAt: Date
     ) async {
         let record = TranscriptionRecord(
             episodeURL: snapshot.episodeURL,
@@ -3275,87 +3246,9 @@ actor EpisodeActor {
         )
         modelContext.insert(record)
         modelContext.saveIfNeeded()
-        let recordID = record.id
-        let recordDuration = record.transcriptionDuration
-        guard let episode = await fetchEpisode(byURL: snapshot.episodeURL) else {
+        guard await fetchEpisode(byURL: snapshot.episodeURL) != nil else {
             return
         }
-        if let cacheContainer = await preparedCacheContainer() {
-            StoreSplitFeedCacheWriter.upsertTranscriptionRecord(
-                .init(
-                    id: recordID,
-                    identity: episode.stableEpisodeIdentity,
-                    episodeURL: snapshot.episodeURL,
-                    episodeTitle: snapshot.episodeTitle,
-                    podcastTitle: snapshot.podcastTitle,
-                    localeIdentifier: localeIdentifier,
-                    startedAt: startedAt,
-                    finishedAt: finishedAt,
-                    audioDuration: snapshot.audioDuration,
-                    transcriptionDuration: recordDuration
-                ),
-                cacheContainer: cacheContainer
-            )
-        }
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
-        await writeAITranscriptToSplitStore(
-            episode: episode,
-            lines: transcriptSnapshots,
-            localeIdentifier: localeIdentifier,
-            generatedAt: finishedAt
-        )
-    }
-
-    private func writeAITranscriptToSplitStore(
-        episode: Episode,
-        lines: [TranscriptLineSnapshot],
-        localeIdentifier: String?,
-        generatedAt: Date
-    ) async {
-        let identity = episode.stableEpisodeIdentity
-        let values = lines.map {
-            AITranscriptLineValue(
-                speaker: $0.speaker,
-                text: $0.text,
-                startTime: $0.startTime,
-                endTime: $0.endTime
-            )
-        }
-        guard values.isEmpty == false else { return }
-        guard let cacheContainer = await preparedCacheContainer() else { return }
-        let writer = StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
-        await writer.writeTranscript(
-            identity: identity,
-            lines: values,
-            localeIdentifier: localeIdentifier,
-            generatedAt: generatedAt
-        )
-    }
-
-    private func writeAIChaptersToSplitStore(
-        episode: Episode,
-        chapters: [Marker],
-        generatedAt: Date
-    ) async {
-        let values = chapters.compactMap { chapter -> AIChapterValue? in
-            guard chapter.type == .ai,
-                  let start = chapter.start else { return nil }
-            return AIChapterValue(
-                title: chapter.title,
-                startTime: start,
-                duration: chapter.duration,
-                typeRawValue: chapter.type.rawValue,
-                analysisVariantID: chapter.analysisVariantID
-            )
-        }
-        guard values.isEmpty == false else { return }
-        guard let cacheContainer = await preparedCacheContainer() else { return }
-        let writer = StoreSplitAIContentSyncWriter(modelContainer: cacheContainer)
-        await writer.writeChapters(
-            identity: episode.stableEpisodeIdentity,
-            chapters: values,
-            generatedAt: generatedAt
-        )
     }
 
     private func preparedUserStateContainer() async -> ModelContainer? {

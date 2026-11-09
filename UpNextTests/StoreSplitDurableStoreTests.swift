@@ -54,8 +54,25 @@ final class StoreSplitDurableStoreTests: XCTestCase {
             ),
             .legacyUpgrade
         )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: true,
+                libraryOrigin: .built,
+                installationWasPreviouslyInitialized: true
+            ),
+            .builtLibrary
+        )
+        XCTAssertEqual(
+            StoreBootstrapMode.resolve(
+                legacyStoreExists: true,
+                libraryOrigin: .legacy,
+                installationWasPreviouslyInitialized: true
+            ),
+            .legacyUpgrade
+        )
         XCTAssertTrue(StoreBootstrapMode.freshSplitInstall.usesInMemoryRuntimeProjection)
         XCTAssertFalse(StoreBootstrapMode.legacyUpgrade.usesInMemoryRuntimeProjection)
+        XCTAssertFalse(StoreBootstrapMode.builtLibrary.usesInMemoryRuntimeProjection)
     }
 
     func testMigrationSliceBudgetBoundsMutationsAndWallTime() {

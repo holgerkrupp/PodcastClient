@@ -8,6 +8,90 @@
 import Foundation
 import os
 import SwiftData
+import CryptoKit
+
+
+actor BackgroundFeedRefreshStateStore {
+    static let shared = BackgroundFeedRefreshStateStore()
+
+    private struct Entry: Codable {
+        var lastAttempt: Date?
+        var lastSuccessfulCheck: Date?
+    }
+
+    private let defaults: UserDefaults
+    private let key: String
+    private let maximumEntries = 1_000
+
+    init(suiteName: String? = nil, key: String = "BackgroundFeedRefreshState.v1") {
+        self.defaults = suiteName.flatMap { UserDefaults(suiteName: $0) } ?? .standard
+        self.key = key
+    }
+
+    func state(for feed: URL) -> (lastAttempt: Date?, lastSuccessfulCheck: Date?)? {
+        load()[identity(for: feed)].map { ($0.lastAttempt, $0.lastSuccessfulCheck) }
+    }
+
+    func recordAttempt(for feed: URL, at date: Date = Date()) {
+        var entries = load()
+        var entry = entries[identity(for: feed)] ?? Entry()
+        entry.lastAttempt = date
+        entries[identity(for: feed)] = entry
+        save(entries)
+    }
+
+    func recordSuccessfulCheck(for feed: URL, at date: Date = Date()) {
+        var entries = load()
+        var entry = entries[identity(for: feed)] ?? Entry()
+        entry.lastAttempt = date
+        entry.lastSuccessfulCheck = date
+        entries[identity(for: feed)] = entry
+        save(entries)
+    }
+
+    func latestSuccessfulCheckDate() -> Date? {
+        load().values.compactMap(\.lastSuccessfulCheck).max()
+    }
+
+    func pendingWorkSummary(at now: Date = Date()) -> (feedCount: Int, pendingCount: Int, oldestAge: Int?) {
+        let entries = load().values
+        let pendingAttempts = entries.compactMap { entry -> Date? in
+            guard let lastAttempt = entry.lastAttempt,
+                  lastAttempt > (entry.lastSuccessfulCheck ?? .distantPast) else { return nil }
+            return lastAttempt
+        }
+        let oldestAge = pendingAttempts.map { max(0, Int(now.timeIntervalSince($0))) }.max()
+        return (entries.count, pendingAttempts.count, oldestAge)
+    }
+
+    private func identity(for feed: URL) -> String {
+        let canonical = feed.podcastFeedComparisonKeys.sorted().joined(separator: "\n")
+        return SHA256.hash(data: Data(canonical.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private func load() -> [String: Entry] {
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode([String: Entry].self, from: data) else {
+            return [:]
+        }
+        return decoded
+    }
+
+    private func save(_ entries: [String: Entry]) {
+        let cutoff = Date().addingTimeInterval(-365 * 24 * 60 * 60)
+        let retained = entries
+            .filter { ($0.value.lastAttempt ?? $0.value.lastSuccessfulCheck ?? .distantPast) >= cutoff }
+            .sorted {
+                ($0.value.lastAttempt ?? $0.value.lastSuccessfulCheck ?? .distantPast)
+                    > ($1.value.lastAttempt ?? $1.value.lastSuccessfulCheck ?? .distantPast)
+            }
+            .prefix(maximumEntries)
+        guard let data = try? JSONEncoder().encode(Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })) else { return }
+        defaults.set(data, forKey: key)
+    }
+}
 
 
 @ModelActor
@@ -771,10 +855,10 @@ actor SubscriptionManager:NSObject{
     private func makeBackgroundFeedRefreshCandidates(
         startedAt: Date,
         policy: BackgroundFeedRefreshPolicy
-    ) -> [BackgroundFeedRefreshCandidate] {
+    ) async -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
 
-        for ranked in podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
+        for ranked in await podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
             if candidates.count >= policy.maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
@@ -814,6 +898,7 @@ actor SubscriptionManager:NSObject{
         notifyNewEpisodes: Bool,
         forceParse: Bool = false
     ) async -> (TimedPodcastUpdateResult, Int, String?) {
+        await BackgroundFeedRefreshStateStore.shared.recordAttempt(for: feed)
         let worker = PodcastModelActor(modelContainer: modelContainer)
         let deadline = Date().addingTimeInterval(timeBudget)
 
@@ -829,6 +914,9 @@ actor SubscriptionManager:NSObject{
             let result: TimedPodcastUpdateResult = Date() >= deadline && summary.didUpdateFeed == false
                 ? .timedOut
                 : .completed(summary.didUpdateFeed)
+            if case .completed = result {
+                await BackgroundFeedRefreshStateStore.shared.recordSuccessfulCheck(for: feed)
+            }
             return (result, summary.newEpisodeCount, nil)
         } catch is CancellationError {
             return (.timedOut, 0, nil)
@@ -1280,7 +1368,7 @@ actor SubscriptionManager:NSObject{
 
     private func podcastsPrioritizedForBackgroundRefresh(
         now: Date
-    ) -> [(podcast: Podcast, forceParse: Bool)] {
+    ) async -> [(podcast: Podcast, forceParse: Bool)] {
         let liveFeatureEnabled = showLivePodcastsEnabled()
         let rankedPodcasts = podcasts
             .filter { $0.metaData?.isSubscribed != false }
@@ -1296,7 +1384,7 @@ actor SubscriptionManager:NSObject{
 
         modelContext.saveIfNeeded()
 
-        return rankedPodcasts
+        let ranked = rankedPodcasts
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
 
@@ -1320,6 +1408,49 @@ actor SubscriptionManager:NSObject{
                         )
                 )
             }
+        var eligible: [(podcast: Podcast, forceParse: Bool)] = []
+        for entry in ranked {
+            guard let feed = entry.podcast.feed,
+                  await isBackgroundFeedCheckEligible(entry.podcast.metaData, feed: feed, now: now) else {
+                continue
+            }
+            eligible.append(entry)
+        }
+        return eligible
+    }
+
+    private func isBackgroundFeedCheckEligible(_ metadata: PodcastMetaData?, feed: URL, now: Date) async -> Bool {
+        if let retryAfter = metadata?.authenticationRetryAfter, retryAfter > now { return false }
+
+        if let failureDate = metadata?.lastFeedFailureDate {
+            let status = metadata?.lastFeedFailureStatusCode ?? 0
+            let retryDelay: TimeInterval
+            if status == 401 || status == 403 {
+                retryDelay = 6 * 60 * 60
+            } else if status == 429 || (500...599).contains(status) {
+                retryDelay = 60 * 60
+            } else {
+                let failures = max(1, metadata?.consecutiveFeedFailureCount ?? 0)
+                retryDelay = min(15 * 60 * pow(2, Double(min(failures - 1, 4))), 4 * 60 * 60)
+            }
+            if now.timeIntervalSince(failureDate) < retryDelay { return false }
+        }
+
+        let state = await BackgroundFeedRefreshStateStore.shared.state(for: feed)
+        if let lastAttempt = state?.lastAttempt,
+           now.timeIntervalSince(lastAttempt) < 15 * 60 {
+            return false
+        }
+        let lastSuccessfulCheck: Date?
+        if let state {
+            lastSuccessfulCheck = state.lastSuccessfulCheck
+        } else {
+            // Older installs only have feedUpdateCheckDate, which may be an
+            // attempt. Use it once as a conservative migration baseline.
+            lastSuccessfulCheck = metadata?.feedUpdateCheckDate
+        }
+        guard let lastSuccessfulCheck else { return true }
+        return now.timeIntervalSince(lastSuccessfulCheck) >= BackgroundTaskConfiguration.backgroundFeedCheckInterval
     }
 
     private func showLivePodcastsEnabled() -> Bool {
@@ -1368,7 +1499,10 @@ actor SubscriptionManager:NSObject{
 
     func bgupdateFeeds(reason: FeedRefreshReason = .foregroundQuiet) async{
         // An episode still waiting to be filled in would look new to a refresh.
-        guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
+        guard StoreRuntimeProjection.isLibraryBackfillPending == false else {
+            CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=library_backfill_pending")
+            return
+        }
         let signpostID = OSSignpostID(log: Self.refreshPerformanceLog)
         os_signpost(.begin, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
         defer {
@@ -1407,6 +1541,7 @@ actor SubscriptionManager:NSObject{
         fetchData()
         var updated = 0
         var processed = 0
+        var successfulChecks = 0
         var timedOut = 0
         var stoppedForPlayback = false
         var stoppedForExporter = false
@@ -1419,7 +1554,7 @@ actor SubscriptionManager:NSObject{
             details: "reason=\(reason),podcasts=\(podcasts.count),limit=\(policy.maxPodcastsPerRun)"
         )
 
-        let candidates = makeBackgroundFeedRefreshCandidates(startedAt: startedAt, policy: policy)
+        let candidates = await makeBackgroundFeedRefreshCandidates(startedAt: startedAt, policy: policy)
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_candidates_prepared",
             details: "candidates=\(candidates.count),concurrency=\(policy.maxConcurrentPodcastUpdates)"
@@ -1493,7 +1628,10 @@ actor SubscriptionManager:NSObject{
                     processed += 1
                     switch refreshResult.result {
                     case .completed(let new):
-                        if new == true { updated += 1 }
+                        if refreshResult.errorMessage == nil {
+                            successfulChecks += 1
+                            if new == true { updated += 1 }
+                        }
 #if DEBUG
                         let podcastResult: RefreshHistoryPodcastResult
                         if let errorMessage = refreshResult.errorMessage {
@@ -1533,7 +1671,7 @@ actor SubscriptionManager:NSObject{
 
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_completed",
-            details: "processed=\(processed),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
+            details: "candidates=\(candidates.count),attempted=\(processed),checked=\(successfulChecks),failed=\(max(0, processed - successfulChecks)),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
         )
         guard Task.isCancelled == false else {
             await FeedRefreshRunCoordinator.shared.finish()
@@ -1541,11 +1679,8 @@ actor SubscriptionManager:NSObject{
         }
         // A sweep that did not actually start a feed leaves the ordinary
         // cadence eligible for the next grant.
-        if stoppedForPlayback == false, stoppedForExporter == false,
-           Task.isCancelled == false,
-           processed > 0 {
-            setLastRefreshDate()
-        }
+        // Freshness is tracked per feed by feedUpdateCheckDate. Failed and
+        // timed-out attempts never make the whole library appear current.
 #if DEBUG
         await RefreshHistoryStore.shared.record(
             RefreshHistoryEntry(
@@ -1576,15 +1711,6 @@ actor SubscriptionManager:NSObject{
         }
     }
 #endif
-    
-    func getLastRefreshDate() -> Date? {
-        let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
-        return lastDate
-    }
-    
-    func setLastRefreshDate(){
-        UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
-    }
     
     private func latestFetchedEpisode(for podcast: Podcast) -> Episode? {
         podcast.episodes?.max {

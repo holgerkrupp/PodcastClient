@@ -1270,8 +1270,7 @@ private struct FeedURLRepairSheet: View {
             try await PodcastModelActor(modelContainer: modelContainer).replacePodcastFeed(
                 podcastID,
                 candidateURL: candidateURL,
-                allowUnverifiedIdentity: allowUnverifiedIdentity,
-                reason: .explicitSwitch
+                allowUnverifiedIdentity: allowUnverifiedIdentity
             )
             didSave()
             dismiss()

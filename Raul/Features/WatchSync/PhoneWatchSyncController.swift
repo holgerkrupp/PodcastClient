@@ -745,7 +745,6 @@ final class PhoneWatchSyncController: NSObject {
 
         chapter.shouldPlay = shouldPlay
         context.saveIfNeeded()
-        StoreSplitFeedCacheWriter.requestProjection(for: episode)
     }
 
     private func handleFinishedTransfer(episodeID: String?, error: Error?) {

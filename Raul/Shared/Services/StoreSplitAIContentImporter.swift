@@ -1,6 +1,9 @@
 import Foundation
 import SwiftData
 
+/// Compatibility importer retained for focused migration fixtures. Normal
+/// production reads now materialize validated staging directly into
+/// `SharedDatabase` via `StoreSplitCacheAIContentMigration`.
 struct StoreSplitAIContentImportResult: Sendable {
     var transcriptsApplied = 0
     var chaptersApplied = 0

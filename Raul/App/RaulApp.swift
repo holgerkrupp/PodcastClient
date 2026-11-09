@@ -25,6 +25,7 @@ enum BackgroundTaskConfiguration {
     /// first opportunity without buying anything.
     static let storeSplitMigrationInterval: TimeInterval = 60 * 15
     static let feedProcessingInterval: TimeInterval = 60 * 60
+    static let backgroundFeedCheckInterval: TimeInterval = 60 * 60
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
     /// Floor for the automatic transcription pass. The request is a floor, not a
@@ -47,6 +48,53 @@ enum BackgroundTaskConfiguration {
     static let lastStorageCleanupKey = "LastStorageCleanup"
     static let lastForegroundDownloadCleanupKey = "LastForegroundDownloadCleanup"
     static let foregroundDownloadCleanupMinimumInterval: TimeInterval = 60 * 60 * 12
+}
+
+enum FeedProcessingScheduler {
+    static func schedule() async {
+#if os(iOS)
+        let identifier = BackgroundTaskConfiguration.feedProcessingIdentifier
+        let earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
+        let pendingRequest = await BGTaskScheduler.shared.pendingTaskRequests().first {
+            $0.identifier == identifier
+        }
+        if let pendingRequest,
+           let pendingProcessing = pendingRequest as? BGProcessingTaskRequest,
+           pendingProcessing.requiresNetworkConnectivity,
+           pendingProcessing.requiresExternalPower == false,
+           pendingRequest.earliestBeginDate.map({ $0 <= earliestBeginDate }) == true {
+            CrashBreadcrumbs.shared.record(
+                "feed_processing_background_task_preserved",
+                details: "earliest=\(pendingRequest.earliestBeginDate!)"
+            )
+            return
+        }
+
+        let request = BGProcessingTaskRequest(identifier: identifier)
+        request.requiresNetworkConnectivity = true
+        request.requiresExternalPower = false
+        request.earliestBeginDate = earliestBeginDate
+        do {
+            // Submitting the same identifier replaces a request only when its
+            // timing or requirements need adjustment. Keep the previous one
+            // intact if this submission fails.
+            try BGTaskScheduler.shared.submit(request)
+            CrashBreadcrumbs.shared.record(
+                "feed_processing_background_task_scheduled",
+                details: "earliest=\(earliestBeginDate)"
+            )
+        } catch {
+            let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+                $0.identifier == identifier
+            }
+            CrashBreadcrumbs.shared.record(
+                "feed_processing_background_task_schedule_failed",
+                details: "pending_request_available=\(pending != nil),earliest=\(pending?.earliestBeginDate?.description ?? "unavailable")"
+            )
+            AppDiagnostics.log("feed_processing_schedule_failed pending=\(pending != nil)")
+        }
+#endif
+    }
 }
 
 /// A small, durable snapshot of the scheduling decisions that were made while
@@ -313,18 +361,36 @@ enum FeedRefreshScheduler {
         )
         request.earliestBeginDate = earliestBeginDate
 
+        let pendingRequest = await BGTaskScheduler.shared.pendingTaskRequests().first {
+            $0.identifier == BackgroundTaskConfiguration.feedRefreshIdentifier
+        }
+        if let pendingRequest,
+           pendingRequest is BGAppRefreshTaskRequest,
+           pendingRequest.earliestBeginDate.map({ $0 <= earliestBeginDate }) ?? true {
+            CrashBreadcrumbs.shared.record(
+                "schedule_feed_refresh_preserved",
+                details: "earliest=\(pendingRequest.earliestBeginDate!)"
+            )
+            return pendingRequest.earliestBeginDate
+        }
+
         do {
+            // Submitting the same identifier replaces a later request. Avoid
+            // cancelling first so a failed submission cannot discard it.
             try BGTaskScheduler.shared.submit(request)
             CrashBreadcrumbs.shared.record(
                 "schedule_feed_refresh_submitted",
                 details: "earliest=\(earliestBeginDate)"
             )
         } catch {
+            let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+                $0.identifier == BackgroundTaskConfiguration.feedRefreshIdentifier
+            }
             CrashBreadcrumbs.shared.record(
                 "schedule_feed_refresh_failed",
-                details: error.localizedDescription
+                details: "pending=\(pending != nil),earliest=\(pending?.earliestBeginDate?.description ?? "unavailable")"
             )
-            AppDiagnostics.log(error.localizedDescription)
+            AppDiagnostics.log("schedule_feed_refresh_failed")
         }
         return earliestBeginDate
 #else
@@ -367,13 +433,10 @@ enum PredictedReleaseRefreshScheduler {
                     "schedule_predicted_release_refresh_not_scheduled",
                     details: "reason=stale_snapshot_retry"
                 )
-                await scheduleRetryAfterBackgroundPass(
-                    delay: BackgroundTaskConfiguration.feedRefreshInterval
-                )
+                // Keep the previously targeted request in place. A stale
+                // foreground prediction is not a reason to replace its timing
+                // with a generic retry window.
             } else {
-                BGTaskScheduler.shared.cancel(
-                    taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-                )
                 CrashBreadcrumbs.shared.record(
                     "schedule_predicted_release_refresh_not_scheduled",
                     details: "reason=stale_snapshot_without_target"
@@ -384,9 +447,14 @@ enum PredictedReleaseRefreshScheduler {
 
         guard snapshot.hasPredictedReleaseTarget,
               let cachedEarliestBeginDate = snapshot.predictedReleaseEarliestBeginDate else {
-            BGTaskScheduler.shared.cancel(
-                taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-            )
+                let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+                    $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+                }
+                if pending != nil {
+                    BGTaskScheduler.shared.cancel(
+                        taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+                    )
+                }
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_not_scheduled",
                 details: "reason=no_prediction"
@@ -397,10 +465,6 @@ enum PredictedReleaseRefreshScheduler {
             return
         }
 
-        BGTaskScheduler.shared.cancel(
-            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-        )
-
         let request = BGAppRefreshTaskRequest(
             identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
         )
@@ -409,6 +473,19 @@ enum PredictedReleaseRefreshScheduler {
         )
         let earliestBeginDate = max(cachedEarliestBeginDate, minimumBeginDate)
         request.earliestBeginDate = earliestBeginDate
+
+        let pendingRequest = await BGTaskScheduler.shared.pendingTaskRequests().first {
+            $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        }
+        if let pendingRequest,
+           pendingRequest is BGAppRefreshTaskRequest,
+           pendingRequest.earliestBeginDate.map({ $0 <= earliestBeginDate }) ?? true {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_preserved",
+                details: "earliest=\(pendingRequest.earliestBeginDate!)"
+            )
+            return
+        }
 
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -430,14 +507,14 @@ enum PredictedReleaseRefreshScheduler {
             }
 #endif
         } catch {
+            let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+                $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+            }
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_failed",
-                details: error.localizedDescription
+                details: "pending=\(pending != nil),earliest=\(pending?.earliestBeginDate?.description ?? "unavailable")"
             )
-#if DEBUG
-            await PredictedReleaseRefreshScheduleStore.shared.clear()
-#endif
-            AppDiagnostics.log(error.localizedDescription)
+            AppDiagnostics.log("schedule_predicted_release_refresh_failed")
         }
 #endif
     }
@@ -448,9 +525,6 @@ enum PredictedReleaseRefreshScheduler {
         delay: TimeInterval = BackgroundTaskConfiguration.predictedReleaseRefreshRetryDelay
     ) async {
 #if os(iOS)
-        BGTaskScheduler.shared.cancel(
-            taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
-        )
         let earliestBeginDate = Date(
             timeIntervalSinceNow: delay
         )
@@ -459,17 +533,22 @@ enum PredictedReleaseRefreshScheduler {
         )
         request.earliestBeginDate = earliestBeginDate
         do {
+            // A successor is submitted only after a granted pass. Submitting
+            // the same identifier replaces any existing later request.
             try BGTaskScheduler.shared.submit(request)
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_retry_submitted",
                 details: "earliest=\(earliestBeginDate)"
             )
         } catch {
+            let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+                $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+            }
             CrashBreadcrumbs.shared.record(
                 "schedule_predicted_release_refresh_retry_failed",
-                details: error.localizedDescription
+                details: "pending=\(pending != nil),earliest=\(pending?.earliestBeginDate?.description ?? "unavailable")"
             )
-            AppDiagnostics.log(error.localizedDescription)
+            AppDiagnostics.log("schedule_predicted_release_refresh_retry_failed")
         }
 #endif
     }
@@ -670,6 +749,13 @@ struct RaulApp: App {
                 // container or an actionable error.
                 Task(priority: .userInitiated) {
                     await modelContainerManager.prepareContainer()
+                    guard isAppActiveForForegroundWork,
+                          modelContainerManager.preparedContainer != nil else { return }
+                    CrashBreadcrumbs.shared.record(
+                        "foreground_feed_refresh_container_ready",
+                        details: "catch_up_requested=true"
+                    )
+                    refreshOnActive()
                 }
                 guard modelContainerManager.preparedContainer != nil else { return }
                 if let container = modelContainerManager.preparedContainer {
@@ -702,7 +788,6 @@ struct RaulApp: App {
                     StoreSplitLaunchHealth.markHealthy()
                     CrashBreadcrumbs.shared.record("store_split_launch_marked_healthy")
                 }
-                refreshOnActive()
                 scheduleDeferredStoreSplitWork()
                 Task(priority: .userInitiated) {
                     await Task.yield()
@@ -833,7 +918,6 @@ struct RaulApp: App {
 
             await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .appRefresh)
             guard Task.isCancelled == false else { return }
-            await PredictedReleaseRefreshScheduler.scheduleRetryAfterBackgroundPass()
             let exportDrainStartedAt = Date()
             let exportSettled = await StoreCloudKitActivityMonitor.shared
                 .waitForExportQuiescence(maximumDuration: 8)
@@ -1066,18 +1150,6 @@ struct RaulApp: App {
             await PlayNextWidgetSync.refresh(using: container)
             await CloudSyncProgressReferenceStore.publish(modelContainer: container)
 
-            if let lastRefresh = getLastRefreshDate(),
-               lastRefresh >= Date().addingTimeInterval(-BackgroundTaskConfiguration.feedRefreshInterval) {
-                CrashBreadcrumbs.shared.record(
-                    "foreground_feed_refresh_skipped",
-                    details: "reason=recent_refresh"
-                )
-                await MainActor.run {
-                    deferredForegroundFeedRefreshTask = nil
-                }
-                return
-            }
-
             guard Player.hasActivePlaybackInProcess == false else {
                 CrashBreadcrumbs.shared.record(
                     "foreground_feed_refresh_skipped",
@@ -1184,15 +1256,6 @@ struct RaulApp: App {
 #endif
     }
 
-    func setLastRefreshDate(){
-        UserDefaults.standard.setValue(Date().RFC1123String(), forKey: "LastBackgroundRefresh")
-    }
-    
-    func getLastRefreshDate() -> Date? {
-        let lastDate = Date.dateFromRFC1123(dateString: UserDefaults.standard.string(forKey: "LastBackgroundRefresh") ?? "")
-        return lastDate
-    }
-    
     func setLastprocessDate(){
         UserDefaults.standard.setValue(Date().formatted(), forKey: "LastBackgroundProcess")
     }
@@ -1236,20 +1299,7 @@ struct RaulApp: App {
 
     func scheduleFeedProcessing() {
 #if os(iOS)
-        CrashBreadcrumbs.shared.record("schedule_feed_processing_requested")
-        AppDiagnostics.log("schedule processFeedUpdates")
-        let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
-
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record("schedule_feed_processing_submitted")
-        } catch {
-            CrashBreadcrumbs.shared.record("schedule_feed_processing_failed", details: error.localizedDescription)
-            AppDiagnostics.log(error.localizedDescription)
-        }
+        Task { await FeedProcessingScheduler.schedule() }
 #endif
     }
 

@@ -4,7 +4,7 @@ import Foundation
 import SwiftData
 
 /// A portable source record that could not be projected because its episode
-/// was unavailable. Feed and record identities stay in the local cache only.
+/// was unavailable. Feed and record identities stay in the local library only.
 struct StoreSplitMissingEpisodeReference: Equatable, Sendable {
     let stream: StoreSplitUserStateStream
     let sourceRecordID: String
@@ -172,7 +172,7 @@ enum StoreSplitMissingEpisodeLedger {
         defer { try? handle.close() }
         try handle.synchronize()
         // The atomic write renames a temporary file. Flush the directory entry
-        // before the cache transaction can commit, so a crash cannot leave a
+        // before the library transaction can commit, so a crash cannot leave a
         // durable queue row without its scheduler marker.
         let directoryFD = open(directory.path, O_RDONLY)
         guard directoryFD >= 0 else { throw StoreSplitMissingEpisodeLedgerError.coordinationUnavailable }
@@ -197,7 +197,7 @@ enum StoreSplitMissingEpisodeLedger {
     }
 
     /// Cheap scheduler hint. A damaged or unavailable marker is treated as
-    /// pending so an admitted background pass can reconcile it from the cache.
+    /// pending so an admitted background pass can reconcile it from the library.
     static func pendingStatus() -> PendingStatus {
         guard let directory = FileManager.default.containerURL(
             forSecurityApplicationGroupIdentifier: ModelContainerManager.appGroupID
@@ -224,15 +224,15 @@ enum StoreSplitMissingEpisodeLedger {
     }
 
     /// Repairs a false-positive marker after an interrupted enqueue. Run only
-    /// after the cache has been opened in an admitted maintenance window.
-    static func reconcilePendingStatus(cacheContainer: ModelContainer) throws {
+    /// after the library has been opened in an admitted maintenance window.
+    static func reconcilePendingStatus(libraryContainer: ModelContainer) throws {
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        try refreshMarker(context: ModelContext(cacheContainer), directory: coordination.directory)
+        try refreshMarker(context: ModelContext(libraryContainer), directory: coordination.directory)
     }
 
-    static func contentProjectionPendingCount(cacheContainer: ModelContainer) throws -> Int {
-        let context = ModelContext(cacheContainer)
+    static func contentProjectionPendingCount(libraryContainer: ModelContainer) throws -> Int {
+        let context = ModelContext(libraryContainer)
         return try context.fetchCount(FetchDescriptor<CachedMissingEpisodeReference>(
             predicate: #Predicate { $0.contentProjectionPending }
         ))
@@ -250,15 +250,15 @@ enum StoreSplitMissingEpisodeLedger {
     /// Commits the entire bounded batch or none of it. Repeating an unchanged
     /// batch does not rewrite rows; a newer revision makes the item due again.
     static func enqueue(_ references: [StoreSplitMissingEpisodeReference],
-                        cacheContainer: ModelContainer) throws {
+                        libraryContainer: ModelContainer) throws {
         guard references.count <= maximumBatchSize else { throw StoreSplitMissingEpisodeLedgerError.batchTooLarge }
         guard !references.isEmpty else { return }
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        // This precedes the cache save. A crash can leave extra work scheduled,
+        // This precedes the library save. A crash can leave extra work scheduled,
         // but cannot leave a saved reference invisible to the scheduler.
         try writeMarker(due: .distantPast, directory: coordination.directory)
-        let context = ModelContext(cacheContainer)
+        let context = ModelContext(libraryContainer)
         context.autosaveEnabled = false
         do {
             for reference in references {
@@ -314,11 +314,11 @@ enum StoreSplitMissingEpisodeLedger {
     /// Returns at most one page. Postponing unavailable items moves them behind
     /// other due references, so a permanently missing episode cannot starve the
     /// rest of the queue.
-    static func duePage(cacheContainer: ModelContainer, limit: Int = 40,
+    static func duePage(libraryContainer: ModelContainer, limit: Int = 40,
                         now: Date = .now) throws -> [StoreSplitMissingEpisodeReference] {
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        let context = ModelContext(cacheContainer)
+        let context = ModelContext(libraryContainer)
         var descriptor = FetchDescriptor<CachedMissingEpisodeReference>(
             predicate: #Predicate { $0.nextAttemptAt <= now },
             sortBy: [SortDescriptor(\CachedMissingEpisodeReference.nextAttemptAt),
@@ -347,16 +347,16 @@ enum StoreSplitMissingEpisodeLedger {
     /// an older in-flight projection.
     @discardableResult
     static func acknowledge(_ reference: StoreSplitMissingEpisodeReference,
-                            cacheContainer: ModelContainer) throws -> Bool {
-        try mutate(reference, cacheContainer: cacheContainer) { row, context in
+                            libraryContainer: ModelContainer) throws -> Bool {
+        try mutate(reference, libraryContainer: libraryContainer) { row, context in
             context.delete(row)
         }
     }
 
     @discardableResult
     static func postpone(_ reference: StoreSplitMissingEpisodeReference,
-                         cacheContainer: ModelContainer, until date: Date) throws -> Bool {
-        try mutate(reference, cacheContainer: cacheContainer) { row, _ in
+                         libraryContainer: ModelContainer, until date: Date) throws -> Bool {
+        try mutate(reference, libraryContainer: libraryContainer) { row, _ in
             if row.nextAttemptAt != date { row.nextAttemptAt = date }
         }
     }
@@ -364,12 +364,12 @@ enum StoreSplitMissingEpisodeLedger {
     /// Clears only revisions which the ordinary importer has already saved.
     /// A concurrently queued newer revision remains pending.
     static func acknowledgeProjected(_ references: [StoreSplitMissingEpisodeReference],
-                                     cacheContainer: ModelContainer) throws {
+                                     libraryContainer: ModelContainer) throws {
         guard references.count <= maximumBatchSize else { throw StoreSplitMissingEpisodeLedgerError.batchTooLarge }
         guard !references.isEmpty else { return }
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        let context = ModelContext(cacheContainer)
+        let context = ModelContext(libraryContainer)
         context.autosaveEnabled = false
         let expected = Dictionary(grouping: references) {
             key(stream: $0.stream, sourceRecordID: $0.sourceRecordID)
@@ -409,14 +409,14 @@ enum StoreSplitMissingEpisodeLedger {
         superseded: [(old: StoreSplitMissingEpisodeReference, new: StoreSplitMissingEpisodeReference)],
         contentPending: [StoreSplitMissingEpisodeReference] = [],
         now: Date,
-        cacheContainer: ModelContainer
+        libraryContainer: ModelContainer
     ) throws -> (acknowledged: Int, postponed: Int) {
         let all = projected + postponed + superseded.map(\.old)
         guard all.count <= maximumBatchSize else { throw StoreSplitMissingEpisodeLedgerError.batchTooLarge }
         guard !all.isEmpty else { return (0, 0) }
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        let context = ModelContext(cacheContainer)
+        let context = ModelContext(libraryContainer)
         context.autosaveEnabled = false
         var acknowledged = 0
         var deferred = 0
@@ -473,11 +473,11 @@ enum StoreSplitMissingEpisodeLedger {
     }
 
     private static func mutate(_ reference: StoreSplitMissingEpisodeReference,
-                               cacheContainer: ModelContainer,
+                               libraryContainer: ModelContainer,
                                action: (CachedMissingEpisodeReference, ModelContext) -> Void) throws -> Bool {
         let coordination = try beginCoordination()
         defer { endCoordination(coordination) }
-        let context = ModelContext(cacheContainer)
+        let context = ModelContext(libraryContainer)
         context.autosaveEnabled = false
         let id = key(stream: reference.stream, sourceRecordID: reference.sourceRecordID)
         var descriptor = FetchDescriptor<CachedMissingEpisodeReference>(predicate: #Predicate { $0.id == id })

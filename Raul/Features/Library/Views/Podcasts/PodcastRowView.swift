@@ -17,6 +17,20 @@ struct PodcastRowView: View {
     var density: PodcastRowContentView.Density = .comfortable
     var previewArtwork: Image? = nil
     var previewArtworkSource: ESAImageSource? = nil
+    private let presentation: PodcastRowPresentation
+
+    init(
+        podcast: Podcast,
+        density: PodcastRowContentView.Density = .comfortable,
+        previewArtwork: Image? = nil,
+        previewArtworkSource: ESAImageSource? = nil
+    ) {
+        self.podcast = podcast
+        self.density = density
+        self.previewArtwork = previewArtwork
+        self.previewArtworkSource = previewArtworkSource
+        self.presentation = Self.makePresentation(from: podcast)
+    }
 
     var body: some View {
         PodcastRowContentView(
@@ -27,7 +41,10 @@ struct PodcastRowView: View {
         )
     }
 
-    private var presentation: PodcastRowPresentation {
+    /// Capture SwiftData-backed display values when the row is created. SwiftUI
+    /// can keep a row alive while a background context deletes its model; its
+    /// body must not call generated model accessors during that interval.
+    private static func makePresentation(from podcast: Podcast) -> PodcastRowPresentation {
         let metadata = podcast.metaData
         let diagnostic = rowDiagnostic(from: metadata)
         return PodcastRowPresentation(
@@ -45,7 +62,7 @@ struct PodcastRowView: View {
         )
     }
 
-    private func rowDiagnostic(from metadata: PodcastMetaData?) -> (badge: String, message: String)? {
+    private static func rowDiagnostic(from metadata: PodcastMetaData?) -> (badge: String, message: String)? {
         guard let metadata else { return nil }
 
         switch metadata.credentialState {
@@ -80,7 +97,7 @@ struct PodcastRowView: View {
         return ("FEED ISSUE", feedIssueDescription(from: metadata) ?? "The podcast feed could not be refreshed.")
     }
 
-    private func accessProfile(from metadata: PodcastMetaData?, feedURL: URL?) -> PodcastAccessProfile? {
+    private static func accessProfile(from metadata: PodcastMetaData?, feedURL: URL?) -> PodcastAccessProfile? {
         guard let metadata,
               let id = metadata.accessProfileID,
               let rawKind = metadata.accessKindRawValue,
@@ -99,7 +116,7 @@ struct PodcastRowView: View {
     /// Only reads already stored failure fields; release-pattern prediction is
     /// deliberately kept out of row rendering to avoid episode relationship
     /// faults in large lists.
-    private func feedIssueDescription(from metadata: PodcastMetaData?) -> String? {
+    private static func feedIssueDescription(from metadata: PodcastMetaData?) -> String? {
         guard let metadata, metadata.lastFeedFailureDate != nil else { return nil }
         let reason = metadata.feedFailureStatusDescription
             ?? metadata.lastFeedFailureMessage

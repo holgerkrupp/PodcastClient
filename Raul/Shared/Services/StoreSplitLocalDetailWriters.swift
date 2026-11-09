@@ -66,93 +66,29 @@ struct PodcastLocalSettingsPayload: Codable, Sendable {
 }
 
 enum StoreSplitLocalSettingsWriter {
-    /// Adds or updates the row for these settings without saving; the caller owns
-    /// the save. Settings owned by neither a podcast nor the global scope are skipped.
+    /// Kept for the deferred legacy-copy call sites. Local settings now live in
+    /// the durable library, so copying them into PodcastCache would create a
+    /// second authority that can later overwrite a newer edit.
     static func upsert(from settings: PodcastSettings, in cacheContext: ModelContext) {
-        if let feed = settings.podcast?.feed {
-            upsert(
-                PodcastLocalSettingsPayload(settings),
-                feedKey: PodcastFeedIdentity.normalizedFeedURLString(feed),
-                in: cacheContext
-            )
-        } else if settings.title == PodcastSettings.globalSettingsTitle {
-            upsert(PodcastLocalSettingsPayload(settings), feedKey: nil, in: cacheContext)
-        }
+        _ = settings
+        _ = cacheContext
     }
 
-    /// Persists a committed settings edit in the background.
+    /// Kept for source compatibility with settings editors. `PodcastSettings`
+    /// is already saved in the durable library by its owner.
     static func persist(_ settings: PodcastSettings) {
-        let feedKey = settings.podcast?.feed.map(PodcastFeedIdentity.normalizedFeedURLString)
-        guard feedKey != nil || settings.title == PodcastSettings.globalSettingsTitle else { return }
-        let payload = PodcastLocalSettingsPayload(settings)
-        Task {
-            await ModelContainerManager.shared.prepareSplitStores()
-            guard let cache = await MainActor.run(body: {
-                ModelContainerManager.shared.preparedCacheContainer
-            }) else {
-                AppDiagnostics.log("Local podcast settings could not be saved: PodcastCache unavailable")
-                return
-            }
-            await Task.detached(priority: .utility) {
-                let context = ModelContext(cache)
-                upsert(payload, feedKey: feedKey, in: context)
-                do {
-                    try context.save()
-                } catch {
-                    CrashBreadcrumbs.shared.record(
-                        "store_split_local_settings_save_failed",
-                        details: error.localizedDescription
-                    )
-                }
-            }.value
-        }
-    }
-
-    private static func upsert(
-        _ payload: PodcastLocalSettingsPayload,
-        feedKey: String?,
-        in context: ModelContext
-    ) {
-        guard let data = try? JSONEncoder().encode(payload) else { return }
-        let rowID = CachedPodcastLocalSettings.scopeID(feedURL: feedKey)
-        var descriptor = FetchDescriptor<CachedPodcastLocalSettings>(
-            predicate: #Predicate { $0.id == rowID }
-        )
-        descriptor.fetchLimit = 1
-        if let row = try? context.fetch(descriptor).first {
-            guard row.payload != data else { return }
-            row.payload = data
-            row.updatedAt = .now
-        } else {
-            context.insert(CachedPodcastLocalSettings(feedURL: feedKey, payload: data))
-        }
+        _ = settings
     }
 }
 
 enum StoreSplitBookmarkDetailWriter {
     /// Adds or updates the detail row for `id` (the BookmarkSync id) without saving;
-    /// the caller owns the save.
+    /// the caller owns the save. Kept for deferred-copy call sites; canonical
+    /// Bookmark rows now retain these device-local fields directly.
     static func upsert(from bookmark: Bookmark, id: String, in cacheContext: ModelContext) {
-        var descriptor = FetchDescriptor<CachedBookmarkDetail>(
-            predicate: #Predicate { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        let identity = bookmark.bookmarkEpisode?.stableEpisodeIdentity
-        let row = (try? cacheContext.fetch(descriptor).first) ?? {
-            let created = CachedBookmarkDetail(
-                id: id,
-                feedURL: identity?.feedURL ?? "",
-                episodeID: identity?.episodeID ?? ""
-            )
-            cacheContext.insert(created)
-            return created
-        }()
-        row.imageData = bookmark.imageData
-        row.duration = bookmark.duration
-        row.endTime = bookmark.endTime
-        row.link = bookmark.link
-        row.progress = bookmark.progress
-        row.updatedAt = .now
+        _ = bookmark
+        _ = id
+        _ = cacheContext
     }
 
     static func delete(id: String, cacheContainer: ModelContainer) {

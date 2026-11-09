@@ -304,6 +304,9 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         AppDiagnostics.log(
             "background_processing_completed task=\(task.identifier) operation=\(operation) success=\(succeeded) process_cpu_seconds_delta=\(cpuDelta.map { String(format: "%.2f", $0) } ?? "unavailable")"
         )
+        if operation == "feed_processing" {
+            await Self.scheduleFeedProcessing()
+        }
         task.setTaskCompleted(success: succeeded)
     }
 
@@ -402,14 +405,11 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// asks iOS for an opportunistic processing window while the device is idle.
     static func enqueuePublisherTranscriptSynchronization(for episodeURL: URL) async {
         guard let container = await ModelContainerManager.shared
-            .prepareContainerForExternalEntryPoint(),
-              let cacheContainer = await MainActor.run(body: {
-                  ModelContainerManager.shared.preparedCacheContainer
-              }) else { return }
+            .prepareContainerForExternalEntryPoint() else { return }
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
         guard await settingsActor.getPublisherTranscriptSynchronizationEnabled() else { return }
 
-        await TranscriptAlignmentCacheActor(modelContainer: cacheContainer).enqueue(episodeURL: episodeURL)
+        await TranscriptAlignmentStoreActor(modelContainer: container).enqueue(episodeURL: episodeURL)
         await schedulePublisherTranscriptSynchronizationIfNeeded()
     }
 
@@ -419,13 +419,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     static func schedulePublisherTranscriptSynchronizationIfNeeded() async {
         guard StoreRuntimeProjection.isLibraryBackfillPending == false else { return }
         guard let container = await ModelContainerManager.shared
-            .prepareContainerForExternalEntryPoint(),
-              let cacheContainer = await MainActor.run(body: {
-                  ModelContainerManager.shared.preparedCacheContainer
-        }) else { return }
+            .prepareContainerForExternalEntryPoint() else { return }
         guard Task.isCancelled == false else { return }
         let settingsActor = PodcastSettingsModelActor(modelContainer: container)
-        let queue = TranscriptAlignmentCacheActor(modelContainer: cacheContainer)
+        let queue = TranscriptAlignmentStoreActor(modelContainer: container)
         let enabled = await settingsActor.getPublisherTranscriptSynchronizationEnabled()
         guard Task.isCancelled == false else { return }
         guard enabled else {
@@ -487,11 +484,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
 
-            guard let episodeContainer = await ModelContainerManager.shared
-                .prepareContainerForExternalEntryPoint(),
-                  let cacheContainer = await MainActor.run(body: {
-                      ModelContainerManager.shared.preparedCacheContainer
-                  }), Task.isCancelled == false else {
+            guard let container = await ModelContainerManager.shared
+                .prepareContainerForExternalEntryPoint(), Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
                     task,
                     operation: "publisher_transcript_sync",
@@ -501,7 +495,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 )
                 return
             }
-            let settingsActor = PodcastSettingsModelActor(modelContainer: episodeContainer)
+            let settingsActor = PodcastSettingsModelActor(modelContainer: container)
             let enabled = await settingsActor.getPublisherTranscriptSynchronizationEnabled()
             guard Task.isCancelled == false else {
                 await self.finishBackgroundProcessingTask(
@@ -546,8 +540,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 return
             }
             let completedCount = await TranscriptSynchronizationService.shared.runQueuedBackgroundJobs(
-                episodeContainer: episodeContainer,
-                cacheContainer: cacheContainer,
+                libraryContainer: container,
                 episodeLimit: BackgroundTaskConfiguration.publisherTranscriptSynchronizationEpisodeLimit
             )
             guard Task.isCancelled == false else {
@@ -581,26 +574,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
-    private static func scheduleFeedProcessing() {
-        BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
-        let request = BGProcessingTaskRequest(identifier: BackgroundTaskConfiguration.feedProcessingIdentifier)
-        request.requiresNetworkConnectivity = true
-        request.requiresExternalPower = false
-        request.earliestBeginDate = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedProcessingInterval)
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            CrashBreadcrumbs.shared.record("feed_processing_background_task_scheduled")
-        } catch {
-            CrashBreadcrumbs.shared.record("feed_processing_background_task_schedule_failed", details: error.localizedDescription)
-            AppDiagnostics.log(error.localizedDescription)
-        }
+    private static func scheduleFeedProcessing() async {
+        await FeedProcessingScheduler.schedule()
     }
 
     private func handleFeedProcessing(task: BGProcessingTask) {
         beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
         let processingTask = Task(priority: .utility) {
-            Self.scheduleFeedProcessing()
             guard Player.hasActivePlaybackInProcess == false else {
                 CrashBreadcrumbs.shared.record(
                     "feed_processing_background_task_skipped",

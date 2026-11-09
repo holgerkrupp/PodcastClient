@@ -335,19 +335,27 @@ actor StoreSplitUserStateImporter {
             )
             guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         }
+        // Recover cache-only device settings before portable preference import
+        // creates any missing PodcastSettings rows. The cache payload applies
+        // only when the canonical local row is absent; synced fields are then
+        // merged by the ordinary preference pass below.
+        if isInitialRuntimeHydration,
+           changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
+            let migratedLocalSettingsIDs = applyLocalSettings(result: &result)
+            guard result.failed == 0 else { return result }
+            guard saveLegacyChanges(phase: "local_settings_recovery", result: &result) else {
+                return result
+            }
+            retireLocalSettingsRows(migratedLocalSettingsIDs)
+            refreshContexts()
+        }
         // Preferences store playlist sync identities. Project playlists first
         // so newly received targets can be resolved to this device's local UUID.
         if changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
             await awaitIdleWindow()
             await applyPreferences(result: &result)
             guard result.failed == 0, sourceReadFailed == false else { return result }
-            // Local settings only have to survive the relaunch rebuild. Later
-            // passes must not revert edits made during this session.
-            if isInitialRuntimeHydration {
-                applyLocalSettings(result: &result)
-                guard result.failed == 0 else { return result }
-            }
-            saveLegacyChanges(phase: "preferences", result: &result)
+            guard saveLegacyChanges(phase: "preferences", result: &result) else { return result }
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
@@ -614,16 +622,17 @@ actor StoreSplitUserStateImporter {
         }
     }
 
-    private func applyLocalSettings(result: inout StoreSplitUserStateImportResult) {
-        guard let cacheContainer else { return }
+    private func applyLocalSettings(result: inout StoreSplitUserStateImportResult) -> [String] {
+        guard let cacheContainer else { return [] }
         let rows: [CachedPodcastLocalSettings]
         do {
             rows = try ModelContext(cacheContainer).fetch(FetchDescriptor<CachedPodcastLocalSettings>())
         } catch {
             result.failed += 1
             CrashBreadcrumbs.shared.record("store_split_local_settings_fetch_failed")
-            return
+            return []
         }
+        var reconciledIDs: [String] = []
         let decoder = JSONDecoder()
         for row in rows {
             guard let payload = try? decoder.decode(PodcastLocalSettingsPayload.self, from: row.payload) else {
@@ -633,7 +642,13 @@ actor StoreSplitUserStateImporter {
                 guard let podcast = URL(string: feedKey)?.podcastFeedComparisonKeys.compactMap({
                     podcastsByComparisonKey[$0].flatMap(indexedPodcast)
                 }).first else { continue }
-                payload.apply(to: ensureSettings(for: podcast))
+                // SharedDatabase is authoritative when it already has a row.
+                // The cache payload is used only to fill a projection that has
+                // no canonical settings yet.
+                if podcast.settings == nil {
+                    payload.apply(to: ensureSettings(for: podcast))
+                }
+                reconciledIDs.append(row.id)
             } else {
                 let globalTitle = PodcastSettings.globalSettingsTitle
                 var descriptor = FetchDescriptor<PodcastSettings>(
@@ -641,20 +656,46 @@ actor StoreSplitUserStateImporter {
                 )
                 descriptor.fetchLimit = 1
                 let settings: PodcastSettings
+                let hadCanonicalSettings: Bool
                 do {
                     if let existing = try legacyContext.fetch(descriptor).first {
                         settings = existing
+                        hadCanonicalSettings = true
                     } else {
                         settings = PodcastSettings(defaultSettings: true)
                         legacyContext.insert(settings)
+                        hadCanonicalSettings = false
                     }
                 } catch {
                     result.failed += 1
                     CrashBreadcrumbs.shared.record("store_split_local_settings_destination_fetch_failed")
-                    return
+                    return reconciledIDs
                 }
-                payload.apply(to: settings)
+                // As with podcast settings, do not roll back an existing local
+                // edit from a stale cache mirror.
+                if hadCanonicalSettings == false { payload.apply(to: settings) }
+                reconciledIDs.append(row.id)
             }
+        }
+        return reconciledIDs
+    }
+
+    private func retireLocalSettingsRows(_ ids: [String]) {
+        guard let cacheContainer, ids.isEmpty == false else { return }
+        let context = ModelContext(cacheContainer)
+        do {
+            for id in ids {
+                try context.delete(
+                    model: CachedPodcastLocalSettings.self,
+                    where: #Predicate { $0.id == id }
+                )
+            }
+            try context.save()
+        } catch {
+            context.rollback()
+            // The canonical values have already been saved. Keeping the old
+            // cache payload is safe and lets a later migration retry retire it.
+            CrashBreadcrumbs.shared.record("store_split_local_settings_retire_failed")
         }
     }
 
@@ -1223,6 +1264,7 @@ actor StoreSplitUserStateImporter {
             )
             guard sourceReadFailed == false else { legacyContext.rollback(); return }
             var missing: [StoreSplitMissingEpisodeReference] = []
+            var reconciledDetailIDs: [String] = []
 
 
             for record in freshRecords {
@@ -1233,6 +1275,7 @@ actor StoreSplitUserStateImporter {
                         legacyContext.delete(bookmark)
                         result.bookmarksApplied += 1
                     }
+                    reconciledDetailIDs.append(record.id)
                     continue
                 }
                 let identityKey = stableIdentityKey(
@@ -1247,9 +1290,9 @@ actor StoreSplitUserStateImporter {
                                          payloadDigest: StoreSplitMissingEpisodeFingerprint.bookmark(record)))
                     continue
                 }
-                let bookmark = bookmarksByID[record.id]
+                let existingBookmark = bookmarksByID[record.id]
                     ?? bookmarksByID[bookmarkUUID.uuidString]
-                    ?? {
+                let bookmark = existingBookmark ?? {
                         let bookmark = Bookmark(
                             start: record.time,
                             title: record.title ?? episode.title,
@@ -1271,7 +1314,13 @@ actor StoreSplitUserStateImporter {
                 if episode.bookmarks?.contains(where: { $0 === bookmark }) == false {
                     episode.bookmarks?.append(bookmark)
                 }
-                applyLocalBookmarkDetail(id: record.id, to: bookmark)
+                if applyLocalBookmarkDetail(
+                    id: record.id,
+                    to: bookmark,
+                    fillAllFields: existingBookmark == nil
+                ) {
+                    reconciledDetailIDs.append(record.id)
+                }
                 result.bookmarksApplied += 1
             }
 
@@ -1281,6 +1330,7 @@ actor StoreSplitUserStateImporter {
                 phase: "bookmarks_batch_\(offset)",
                 result: &result
             ) else { return }
+            retireBookmarkDetailRows(reconciledDetailIDs)
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
@@ -1290,18 +1340,52 @@ actor StoreSplitUserStateImporter {
         }
     }
 
-    private func applyLocalBookmarkDetail(id: String, to bookmark: Bookmark) {
-        guard let cacheContainer else { return }
+    private func applyLocalBookmarkDetail(
+        id: String,
+        to bookmark: Bookmark,
+        fillAllFields: Bool
+    ) -> Bool {
+        guard let cacheContainer else { return false }
         var descriptor = FetchDescriptor<CachedBookmarkDetail>(
             predicate: #Predicate { $0.id == id }
         )
         descriptor.fetchLimit = 1
-        guard let detail = try? ModelContext(cacheContainer).fetch(descriptor).first else { return }
-        setIfChanged(bookmark, \.imageData, detail.imageData)
-        setIfChanged(bookmark, \.duration, detail.duration)
-        setIfChanged(bookmark, \.endTime, detail.endTime)
-        setIfChanged(bookmark, \.link, detail.link)
-        setIfChanged(bookmark, \.progress, detail.progress)
+        guard let detail = try? ModelContext(cacheContainer).fetch(descriptor).first else { return false }
+        if fillAllFields || bookmark.imageData == nil {
+            setIfChanged(bookmark, \.imageData, detail.imageData)
+        }
+        if fillAllFields || bookmark.duration == nil {
+            setIfChanged(bookmark, \.duration, detail.duration)
+        }
+        if fillAllFields || bookmark.endTime == nil {
+            setIfChanged(bookmark, \.endTime, detail.endTime)
+        }
+        if fillAllFields || bookmark.link == nil {
+            setIfChanged(bookmark, \.link, detail.link)
+        }
+        if fillAllFields || bookmark.progress == nil {
+            setIfChanged(bookmark, \.progress, detail.progress)
+        }
+        return true
+    }
+
+    private func retireBookmarkDetailRows(_ ids: [String]) {
+        guard let cacheContainer, ids.isEmpty == false else { return }
+        let context = ModelContext(cacheContainer)
+        do {
+            for id in ids {
+                try context.delete(
+                    model: CachedBookmarkDetail.self,
+                    where: #Predicate { $0.id == id }
+                )
+            }
+            try context.save()
+        } catch {
+            context.rollback()
+            // A durable bookmark save happened first; retaining the old detail
+            // row is safe and lets a later import retry cleanup.
+            CrashBreadcrumbs.shared.record("store_split_bookmark_detail_retire_failed")
+        }
     }
 
     private func applyListeningHistory(
@@ -1515,6 +1599,12 @@ actor StoreSplitUserStateImporter {
             return true
         } catch {
             result.failed += 1
+            result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
+                $0.absoluteString < $1.absoluteString
+            }
+            result.playlistFeedsToBootstrap = Array(Set(result.playlistFeedsToBootstrap)).sorted {
+                $0.absoluteString < $1.absoluteString
+            }
             CrashBreadcrumbs.shared.record(
                 "store_split_user_state_import_save_failed",
                 details: "phase=\(phase),error_type=\(String(describing: type(of: error)))"
@@ -1602,16 +1692,15 @@ actor StoreSplitUserStateImporter {
         result.playlistFeedsToBootstrap.append(feed)
     }
 
-    /// The queue is written in small transactions before the caller can
-    /// advance a stream cursor. If no cache is available, the unresolved stream
-    /// still remains uncommitted and can be retried when storage returns.
+    /// The queue is written in small transactions to the local library before
+    /// the caller can advance a stream cursor. The unresolved UserState record
+    /// remains authoritative until a later retry projects it successfully.
     private func persistMissingReferences(
         _ references: [StoreSplitMissingEpisodeReference],
         result: inout StoreSplitUserStateImportResult
     ) -> Bool {
         guard !references.isEmpty else { return true }
         result.unresolvedStreams.formUnion(references.map(\.stream))
-        guard let cacheContainer else { return true }
         do {
             for start in stride(from: 0, to: references.count,
                                 by: StoreSplitMissingEpisodeLedger.maximumBatchSize) {
@@ -1621,13 +1710,22 @@ actor StoreSplitUserStateImporter {
                 }
                 let end = min(start + StoreSplitMissingEpisodeLedger.maximumBatchSize, references.count)
                 try StoreSplitMissingEpisodeLedger.enqueue(
-                    Array(references[start..<end]), cacheContainer: cacheContainer
+                    Array(references[start..<end]), libraryContainer: legacyContainer
                 )
             }
             return true
         } catch {
             result.failed += 1
-            CrashBreadcrumbs.shared.record("store_split_missing_episode_ledger_save_failed")
+            result.feedsToBootstrap = Array(Set(result.feedsToBootstrap)).sorted {
+                $0.absoluteString < $1.absoluteString
+            }
+            result.playlistFeedsToBootstrap = Array(Set(result.playlistFeedsToBootstrap)).sorted {
+                $0.absoluteString < $1.absoluteString
+            }
+            CrashBreadcrumbs.shared.record(
+                "store_split_missing_episode_ledger_save_failed",
+                details: "reason=\(String(describing: error))"
+            )
             return false
         }
     }

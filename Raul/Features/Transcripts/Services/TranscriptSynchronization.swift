@@ -256,7 +256,7 @@ final class TranscriptSynchronizationStore {
 }
 
 @ModelActor
-actor TranscriptAlignmentCacheActor {
+actor TranscriptAlignmentStoreActor {
     func enqueue(episodeURL: URL) {
         let url = episodeURL.absoluteString
         let jobID = StableIdentityKey.make("publisher-transcript-sync", url)
@@ -378,6 +378,10 @@ actor TranscriptAlignmentCacheActor {
     }
 }
 
+/// Compatibility name for existing test fixtures; production callers use the
+/// SharedDatabase-backed `TranscriptAlignmentStoreActor` above.
+typealias TranscriptAlignmentCacheActor = TranscriptAlignmentStoreActor
+
 actor TranscriptSynchronizationService {
     static let shared = TranscriptSynchronizationService()
 
@@ -408,7 +412,7 @@ actor TranscriptSynchronizationService {
     func schedule(
         input: TranscriptSynchronizationInput,
         audioTime: TimeInterval,
-        cacheContainer: ModelContainer,
+        libraryContainer: ModelContainer,
         episodeActor: EpisodeActor?,
         settingsActor: PodcastSettingsModelActor?
     ) {
@@ -430,12 +434,12 @@ actor TranscriptSynchronizationService {
             jobs.removeValue(forKey: episodeID)
         }
 
-        let cache = TranscriptAlignmentCacheActor(modelContainer: cacheContainer)
+        let alignmentStore = TranscriptAlignmentStoreActor(modelContainer: libraryContainer)
         jobs[input.episodeID] = Task { [weak self] in
             _ = await self?.run(
                 input: input,
                 audioTime: audioTime,
-                cache: cache,
+                alignmentStore: alignmentStore,
                 episodeActor: episodeActor,
                 settingsActor: settingsActor
             )
@@ -444,16 +448,14 @@ actor TranscriptSynchronizationService {
     }
 
     func runQueuedBackgroundJobs(
-        episodeContainer: ModelContainer,
-        cacheContainer: ModelContainer,
+        libraryContainer: ModelContainer,
         episodeLimit: Int
     ) async -> Int {
         guard isEnabled, episodeLimit > 0 else { return 0 }
         let processingTask = Task { [weak self] in
             guard let self else { return 0 }
             return await self.processQueuedBackgroundJobs(
-                episodeContainer: episodeContainer,
-                cacheContainer: cacheContainer,
+                libraryContainer: libraryContainer,
                 episodeLimit: episodeLimit
             )
         }
@@ -464,13 +466,12 @@ actor TranscriptSynchronizationService {
     }
 
     private func processQueuedBackgroundJobs(
-        episodeContainer: ModelContainer,
-        cacheContainer: ModelContainer,
+        libraryContainer: ModelContainer,
         episodeLimit: Int
     ) async -> Int {
-        let queue = TranscriptAlignmentCacheActor(modelContainer: cacheContainer)
-        let episodeActor = EpisodeActor(modelContainer: episodeContainer)
-        let settingsActor = PodcastSettingsModelActor(modelContainer: episodeContainer)
+        let queue = TranscriptAlignmentStoreActor(modelContainer: libraryContainer)
+        let episodeActor = EpisodeActor(modelContainer: libraryContainer)
+        let settingsActor = PodcastSettingsModelActor(modelContainer: libraryContainer)
         let pendingURLs = await queue.pendingJobs(limit: episodeLimit)
         var completedCount = 0
 
@@ -486,7 +487,7 @@ actor TranscriptSynchronizationService {
             let completed = await run(
                 input: input,
                 audioTime: 0,
-                cache: queue,
+                alignmentStore: queue,
                 sampleAcrossEpisode: true,
                 episodeActor: episodeActor,
                 settingsActor: settingsActor
@@ -521,7 +522,7 @@ actor TranscriptSynchronizationService {
     private func run(
         input: TranscriptSynchronizationInput,
         audioTime: TimeInterval,
-        cache: TranscriptAlignmentCacheActor,
+        alignmentStore: TranscriptAlignmentStoreActor,
         sampleAcrossEpisode: Bool = false,
         episodeActor: EpisodeActor? = nil,
         settingsActor: PodcastSettingsModelActor? = nil
@@ -529,7 +530,7 @@ actor TranscriptSynchronizationService {
         do {
             try Task.checkCancellation()
             let fingerprint = try mediaFingerprint(for: input.localMediaURL)
-            let existing = await cache.load(
+            let existing = await alignmentStore.load(
                 episodeID: input.episodeID,
                 mediaFingerprint: fingerprint,
                 transcriptRevision: input.transcriptRevision
@@ -554,7 +555,7 @@ actor TranscriptSynchronizationService {
                     return true
                 }
             } else {
-                await cache.invalidateOtherRevisions(episodeID: input.episodeID)
+                await alignmentStore.invalidateOtherRevisions(episodeID: input.episodeID)
                 await MainActor.run {
                     TranscriptSynchronizationStore.shared.removeTimeline(for: input.episodeURL)
                 }
@@ -628,7 +629,7 @@ actor TranscriptSynchronizationService {
                     gaps: Self.inferredGaps(from: combined)
                   ) else { return sampleAcrossEpisode }
 
-            await cache.save(
+            await alignmentStore.save(
                 timeline,
                 episodeID: input.episodeID,
                 episodeURL: input.episodeURL,

@@ -222,8 +222,14 @@ final class StoreSplitFinalRuntimeDurabilityTests: XCTestCase {
 
             let cache = try! ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
             let cacheContext = ModelContext(cache)
-            StoreSplitLocalSettingsWriter.upsert(from: settings, in: cacheContext)
-            StoreSplitLocalSettingsWriter.upsert(from: global, in: cacheContext)
+            cacheContext.insert(CachedPodcastLocalSettings(
+                feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+                payload: try! JSONEncoder().encode(PodcastLocalSettingsPayload(settings))
+            ))
+            cacheContext.insert(CachedPodcastLocalSettings(
+                feedURL: nil,
+                payload: try! JSONEncoder().encode(PodcastLocalSettingsPayload(global))
+            ))
             try! cacheContext.save()
         }
 
@@ -256,10 +262,21 @@ final class StoreSplitFinalRuntimeDurabilityTests: XCTestCase {
             bookmark.bookmarkEpisode = episode
             bookmark.link = link
             bookmark.progress = 0.5
+            let episodeIdentity = episode.stableEpisodeIdentity
 
             let cache = try! ModelContainerManager.makeCacheContainer(storageURL: cacheURL)
             let cacheContext = ModelContext(cache)
-            StoreSplitBookmarkDetailWriter.upsert(from: bookmark, id: bookmarkID, in: cacheContext)
+            let detail = CachedBookmarkDetail(
+                id: bookmarkID,
+                feedURL: episodeIdentity.feedURL,
+                episodeID: episodeIdentity.episodeID
+            )
+            detail.imageData = bookmark.imageData
+            detail.duration = bookmark.duration
+            detail.endTime = bookmark.endTime
+            detail.link = bookmark.link
+            detail.progress = bookmark.progress
+            cacheContext.insert(detail)
             try! cacheContext.save()
         }
         do {
@@ -352,8 +369,159 @@ final class StoreSplitFinalRuntimeDurabilityTests: XCTestCase {
         )
 
         let (runtime, _) = try relaunch()
+        let suiteName = "PodcastClient.transcriptionMigration.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertTrue(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+            cache: cache,
+            library: runtime,
+            defaults: defaults
+        ))
         let record = try XCTUnwrap(ModelContext(runtime).fetch(FetchDescriptor<TranscriptionRecord>()).first)
         XCTAssertEqual(record.id, recordID)
         XCTAssertEqual(record.transcriptionDuration, 10)
+    }
+
+    @MainActor
+    func testCachedAIStagingMigratesToLibraryAndPreservesChapterPlaybackState() throws {
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: feed)
+        let episode = Episode(
+            guid: "ai-fixture-guid",
+            title: "Episode",
+            url: URL(string: "https://example.com/ai-fixture.mp3")!,
+            podcast: podcast
+        )
+        let episodeID = episode.stableEpisodeIdentity.episodeID
+        podcast.episodes = [episode]
+        library.mainContext.insert(podcast)
+        library.mainContext.insert(episode)
+        let legacyAIEpisode = Episode(
+            guid: "legacy-ai-fixture-guid",
+            title: "Legacy AI episode",
+            url: URL(string: "https://example.com/legacy-ai-fixture.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes?.append(legacyAIEpisode)
+        library.mainContext.insert(legacyAIEpisode)
+        try library.mainContext.save()
+
+        let cacheContext = ModelContext(cache)
+        let generatedAt = Date(timeIntervalSince1970: 20)
+        let lines = [AITranscriptLineValue(
+            speaker: "Host",
+            text: "A generated line",
+            startTime: 1,
+            endTime: 2
+        )]
+        let encodedTranscript = try AIContentSyncCodec.encodeTranscript(lines)
+        let transcriptID = StableIdentityKey.make(
+            PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID
+        )
+        cacheContext.insert(AITranscriptSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID: episodeID,
+            revisionID: encodedTranscript.revisionID,
+            chunkCount: encodedTranscript.chunks.count,
+            lineCount: encodedTranscript.lineCount,
+            contentHash: encodedTranscript.contentHash,
+            generatedAt: generatedAt
+        ))
+        for (index, payload) in encodedTranscript.chunks.enumerated() {
+            cacheContext.insert(AITranscriptChunkSync(
+                transcriptID: transcriptID,
+                revisionID: encodedTranscript.revisionID,
+                chunkIndex: index,
+                payloadJSON: payload,
+                contentHash: AIContentSyncCodec.sha256Hex(Data(payload.utf8))
+            ))
+        }
+
+        let chapters = [AIChapterValue(
+            title: "Generated chapter",
+            startTime: 5,
+            duration: 10,
+            typeRawValue: MarkerType.ai.rawValue
+        )]
+        let encodedChapters = try AIContentSyncCodec.encodeChapters(chapters)
+        cacheContext.insert(AIChapterSetSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID: episodeID,
+            revisionID: "chapter-revision",
+            payloadJSON: encodedChapters.payload,
+            chapterCount: chapters.count,
+            contentHash: encodedChapters.hash,
+            generatedAt: generatedAt
+        ))
+        let cacheEpisodeID = StableIdentityKey.make(
+            PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID
+        )
+        cacheContext.insert(CachedChapter(
+            id: "cached-chapter",
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID: cacheEpisodeID,
+            title: "Generated chapter",
+            start: 5,
+            duration: 10,
+            progress: 0.4,
+            typeRawValue: MarkerType.ai.rawValue,
+            shouldPlay: false
+        ))
+        let legacyIdentity = legacyAIEpisode.stableEpisodeIdentity
+        let legacyEpisodeKey = StableIdentityKey.make(legacyIdentity.feedURL, legacyIdentity.episodeID)
+        cacheContext.insert(CachedTranscriptLine(
+            id: UUID().uuidString,
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID: legacyIdentity.key,
+            speaker: "Guest",
+            text: "Legacy generated line",
+            startTime: 3,
+            sourceRawValue: CachedTranscriptSource.localAI.rawValue
+        ))
+        cacheContext.insert(CachedChapter(
+            id: "legacy-ai-chapter",
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            episodeID: legacyEpisodeKey,
+            title: "Legacy generated chapter",
+            start: 8,
+            duration: 12,
+            progress: 0.6,
+            typeRawValue: MarkerType.ai.rawValue,
+            shouldPlay: false
+        ))
+        try cacheContext.save()
+
+        let suiteName = "PodcastClient.aiMigration.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        XCTAssertTrue(StoreSplitCacheAIContentMigration.migrate(
+            cache: cache,
+            library: library,
+            defaults: defaults
+        ))
+
+        let migratedEpisodes = try ModelContext(library).fetch(FetchDescriptor<Episode>())
+        let migratedEpisode = try XCTUnwrap(migratedEpisodes.first { $0.guid == "ai-fixture-guid" })
+        let migratedLegacyEpisode = try XCTUnwrap(
+            migratedEpisodes.first { $0.guid == "legacy-ai-fixture-guid" }
+        )
+        let transcript = try XCTUnwrap(migratedEpisode.transcriptLines?.first)
+        XCTAssertEqual(transcript.text, "A generated line")
+        let marker = try XCTUnwrap(migratedEpisode.chapters?.first)
+        XCTAssertEqual(marker.title, "Generated chapter")
+        XCTAssertEqual(marker.progress, 0.4)
+        XCTAssertEqual(marker.shouldPlay, false)
+        let legacyTranscript = try XCTUnwrap(migratedLegacyEpisode.transcriptLines?.first)
+        XCTAssertEqual(legacyTranscript.text, "Legacy generated line")
+        XCTAssertEqual(legacyTranscript.transcriptSource, .localAI)
+        let legacyMarker = try XCTUnwrap(migratedLegacyEpisode.chapters?.first)
+        XCTAssertEqual(legacyMarker.title, "Legacy generated chapter")
+        XCTAssertEqual(legacyMarker.progress, 0.6)
+        XCTAssertEqual(legacyMarker.shouldPlay, false)
+        XCTAssertEqual(try cacheContext.fetchCount(FetchDescriptor<AITranscriptSync>()), 1)
+        XCTAssertEqual(try cacheContext.fetchCount(FetchDescriptor<AIChapterSetSync>()), 1)
     }
 }

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import Darwin
 
 /// Where the library in `SharedDatabase.sqlite` came from.
 ///
@@ -37,6 +38,115 @@ enum StoreLibraryOrigin: String {
     /// leaves a record with no file, which is harmless; the reverse reads as legacy.
     static func recordBuilt(defaults: UserDefaults = appGroupDefaults) {
         defaults.set(StoreLibraryOrigin.built.rawValue, forKey: key)
+    }
+}
+
+/// Moves a completed split-install runtime into the permanent library path.
+/// The caller must release every container that can open either file before
+/// invoking this helper (including extension-owned containers).
+enum StoreRuntimePromotion {
+    enum Outcome: Equatable {
+        case promoted
+        case alreadyPromoted
+    }
+
+    enum PromotionError: Error, Equatable {
+        case containersNotReleased
+        case differentDirectories
+        case runtimeMissing
+        case destinationExists
+        case checkpointFailed(StoreWriteAheadLog.Outcome)
+        case runtimeSidecarRemains
+        case renameFailed(Int32)
+    }
+
+    private static var appGroupDefaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+
+    /// Checkpoints the source WAL, then uses an exclusive atomic rename. On a
+    /// caught failure, the origin marker is restored to its exact prior value;
+    /// runtime projection cursors and readiness markers are never touched.
+    static func promote(
+        runtimeURL: URL,
+        sharedURL: URL,
+        containersReleased: Bool,
+        defaults: UserDefaults = appGroupDefaults
+    ) throws -> Outcome {
+        guard containersReleased else { throw PromotionError.containersNotReleased }
+
+        let manager = FileManager.default
+        let source = runtimeURL.standardizedFileURL
+        let destination = sharedURL.standardizedFileURL
+        let sourceDirectory = source.deletingLastPathComponent()
+        guard sourceDirectory == destination.deletingLastPathComponent() else {
+            throw PromotionError.differentDirectories
+        }
+
+        let sourceExists = manager.fileExists(atPath: source.path)
+        let destinationExists = manager.fileExists(atPath: destination.path)
+        if !sourceExists,
+           destinationExists,
+           StoreLibraryOrigin.current(libraryFileExists: true, defaults: defaults) == .built {
+            return .alreadyPromoted
+        }
+        guard sourceExists else { throw PromotionError.runtimeMissing }
+        // Do not let rename replace a library or orphaned SQLite sidecar.
+        guard !destinationExists,
+              !manager.fileExists(atPath: destination.path + "-wal"),
+              !manager.fileExists(atPath: destination.path + "-shm") else {
+            throw PromotionError.destinationExists
+        }
+
+        let writeAheadLogURL = URL(fileURLWithPath: source.path + "-wal")
+        if manager.fileExists(atPath: writeAheadLogURL.path) {
+            let checkpoint = StoreWriteAheadLog.trim(storeURL: source, thresholdBytes: 0)
+            guard checkpoint == .trimmed else {
+                throw PromotionError.checkpointFailed(checkpoint)
+            }
+        }
+        if manager.fileExists(atPath: writeAheadLogURL.path) {
+            let size = (try? manager.attributesOfItem(atPath: writeAheadLogURL.path)[.size] as? NSNumber)?.int64Value
+            guard size == 0 else { throw PromotionError.runtimeSidecarRemains }
+            do {
+                try manager.removeItem(at: writeAheadLogURL)
+            } catch {
+                throw PromotionError.runtimeSidecarRemains
+            }
+        }
+        // SQLite may leave an empty shared-memory sidecar after the last
+        // connection closes. With all containers released and the WAL gone,
+        // this file is disposable and must not block the atomic rename.
+        let sharedMemoryURL = URL(fileURLWithPath: source.path + "-shm")
+        if manager.fileExists(atPath: sharedMemoryURL.path) {
+            do {
+                try manager.removeItem(at: sharedMemoryURL)
+            } catch {
+                throw PromotionError.runtimeSidecarRemains
+            }
+        }
+        guard !manager.fileExists(atPath: source.path + "-wal"),
+              !manager.fileExists(atPath: sharedMemoryURL.path) else {
+            throw PromotionError.runtimeSidecarRemains
+        }
+
+        let hadOrigin = defaults.object(forKey: StoreLibraryOrigin.key) != nil
+        let previousOrigin = defaults.object(forKey: StoreLibraryOrigin.key)
+        StoreLibraryOrigin.recordBuilt(defaults: defaults)
+        let result = source.path.withCString { sourcePath in
+            destination.path.withCString { destinationPath in
+                renameatx_np(AT_FDCWD, sourcePath, AT_FDCWD, destinationPath, UInt32(RENAME_EXCL))
+            }
+        }
+        guard result == 0 else {
+            if hadOrigin, let previousOrigin {
+                defaults.set(previousOrigin, forKey: StoreLibraryOrigin.key)
+            } else {
+                defaults.removeObject(forKey: StoreLibraryOrigin.key)
+            }
+            throw PromotionError.renameFailed(errno)
+        }
+        return .promoted
     }
 }
 
@@ -219,9 +329,9 @@ enum ListeningTotalsDiagnostics {
     }
 }
 
-/// The queryable library the UI binds to, kept on disk so it is built once
-/// instead of at every launch. It is derived and holds no authority: every write
-/// also goes to UserState or PodcastCache, and this file can be rebuilt from them.
+/// Tracks the resumable build and backfill state for split-install libraries.
+/// New installs build the local library at SharedDatabase.sqlite; old
+/// LibraryRuntime.sqlite files remain promotable compatibility inputs.
 enum StoreRuntimeProjection {
     /// Bump when the projection's contents must be rebuilt.
     static let version = 1
@@ -232,6 +342,7 @@ enum StoreRuntimeProjection {
     private static let feedFillPassesKey = "storeSplit.runtimeFeedFillPasses"
     private static let transcriptBackfillPendingKey = "storeSplit.runtimeTranscriptBackfillPending"
     private static let libraryBackfillCursorKey = "storeSplit.runtimeTranscriptBackfillCursor"
+    private static let directBuiltLibraryPendingKey = "storeSplit.directBuiltLibraryProjectionPending.v1"
 
     private static var defaults: UserDefaults {
         UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
@@ -245,10 +356,30 @@ enum StoreRuntimeProjection {
         defaults.integer(forKey: readyVersionKey) == version
     }
 
+    nonisolated static var isDirectBuiltLibraryProjectionPending: Bool {
+        defaults.bool(forKey: directBuiltLibraryPendingKey)
+    }
+
+    nonisolated static func markDirectBuiltLibraryProjectionPending() {
+        defaults.set(true, forKey: directBuiltLibraryPendingKey)
+    }
+
+    nonisolated static func clearDirectBuiltLibraryProjectionPending() {
+        defaults.removeObject(forKey: directBuiltLibraryPendingKey)
+    }
+
     /// False only when the file was built for another version. An unfinished
     /// build of this version is kept, so it can resume.
     nonisolated static var isFileCurrent: Bool {
         defaults.integer(forKey: fileVersionKey) == version
+    }
+
+    /// A promoted SharedDatabase may still rely on these cursors to resume its
+    /// feed/transcript fill. Forget the build only when neither the source nor
+    /// its promoted destination is present.
+    static func shouldForgetBuild(files: Set<String>) -> Bool {
+        files.contains("LibraryRuntime.sqlite") == false
+            && files.contains("SharedDatabase.sqlite") == false
     }
 
     /// The last feed the build finished.
@@ -312,7 +443,8 @@ enum StoreRuntimeProjection {
     /// Back to the state of a device that never built one.
     nonisolated static func forgetBuild() {
         for key in [readyVersionKey, fileVersionKey, cursorKey, feedFillDoneKey, feedFillPassesKey,
-                    transcriptBackfillPendingKey, libraryBackfillCursorKey] {
+                    transcriptBackfillPendingKey, libraryBackfillCursorKey,
+                    directBuiltLibraryPendingKey] {
             defaults.removeObject(forKey: key)
         }
     }
@@ -326,11 +458,13 @@ enum StoreRuntimeProjection {
         }
         isLibraryBackfillPending = false
         libraryBackfillCursor = nil
+        defaults.removeObject(forKey: directBuiltLibraryPendingKey)
     }
 
     static func markReady() {
         defaults.set(version, forKey: readyVersionKey)
         cursor = nil
+        defaults.removeObject(forKey: directBuiltLibraryPendingKey)
     }
 
     private static func discard(_ url: URL) {

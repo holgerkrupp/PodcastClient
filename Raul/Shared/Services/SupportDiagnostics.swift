@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import BackgroundTasks
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -153,6 +154,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
 
     @Published private(set) var snapshots: [SupportDiagnosticSnapshot] = []
     @Published private(set) var events: [SupportDiagnosticEvent] = []
+    private var backgroundRefreshSummary = "Background Feed Refresh: unavailable"
     private(set) var sessionStartedAt = Date()
     private let maximumEvents = 160
     private let eventWindow: TimeInterval = 5 * 60
@@ -189,6 +191,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         sections.append("Listening totals and subscriptions: \(ListeningTotalsDiagnostics.latest)")
         sections.append("User data copy pending: \(StoreCutoverState.isDeferredMigrationPending), phase: \(StoreCutoverState.currentCopyPhase)")
         sections.append(Self.libraryStoreSummary)
+        sections.append(backgroundRefreshSummary)
         sections.append(NSLocalizedString("Recent event timeline (last five minutes)", comment: "Heading for recent app events in support report"))
         let visibleEvents = events.filter { $0.at >= Date().addingTimeInterval(-eventWindow) }
         sections.append(contentsOf: visibleEvents.map {
@@ -206,6 +209,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         storeMonitor: StoreCloudKitActivityMonitor
     ) async {
         let now = Date()
+        await refreshBackgroundTaskSummary()
         // This is an explicit user action. The listening totals calculation is
         // intentionally kept out of launch maintenance because it reads every
         // history row and several whole-library tables.
@@ -278,6 +282,89 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         append(snapshot)
     }
 
+    private func refreshBackgroundTaskSummary() async {
+#if os(iOS)
+        let availability: String
+        switch UIApplication.shared.backgroundRefreshStatus {
+        case .available: availability = "available"
+        case .denied: availability = "denied"
+        case .restricted: availability = "restricted"
+        @unknown default: availability = "unknown"
+        }
+        let pending = await BGTaskScheduler.shared.pendingTaskRequests()
+            .filter {
+                $0.identifier == BackgroundTaskConfiguration.feedRefreshIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.feedProcessingIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.automaticTranscriptionIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.publisherTranscriptSynchronizationIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.storeSplitMigrationIdentifier
+                    || $0.identifier == BackgroundTaskConfiguration.storageCleanupIdentifier
+            }
+            .sorted { $0.identifier < $1.identifier }
+            .map { request in
+                "\(request.identifier): earliest eligible \(request.earliestBeginDate?.formatted(date: .numeric, time: .shortened) ?? "unspecified")"
+            }
+        let recent = CrashBreadcrumbs.shared.recent(80).compactMap(Self.safeRefreshEvent)
+        let lastSuccessfulCheck = await BackgroundFeedRefreshStateStore.shared.latestSuccessfulCheckDate()
+            .map { $0.formatted(date: .numeric, time: .shortened) } ?? "none recorded"
+        let retryWork = await BackgroundFeedRefreshStateStore.shared.pendingWorkSummary()
+        let retryAge = retryWork.oldestAge.map { "\($0)s" } ?? "none"
+        backgroundRefreshSummary = [
+            "Background Feed Refresh",
+            "Background App Refresh: \(availability); Low Power Mode: \(ProcessInfo.processInfo.isLowPowerModeEnabled ? "on" : "off")",
+            "Last successful feed check: \(lastSuccessfulCheck)",
+            "Local hashed feed cursor: \(retryWork.feedCount) feeds; \(retryWork.pendingCount) attempts awaiting a successful check; oldest attempt age \(retryAge)",
+            "Pending task eligibility (earliestBeginDate is a lower bound, not a promised launch time): \(pending.isEmpty ? "none reported" : pending.joined(separator: "; "))",
+            "Recent scheduling and run events (no launch record only suggests iOS did not launch a task; it does not identify why):\n\(recent.isEmpty ? "none observed" : recent.joined(separator: "\n"))"
+        ].joined(separator: "\n")
+#endif
+    }
+
+    private static func safeRefreshEvent(_ event: String) -> String? {
+        let parts = event.components(separatedBy: " | ")
+        guard parts.count >= 2 else { return nil }
+        let category = parts[1]
+        let prefixes = [
+            "schedule_feed_refresh_", "schedule_predicted_release_refresh_",
+            "schedule_feed_processing_", "feed_processing_background_task_",
+            "feed_refresh_background_task_", "predicted_release_refresh_background_task_",
+            "bgupdate_feeds_", "bgupdate_feed_", "foreground_feed_refresh_",
+            "predicted_release_refresh_", "feed_refresh_failed", "feed_refresh_import_",
+            "feed_import_partial", "episode_automatic_playlist_insert_failed"
+        ]
+        guard prefixes.contains(where: category.hasPrefix) else { return nil }
+        let details = parts.dropFirst(2).joined(separator: " ")
+        let safeCounts = ["candidates", "attempted", "checked", "failed", "updated", "timed_out", "duration"]
+        var values = safeCounts.compactMap { key -> String? in
+            guard let range = details.range(of: "\\b\\(key)=([0-9]+s?)", options: .regularExpression) else { return nil }
+            return String(details[range])
+        }
+        let safeReasons: Set<String> = [
+            "playback_active", "playback_started", "cloudkit_export", "already_running",
+            "cancelled", "max_runtime", "runtime_remaining", "model_container_unavailable",
+            "library_backfill_pending", "no_prediction", "stale_snapshot_retry",
+            "stale_snapshot_without_target", "container_unavailable"
+        ]
+        if let range = details.range(of: "reason=([a-z_]+)", options: .regularExpression) {
+            let reason = String(details[range]).replacingOccurrences(of: "reason=", with: "")
+            if safeReasons.contains(reason) { values.append("reason=\(reason)") }
+        }
+        if let range = details.range(of: "stage=([a-z_]+)", options: .regularExpression) {
+            values.append(String(details[range]))
+        }
+        if let range = details.range(of: "http_status=([0-9]+|unavailable)", options: .regularExpression) {
+            values.append(String(details[range]))
+        }
+        if let range = details.range(of: "new_episodes=[0-9]+", options: .regularExpression) {
+            values.append(String(details[range]))
+        }
+        if details.contains("partial=true") { values.append("partial=true") }
+        if details.contains("partial=false") { values.append("partial=false") }
+        if details.contains("resume_available=true") { values.append("resume_available=true") }
+        return "\(parts[0]) \(category)\(values.isEmpty ? "" : " (\(values.joined(separator: ", ")))" )"
+    }
+
     private func trimEvents() {
         let cutoff = Date().addingTimeInterval(-eventWindow)
         events.removeAll { $0.at < cutoff }
@@ -310,6 +397,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         switch mode {
         case .freshSplitInstall: "new split install"
         case .legacyUpgrade: "existing installation"
+        case .builtLibrary: "existing installation; local library built on this device"
         case .existingLibraryUnavailable: "existing installation; library unavailable"
         }
     }
@@ -585,9 +673,10 @@ private actor SupportDiagnosticsStoreCounter {
                 active: FetchDescriptor<SubscriptionSync>(predicate: #Predicate { $0.isSubscribed }),
                 tombstones: FetchDescriptor<SubscriptionSync>(predicate: #Predicate { !$0.isSubscribed })
             )
-        let unresolved = cacheContainer.map {
-            readCount(in: $0, FetchDescriptor<CachedMissingEpisodeReference>())
-        } ?? .storeNotOpen
+        let unresolved = readCount(
+            in: runtimeContainer,
+            FetchDescriptor<CachedMissingEpisodeReference>()
+        )
         return SupportDiagnosticStoreCounts(
             runtimeQueuePlaylistCount: runtimeQueue.0,
             runtimeQueueEntryCount: runtimeQueue.1,

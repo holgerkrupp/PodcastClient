@@ -11,20 +11,26 @@ import UIKit
 enum StoreBootstrapMode: String, Sendable, Equatable {
     case freshSplitInstall
     case legacyUpgrade
+    /// A local library created by this app. It is durable and usable, but must
+    /// never be treated as the source of the legacy UserState copy or cleanup.
+    case builtLibrary
     case existingLibraryUnavailable
 
     var usesInMemoryRuntimeProjection: Bool {
         switch self {
         case .freshSplitInstall: true
-        case .legacyUpgrade, .existingLibraryUnavailable: false
+        case .legacyUpgrade, .builtLibrary, .existingLibraryUnavailable: false
         }
     }
 
     static func resolve(
         legacyStoreExists: Bool,
+        libraryOrigin: StoreLibraryOrigin? = nil,
         installationWasPreviouslyInitialized: Bool = false
     ) -> StoreBootstrapMode {
-        if legacyStoreExists { return .legacyUpgrade }
+        if legacyStoreExists {
+            return libraryOrigin == .built ? .builtLibrary : .legacyUpgrade
+        }
         return installationWasPreviouslyInitialized
             ? .existingLibraryUnavailable
             : .freshSplitInstall
@@ -37,7 +43,16 @@ enum StoreBootstrapEvidence {
     static let freshSplitInstallReadyKey = "storeSplit.freshSplitInstallReady.v1"
 
     static func hasFreshSplitInstallRecord(defaults: UserDefaults) -> Bool {
-        defaults.bool(forKey: freshSplitInstallReadyKey)
+        guard defaults.bool(forKey: freshSplitInstallReadyKey) else { return false }
+        // The explicit Continue with iCloud Data choice authorizes rebuilding a
+        // library whose absence was already recorded as known loss.
+        if StoreLineage.acceptedMissingStores(defaults: defaults)
+            .contains("SharedDatabase.sqlite") {
+            return true
+        }
+        return defaults.bool(forKey: persistentLibraryOpenedKey) == false
+            && !(defaults.stringArray(forKey: StoreLineage.key) ?? [])
+                .contains("SharedDatabase.sqlite")
     }
 
     /// Builds up to 2026.36 ran a device with no legacy store from UserState and
@@ -56,7 +71,7 @@ enum StoreBootstrapEvidence {
            cacheRecordsLegacyCopy(at: cacheURL) {
             return false
         }
-        guard files.contains("UserState.sqlite"),
+        guard files.contains("UserState.sqlite") || files.contains("PodcastCache.sqlite"),
               files.contains(where: { $0.hasPrefix("SharedDatabase.sqlite") }) == false,
               standardDefaults.bool(forKey: persistentLibraryOpenedKey) == false,
               appGroupDefaults?.object(
@@ -221,6 +236,14 @@ enum StoreLineage {
     static func forgetAcceptedStores(present files: Set<String>, defaults: UserDefaults = .standard) {
         let stillMissing = acceptedMissingStores(defaults: defaults).subtracting(files)
         defaults.set(Array(stillMissing), forKey: acceptedMissingKey)
+    }
+
+    static func recordOpened(_ names: [String], defaults: UserDefaults = .standard) {
+        var expected = defaults.stringArray(forKey: key) ?? []
+        for name in names where expected.contains(name) == false {
+            expected.append(name)
+        }
+        defaults.set(expected, forKey: key)
     }
 
     /// PodcastCache holds only what the feeds can restore, so losing it must not
@@ -839,10 +862,8 @@ class ModelContainerManager: ObservableObject {
 #else
     private let isRuntimeGraphFixture = false
 #endif
-    private var aiContentImportTask: Task<StoreSplitAIContentImportResult, Never>?
     private var userStateImportTask: Task<StoreSplitUserStateImportResult, Never>?
     private var missingFeedRefreshAttempts: [String: Date] = [:]
-    private var lastAIContentImportAt: Date?
     private var lastUserStateImportAt: Date?
     private var exportWasInProgress = false
     private var exporterPressureEvents = 0
@@ -850,7 +871,6 @@ class ModelContainerManager: ObservableObject {
     private var optionalSplitStoreWritesSuspendedAt: Date?
     private var playlistReconciliationDeferredForPlayback = false
     private var pendingSplitRuntimePlaylistReconciliation = false
-    private let minimumAIContentImportInterval: TimeInterval = 60 * 15
     private let minimumForegroundUserStateImportInterval: TimeInterval = 60 * 10
     private let splitStoreCoordinator = StoreSplitWorkCoordinator.shared
     nonisolated private static let cacheRecoveryVersion = 1
@@ -920,7 +940,10 @@ class ModelContainerManager: ObservableObject {
     /// rebuilt from scratch and the UI is never empty at launch.
 
     var runtimeProjectsFromCache: Bool {
-        bootstrapMode.usesInMemoryRuntimeProjection
+        preparedCacheContainer != nil
+            && (bootstrapMode.usesInMemoryRuntimeProjection
+                || (bootstrapMode == .builtLibrary
+                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending))
     }
 
 #if DEBUG
@@ -1102,8 +1125,45 @@ class ModelContainerManager: ObservableObject {
                 throw StoreBootstrapError.persistentStoreUnavailable
             }
             StoreLineage.forgetAcceptedStores(present: files)
+            // A split-only library is already a durable SwiftData store. Once
+            // its first projection is complete, promote the file at the next
+            // launch before opening any containers. Keeping the origin marker
+            // and projection cursors makes an interrupted later backfill resume
+            // against SharedDatabase without confusing it with an upgrade.
+            if !files.contains("SharedDatabase.sqlite"),
+               files.contains("LibraryRuntime.sqlite"),
+               StoreRuntimeProjection.isReady,
+               StoreSplitCacheLocalDataMigration.isComplete,
+               StoreSplitCacheAIContentMigration.isComplete,
+               StoreCutoverState.isDeferredMigrationPending == false,
+               StoreRuntimeProjection.isLibraryBackfillPending == false,
+               StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false,
+               let runtimeURL = StoreRuntimeProjection.url,
+               let sharedURL = Self.sharedStoreURL {
+                do {
+                    let outcome = try StoreRuntimePromotion.promote(
+                        runtimeURL: runtimeURL,
+                        sharedURL: sharedURL,
+                        containersReleased: true,
+                        defaults: lineageDefaults
+                    )
+                    CrashBreadcrumbs.shared.record(
+                        "store_runtime_promotion_completed",
+                        details: "outcome=\(outcome)"
+                    )
+                    files.insert("SharedDatabase.sqlite")
+                    files.remove("LibraryRuntime.sqlite")
+                } catch {
+                    // The runtime remains usable. A busy checkpoint, active
+                    // reader, or filesystem refusal retries on a later launch.
+                    CrashBreadcrumbs.shared.record(
+                        "store_runtime_promotion_deferred",
+                        details: "reason=\(error.localizedDescription)"
+                    )
+                }
+            }
             // A build record without its file would open an empty library as finished.
-            if files.contains("LibraryRuntime.sqlite") == false {
+            if StoreRuntimeProjection.shouldForgetBuild(files: files) {
                 StoreRuntimeProjection.forgetBuild()
             }
             let appGroupDefaults = UserDefaults(suiteName: Self.appGroupID)
@@ -1121,8 +1181,13 @@ class ModelContainerManager: ObservableObject {
                 files: files
             )
             let legacyStoreExists = files.contains("SharedDatabase.sqlite")
+            let libraryOrigin = StoreLibraryOrigin.current(
+                libraryFileExists: legacyStoreExists,
+                defaults: appGroupDefaults ?? .standard
+            )
             let bootstrapMode = StoreBootstrapMode.resolve(
                 legacyStoreExists: legacyStoreExists,
+                libraryOrigin: libraryOrigin,
                 installationWasPreviouslyInitialized: hasExistingLibraryEvidence
                     && !hasFreshSplitInstallRecord
             )
@@ -1139,12 +1204,35 @@ class ModelContainerManager: ObservableObject {
             var timer = StoreLaunchTimer()
             let userState = try Self.makeUserStateContainerWithRetry()
             timer.mark("user_state")
-            await MainActor.run {
-                SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
+            let mayRetireCache = (bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary)
+                && StoreSplitCacheLocalDataMigration.isComplete
+                && StoreSplitCacheAIContentMigration.isComplete
+                && (Self.deviceUsedInMemoryProjection == false
+                    || UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)
+                        >= Self.cacheRecoveryVersion)
+                && StoreCutoverState.isDeferredMigrationPending == false
+                && StoreRuntimeProjection.isLibraryBackfillPending == false
+                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false
+            let cache: ModelContainer?
+            if mayRetireCache {
+                cache = nil
+                CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "migrations_complete")
+            } else {
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
+                }
+                // Cache opening is a resumable migration/recovery path only.
+                // A durable library remains available if the historical file
+                // is missing or cannot be opened.
+                cache = try? Self.makeCacheContainerWithRetry()
             }
-            let cache = try Self.makeCacheContainerWithRetry()
             timer.mark("cache")
-            if bootstrapMode == .legacyUpgrade {
+            if cache == nil {
+                CrashBreadcrumbs.shared.record("store_cache_open_skipped_or_failed")
+            }
+            if bootstrapMode == .legacyUpgrade
+                || (bootstrapMode == .builtLibrary
+                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false) {
                 // The device's own library stays what the UI reads, local-only.
                 guard let storeURL = Self.sharedStoreURL else {
                     throw StoreBootstrapError.persistentStoreUnavailable
@@ -1160,11 +1248,26 @@ class ModelContainerManager: ObservableObject {
                 let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
                     try Self.makeLegacyContainer(storageURL: storeURL)
                 }
+                _ = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                    cache: cache,
+                    library: library
+                )
+                if let cache {
+                    _ = StoreSplitCacheAIContentMigration.migrate(
+                        cache: cache,
+                        library: library,
+                        dropUnmatchedRows: true
+                    )
+                }
                 timer.mark("library")
                 timer.finish(libraryLogBytes: libraryLogBytes)
-                StoreLibraryOrigin.recordExistingLibraryOpened()
-                StoreCutoverState.beginLocalLibrary()
-                StoreRuntimeProjection.discardUnused()
+                if bootstrapMode == .legacyUpgrade {
+                    StoreLibraryOrigin.recordExistingLibraryOpened()
+                    StoreCutoverState.beginLocalLibrary()
+                    StoreRuntimeProjection.discardUnused()
+                } else {
+                    StoreLineage.recordOpened(["SharedDatabase.sqlite", "UserState.sqlite"])
+                }
                 StoreSplitLaunchHealth.markRuntimeReady()
                 return RuntimeContainerPreparation(
                     container: library,
@@ -1175,14 +1278,53 @@ class ModelContainerManager: ObservableObject {
                     cacheContainer: cache
                 )
             }
-            guard let runtimeURL = StoreRuntimeProjection.url else {
-                throw StoreBootstrapError.persistentStoreUnavailable
+            let libraryURL: URL
+            let libraryIsCurrent: Bool
+            if files.contains("LibraryRuntime.sqlite"),
+               let runtimeURL = StoreRuntimeProjection.url {
+                // A split-only file from an earlier build remains recoverable
+                // at its original path until its ready marker permits atomic
+                // promotion at the beginning of a later launch.
+                libraryURL = runtimeURL
+                libraryIsCurrent = StoreRuntimeProjection.isFileCurrent
+            } else {
+                // New split installs build their durable library at the final
+                // path. Record the origin before SwiftData can create the file,
+                // so a crash cannot make an incomplete library look legacy.
+                guard bootstrapMode == .freshSplitInstall
+                        || (bootstrapMode == .builtLibrary
+                            && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending),
+                      let sharedURL = Self.sharedStoreURL else {
+                    throw StoreBootstrapError.persistentStoreUnavailable
+                }
+                if bootstrapMode == .freshSplitInstall {
+                    // Persist the fresh-build decision before the durable file
+                    // can appear. If creation is interrupted, startup resumes
+                    // this build; once the library opens, lineage makes a later
+                    // missing file fail closed instead of looking fresh.
+                    UserDefaults.standard.set(
+                        true,
+                        forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey
+                    )
+                    StoreLibraryOrigin.recordBuilt(defaults: lineageDefaults)
+                    StoreRuntimeProjection.markDirectBuiltLibraryProjectionPending()
+                }
+                libraryURL = sharedURL
+                libraryIsCurrent = StoreRuntimeProjection.isFileCurrent
             }
             let projectionReady = StoreRuntimeProjection.isReady
+                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false
             let runtimeContainer = try StoreRuntimeProjection.open(
-                at: runtimeURL,
-                isCurrent: StoreRuntimeProjection.isFileCurrent
+                at: libraryURL,
+                isCurrent: libraryIsCurrent
             )
+            if libraryURL.standardizedFileURL == Self.sharedStoreURL?.standardizedFileURL {
+                UserDefaults.standard.set(
+                    true,
+                    forKey: StoreBootstrapEvidence.persistentLibraryOpenedKey
+                )
+                StoreLineage.recordOpened(["SharedDatabase.sqlite", "UserState.sqlite"])
+            }
             timer.mark("library")
             timer.finish(libraryLogBytes: libraryLogBytes)
             StoreSplitLaunchHealth.markRuntimeReady()
@@ -1333,6 +1475,13 @@ class ModelContainerManager: ObservableObject {
         if finished {
             StoreRuntimeProjection.isLibraryBackfillPending = false
             StoreRuntimeProjection.libraryBackfillCursor = nil
+            _ = await Task.detached(priority: .utility) {
+                StoreSplitCacheAIContentMigration.migrate(
+                    cache: cache,
+                    library: runtime,
+                    dropUnmatchedRows: true
+                )
+            }.value
             SupportDiagnosticsRecorder.shared.record("Library fill finished")
             _ = await performSplitStoreReconcile(
                 force: true,
@@ -1345,7 +1494,8 @@ class ModelContainerManager: ObservableObject {
     /// Moves listening history, baselines and AI content while the app is in
     /// use. Backgrounding stops it; the next launch or activation continues.
     func runDeferredMigrationIfNeeded() async {
-        guard StoreCutoverState.isDeferredMigrationPending,
+        guard bootstrapMode == .legacyUpgrade,
+              StoreCutoverState.isDeferredMigrationPending,
               deferredMigrationTask == nil,
               runtimeStoreReadiness == .ready,
               heavyStoreWorkMayRunInCurrentAppState,
@@ -1418,7 +1568,8 @@ class ModelContainerManager: ObservableObject {
             migrationReadiness = .preparing
             migrationBlocker = nil
         }
-        guard preparedUserStateContainer == nil || preparedCacheContainer == nil else {
+        guard preparedUserStateContainer == nil
+                || (preparedCacheContainer == nil && cacheStoreIsStillNeeded) else {
             recordOpenedSplitStoreEvidenceIfNeeded()
             await finishRuntimeGraphPreparation(await buildRuntimeGraphIfNeeded())
             return
@@ -1434,7 +1585,7 @@ class ModelContainerManager: ObservableObject {
             CrashBreadcrumbs.shared.record("store_split_container_initialization_started")
 
             let needsUserStateContainer = preparedUserStateContainer == nil
-            let needsCacheContainer = preparedCacheContainer == nil
+            let needsCacheContainer = preparedCacheContainer == nil && cacheStoreIsStillNeeded
             let newTask = Task.detached(priority: .utility) {
                 SplitStoreContainers(
                     userState: needsUserStateContainer
@@ -1496,6 +1647,19 @@ class ModelContainerManager: ObservableObject {
         )
     }
 
+    private var cacheStoreIsStillNeeded: Bool {
+        if runtimeProjectsFromCache { return true }
+        if Self.deviceUsedInMemoryProjection,
+           UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)
+            < Self.cacheRecoveryVersion {
+            return true
+        }
+        return StoreCutoverState.isDeferredMigrationPending
+            || StoreSplitCacheLocalDataMigration.isComplete == false
+            || StoreSplitCacheAIContentMigration.isComplete == false
+            || StoreRuntimeProjection.isLibraryBackfillPending
+    }
+
     private func recordOpenedSplitStoreEvidenceIfNeeded() {
         guard runtimeProjectsFromCache, isRuntimeGraphFixture == false else { return }
         if bootstrapMode == .freshSplitInstall {
@@ -1510,13 +1674,27 @@ class ModelContainerManager: ObservableObject {
         for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
             expected.append(name)
         }
+        if StoreLibraryOrigin.current(libraryFileExists: true) == .built,
+           !expected.contains("SharedDatabase.sqlite") {
+            expected.append("SharedDatabase.sqlite")
+        }
         UserDefaults.standard.set(expected, forKey: StoreLineage.key)
     }
 
     private func markRuntimeStoreReady() {
         guard runtimeStoreReadiness != .ready else { return }
         if let pendingRuntimeContainer {
-            StoreRuntimeProjection.markReady()
+            if runtimeProjectsFromCache
+                || (preparedCacheContainer == nil
+                    && (bootstrapMode == .freshSplitInstall
+                        || (bootstrapMode == .builtLibrary
+                            && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending)))
+                || (bootstrapMode != .freshSplitInstall
+                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false) {
+                if runtimeProjectsFromCache {
+                    StoreRuntimeProjection.markReady()
+                }
+            }
             preparedContainer = pendingRuntimeContainer
             self.pendingRuntimeContainer = nil
             cutoverProgress = nil
@@ -1557,6 +1735,28 @@ class ModelContainerManager: ObservableObject {
     ) async {
         switch result {
         case .ready:
+            if let library = preparedContainer, let cache = preparedCacheContainer {
+                _ = await Task.detached(priority: .utility) {
+                    StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                        cache: cache,
+                        library: library
+                    )
+                }.value
+                _ = await Task.detached(priority: .utility) {
+                    StoreSplitCacheAIContentMigration.migrate(
+                        cache: cache,
+                        library: library,
+                        // `.ready` means the authoritative library graph is
+                        // complete for this build. Cache-only AI rows without
+                        // a matching episode are stale staging data; retaining
+                        // them must not hold a safe promotion open forever.
+                        dropUnmatchedRows: true
+                    )
+                }.value
+            }
+            if runtimeProjectsFromCache {
+                StoreRuntimeProjection.markReady()
+            }
             markRuntimeStoreReady()
         case .failed:
             markRuntimeStoreInitializationFailed(
@@ -1771,7 +1971,10 @@ class ModelContainerManager: ObservableObject {
         // unsubscribe or a deleted podcast writes a `SubscriptionSync` tombstone,
         // which is what keeps this pass from bringing them back.
         let recoverableFeedKeys = activeSubscriptionFeedKeys(userStateContainer)
-        guard recoverableFeedKeys.isEmpty == false else { return empty }
+        guard recoverableFeedKeys.isEmpty == false else {
+            defaults.set(Self.cacheRecoveryVersion, forKey: Self.cacheRecoveryVersionKey)
+            return empty
+        }
 
         CrashBreadcrumbs.shared.record(
             "store_split_cache_recovery_started",
@@ -1941,7 +2144,8 @@ class ModelContainerManager: ObservableObject {
         // Record that this install has rendered from the in-memory projection, so
         // a later durable-store launch knows the cache may hold feed data the
         // durable store never saw.
-        if isRuntimeGraphFixture == false {
+        if isRuntimeGraphFixture == false,
+           StoreLibraryOrigin.current(libraryFileExists: true) == nil {
             UserDefaults.standard.set(true, forKey: Self.usedInMemoryProjectionKey)
         }
 
@@ -2138,6 +2342,7 @@ class ModelContainerManager: ObservableObject {
         await splitStoreCoordinator.scheduleLaunchWork()
         if let userState = preparedUserStateContainer {
             let library = runtimeProjectsFromCache ? nil : preparedContainer
+            let mayTombstoneLegacySubscriptions = bootstrapMode == .legacyUpgrade
             // Baseline repair and stale-subscription cleanup are one-time, small
             // metadata operations. ListeningTotalsDiagnostics is intentionally
             // excluded here: it walks the full listening history and belongs to
@@ -2148,7 +2353,9 @@ class ModelContainerManager: ObservableObject {
                 if let library {
                     StoreCutoverState.repairInflatedBaselineIfNeeded(library: library, userState: userState)
                     guard Task.isCancelled == false else { return }
-                    StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
+                    if mayTombstoneLegacySubscriptions {
+                        StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: library, userState: userState)
+                    }
                 }
             }
             launchStoreCleanupTask = cleanupTask
@@ -2309,9 +2516,7 @@ class ModelContainerManager: ObservableObject {
         libraryFillTask?.cancel()
         analyticsRebuildTask?.cancel()
         launchStoreCleanupTask?.cancel()
-        Task { await StoreSplitFeedCacheWriter.flushRequestedProjections() }
         userStateImportTask?.cancel()
-        aiContentImportTask?.cancel()
         compatibilityProjectionTask?.cancel()
         Task {
             await splitStoreCoordinator.pauseForBackground()
@@ -2617,8 +2822,7 @@ class ModelContainerManager: ObservableObject {
         guard Task.isCancelled == false,
               StoreDevelopmentConfiguration.userStateImportEnabled else { return .skipped }
         guard let legacyContainer = preparedContainer,
-              let userStateContainer = preparedUserStateContainer,
-              let cacheContainer = preparedCacheContainer else {
+              let userStateContainer = preparedUserStateContainer else {
             return .skipped
         }
         guard shouldRunUserStateImport(
@@ -2668,7 +2872,6 @@ class ModelContainerManager: ObservableObject {
         }
         _ = legacyContainer
         _ = userStateContainer
-        _ = cacheContainer
         return result.interruptedByPlayback ? .deferredForPlayback : .completed
     }
 
@@ -2786,8 +2989,7 @@ class ModelContainerManager: ObservableObject {
     }
 
     func resetSplitStoreDevelopmentData() async throws -> StoreSplitDevelopmentResetResult {
-        guard aiContentImportTask == nil,
-              userStateImportTask == nil else {
+        guard userStateImportTask == nil else {
             throw StoreSplitDevelopmentResetError.workInProgress
         }
 
@@ -2803,7 +3005,6 @@ class ModelContainerManager: ObservableObject {
                 userStateContainer: userStateContainer,
                 cacheContainer: cacheContainer
             )
-            lastAIContentImportAt = nil
             CrashBreadcrumbs.shared.record(
                 "store_split_development_reset_completed",
                 details: "user_state=\(result.userStateRecordsDeleted),cache=\(result.cacheRecordsDeleted)"
@@ -3321,61 +3522,6 @@ class ModelContainerManager: ObservableObject {
         return true
     }
 
-    func performSplitStoreAIImportIfPossible() async {
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
-            pendingSplitStoreWorkReason = "paused for stability"
-            currentSplitStoreJobDescription = nil
-            return
-        }
-        guard StoreSplitMaintenancePolicy.shouldYieldForCloudKitExport(
-            exportInProgress: cloudKitExportInProgress()
-        ) == false else {
-            pendingSplitStoreWorkReason = "waiting for CloudKit export to drain"
-            currentSplitStoreJobDescription = nil
-            return
-        }
-        await applyCachedAIContentIfPossible()
-    }
-
-    private func applyCachedAIContentIfPossible() async {
-        guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
-            return
-        }
-        if let aiContentImportTask {
-            let result = await aiContentImportTask.value
-            if result.failed > 0 {
-                pendingSplitStoreWorkReason = "AI PodcastCache import has retryable failures"
-            }
-            return
-        }
-        guard let legacyContainer = preparedContainer,
-              let cacheContainer = preparedCacheContainer else {
-            return
-        }
-        if let lastAIContentImportAt,
-           Date().timeIntervalSince(lastAIContentImportAt) < minimumAIContentImportInterval {
-            return
-        }
-
-        let task = Task {
-            await StoreSplitAIContentImporter.apply(
-                legacyContainer: legacyContainer,
-                cacheContainer: cacheContainer
-            )
-        }
-        aiContentImportTask = task
-        let result = await task.value
-        aiContentImportTask = nil
-        if result.failed > 0 {
-            pendingSplitStoreWorkReason = "AI PodcastCache import has retryable failures"
-        } else {
-            lastAIContentImportAt = .now
-            if pendingSplitStoreWorkReason == "AI PodcastCache import has retryable failures" {
-                pendingSplitStoreWorkReason = nil
-            }
-        }
-    }
-
     func updateSplitStoreCoordinatorState(
         currentJob: String?,
         pendingReason: String?
@@ -3448,6 +3594,9 @@ class ModelContainerManager: ObservableObject {
                 ListeningStat.self,
                 PlaySessionSummary.self,
                 TranscriptionRecord.self,
+                CachedMissingEpisodeReference.self,
+                CachedTranscriptAlignment.self,
+                CachedTranscriptSynchronizationJob.self,
                 configurations: configuration
             )
         } catch {

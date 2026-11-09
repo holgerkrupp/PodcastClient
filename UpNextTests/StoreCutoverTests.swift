@@ -1,4 +1,5 @@
 import SwiftData
+import SQLite3
 import XCTest
 @testable import UpNext
 
@@ -7,6 +8,7 @@ import XCTest
 @MainActor
 final class StoreCutoverTests: XCTestCase {
     private var directory: URL!
+    private var promotionDefaultsSuiteNames: [String] = []
     private let feedURL = URL(string: "https://example.com/feed.xml")!
 
     private var libraryURL: URL { directory.appendingPathComponent("SharedDatabase.sqlite") }
@@ -23,6 +25,10 @@ final class StoreCutoverTests: XCTestCase {
 
     override func tearDownWithError() throws {
         appGroupDefaults.removeObject(forKey: StoreCutoverState.deferredCompleteKey)
+        for suiteName in promotionDefaultsSuiteNames {
+            UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        }
+        promotionDefaultsSuiteNames.removeAll()
         try? FileManager.default.removeItem(at: directory)
     }
 
@@ -489,6 +495,163 @@ final class StoreCutoverTests: XCTestCase {
     func testLibraryContainerIsNeverCloudKitAttached() throws {
         let container = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
         XCTAssertTrue(container.configurations.allSatisfy { $0.cloudKitContainerIdentifier == nil })
+    }
+
+    // MARK: - Runtime promotion
+
+    func testRuntimePromotionMovesTheStoreAndPreservesOriginAndBackfillCursors() throws {
+        let runtimeURL = directory.appendingPathComponent("LibraryRuntime.sqlite")
+        let defaults = try makePromotionDefaults()
+        let projectionDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+        let projectionKeys = [
+            "storeSplit.runtimeProjectionReadyVersion",
+            "storeSplit.runtimeProjectionCursor",
+            "storeSplit.runtimeTranscriptBackfillPending",
+            "storeSplit.runtimeTranscriptBackfillCursor"
+        ]
+        let previousProjectionValues = Dictionary(
+            uniqueKeysWithValues: projectionKeys.map { ($0, projectionDefaults.object(forKey: $0)) }
+        )
+        defer {
+            for (key, value) in previousProjectionValues {
+                if let value {
+                    projectionDefaults.set(value, forKey: key)
+                } else {
+                    projectionDefaults.removeObject(forKey: key)
+                }
+            }
+        }
+
+        do {
+            let runtime = try ModelContainerManager.makeLegacyContainer(storageURL: runtimeURL)
+            let context = ModelContext(runtime)
+            context.insert(Podcast(feed: feedURL))
+            try context.save()
+        }
+        StoreRuntimeProjection.markReady()
+        StoreRuntimeProjection.cursor = "feed-cursor"
+        StoreRuntimeProjection.isLibraryBackfillPending = true
+        StoreRuntimeProjection.libraryBackfillCursor = "transcript-cursor"
+        defaults.set(StoreLibraryOrigin.legacy.rawValue, forKey: StoreLibraryOrigin.key)
+
+        let outcome = try StoreRuntimePromotion.promote(
+            runtimeURL: runtimeURL,
+            sharedURL: libraryURL,
+            containersReleased: true,
+            defaults: defaults
+        )
+
+        XCTAssertEqual(outcome, .promoted)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: runtimeURL.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: libraryURL.path))
+        XCTAssertEqual(StoreLibraryOrigin.current(libraryFileExists: true, defaults: defaults), .built)
+        XCTAssertEqual(StoreRuntimeProjection.cursor, "feed-cursor")
+        XCTAssertTrue(StoreRuntimeProjection.isLibraryBackfillPending)
+        XCTAssertEqual(StoreRuntimeProjection.libraryBackfillCursor, "transcript-cursor")
+        XCTAssertTrue(StoreRuntimeProjection.isReady)
+
+        do {
+            let promoted = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
+            XCTAssertEqual(try ModelContext(promoted).fetchCount(FetchDescriptor<Podcast>()), 1)
+        }
+    }
+
+    func testRuntimePromotionRefusesExistingSharedDatabaseWithoutOverwritingIt() throws {
+        let runtimeURL = directory.appendingPathComponent("LibraryRuntime.sqlite")
+        let defaults = try makePromotionDefaults()
+        do {
+            let runtime = try ModelContainerManager.makeLegacyContainer(storageURL: runtimeURL)
+            let context = ModelContext(runtime)
+            context.insert(Podcast(feed: feedURL))
+            try context.save()
+        }
+        let existingBytes = Data("keep existing library".utf8)
+        try existingBytes.write(to: libraryURL)
+
+        XCTAssertThrowsError(try StoreRuntimePromotion.promote(
+            runtimeURL: runtimeURL,
+            sharedURL: libraryURL,
+            containersReleased: true,
+            defaults: defaults
+        )) { error in
+            XCTAssertEqual(error as? StoreRuntimePromotion.PromotionError, .destinationExists)
+        }
+        XCTAssertEqual(try Data(contentsOf: libraryURL), existingBytes)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: runtimeURL.path))
+    }
+
+    func testRuntimePromotionDefersWhenAnActiveReaderPreventsCheckpoint() throws {
+        let runtimeURL = directory.appendingPathComponent("LibraryRuntime.sqlite")
+        let defaults = try makePromotionDefaults()
+        var reader: OpaquePointer?
+        var writer: OpaquePointer?
+        try executeSQLite("PRAGMA journal_mode=WAL; CREATE TABLE sample(value TEXT); INSERT INTO sample VALUES ('before');", at: runtimeURL)
+        XCTAssertEqual(sqlite3_open_v2(runtimeURL.path, &reader, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(reader, "BEGIN; SELECT * FROM sample;", nil, nil, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_open_v2(runtimeURL.path, &writer, SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(writer, "INSERT INTO sample VALUES ('after');", nil, nil, nil), SQLITE_OK)
+        defer {
+            if let reader {
+                sqlite3_exec(reader, "ROLLBACK;", nil, nil, nil)
+                sqlite3_close(reader)
+            }
+            if let writer { sqlite3_close(writer) }
+        }
+
+        XCTAssertThrowsError(try StoreRuntimePromotion.promote(
+            runtimeURL: runtimeURL,
+            sharedURL: libraryURL,
+            containersReleased: true,
+            defaults: defaults
+        )) { error in
+            XCTAssertEqual(error as? StoreRuntimePromotion.PromotionError, .checkpointFailed(.busy))
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: runtimeURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: libraryURL.path))
+    }
+
+    func testRuntimePromotionIsIdempotentAfterTheBuiltLibraryWasPromoted() throws {
+        let runtimeURL = directory.appendingPathComponent("LibraryRuntime.sqlite")
+        let defaults = try makePromotionDefaults()
+        do {
+            let library = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
+            let context = ModelContext(library)
+            context.insert(Podcast(feed: feedURL))
+            try context.save()
+        }
+        StoreLibraryOrigin.recordBuilt(defaults: defaults)
+
+        let outcome = try StoreRuntimePromotion.promote(
+            runtimeURL: runtimeURL,
+            sharedURL: libraryURL,
+            containersReleased: true,
+            defaults: defaults
+        )
+
+        XCTAssertEqual(outcome, .alreadyPromoted)
+        XCTAssertEqual(StoreLibraryOrigin.current(libraryFileExists: true, defaults: defaults), .built)
+        do {
+            let library = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
+            XCTAssertEqual(try ModelContext(library).fetchCount(FetchDescriptor<Podcast>()), 1)
+        }
+    }
+
+    private func makePromotionDefaults() throws -> UserDefaults {
+        let suiteName = "StoreRuntimePromotionTests.\(UUID().uuidString)"
+        promotionDefaultsSuiteNames.append(suiteName)
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        return defaults
+    }
+
+    private func executeSQLite(_ sql: String, at url: URL) throws {
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(url.path, &database, SQLITE_OPEN_CREATE | SQLITE_OPEN_READWRITE, nil), SQLITE_OK)
+        defer { if let database { sqlite3_close(database) } }
+        let result = sqlite3_exec(database, sql, nil, nil, nil)
+        guard result == SQLITE_OK else {
+            throw NSError(domain: "StoreRuntimePromotionTests", code: Int(result))
+        }
     }
 
     // MARK: - Fresh-install runtime

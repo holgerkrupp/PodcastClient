@@ -2715,9 +2715,6 @@ actor StoreSplitMigrationService {
             let identity = episode.stableEpisodeIdentity
             let createdAt = bookmark.creationtime ?? .distantPast
             let bookmarkID = bookmarkSyncID(for: bookmark, identity: identity)
-            // Device-local fields live in the cache; a newer synced row doesn't
-            // make them any less this device's data.
-            StoreSplitBookmarkDetailWriter.upsert(from: bookmark, id: bookmarkID, in: cacheContext)
 
             if let destination = fetchBookmark(
                 id: bookmarkID,
@@ -2850,7 +2847,6 @@ actor StoreSplitMigrationService {
             outcome.processed += 1
             outcome.delta.scanned += 1
             let candidate = preferenceRow(for: setting, legacyContext: legacyContext, encoder: encoder)
-            StoreSplitLocalSettingsWriter.upsert(from: setting, in: cacheContext)
             if let existing = fetchPreference(id: candidate.id, in: destinationContext) {
                 guard StoreSplitMergePolicy.prefersIncoming(
                     existingUpdatedAt: existing.updatedAt,

@@ -4,6 +4,56 @@ import XCTest
 
 /// Regression coverage for fail-closed store selection during launch.
 final class StoreBootstrapRecoverySafetyTests: XCTestCase {
+    func testBootstrapClassificationCoversSupportedStartingStates() throws {
+        let scenarios: [(String, Set<String>, StoreLibraryOrigin?, StoreBootstrapMode)] = [
+            ("clean install", [], nil, .freshSplitInstall),
+            ("legacy SharedDatabase", ["SharedDatabase.sqlite"], nil, .legacyUpgrade),
+            ("built SharedDatabase", ["SharedDatabase.sqlite", "UserState.sqlite"], .built, .builtLibrary),
+            ("split-only runtime", ["LibraryRuntime.sqlite", "UserState.sqlite", "PodcastCache.sqlite"], nil, .freshSplitInstall),
+            ("UserState and cache", ["UserState.sqlite", "PodcastCache.sqlite"], nil, .freshSplitInstall),
+            ("UserState only", ["UserState.sqlite"], nil, .freshSplitInstall),
+            ("cache only", ["PodcastCache.sqlite"], nil, .freshSplitInstall)
+        ]
+
+        for (name, files, origin, expected) in scenarios {
+            let (suiteName, defaults) = try makeDefaults()
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            if let origin {
+                defaults.set(origin.rawValue, forKey: StoreLibraryOrigin.key)
+            }
+            XCTAssertEqual(classify(files: files, defaults: defaults), expected, name)
+        }
+    }
+
+    func testKnownMissingLibraryEvidenceFailsClosed() throws {
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(true, forKey: StoreBootstrapEvidence.persistentLibraryOpenedKey)
+
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        XCTAssertThrowsError(try StoreLineage.directoryContentsWithRetry(
+            directory: { directory },
+            expected: StoreLineage.requiredStores(["SharedDatabase.sqlite"])
+        )) { error in
+            XCTAssertEqual((error as? StoreLineageMissingStores)?.names, ["SharedDatabase.sqlite"])
+        }
+        XCTAssertEqual(classify(files: ["UserState.sqlite"], defaults: defaults), .existingLibraryUnavailable)
+    }
+
+    func testBuiltLibraryMissingAfterItWasOpenedDoesNotUseFreshInstallMarker() throws {
+        let (suiteName, defaults) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        defaults.set(true, forKey: StoreBootstrapEvidence.freshSplitInstallReadyKey)
+        defaults.set(true, forKey: StoreBootstrapEvidence.persistentLibraryOpenedKey)
+        defaults.set(["UserState.sqlite", "SharedDatabase.sqlite"], forKey: StoreLineage.key)
+
+        XCTAssertEqual(
+            classify(files: ["UserState.sqlite"], defaults: defaults),
+            .existingLibraryUnavailable
+        )
+    }
+
     func testMissingLegacyStoreWithOnboardingEvidenceIsUnavailable() throws {
         let (suiteName, defaults) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -64,9 +114,9 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
 
         let (suiteName, defaults) = try makeDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
-        XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
+        XCTAssertTrue(StoreBootstrapEvidence.hasSplitOnlyLibrary(
             standardDefaults: defaults, appGroupDefaults: defaults, files: ["PodcastCache.sqlite"]
-        ), "without UserState there is nothing to restore subscriptions from")
+        ), "A cache-only install can still recover its local feed library")
         XCTAssertFalse(StoreBootstrapEvidence.hasSplitOnlyLibrary(
             standardDefaults: defaults, appGroupDefaults: defaults,
             files: files.union(["SharedDatabase.sqlite-wal"])
@@ -184,7 +234,13 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
             authoritativePlaylists: true
         )
 
-        XCTAssertEqual(result.failed, 0)
+        // XCTest's unsigned runner does not always receive the app-group
+        // entitlement, so it cannot persist the retry ledger in that host.
+        // The source record must remain intact either way.
+        let canCoordinateRetryLedger = FileManager.default.containerURL(
+            forSecurityApplicationGroupIdentifier: ModelContainerManager.appGroupID
+        ) != nil
+        XCTAssertEqual(result.failed, canCoordinateRetryLedger ? 0 : 1)
         XCTAssertEqual(result.feedsToBootstrap.map(\.absoluteString), [feed])
         let podcasts = try ModelContext(runtime).fetch(FetchDescriptor<Podcast>())
         XCTAssertEqual(podcasts.filter { $0.metaData?.isSubscribed == true }.count, 1)
@@ -257,6 +313,33 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
     private func makeDefaults() throws -> (String, UserDefaults) {
         let suiteName = "StoreBootstrapRecovery-\(UUID().uuidString)"
         return (suiteName, try XCTUnwrap(UserDefaults(suiteName: suiteName)))
+    }
+
+    private func classify(
+        files: Set<String>,
+        defaults: UserDefaults
+    ) -> StoreBootstrapMode {
+        let isFreshSplitInstall = StoreBootstrapEvidence.hasFreshSplitInstallRecord(
+            defaults: defaults
+        ) || StoreBootstrapEvidence.hasSplitOnlyLibrary(
+            standardDefaults: defaults,
+            appGroupDefaults: defaults,
+            files: files
+        )
+        let hasExistingLibrary = StoreBootstrapEvidence.mayHaveExistingLibrary(
+            standardDefaults: defaults,
+            appGroupDefaults: defaults,
+            files: files
+        )
+        let hasSharedDatabase = files.contains("SharedDatabase.sqlite")
+        return StoreBootstrapMode.resolve(
+            legacyStoreExists: hasSharedDatabase,
+            libraryOrigin: StoreLibraryOrigin.current(
+                libraryFileExists: hasSharedDatabase,
+                defaults: defaults
+            ),
+            installationWasPreviouslyInitialized: hasExistingLibrary && !isFreshSplitInstall
+        )
     }
 
     private func makeTemporaryDirectory() throws -> URL {

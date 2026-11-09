@@ -123,9 +123,14 @@ struct PodcastListView: View {
                                 ? visiblePodcasts[index].persistentModelID
                                 : nil
                         }
+                        // Hide the selected rows in this synchronous event
+                        // before the detached model actor can begin deleting
+                        // them. This prevents another SwiftUI pass from
+                        // reading metadata through a row whose model is being
+                        // invalidated by the background context.
+                        pendingDeletionIDs.formUnion(podcastIDs)
                         Task {
                             for podcastID in podcastIDs {
-                                pendingDeletionIDs.insert(podcastID)
                                 if await viewModel.deletePodcast(podcastID) == false {
                                     pendingDeletionIDs.remove(podcastID)
                                 }
