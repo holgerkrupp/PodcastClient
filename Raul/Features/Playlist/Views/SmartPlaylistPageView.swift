@@ -15,6 +15,7 @@ struct SmartPlaylistPageView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var matchingEpisodes: [Episode] = []
     @State private var isLoadingMatches = true
+    @State private var evaluationFailed = false
     @State private var refreshGeneration = 0
 
     let playlist: Playlist
@@ -30,14 +31,33 @@ struct SmartPlaylistPageView: View {
                     }
                     .listStyle(.plain)
                 } else {
-                    ContentUnavailableView(
-                        "No Matching Episodes",
-                        systemImage: playlist.displaySymbolName,
-                        description: Text("Edit this smart playlist's filters or wait for matching episodes to appear.")
-                    )
+                    if evaluationFailed {
+                        ContentUnavailableView {
+                            Label("Couldn't Load Smart Playlist", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                        } description: {
+                            Text("The filters couldn't be checked. Try again, or open Settings to review them.")
+                        } actions: {
+                            Button("Try Again") { refreshGeneration &+= 1 }
+                        }
+                    } else {
+                        ContentUnavailableView(
+                            "No Matching Episodes",
+                            systemImage: playlist.displaySymbolName,
+                            description: Text("No library episodes match these filters. Open Settings to edit the filters or wait for matching episodes to appear.")
+                        )
+                    }
                 }
             } else {
                 List {
+                    if evaluationFailed {
+                        Section {
+                            Label("Couldn't refresh this smart playlist.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                                .foregroundStyle(.secondary)
+                            Button("Try Again") { refreshGeneration &+= 1 }
+                        }
+                        .listRowSeparator(.hidden)
+                    }
+
                     Section {
                         Text("\(matchingEpisodes.count) matching episodes")
                             .font(.caption)
@@ -92,6 +112,7 @@ struct SmartPlaylistPageView: View {
             filter: playlist.smartFilter
         ) {
             matchingEpisodes = cachedIDs.compactMap { modelContext.model(for: $0) as? Episode }
+            evaluationFailed = false
             isLoadingMatches = false
             return
         }
@@ -105,11 +126,12 @@ struct SmartPlaylistPageView: View {
             )
             guard Task.isCancelled == false else { return }
             matchingEpisodes = episodeIDs.compactMap { modelContext.model(for: $0) as? Episode }
+            evaluationFailed = false
         } catch is CancellationError {
             return
         } catch {
             guard Task.isCancelled == false else { return }
-            matchingEpisodes = []
+            evaluationFailed = true
         }
         guard Task.isCancelled == false else { return }
         isLoadingMatches = false

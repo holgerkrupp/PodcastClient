@@ -58,9 +58,9 @@ enum SmartPlaylistField: String, Codable, CaseIterable, Hashable, Sendable {
         case .episodeTitle:
             return "Episode title"
         case .podcastTitle:
-            return "Podcast title"
+            return "Podcast name"
         case .podcastFeed:
-            return "Podcast"
+            return "Podcast feed URL"
         case .personName:
             return "Person"
         case .author:

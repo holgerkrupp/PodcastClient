@@ -223,6 +223,12 @@ struct SmartPlaylistFilterEditor: View {
 
     private func selectableValues(for field: SmartPlaylistField) -> [String]? {
         switch field {
+        case .podcastTitle:
+            let titles = podcasts.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            return Array(Set(titles)).sorted {
+                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+            }
         case .downloaded, .archived:
             return ["Yes", "No"]
         case .status:
@@ -254,6 +260,8 @@ struct SmartPlaylistFilterEditor: View {
 
     private func displayValue(_ value: String, for field: SmartPlaylistField) -> String {
         switch field {
+        case .podcastTitle:
+            value
         case .episodeType:
             value.capitalized
         case .source:

@@ -6,6 +6,12 @@
 import SwiftUI
 import SwiftData
 
+private struct SmartPlaylistCountRefreshKey: Equatable {
+    let playlistID: UUID
+    let filter: SmartPlaylistFilter?
+    let generation: Int
+}
+
 /// Everything about one playlist that is not its contents: its name and icon,
 /// its own download policy, what a play elsewhere does to it, and which podcasts
 /// feed into it.
@@ -22,6 +28,9 @@ struct PlaylistSettingsView: View {
     @State private var smartFilterDraft = SmartPlaylistFilter()
     @State private var routedPodcasts: [PlaylistRoutedPodcast] = []
     @State private var hasLoadedRoutedPodcasts = false
+    @State private var smartPlaylistEpisodeCount: Int?
+    @State private var smartPlaylistCountFailed = false
+    @State private var smartPlaylistCountGeneration = 0
     @FocusState private var isNameFocused: Bool
 
     init(playlist: Playlist) {
@@ -174,8 +183,25 @@ struct PlaylistSettingsView: View {
 
             Section {
                 LabeledContent("Episodes in playlist") {
-                    Text(episodeCount, format: .number)
-                        .monospacedDigit()
+                    if playlist.isSmartPlaylist {
+                        HStack(spacing: 8) {
+                            if let smartPlaylistEpisodeCount {
+                                Text(smartPlaylistEpisodeCount, format: .number)
+                                    .monospacedDigit()
+                            } else if smartPlaylistCountFailed {
+                                Text("Unavailable")
+                                    .foregroundStyle(.secondary)
+                                Button("Retry") { smartPlaylistCountGeneration &+= 1 }
+                                    .buttonStyle(.borderless)
+                            } else {
+                                Text("Calculating…")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    } else {
+                        Text(episodeCount, format: .number)
+                            .monospacedDigit()
+                    }
                 }
             }
         }
@@ -185,6 +211,14 @@ struct PlaylistSettingsView: View {
             draftName = playlist.displayTitle
             smartFilterDraft = playlist.smartFilter ?? SmartPlaylistFilter()
             await loadRoutedPodcasts()
+        }
+        .task(id: SmartPlaylistCountRefreshKey(
+            playlistID: playlist.id,
+            filter: playlist.smartFilter,
+            generation: smartPlaylistCountGeneration
+        )) {
+            guard playlist.isSmartPlaylist else { return }
+            await refreshSmartPlaylistCount()
         }
         .onChange(of: isNameFocused) { _, isFocused in
             if isFocused == false {
@@ -199,6 +233,9 @@ struct PlaylistSettingsView: View {
             NotificationCenter.default.publisher(for: .podcastSettingsDidChange)
         ) { _ in
             Task { await loadRoutedPodcasts() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistMembershipCacheDidInvalidate)) { _ in
+            smartPlaylistCountGeneration &+= 1
         }
     }
 
@@ -286,6 +323,33 @@ struct PlaylistSettingsView: View {
             modelContainer: modelContext.container
         ).podcastsRouted(toPlaylistID: playlist.id)
         hasLoadedRoutedPodcasts = true
+    }
+
+    @MainActor
+    private func refreshSmartPlaylistCount() async {
+        let filter = playlist.smartFilter
+        if let cachedIDs = SmartPlaylistMembershipCache.episodeIDs(for: playlist.id, filter: filter) {
+            smartPlaylistEpisodeCount = cachedIDs.count
+            smartPlaylistCountFailed = false
+            return
+        }
+
+        smartPlaylistEpisodeCount = nil
+        smartPlaylistCountFailed = false
+        do {
+            let episodeIDs = try await SmartPlaylistMembershipCache.matchingEpisodeIDs(
+                for: playlist.id,
+                filter: filter,
+                using: modelContext.container
+            )
+            guard Task.isCancelled == false else { return }
+            smartPlaylistEpisodeCount = episodeIDs.count
+        } catch is CancellationError {
+            return
+        } catch {
+            guard Task.isCancelled == false else { return }
+            smartPlaylistCountFailed = true
+        }
     }
 
     private func commitName() {
