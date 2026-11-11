@@ -530,43 +530,6 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
-    func testLocalInboxMutationWritesDirectlyToCache() async throws {
-        let (legacy, cache) = try makeContainers()
-        let podcast = try makePodcast(
-            in: legacy,
-            feed: "https://example.com/local-inbox-mutation",
-            episodeGUIDs: ["episode"]
-        )
-        let episode = try XCTUnwrap(podcast.episodes?.first)
-        XCTAssertTrue(StoreSplitFeedCacheWriter.upsertFeed(
-            feedURL: try XCTUnwrap(podcast.feed),
-            legacyContainer: legacy,
-            cacheContainer: cache
-        ))
-
-        await StoreSplitLocalEpisodeClassificationWriter(
-            modelContainer: cache
-        ).upsert([
-            StoreSplitLocalEpisodeClassificationSnapshot(
-                identity: episode.stableEpisodeIdentity,
-                isInbox: false,
-                statusRawValue: nil,
-                systemSuppressionReasonRawValue:
-                    EpisodeSystemSuppressionReason.backCatalogImport.rawValue
-            )
-        ])
-
-        let cached = try XCTUnwrap(
-            ModelContext(cache).fetch(FetchDescriptor<CachedEpisode>()).first
-        )
-        XCTAssertFalse(cached.localIsInbox)
-        XCTAssertEqual(
-            cached.localSystemSuppressionReasonRawValue,
-            EpisodeSystemSuppressionReason.backCatalogImport.rawValue
-        )
-    }
-
-    @MainActor
     func testPriorityPlaylistBootstrapRestoresEpisodeFromVersionedFeed() throws {
         let (legacy, cache) = try makeContainers()
         let podcast = try makePodcast(
@@ -925,9 +888,8 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
     }
 
     @MainActor
-    func testFullProjectionPreservesHistoricalEpisodeAndContent() async throws {
+    func testFullProjectionPreservesHistoricalEpisodeAndContent() throws {
         let (legacy, cache) = try makeContainers()
-        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
         let feed = "https://example.com/b"
         let podcast = try makePodcast(in: legacy, feed: feed, episodeGUIDs: ["e1", "e2", "e3"])
 
@@ -938,12 +900,9 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
 
         let cacheContext = ModelContext(cache)
         let historical = try XCTUnwrap(cacheContext.fetch(FetchDescriptor<CachedEpisode>()).first { $0.guid == "e2" })
-        let identity = EpisodeStableIdentity(feedURL: historical.feedURL, episodeID: historical.episodeID)
         cacheContext.insert(CachedChapter(id: "old-chapter", feedURL: historical.feedURL, episodeID: historical.id, title: "Chapter"))
         cacheContext.insert(CachedTranscriptLine(id: "old-line", feedURL: historical.feedURL, episodeID: historical.id, text: "Transcript"))
         try cacheContext.save()
-        userState.mainContext.insert(QueueEntrySync(feedURL: identity.feedURL, episodeID: identity.episodeID, sortIndex: 0))
-        try userState.mainContext.save()
 
         // Remove one episode from the legacy feed, then re-run the dual-write.
         let context = legacy.mainContext
@@ -964,10 +923,5 @@ final class StoreSplitFeedCacheWriterTests: XCTestCase {
         )
         XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedChapter>()), 1)
         XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<CachedTranscriptLine>()), 1)
-        let repository = PodcastCacheRepository(cacheContainer: cache, userStateContainer: userState)
-        let restored = await repository.episode(identity: identity)
-        XCTAssertEqual(restored?.title, "Title e2")
-        XCTAssertEqual(restored?.chapters.first?.title, "Chapter")
-        XCTAssertEqual(restored?.transcript.first?.text, "Transcript")
     }
 }

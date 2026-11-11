@@ -114,19 +114,22 @@ struct RefreshHistoryEntry: Codable, Identifiable, Sendable {
     let finishedAt: Date
     let trigger: RefreshHistoryTrigger
     let checkedPodcasts: [RefreshHistoryPodcastCheck]
+    let diagnostics: RefreshHistoryDiagnostics?
 
     init(
         id: UUID = UUID(),
         startedAt: Date,
         finishedAt: Date,
         trigger: RefreshHistoryTrigger,
-        checkedPodcasts: [RefreshHistoryPodcastCheck]
+        checkedPodcasts: [RefreshHistoryPodcastCheck],
+        diagnostics: RefreshHistoryDiagnostics? = nil
     ) {
         self.id = id
         self.startedAt = startedAt
         self.finishedAt = finishedAt
         self.trigger = trigger
         self.checkedPodcasts = checkedPodcasts
+        self.diagnostics = diagnostics
     }
 
     var duration: TimeInterval {
@@ -152,6 +155,14 @@ struct RefreshHistoryEntry: Codable, Identifiable, Sendable {
         }
         return parts.joined(separator: " • ")
     }
+}
+
+struct RefreshHistoryDiagnostics: Codable, Sendable {
+    let candidatePreparationDuration: TimeInterval
+    let processCPUTime: TimeInterval
+    let stopReason: String
+    let candidates: Int
+    let remaining: Int
 }
 
 actor RefreshHistoryStore {

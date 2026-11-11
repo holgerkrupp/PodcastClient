@@ -279,6 +279,50 @@ enum PlaybackStateReconciliationPolicy {
     }
 }
 
+struct PlaybackRecoveryIdentity: Equatable {
+    let generation: UInt64
+    let episodeURL: URL
+    let itemID: ObjectIdentifier
+    let playerID: ObjectIdentifier
+
+    func matches(
+        generation: UInt64,
+        episodeURL: URL?,
+        item: AVPlayerItem?,
+        player: AVPlayer
+    ) -> Bool {
+        self.generation == generation
+            && self.episodeURL == episodeURL
+            && item.map(ObjectIdentifier.init) == itemID
+            && ObjectIdentifier(player) == playerID
+    }
+}
+
+struct PlaybackRecoveryCoordinator {
+    private(set) var isRecovering = false
+    private(set) var attemptNumber = 0
+
+    mutating func begin() -> Int? {
+        guard isRecovering == false else { return nil }
+        isRecovering = true
+        attemptNumber += 1
+        return attemptNumber
+    }
+
+    mutating func finish() {
+        isRecovering = false
+    }
+}
+
+enum PlaybackRecoveryPositionPolicy {
+    static func preservedPosition(enginePosition: TimeInterval, savedPosition: TimeInterval) -> TimeInterval {
+        guard enginePosition.isFinite, enginePosition > 0 else {
+            return savedPosition.isFinite ? max(0, savedPosition) : 0
+        }
+        return enginePosition
+    }
+}
+
 @Observable
 @MainActor
 class Player {
@@ -431,6 +475,7 @@ class Player {
     private var suspendedPlaybackContext: SuspendedPlaybackContext?
     private var currentPlaybackUsesAlternateMedia = false
     private var playbackLoadGeneration: UInt64 = 0
+    private var playbackRecoveryCoordinator = PlaybackRecoveryCoordinator()
     private var hasStartedRecovery = false
     private var wasPlayingBeforeInterruption = false
     /// Saved preferences are only read on context/settings changes, never on resume.
@@ -3144,37 +3189,139 @@ class Player {
     }
 
     private func rebuildAudioEngine(reason: String) {
-        guard currentPlaybackSource != .liveRemote else { return }
-        let position = sanitizedPosition(engine.currentTime())
-        let item = engine.avPlayer.currentItem
-        let episodeToken = currentEpisodeURL.map {
-            SHA256.hash(data: Data($0.absoluteString.utf8)).prefix(6)
-                .map { String(format: "%02x", $0) }.joined()
-        } ?? "none"
-        AppDiagnostics.log(
-            "audio_engine_rebuild reason=\(reason) episode=\(episodeToken) position=\(position) rate=\(playbackRate)"
+        guard currentPlaybackSource != .liveRemote,
+              let episode = currentEpisode,
+              let episodeURL = currentEpisodeURL,
+              let oldItem = engine.avPlayer.currentItem,
+              let attempt = playbackRecoveryCoordinator.begin() else {
+            if playbackRecoveryCoordinator.isRecovering {
+                AppDiagnostics.log("audio_engine_recovery reason=\(reason) result=coalesced attempt=\(playbackRecoveryCoordinator.attemptNumber)")
+            }
+            return
+        }
+
+        let oldPlayer = engine.avPlayer
+        let generation = playbackLoadGeneration
+        let identity = PlaybackRecoveryIdentity(
+            generation: generation,
+            episodeURL: episodeURL,
+            itemID: ObjectIdentifier(oldItem),
+            playerID: ObjectIdentifier(oldPlayer)
         )
-        transitionToPaused(pauseEngine: false)
+        let selectedMedia = mediaSelection
+        let position = PlaybackRecoveryPositionPolicy.preservedPosition(
+            enginePosition: engine.currentTime(),
+            savedPosition: playPosition
+        )
+        let itemID = String(describing: ObjectIdentifier(oldItem))
+        let playerID = String(describing: ObjectIdentifier(oldPlayer))
+        AppDiagnostics.log(
+            "audio_engine_recovery reason=\(reason) attempt=\(attempt) result=started item=\(itemID) player=\(playerID)"
+        )
+
+        pauseForAudioRecovery(at: position)
+
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.engine.rebuildPlayer(at: position)
+            defer { self.playbackRecoveryCoordinator.finish() }
+
+            guard identity.matches(
+                generation: self.playbackLoadGeneration,
+                episodeURL: self.currentEpisodeURL,
+                item: self.engine.avPlayer.currentItem,
+                player: self.engine.avPlayer
+            ), self.currentEpisode === episode else {
+                self.logPlaybackRecoveryResult("obsolete", reason: reason, attempt: attempt, itemID: itemID, playerID: playerID)
+                return
+            }
+            guard identity.matches(
+                generation: self.playbackLoadGeneration,
+                episodeURL: self.currentEpisodeURL,
+                item: self.engine.avPlayer.currentItem,
+                player: self.engine.avPlayer
+            ), self.currentEpisode === episode else {
+                self.logPlaybackRecoveryResult("obsolete", reason: reason, attempt: attempt, itemID: itemID, playerID: playerID)
+                return
+            }
+
+            await self.resetPlaybackAudioProcessing(for: oldItem)
+            guard identity.matches(
+                generation: self.playbackLoadGeneration,
+                episodeURL: self.currentEpisodeURL,
+                item: self.engine.avPlayer.currentItem,
+                player: self.engine.avPlayer
+            ), self.currentEpisode === episode else {
+                self.logPlaybackRecoveryResult("obsolete", reason: reason, attempt: attempt, itemID: itemID, playerID: playerID)
+                return
+            }
+
+            guard let replacement = self.playbackItem(for: episode, mediaSelection: selectedMedia) else {
+                self.observeEnginePlaybackState()
+                self.logPlaybackRecoveryResult("item_unavailable", reason: reason, attempt: attempt, itemID: itemID, playerID: playerID)
+                return
+            }
+            let replacementItemID = String(describing: ObjectIdentifier(replacement.item))
+            self.playbackStatusObservation?.invalidate()
+            self.playbackStatusObservation = nil
+            self.playbackRateObservation?.invalidate()
+            self.playbackRateObservation = nil
+            let didRecover = await self.engine.rebuildPlayer(with: replacement.item, at: position)
             self.observeEnginePlaybackState()
+
+            guard didRecover,
+                  identity.generation == self.playbackLoadGeneration,
+                  identity.episodeURL == self.currentEpisodeURL,
+                  self.currentEpisode === episode,
+                  self.engine.avPlayer.currentItem === replacement.item else {
+                self.logPlaybackRecoveryResult("obsolete", reason: reason, attempt: attempt, itemID: replacementItemID, playerID: String(describing: ObjectIdentifier(self.engine.avPlayer)))
+                return
+            }
+
             self.configureChapterBoundaryObserver()
             self.configureOutroBoundaryObserver()
-            if let item, let episodeURL = self.currentEpisodeURL {
-                await self.resetPlaybackAudioProcessing(for: item)
-                self.schedulePlaybackAudioProcessing(
-                    for: item,
-                    episodeURL: episodeURL,
-                    generation: self.playbackLoadGeneration
-                )
-            }
+            self.currentPlaybackSource = replacement.source
+            self.currentPlaybackUsesAlternateMedia = replacement.usesAlternateMedia
             self.playPosition = position
+            self.currentEpisode?.metaData?.playPosition = position
+            self.cacheCurrentPlaybackState()
+            self.schedulePlaybackAudioProcessing(
+                for: replacement.item,
+                episodeURL: episodeURL,
+                generation: generation
+            )
             self.updateNowPlayingInfo()
+            self.logPlaybackRecoveryResult("success", reason: reason, attempt: attempt, itemID: replacementItemID, playerID: String(describing: ObjectIdentifier(self.engine.avPlayer)))
+        }
+    }
+
+    private func logPlaybackRecoveryResult(_ result: String, reason: String, attempt: Int, itemID: String, playerID: String) {
+        AppDiagnostics.log("audio_engine_recovery reason=\(reason) attempt=\(attempt) result=\(result) item=\(itemID) player=\(playerID)")
+    }
+
+    private func pauseForAudioRecovery(at position: TimeInterval) {
+        unexpectedPauseReconciliationTask?.cancel()
+        unexpectedPauseReconciliationTask = nil
+        engine.pause()
+        isPlaying = false
+        resetSilenceGapReduction(updateEngine: false)
+        stopPlaybackUpdates()
+        playPosition = position
+        currentEpisode?.metaData?.playPosition = position
+        cacheCurrentPlaybackState()
+        updateNowPlayingInfo()
+
+        Task {
+            await PlayNextWidgetSync.publishPlaybackState()
+            if currentEpisode != nil, currentPlaybackSource != .liveRemote {
+                await flushSilenceGapTimeSaved()
+                await playSessionTracker?.pauseSession(at: position)
+            }
+            WatchSyncCoordinator.refreshSoon(force: true)
         }
     }
 
     private func syncPlaybackStateFromObservedPlayer(_ observedPlayer: AVPlayer) {
+        guard observedPlayer === videoPlayer else { return }
         if currentPlaybackSource == .liveRemote {
             switch observedPlayer.timeControlStatus {
             case .waitingToPlayAtSpecifiedRate:
@@ -3441,7 +3588,9 @@ class Player {
                         self.resumeAfterInterruption()
                     }
                 case .activationFailed(let description):
-                    AppDiagnostics.log("audio_session_activation_failed detail=\(description)")
+                    // Error descriptions can include request details. Keep the
+                    // diagnostic category-only; never persist a media URL or header.
+                    AppDiagnostics.log("audio_session_activation_failed")
                     if self.currentPlaybackSource == .liveRemote {
                         self.livePlaybackState = .failed(description)
                     }

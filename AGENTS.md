@@ -230,3 +230,25 @@ validation run unless they are deliberately being retained for debugging.
   unsupported platforms. Opening help must never trigger destructive or bulk
   actions. Keep examples offline and anonymized; do not invent screenshots or
   describe experimental or DEBUG-only behavior as generally available.
+
+## App skills for Siri AI
+
+- Adopt Apple's [app skills guidance](https://developer.apple.com/documentation/appintents/orchestrating-complex-actions-with-app-skills) for meaningful multi-step app workflows. Provide the necessary App Intents and app entities, then add app skills that explain how to combine those intents, relevant domain knowledge, and what to avoid.
+- Follow Apple's current skills-bundle format and Xcode target integration. Verify SDK and OS availability and preserve the app's existing supported platforms; the Siri AI Developer Preview and its APIs may change.
+- Treat skills as guidance, not deterministic enforcement. Keep validation, privacy, permissions, and confirmation of consequential actions in the app and its intents.
+
+## Human interface guidelines
+
+- Follow the cross-platform checklist in [hig.md](hig.md) when designing, changing, or reviewing the app’s interface; verify the guidance against the current Apple HIG and supported targets.
+
+## Agentic integration
+
+- Follow [agentic.md](agentic.md) when designing, implementing, or reviewing App Intents, Siri, Shortcuts, Spotlight, and related agentic integrations; verify platform and SDK availability.
+
+## Documentation authority and navigation
+
+- Start with the [documentation index](docs/README.md) and read only the guidance relevant to the task. For interface work use [hig.md](hig.md); for App Intents and related system integrations use [agentic.md](agentic.md). Neither file establishes that an optional platform or feature is supported.
+- Treat source code, tests, and actual targets/build settings as evidence of current behavior and configuration. The README describes intended product and platform scope; investigate and explicitly report discrepancies rather than assuming either is current.
+- Follow applicable agent instructions and the user's current request for mandatory rules and scope. A current issue describes requested or proposed work, not proof it is implemented. Resolve conflicting requirements explicitly; do not silently override safety or project constraints.
+- Platform and integration guides apply only where relevant and supported. Decision records, audits, spikes, and dated notes may describe historical or proposed states; check their status, date, source evidence, and any successor before relying on them. Never claim a capability or device validation based on documentation alone.
+- Keep each topic's reusable guidance in its owning file; link to it rather than copying checklists. Record material documentation conflicts, verification performed, and remaining limitations.

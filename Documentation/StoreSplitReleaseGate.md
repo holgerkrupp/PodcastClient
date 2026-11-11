@@ -29,6 +29,9 @@ runtime has not fully converged yet:
   cache only while first-build compatibility hydration/migrations are pending. Older
   `LibraryRuntime` installs may need it until their build is ready and promoted. This is not yet
   the two-store release state.
+- Long startup waits now say the app is opening/updating its local library and explain that the
+  user can reopen it; they no longer imply the app must stay foreground. Recovery diagnostics
+  include the opening local-store filename and initial SQLite/WAL sizes.
 - `PodcastCache.sqlite` and `LibraryRuntime.sqlite` are historical files. Do not delete them
   during convergence. Do not reattach a legacy `SharedDatabase.sqlite` to CloudKit, copy the
   whole library, or replace newer library data with an unverified cache.

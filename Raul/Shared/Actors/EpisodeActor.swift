@@ -150,9 +150,6 @@ actor EpisodeActor {
     private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
     private var cachedEpisodeStateWriter: StoreSplitEpisodeStateSyncWriter?
     private var cachedEpisodeStateWriterStoreID: ObjectIdentifier?
-    private var cachedLocalClassificationWriter:
-        StoreSplitLocalEpisodeClassificationWriter?
-    private var cachedLocalClassificationWriterStoreID: ObjectIdentifier?
 
     static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
         Task.detached(priority: .utility) {
@@ -502,7 +499,6 @@ actor EpisodeActor {
         episode.metaData?.lastPlayed = date
         modelContext.saveIfNeeded()
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
-        await persistLocalEpisodeClassification([episode])
         await publishSplitEpisodeState(episode)
     }
     
@@ -567,7 +563,6 @@ actor EpisodeActor {
         // save above is the durable completion boundary used by playback recovery.
         let podcastFeeds = Set(episodes.compactMap { $0.podcast?.feed })
         Task { [self] in
-            await persistLocalEpisodeClassification(episodes)
             for episode in episodes {
                 await publishSplitEpisodeState(episode)
             }
@@ -644,7 +639,6 @@ actor EpisodeActor {
 
         modelContext.saveIfNeeded()
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMembership, for: episode)
-        await persistLocalEpisodeClassification([episode])
         await publishSplitEpisodeState(episode)
 
         if let podcastFeed = episode.podcast?.feed {
@@ -686,7 +680,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
         }
@@ -712,7 +705,6 @@ actor EpisodeActor {
             episode.metaData?.setArchived(false)
         }
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
         }
@@ -733,7 +725,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
@@ -755,7 +746,6 @@ actor EpisodeActor {
                 episode.metaData?.setInboxMembership(false)
             }
             try modelContext.save()
-            await persistLocalEpisodeClassification(episodes)
         }
         await InboxChangeBroadcaster.notifyInboxDidChange()
         WatchSyncCoordinator.refreshSoon(force: true)
@@ -772,7 +762,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
@@ -794,7 +783,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
         }
@@ -905,7 +893,6 @@ actor EpisodeActor {
         }
 
         modelContext.saveIfNeeded()
-        await persistLocalEpisodeClassification(episodes)
     }
     
     func moveToHistory(episodeURL: URL) async {
@@ -931,7 +918,6 @@ actor EpisodeActor {
         
         modelContext.saveIfNeeded()
         await notifySmartPlaylistMembershipChangeIfNeeded(from: previousMemberships, for: episodes)
-        await persistLocalEpisodeClassification(episodes)
         for episode in episodes {
             await publishSplitEpisodeState(episode)
         }
@@ -1286,50 +1272,12 @@ actor EpisodeActor {
 
         if didChange {
             modelContext.saveIfNeeded()
-            await persistLocalEpisodeClassification(episodes)
             await MainActor.run {
                 NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             }
         }
 
         defaults.set(true, forKey: Self.legacyBackCatalogSuppressionMigrationKey)
-    }
-
-    private func persistLocalEpisodeClassification(
-        _ episodes: [Episode]
-    ) async {
-        let snapshots = episodes.compactMap {
-            episode -> StoreSplitLocalEpisodeClassificationSnapshot? in
-            guard let metadata = episode.metaData else { return nil }
-            return StoreSplitLocalEpisodeClassificationSnapshot(
-                identity: episode.stableEpisodeIdentity,
-                isInbox: metadata.isInbox == true,
-                statusRawValue: metadata.status?.rawValue,
-                systemSuppressionReasonRawValue:
-                    metadata.systemSuppressionReasonRawValue
-            )
-        }
-        guard snapshots.isEmpty == false,
-              let writer = await localEpisodeClassificationWriter() else { return }
-        await writer.upsert(snapshots)
-    }
-
-    private func localEpisodeClassificationWriter() async
-        -> StoreSplitLocalEpisodeClassificationWriter? {
-        guard let cacheContainer = await preparedCacheContainer() else {
-            return nil
-        }
-        let storeID = ObjectIdentifier(cacheContainer)
-        if let cachedLocalClassificationWriter,
-           cachedLocalClassificationWriterStoreID == storeID {
-            return cachedLocalClassificationWriter
-        }
-        let writer = StoreSplitLocalEpisodeClassificationWriter(
-            modelContainer: cacheContainer
-        )
-        cachedLocalClassificationWriter = writer
-        cachedLocalClassificationWriterStoreID = storeID
-        return writer
     }
 
     private func canScheduleAutoDownloads(for networkMode: AutoDownloadNetworkMode) async -> Bool {

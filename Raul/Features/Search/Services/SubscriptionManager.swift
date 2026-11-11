@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Darwin
 import os
 import SwiftData
 import CryptoKit
@@ -775,7 +776,7 @@ actor SubscriptionManager:NSObject{
     private static let predictedReleaseRefreshPerPodcastRuntimeLimit: TimeInterval = 5
     private static let predictedReleaseRefreshMinimumRuntimeRemaining: TimeInterval = 2
 
-    private struct BackgroundFeedRefreshPolicy: Sendable {
+    struct BackgroundFeedRefreshPolicy: Sendable {
         let maxPodcastsPerRun: Int
         let maxConcurrentPodcastUpdates: Int
         let maxRuntime: TimeInterval
@@ -787,7 +788,7 @@ actor SubscriptionManager:NSObject{
             switch reason {
             case .foregroundQuiet:
                 return .init(
-                    maxPodcastsPerRun: 3,
+                    maxPodcastsPerRun: 10,
                     maxConcurrentPodcastUpdates: 1,
                     maxRuntime: 24,
                     perPodcastRuntimeLimit: 7,
@@ -796,8 +797,8 @@ actor SubscriptionManager:NSObject{
                 )
             case .appRefresh:
                 return .init(
-                    maxPodcastsPerRun: 5,
-                    maxConcurrentPodcastUpdates: 1,
+                    maxPodcastsPerRun: 20,
+                    maxConcurrentPodcastUpdates: 2,
                     maxRuntime: 25,
                     perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 2,
@@ -811,8 +812,8 @@ actor SubscriptionManager:NSObject{
                     // work; keeping one pass below the watchdog window lets
                     // iOS stop and reschedule cleanly instead of killing the
                     // app after roughly 48 seconds of CPU.
-                    maxPodcastsPerRun: 5,
-                    maxConcurrentPodcastUpdates: 1,
+                    maxPodcastsPerRun: 20,
+                    maxConcurrentPodcastUpdates: 2,
                     maxRuntime: 24,
                     perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 4,
@@ -1173,7 +1174,6 @@ actor SubscriptionManager:NSObject{
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
 #endif
-
         fetchData()
         let candidates = predictedReleaseRefreshCandidatesFromLoadedPodcasts(
             after: now
@@ -1501,6 +1501,9 @@ actor SubscriptionManager:NSObject{
         // An episode still waiting to be filled in would look new to a refresh.
         guard StoreRuntimeProjection.isLibraryBackfillPending == false else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=library_backfill_pending")
+#if DEBUG
+            await recordSkippedFeedRefresh("library_backfill_pending", for: reason)
+#endif
             return
         }
         let signpostID = OSSignpostID(log: Self.refreshPerformanceLog)
@@ -1511,6 +1514,9 @@ actor SubscriptionManager:NSObject{
         guard Task.isCancelled == false,
               await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
+#if DEBUG
+            await recordSkippedFeedRefresh(Task.isCancelled ? "cancelled" : "playback_active", for: reason)
+#endif
             return
         }
         guard Task.isCancelled == false,
@@ -1518,15 +1524,24 @@ actor SubscriptionManager:NSObject{
             ModelContainerManager.shared.isCloudKitExportInProgress == false
         }) else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=cloudkit_export")
+#if DEBUG
+            await recordSkippedFeedRefresh(Task.isCancelled ? "cancelled" : "cloudkit_export", for: reason)
+#endif
             return
         }
         guard Task.isCancelled == false,
               await FeedRefreshRunCoordinator.shared.begin() else {
             CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=already_running")
+#if DEBUG
+            await recordSkippedFeedRefresh(Task.isCancelled ? "cancelled" : "already_running", for: reason)
+#endif
             return
         }
         guard Task.isCancelled == false else {
             await FeedRefreshRunCoordinator.shared.finish()
+#if DEBUG
+            await recordSkippedFeedRefresh("cancelled", for: reason)
+#endif
             return
         }
 
@@ -1536,6 +1551,7 @@ actor SubscriptionManager:NSObject{
        //  AppDiagnostics.log("bgupdateFeeds")
         
         let startedAt = Date()
+        let cpuStartedAt = Self.processCPUTime()
         let refreshRunID = UUID()
         let policy = BackgroundFeedRefreshPolicy.forReason(reason)
         fetchData()
@@ -1543,11 +1559,10 @@ actor SubscriptionManager:NSObject{
         var processed = 0
         var successfulChecks = 0
         var timedOut = 0
-        var stoppedForPlayback = false
-        var stoppedForExporter = false
 #if DEBUG
         var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
 #endif
+        var stopReason = "candidate_pool_exhausted"
 
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_started",
@@ -1555,6 +1570,12 @@ actor SubscriptionManager:NSObject{
         )
 
         let candidates = await makeBackgroundFeedRefreshCandidates(startedAt: startedAt, policy: policy)
+        let candidatePreparationDuration = Date().timeIntervalSince(startedAt)
+        if candidates.isEmpty {
+            stopReason = candidatePreparationDuration >= policy.maxRuntime
+                ? "selection_budget"
+                : "no_eligible_feeds"
+        }
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_candidates_prepared",
             details: "candidates=\(candidates.count),concurrency=\(policy.maxConcurrentPodcastUpdates)"
@@ -1563,11 +1584,12 @@ actor SubscriptionManager:NSObject{
         var candidateIndex = 0
         while candidateIndex < candidates.count {
             if Task.isCancelled {
+                stopReason = "cancelled"
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=cancelled")
                 break
             }
             if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
-                stoppedForPlayback = true
+                stopReason = "playback_started"
                 CrashBreadcrumbs.shared.record(
                     "bgupdate_feeds_stopped",
                     details: "reason=playback_started"
@@ -1577,7 +1599,7 @@ actor SubscriptionManager:NSObject{
             if await MainActor.run(body: {
                 ModelContainerManager.shared.isCloudKitExportInProgress
             }) {
-                stoppedForExporter = true
+                stopReason = "cloudkit_export"
                 CrashBreadcrumbs.shared.record(
                     "bgupdate_feeds_stopped",
                     details: "reason=cloudkit_export"
@@ -1588,28 +1610,36 @@ actor SubscriptionManager:NSObject{
 
             let elapsed = Date().timeIntervalSince(startedAt)
             if elapsed >= policy.maxRuntime {
+                stopReason = "max_runtime"
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_runtime")
                 break
             }
             if policy.maxRuntime - elapsed < policy.minimumRuntimeRemainingBeforeStartingFeed {
+                stopReason = "runtime_remaining"
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=runtime_remaining")
                 break
             }
 
-            let batchEndIndex = min(
-                candidateIndex + policy.maxConcurrentPodcastUpdates,
-                candidates.count
-            )
-            let batch = candidates[candidateIndex..<batchEndIndex]
-            candidateIndex = batchEndIndex
-
-            await withTaskGroup(of: BackgroundFeedRefreshResult.self) { group in
-                for candidate in batch {
+            let startingCandidateIndex = candidateIndex
+            candidateIndex = await withTaskGroup(of: BackgroundFeedRefreshResult.self) { group in
+                var nextCandidateIndex = startingCandidateIndex
+                func addNextCandidate() {
+                    let elapsed = Date().timeIntervalSince(startedAt)
+                    let remainingRuntime = policy.maxRuntime - elapsed
+                    guard nextCandidateIndex < candidates.count,
+                          Task.isCancelled == false,
+                          remainingRuntime >= policy.minimumRuntimeRemainingBeforeStartingFeed else { return }
+                    let candidate = candidates[nextCandidateIndex]
+                    nextCandidateIndex += 1
+                    let timeBudget = min(
+                        policy.perPodcastRuntimeLimit,
+                        max(1, remainingRuntime - policy.minimumRuntimeRemainingBeforeStartingFeed)
+                    )
                     group.addTask {
                         let (result, newEpisodeCount, errorMessage) = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
                             refreshRunID: refreshRunID,
-                            timeBudget: policy.perPodcastRuntimeLimit,
+                            timeBudget: timeBudget,
                             notifyNewEpisodes: policy.notifyNewEpisodes,
                             forceParse: candidate.forceParse
                         )
@@ -1624,7 +1654,9 @@ actor SubscriptionManager:NSObject{
                     }
                 }
 
-                for await refreshResult in group {
+                for _ in 0..<policy.maxConcurrentPodcastUpdates { addNextCandidate() }
+
+                while let refreshResult = await group.next() {
                     processed += 1
                     switch refreshResult.result {
                     case .completed(let new):
@@ -1665,14 +1697,58 @@ actor SubscriptionManager:NSObject{
                         )
 #endif
                     }
+                    if Task.isCancelled {
+                        stopReason = "cancelled"
+                    } else if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+                        stopReason = "playback_started"
+                    } else if await MainActor.run(body: { ModelContainerManager.shared.isCloudKitExportInProgress }) {
+                        stopReason = "cloudkit_export"
+                    } else if Date().timeIntervalSince(startedAt) >= policy.maxRuntime {
+                        stopReason = "max_runtime"
+                    } else {
+                        addNextCandidate()
+                    }
                 }
+                return nextCandidateIndex
+            }
+            if candidateIndex < candidates.count,
+               Date().timeIntervalSince(startedAt) >= policy.maxRuntime {
+                stopReason = "max_runtime"
+            } else if candidateIndex < candidates.count,
+                      policy.maxRuntime - Date().timeIntervalSince(startedAt)
+                        < policy.minimumRuntimeRemainingBeforeStartingFeed {
+                stopReason = "runtime_remaining"
             }
         }
 
+        if candidateIndex == candidates.count, processed < candidates.count, stopReason == "candidate_pool_exhausted" {
+            stopReason = Task.isCancelled ? "cancelled" : "runtime_or_cancellation"
+        }
+
+        let finishedAt = Date()
+        let cpuDuration = max(0, Self.processCPUTime() - cpuStartedAt)
+
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_completed",
-            details: "candidates=\(candidates.count),attempted=\(processed),checked=\(successfulChecks),failed=\(max(0, processed - successfulChecks)),updated=\(updated),timed_out=\(timedOut),duration=\(Int(Date().timeIntervalSince(startedAt)))s"
+            details: "candidates=\(candidates.count),attempted=\(processed),checked=\(successfulChecks),failed=\(max(0, processed - successfulChecks)),remaining=\(max(0, candidates.count - processed)),updated=\(updated),timed_out=\(timedOut),stop=\(stopReason),selection_ms=\(Int(candidatePreparationDuration * 1000)),wall_ms=\(Int(finishedAt.timeIntervalSince(startedAt) * 1000)),cpu_ms=\(Int(cpuDuration * 1000))"
         )
+#if DEBUG
+        await RefreshHistoryStore.shared.record(
+            RefreshHistoryEntry(
+                startedAt: startedAt,
+                finishedAt: finishedAt,
+                trigger: refreshHistoryTrigger(for: reason),
+                checkedPodcasts: checkedPodcasts,
+                diagnostics: RefreshHistoryDiagnostics(
+                    candidatePreparationDuration: candidatePreparationDuration,
+                    processCPUTime: cpuDuration,
+                    stopReason: stopReason,
+                    candidates: candidates.count,
+                    remaining: max(0, candidates.count - processed)
+                )
+            )
+        )
+#endif
         guard Task.isCancelled == false else {
             await FeedRefreshRunCoordinator.shared.finish()
             return
@@ -1681,25 +1757,37 @@ actor SubscriptionManager:NSObject{
         // cadence eligible for the next grant.
         // Freshness is tracked per feed by feedUpdateCheckDate. Failed and
         // timed-out attempts never make the whole library appear current.
-#if DEBUG
-        await RefreshHistoryStore.shared.record(
-            RefreshHistoryEntry(
-                startedAt: startedAt,
-                finishedAt: Date(),
-                trigger: refreshHistoryTrigger(for: reason),
-                checkedPodcasts: checkedPodcasts
-            )
-        )
-#endif
-        guard Task.isCancelled == false else {
-            await FeedRefreshRunCoordinator.shared.finish()
-            return
-        }
         WatchSyncCoordinator.refreshSoon()
         await FeedRefreshRunCoordinator.shared.finish()
     }
 
+    private static func processCPUTime() -> TimeInterval {
+        var usage = rusage()
+        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
+        return Double(usage.ru_utime.tv_sec) + Double(usage.ru_utime.tv_usec) / 1_000_000
+            + Double(usage.ru_stime.tv_sec) + Double(usage.ru_stime.tv_usec) / 1_000_000
+    }
+
 #if DEBUG
+    private func recordSkippedFeedRefresh(_ stopReason: String, for reason: FeedRefreshReason) async {
+        let now = Date()
+        await RefreshHistoryStore.shared.record(
+            RefreshHistoryEntry(
+                startedAt: now,
+                finishedAt: now,
+                trigger: refreshHistoryTrigger(for: reason),
+                checkedPodcasts: [],
+                diagnostics: RefreshHistoryDiagnostics(
+                    candidatePreparationDuration: 0,
+                    processCPUTime: 0,
+                    stopReason: stopReason,
+                    candidates: 0,
+                    remaining: 0
+                )
+            )
+        )
+    }
+
     private func refreshHistoryTrigger(for reason: FeedRefreshReason) -> RefreshHistoryTrigger {
         switch reason {
         case .foregroundQuiet:

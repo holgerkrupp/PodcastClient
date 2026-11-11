@@ -76,6 +76,7 @@ final class PlayerEngine {
     private var periodicTimeObserver: Any?
     private var activePlaybackStreamID: UInt64 = 0
     private var playbackRequestID: UInt64 = 0
+    private var playerGeneration: UInt64 = 0
     private var activationRetryTask: Task<Void, Never>?
     /// An explicit playback request is still acquiring audio-session ownership.
     /// A temporarily paused AVPlayer must not clear the UI's play intent yet.
@@ -86,11 +87,9 @@ final class PlayerEngine {
          avPlayer.automaticallyWaitsToMinimizeStalling = false
 
 #if os(iOS)
-         Task {
-             self.addInterruptionObserver()
-             self.addRouteChangeObserver()
-             self.addMediaServicesResetObserver()
-         }
+         addInterruptionObserver()
+         addRouteChangeObserver()
+         addMediaServicesResetObserver()
 #endif
         
       }
@@ -207,26 +206,35 @@ final class PlayerEngine {
         installEndObserver(for: item)
     }
 
-    /// Recreates the AVPlayer after the media server has reset or activation
-    /// has repeatedly failed. Keep the item and position, but leave playback
-    /// paused so the user remains in control of audio focus.
-    func rebuildPlayer(at position: TimeInterval) async {
-        let item = avPlayer.currentItem
+    /// Replaces the player with a newly constructed item. AVPlayerItems cannot
+    /// be transferred from one AVPlayer to another.
+    @discardableResult
+    func rebuildPlayer(with item: AVPlayerItem?, at position: TimeInterval) async -> Bool {
+        let previousPlayer = avPlayer
+        playerGeneration &+= 1
+        let generation = playerGeneration
         invalidatePendingPlaybackRequests()
         removeBoundaryTimeObserver()
         removeOutroBoundaryTimeObserver()
         removeEndObserver()
         removePeriodicTimeObserver()
-        avPlayer.pause()
-        avPlayer.replaceCurrentItem(with: nil)
+        previousPlayer.pause()
+        previousPlayer.replaceCurrentItem(with: nil)
 
         let replacement = AVPlayer()
         replacement.automaticallyWaitsToMinimizeStalling = false
         replacement.replaceCurrentItem(with: item)
         avPlayer = replacement
         installEndObserver(for: item)
-        guard position.isFinite, position > 0 else { return }
-        await seek(to: CMTime(seconds: position, preferredTimescale: 600))
+        guard position.isFinite, position > 0, item != nil else { return true }
+        await withCheckedContinuation { continuation in
+            replacement.seek(
+                to: CMTime(seconds: position, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            ) { _ in continuation.resume() }
+        }
+        return generation == playerGeneration && avPlayer === replacement && replacement.currentItem === item
     }
 
     func setEndHandler(_ handler: (@MainActor @Sendable () -> Void)?) {

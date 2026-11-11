@@ -95,9 +95,14 @@ struct RefreshHistorySettingsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
 
-                                Text("Duration \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
+                                Text("Wall time \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
                                     .font(.caption2.monospacedDigit())
                                     .foregroundStyle(.tertiary)
+                                if let diagnostics = entry.diagnostics {
+                                    Text("Process CPU \(diagnostics.processCPUTime.formatted(.number.precision(.fractionLength(1))))s • Setup/selection \(diagnostics.candidatePreparationDuration.formatted(.number.precision(.fractionLength(1))))s • \(diagnostics.candidates) candidates, \(diagnostics.remaining) remaining • Stop: \(diagnostics.stopReason)")
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.tertiary)
+                                }
                             }
                             .padding(.vertical, 2)
                         }

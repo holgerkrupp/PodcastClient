@@ -107,6 +107,81 @@ func renderTopPodcastShareImage(
 #endif
 }
 
+struct PodcastCoverWallBackground: View {
+    let images: [UIImage]
+
+    private let rotations: [Double] = [-3, 2, -1, 3, 0, -2, 1]
+
+    @ViewBuilder
+    var body: some View {
+        if images.isEmpty {
+            LinearGradient(
+                colors: [
+                    Color(red: 0.04, green: 0.09, blue: 0.15),
+                    Color(red: 0.04, green: 0.18, blue: 0.22),
+                    Color(red: 0.47, green: 0.17, blue: 0.12)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+        GeometryReader { geometry in
+            let shortSide = min(geometry.size.width, geometry.size.height)
+            let tileSize = min(max(shortSide * 0.24, 28), 260)
+            let spacing = max(tileSize * 0.12, 4)
+            let step = tileSize + spacing
+            let columns = max(Int(ceil(geometry.size.width / step)) + 2, 3)
+            let rows = max(Int(ceil(geometry.size.height / step)) + 2, 3)
+
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.02, green: 0.02, blue: 0.03),
+                        Color(red: 0.07, green: 0.08, blue: 0.10)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                ForEach(0..<(columns * rows), id: \.self) { index in
+                    let column = index % columns
+                    let row = index / columns
+                    let imageIndex = (index * 7 + index / 3 + 5) % images.count
+                    let cornerRadius = max(tileSize * 0.06, 4)
+
+                    Image(uiImage: images[imageIndex])
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: tileSize, height: tileSize)
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        }
+                        .shadow(color: .black.opacity(0.28), radius: max(tileSize * 0.03, 2), y: max(tileSize * 0.02, 1))
+                        .rotationEffect(.degrees(rotations[index % rotations.count]))
+                        .opacity(index.isMultiple(of: 5) ? 0.82 : 0.96)
+                        .position(
+                            x: CGFloat(column) * step - tileSize * 0.25
+                                + tileSize / 2 + (row.isMultiple(of: 2) ? 0 : spacing * 4.5),
+                            y: CGFloat(row) * step - tileSize * 0.25 + tileSize / 2
+                        )
+                }
+
+                Color.black.opacity(0.52)
+                LinearGradient(
+                    colors: [Color.black.opacity(0.34), .clear, Color.black.opacity(0.46)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        }
+    }
+}
+
 private struct TopPodcastShareCard: View {
     let items: [TopPodcastShareItem]
     let design: TopPodcastShareDesign
@@ -165,6 +240,15 @@ private struct TopPodcastShareCard: View {
 
     private var artworkShadowColor: Color {
         background.isLight ? .black.opacity(0.18) : .black.opacity(0.34)
+    }
+
+    private var coverWallImages: [UIImage] {
+        var seenImages = Set<ObjectIdentifier>()
+        return Array(
+            items.compactMap(\.coverImage)
+                .filter { seenImages.insert(ObjectIdentifier($0)).inserted }
+                .prefix(12)
+        )
     }
 
     private var isLandscape: Bool {
@@ -254,6 +338,12 @@ private struct TopPodcastShareCard: View {
                 Color.white
             case .black:
                 Color.black
+            case .coverWall:
+                if coverWallImages.isEmpty {
+                    current()
+                } else {
+                    PodcastCoverWallBackground(images: coverWallImages)
+                }
             default:
                 current()
             }

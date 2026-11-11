@@ -502,35 +502,6 @@ actor PlaylistModelActor {
         }
     }
 
-    private func localEpisodeClassificationSnapshots(
-        _ episodes: [Episode]
-    ) -> [StoreSplitLocalEpisodeClassificationSnapshot] {
-        episodes.compactMap {
-            episode -> StoreSplitLocalEpisodeClassificationSnapshot? in
-            guard let metadata = episode.metaData else { return nil }
-            return StoreSplitLocalEpisodeClassificationSnapshot(
-                identity: episode.stableEpisodeIdentity,
-                isInbox: metadata.isInbox == true,
-                statusRawValue: metadata.status?.rawValue,
-                systemSuppressionReasonRawValue:
-                    metadata.systemSuppressionReasonRawValue
-            )
-        }
-    }
-
-    private func persistLocalEpisodeClassification(
-        _ snapshots: [StoreSplitLocalEpisodeClassificationSnapshot]
-    ) async {
-        guard snapshots.isEmpty == false else { return }
-        await storeManager.prepareSplitStores()
-        guard let cacheContainer = await MainActor.run(body: {
-            storeManager.preparedCacheContainer
-        }) else { return }
-        await StoreSplitLocalEpisodeClassificationWriter(
-            modelContainer: cacheContainer
-        ).upsert(snapshots)
-    }
-
     /// Re-run the playlist's own auto-download policy after its contents moved.
     ///
     /// Throttled inside the service, so every insert, removal and reorder can
@@ -683,8 +654,6 @@ actor PlaylistModelActor {
             playlistID: playlistID,
             in: modelContext
         )
-        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
-        await persistLocalEpisodeClassification(classificationSnapshots)
         if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
         if startDownload {
@@ -760,8 +729,6 @@ actor PlaylistModelActor {
             playlistID: playlistID,
             in: modelContext
         )
-        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
-        await persistLocalEpisodeClassification(classificationSnapshots)
         if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
@@ -838,8 +805,6 @@ actor PlaylistModelActor {
             playlistID: playlistID,
             in: modelContext
         )
-        let classificationSnapshots = localEpisodeClassificationSnapshots(matchingEpisodes)
-        await persistLocalEpisodeClassification(classificationSnapshots)
         if let committedSnapshot { try await publishSplitStorePlaylist(committedSnapshot) }
         await notifyInboxDidChange()
 
@@ -1122,40 +1087,6 @@ actor PlaylistModelActor {
         guard let userStateContainer = await MainActor.run(body: {
             storeManager.preparedUserStateContainer
         }) else { throw PlaylistPersistenceError.storageUnavailable }
-        // Split-only runtimes must also persist enough episode metadata to
-        // resolve the committed membership after offline container recreation.
-        let source = modelContainer
-        let isSplitRuntime = await MainActor.run {
-            storeManager.runtimeProjectsFromCache
-                && storeManager.preparedContainer === source
-        }
-        if isSplitRuntime {
-            guard let cache = await MainActor.run(body: {
-                storeManager.preparedCacheContainer
-            }) else { throw PlaylistPersistenceError.storageUnavailable }
-            for feedKey in Set(snapshot.entries.map(\.identity.feedURL)) {
-                guard let feed = URL(string: feedKey) else { throw PlaylistPersistenceError.storageUnavailable }
-                let episodeGUIDs = Set(snapshot.entries.filter { $0.identity.feedURL == feedKey }
-                    .compactMap { entry in
-                        entry.identity.episodeID.hasPrefix("guid:")
-                            ? String(entry.identity.episodeID.dropFirst(5)) : nil
-                    })
-                let episodeURLs = Set(try fetchOrderedEntries().compactMap { entry -> URL? in
-                    guard entry.episode?.stableEpisodeIdentity.feedURL == feedKey else { return nil }
-                    return entry.episode?.url
-                })
-                let persisted = await Task.detached {
-                    StoreSplitFeedCacheWriter.projectFeed(
-                        feedURL: feed,
-                        legacyContainer: source,
-                        cacheContainer: cache,
-                        refreshedEpisodeGUIDs: episodeGUIDs,
-                        refreshedEpisodeURLs: episodeURLs
-                    ).completed
-                }.value
-                guard persisted else { throw PlaylistPersistenceError.storageUnavailable }
-            }
-        }
         try await StoreSplitPlaylistSyncWriter(modelContainer: userStateContainer)
             .upsertDurably(snapshot)
         // A cache completion may have started hydration before this commit.

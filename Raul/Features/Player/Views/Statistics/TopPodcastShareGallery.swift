@@ -18,6 +18,7 @@ struct TopPodcastShareGalleryView: View {
     let stats: TopPodcastShareStats
 
     @State private var renderedImages: [TopPodcastShareDesign: UIImage] = [:]
+    @State private var loadedShareItems: [TopPodcastShareItem] = []
     @State private var selectedDesigns: Set<TopPodcastShareDesign> = []
     @State private var shareSheetRequest: TopPodcastShareSheetRequest?
     @State private var shareTempFileURLs: [URL] = []
@@ -88,7 +89,8 @@ struct TopPodcastShareGalleryView: View {
                             title: $shareTitle,
                             selectedBackground: $selectedBackground,
                             selectedVideoSize: $selectedVideoSize,
-                            usesMonthlyMiniMonthBackgrounds: $usesMonthlyMiniMonthBackgrounds
+                            usesMonthlyMiniMonthBackgrounds: $usesMonthlyMiniMonthBackgrounds,
+                            artworkImages: loadedShareItems.compactMap(\.coverImage)
                         )
                     } label: {
                         Label("Customize", systemImage: "slider.horizontal.3")
@@ -257,6 +259,7 @@ struct TopPodcastShareGalleryView: View {
         let imageUnitOffset = timelineUnitOffset + timelineRollups.count
 
         renderedImages = [:]
+        loadedShareItems = []
         renderedPreviewCount = 0
         previewRenderCount = neededDesigns.count
         renderCompletedUnitCount = 0
@@ -273,6 +276,7 @@ struct TopPodcastShareGalleryView: View {
         let items = await topPodcastShareItems(from: sourceRollups) { completedCount in
             renderCompletedUnitCount = itemUnitOffset + completedCount
         }
+        loadedShareItems = items
         renderCompletedUnitCount = timelineUnitOffset
         renderProgressMessage = timelineRollups.isEmpty
             ? "Rendering share pictures"
@@ -335,6 +339,7 @@ private struct TopPodcastShareCustomizeView: View {
     @Binding var selectedBackground: TopPodcastShareBackground
     @Binding var selectedVideoSize: CGSize
     @Binding var usesMonthlyMiniMonthBackgrounds: Bool
+    let artworkImages: [UIImage]
 
     var body: some View {
         Form {
@@ -374,7 +379,8 @@ private struct TopPodcastShareCustomizeView: View {
                         } label: {
                             TopPodcastShareBackgroundOption(
                                 background: background,
-                                isSelected: selectedBackground == background
+                                isSelected: selectedBackground == background,
+                                artworkImages: artworkImages
                             )
                         }
                         .buttonStyle(.plain)
@@ -395,10 +401,11 @@ private struct TopPodcastShareCustomizeView: View {
 private struct TopPodcastShareBackgroundOption: View {
     let background: TopPodcastShareBackground
     let isSelected: Bool
+    let artworkImages: [UIImage]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            TopPodcastShareBackgroundPreview(background: background)
+            TopPodcastShareBackgroundPreview(background: background, artworkImages: artworkImages)
                 .frame(height: 62)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .overlay(
@@ -421,6 +428,7 @@ private struct TopPodcastShareBackgroundOption: View {
 
 private struct TopPodcastShareBackgroundPreview: View {
     let background: TopPodcastShareBackground
+    let artworkImages: [UIImage]
 
     var body: some View {
         return ZStack {
@@ -459,6 +467,20 @@ private struct TopPodcastShareBackgroundPreview: View {
                     Color.white
                 case .black:
                     Color.black
+                case .coverWall:
+                    if artworkImages.isEmpty {
+                        LinearGradient(
+                            colors: [
+                                Color(red: 0.04, green: 0.09, blue: 0.15),
+                                Color(red: 0.04, green: 0.18, blue: 0.22),
+                                Color(red: 0.47, green: 0.17, blue: 0.12)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    } else {
+                        PodcastCoverWallBackground(images: artworkImages)
+                    }
                 default:
                     Color.black
                 }

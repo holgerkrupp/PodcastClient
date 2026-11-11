@@ -93,7 +93,7 @@ struct ContentView: View {
                 HStack(spacing: 8) {
                     ProgressView()
                         .controlSize(.small)
-                    Text("Restoring your saved library…")
+                    Text("Opening your library…")
                         .font(.subheadline)
                 }
                 .padding(.horizontal, 14)

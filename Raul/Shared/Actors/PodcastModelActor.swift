@@ -1310,6 +1310,7 @@ actor PodcastModelActor {
         }
         let refreshStartedAt = ContinuousClock.now
         var statusDuration: Duration = .zero
+        var endpointResolutionDuration: Duration = .zero
         var downloadAndParseDuration: Duration = .zero
         var databaseDuration: Duration = .zero
         var refreshStage = "snapshot"
@@ -1326,6 +1327,20 @@ actor PodcastModelActor {
                     + "download_parse=\(Self.milliseconds(downloadAndParseDuration))ms "
                     + "database=\(Self.milliseconds(databaseDuration))ms "
                     + "total=\(Self.milliseconds(totalDuration))ms"
+            )
+            let outcome: String
+            if result.contains("cancelled") {
+                outcome = "cancelled"
+            } else if result.hasPrefix("not-modified") {
+                outcome = "unchanged"
+            } else if result.contains("failed") {
+                outcome = "failed"
+            } else {
+                outcome = "completed"
+            }
+            CrashBreadcrumbs.shared.record(
+                "podcast_refresh_stage_timing",
+                details: "outcome=\(outcome),status_ms=\(Self.milliseconds(statusDuration)),endpoint_ms=\(Self.milliseconds(endpointResolutionDuration)),get_parse_ms=\(Self.milliseconds(downloadAndParseDuration)),persistence_downstream_ms=\(Self.milliseconds(databaseDuration)),total_ms=\(Self.milliseconds(totalDuration))"
             )
         }
 
@@ -1490,6 +1505,7 @@ actor PodcastModelActor {
         } else {
             let endpointSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
             os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
+            let endpointStartedAt = ContinuousClock.now
             do {
                 let resolvedFeed = try await PodcastRefreshNetworkPreparer.resolveEndpoint(
                     from: feedURL,
@@ -1498,11 +1514,13 @@ actor PodcastModelActor {
                     client: feedClient
                 )
                 os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
+                endpointResolutionDuration = endpointStartedAt.duration(to: .now)
                 resolvedEndpoint = resolvedFeed.url
                 resolvedAccessProfile = accessProfile
                 resolvedInitialPage = resolvedFeed.firstPage
             } catch {
                 os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast endpoint validation", signpostID: endpointSignpostID)
+                endpointResolutionDuration = endpointStartedAt.duration(to: .now)
                 if error is PodcastHTTPNotModified, conditionalValidator != nil,
                    let metaIDRef,
                    let metadata: PodcastMetaData = modelContext.existingModel(for: metaIDRef) {

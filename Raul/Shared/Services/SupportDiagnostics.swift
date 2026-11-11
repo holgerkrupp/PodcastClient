@@ -329,13 +329,17 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             "schedule_feed_refresh_", "schedule_predicted_release_refresh_",
             "schedule_feed_processing_", "feed_processing_background_task_",
             "feed_refresh_background_task_", "predicted_release_refresh_background_task_",
-            "bgupdate_feeds_", "bgupdate_feed_", "foreground_feed_refresh_",
+            "bgupdate_feeds_", "bgupdate_feed_", "podcast_refresh_stage_timing", "foreground_feed_refresh_",
             "predicted_release_refresh_", "feed_refresh_failed", "feed_refresh_import_",
             "feed_import_partial", "episode_automatic_playlist_insert_failed"
         ]
         guard prefixes.contains(where: category.hasPrefix) else { return nil }
         let details = parts.dropFirst(2).joined(separator: " ")
-        let safeCounts = ["candidates", "attempted", "checked", "failed", "updated", "timed_out", "duration"]
+        let safeCounts = [
+            "candidates", "attempted", "checked", "failed", "updated", "timed_out", "remaining",
+            "duration", "selection_ms", "wall_ms", "cpu_ms", "status_ms", "endpoint_ms",
+            "get_parse_ms", "persistence_downstream_ms", "total_ms"
+        ]
         var values = safeCounts.compactMap { key -> String? in
             guard let range = details.range(of: "\\b\\(key)=([0-9]+s?)", options: .regularExpression) else { return nil }
             return String(details[range])
@@ -343,12 +347,20 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         let safeReasons: Set<String> = [
             "playback_active", "playback_started", "cloudkit_export", "already_running",
             "cancelled", "max_runtime", "runtime_remaining", "model_container_unavailable",
-            "library_backfill_pending", "no_prediction", "stale_snapshot_retry",
+            "library_backfill_pending", "no_eligible_feeds", "selection_budget",
+            "runtime_or_cancellation", "candidate_pool_exhausted", "no_prediction", "stale_snapshot_retry",
             "stale_snapshot_without_target", "container_unavailable"
         ]
         if let range = details.range(of: "reason=([a-z_]+)", options: .regularExpression) {
             let reason = String(details[range]).replacingOccurrences(of: "reason=", with: "")
             if safeReasons.contains(reason) { values.append("reason=\(reason)") }
+        }
+        if let range = details.range(of: "stop=([a-z_]+)", options: .regularExpression) {
+            let stop = String(details[range]).replacingOccurrences(of: "stop=", with: "")
+            if safeReasons.contains(stop) { values.append("stop=\(stop)") }
+        }
+        if let range = details.range(of: "outcome=(unchanged|completed|failed|cancelled)", options: .regularExpression) {
+            values.append(String(details[range]))
         }
         if let range = details.range(of: "stage=([a-z_]+)", options: .regularExpression) {
             values.append(String(details[range]))
@@ -405,6 +417,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
     private static func storeFiles() -> [SupportDiagnosticStoreFile] {
         let names = [
             "SharedDatabase.sqlite", "SharedDatabase.sqlite-wal", "SharedDatabase.sqlite-shm",
+            "LibraryRuntime.sqlite", "LibraryRuntime.sqlite-wal", "LibraryRuntime.sqlite-shm",
             "UserState.sqlite", "UserState.sqlite-wal", "UserState.sqlite-shm",
             "PodcastCache.sqlite", "PodcastCache.sqlite-wal", "PodcastCache.sqlite-shm"
         ]
@@ -497,7 +510,14 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         return SupportDiagnosticsRecorder.shared.events
             .filter { startupCategories.contains($0.category) }
             .suffix(12)
-            .map { "\(formatter.string(from: $0.at)) \($0.category)" }
+            .map {
+                let includesSafeStoreDetails = $0.category == "Opening runtime library store"
+                    || $0.category == "Runtime library store opened"
+                let detail = includesSafeStoreDetails && $0.detail.isEmpty == false
+                    ? " \($0.detail)"
+                    : ""
+                return "\(formatter.string(from: $0.at)) \($0.category)\(detail)"
+            }
             .joined(separator: "\n")
     }
 

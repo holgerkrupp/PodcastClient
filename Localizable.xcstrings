@@ -10435,12 +10435,22 @@
         }
       }
     },
-    "Local library preparation has not finished. You can share diagnostics to help investigate." : {
+    "Your saved library has not been reset, but opening is still in progress. Close and reopen Up Next to retry. If it keeps happening, copy or share diagnostics." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die lokale Mediathek ist noch nicht bereit. Du kannst Diagnosedaten teilen, um bei der Untersuchung zu helfen."
+            "value" : "Deine gespeicherte Mediathek wurde nicht zurückgesetzt, aber das Öffnen läuft noch. Schließe Up Next und öffne es erneut. Wenn es weiterhin passiert, kopiere oder teile die Diagnosedaten."
+          }
+        }
+      }
+    },
+    "Library setup is taking longer than expected." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Einrichten der Mediathek dauert länger als erwartet."
           }
         }
       }
@@ -18364,16 +18374,6 @@
         }
       }
     },
-    "Restoring your saved library…" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gespeicherte Mediathek wird wiederhergestellt …"
-          }
-        }
-      }
-    },
     "Restoring your saved Up Next episodes…" : {
       "localizations" : {
         "de" : {
@@ -21533,12 +21533,12 @@
     "Steps" : {
 
     },
-    "Still opening your library…" : {
+    "Opening your library…" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mediathek wird noch geöffnet …"
+            "value" : "Deine Mediathek wird geöffnet …"
           }
         }
       }
@@ -23053,12 +23053,12 @@
         }
       }
     },
-    "This can take a few minutes with a large library. Keep Up Next open until it finishes." : {
+    "Up Next is opening your saved library. A large library or a first-time update can take longer. If you leave the app, reopen Up Next to resume. Your existing library stays in place." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bei einer großen Mediathek kann das einige Minuten dauern. Lass Up Next geöffnet, bis es fertig ist."
+            "value" : "Up Next öffnet deine gespeicherte Mediathek. Bei einer großen Mediathek oder einem erstmaligen Update kann es länger dauern. Wenn du die App verlässt, öffne Up Next erneut, um fortzufahren. Deine vorhandene Mediathek bleibt erhalten."
           }
         }
       }
@@ -23175,12 +23175,12 @@
         }
       }
     },
-    "This happens once. You can leave Up Next and it will continue from here when you come back." : {
+    "This happens once and saves progress as it goes. You can leave Up Next and resume when you return." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das passiert nur einmal. Du kannst Up Next verlassen. Es geht hier weiter, wenn du zurückkommst."
+            "value" : "Dieser einmalige Vorgang speichert den Fortschritt. Du kannst Up Next verlassen und später fortfahren."
           }
         }
       }

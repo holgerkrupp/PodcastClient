@@ -29,7 +29,7 @@ struct ModelContainerLaunchView: View {
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
                     }
-                    Text("This happens once. You can leave Up Next and it will continue from here when you come back.")
+                    Text("This happens once and saves progress as it goes. You can leave Up Next and resume when you return.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
@@ -40,9 +40,9 @@ struct ModelContainerLaunchView: View {
                 .accessibilityElement(children: .combine)
             } else if errorMessage == nil, launchWait == .noticeable {
                 VStack(spacing: 12) {
-                    Text("Still opening your library…")
+                    Text("Opening your library…")
                         .font(.headline)
-                    Text("This can take a few minutes with a large library. Keep Up Next open until it finishes.")
+                    Text("Up Next is opening your saved library. A large library or a first-time update can take longer. If you leave the app, reopen Up Next to resume. Your existing library stays in place.")
                         .font(.footnote)
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
@@ -73,9 +73,9 @@ struct ModelContainerLaunchView: View {
                             }
                         }
                     } else {
-                        Text("Restoring your saved library…")
+                        Text("Library setup is taking longer than expected.")
                             .font(.headline)
-                        Text("Local library preparation has not finished. You can share diagnostics to help investigate.")
+                        Text("Your saved library has not been reset, but opening is still in progress. Close and reopen Up Next to retry. If it keeps happening, copy or share diagnostics.")
                             .font(.footnote)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(.secondary)
@@ -110,8 +110,8 @@ struct ModelContainerLaunchView: View {
         }
     }
 
-    /// Opening can legitimately take minutes when a large write-ahead log has to
-    /// be merged first, so diagnostics are only offered once it looks stuck.
+    /// Opening can take longer for a large library or first-time update, so
+    /// diagnostics are offered after a sustained wait.
     private enum LaunchWait {
         case brief, noticeable, stalled
     }

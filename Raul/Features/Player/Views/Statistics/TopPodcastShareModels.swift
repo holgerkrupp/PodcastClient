@@ -123,6 +123,7 @@ enum TopPodcastShareAspect {
 
 enum TopPodcastShareBackground: String, CaseIterable, Identifiable {
     case current
+    case coverWall
     case stripes
     case rainbowGradient
     case white
@@ -158,6 +159,8 @@ enum TopPodcastShareBackground: String, CaseIterable, Identifiable {
         switch self {
         case .current:
             return "Boring"
+        case .coverWall:
+            return "Podcast Cover Wall"
         case .stripes:
             return "Rainbow"
         case .rainbowGradient:

@@ -931,6 +931,13 @@ class ModelContainerManager: ObservableObject {
         sharedContainerURL?.appendingPathComponent("UserState.sqlite")
     }
 
+    nonisolated private static func storeOpenDiagnosticDetail(for url: URL) -> String {
+        let fileBytes = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? NSNumber)
+            .map(\.int64Value) ?? 0
+        let walBytes = StoreWriteAheadLog.sizeInBytes(storeURL: url)
+        return "file=\(url.lastPathComponent) file_bytes=\(fileBytes) wal_bytes=\(walBytes)"
+    }
+
     nonisolated static var cacheStoreURL: URL? {
         sharedContainerURL?.appendingPathComponent("PodcastCache.sqlite")
     }
@@ -1242,11 +1249,21 @@ class ModelContainerManager: ObservableObject {
                 }
                 LegacyStoreIndexBackfill.run(storeURL: storeURL)
                 timer.mark("index_check")
+                let storeDetail = Self.storeOpenDiagnosticDetail(for: storeURL)
                 await MainActor.run {
-                    SupportDiagnosticsRecorder.shared.record("Opening runtime library store")
+                    SupportDiagnosticsRecorder.shared.record(
+                        "Opening runtime library store",
+                        detail: storeDetail
+                    )
                 }
                 let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
                     try Self.makeLegacyContainer(storageURL: storeURL)
+                }
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record(
+                        "Runtime library store opened",
+                        detail: storeDetail
+                    )
                 }
                 _ = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
                     cache: cache,
@@ -1314,10 +1331,23 @@ class ModelContainerManager: ObservableObject {
             }
             let projectionReady = StoreRuntimeProjection.isReady
                 && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false
+            let storeDetail = Self.storeOpenDiagnosticDetail(for: libraryURL)
+            await MainActor.run {
+                SupportDiagnosticsRecorder.shared.record(
+                    "Opening runtime library store",
+                    detail: storeDetail
+                )
+            }
             let runtimeContainer = try StoreRuntimeProjection.open(
                 at: libraryURL,
                 isCurrent: libraryIsCurrent
             )
+            await MainActor.run {
+                SupportDiagnosticsRecorder.shared.record(
+                    "Runtime library store opened",
+                    detail: storeDetail
+                )
+            }
             if libraryURL.standardizedFileURL == Self.sharedStoreURL?.standardizedFileURL {
                 UserDefaults.standard.set(
                     true,
@@ -3578,6 +3608,16 @@ class ModelContainerManager: ObservableObject {
 
         let openStartedAt = ProcessInfo.processInfo.systemUptime
         let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
+        let storeFileName = storageURL?.lastPathComponent ?? "in-memory"
+        let storeFileBytes = storageURL.flatMap { url -> Int64? in
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+                  let size = attributes[.size] as? NSNumber else { return nil }
+            return size.int64Value
+        } ?? 0
+        let walBytes = storageURL.map(StoreWriteAheadLog.sizeInBytes(storeURL:)) ?? 0
+        AppDiagnostics.log(
+            "model_container_open_started store=legacy file=\(storeFileName) file_bytes=\(storeFileBytes) wal_bytes=\(walBytes)"
+        )
         let container: ModelContainer
         do {
             container = try ModelContainer(
@@ -3601,12 +3641,12 @@ class ModelContainerManager: ObservableObject {
             )
         } catch {
             AppDiagnostics.log(
-                "model_container_open_failed store=legacy duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000))"
+                "model_container_open_failed store=legacy file=\(storeFileName) duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000))"
             )
             throw error
         }
         AppDiagnostics.log(
-            "model_container_opened store=legacy duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) cloudkit_attached=false"
+            "model_container_opened store=legacy file=\(storeFileName) duration_ms=\(Int((ProcessInfo.processInfo.systemUptime - openStartedAt) * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt))) cloudkit_attached=false"
         )
         return container
     }

@@ -46,6 +46,9 @@ with cache data.
   complete, direct-library startup skips opening `PodcastCache.sqlite`. A fresh direct build
   uses the cache only while its compatibility hydration/migrations are pending. An older
   `LibraryRuntime` install may need it until the build is ready and promoted.
+- A prolonged startup wait is an opening/update status, not a progress estimate. Launch
+  diagnostics now record the local store filename and its initial SQLite/WAL sizes so a slow
+  `SharedDatabase.sqlite` or older `LibraryRuntime.sqlite` open can be distinguished.
 - Transcript alignment/jobs, unresolved episode retry records, and the cache mirrors for local
   settings/bookmark details now migrate idempotently to the local library; production callers
   use the library. Feed-alias mirroring and unused raw extension-element writes are retired.
@@ -117,7 +120,7 @@ stall. Tests should use anonymized fixtures, never a user's database or private 
 - [ ] Stop opening `PodcastCache.sqlite` and `LibraryRuntime.sqlite` in ordinary app or
   extension startup after their first-build, migration and old-install recovery roles are
   retired. Missing or corrupt obsolete files must not block a usable library.
-- [ ] Update `AGENTS.md`, user help, diagnostics and architecture/release documentation to
+- [x] Update `AGENTS.md`, user help, diagnostics and architecture/release documentation to
   describe the shipped two-store behavior. Mark older `PodcastCache`/`LibraryRuntime`
   end-state proposals as superseded history.
 
