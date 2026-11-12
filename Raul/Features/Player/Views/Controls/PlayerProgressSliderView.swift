@@ -7,9 +7,13 @@
 
 import SwiftUI
 import ESADesignKit
+#if os(iOS)
+import UIKit
+#endif
 
 struct PlayerProgressSliderView: View {
     @Environment(\.esaThemePalette) private var themePalette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var value: Double
     @Binding var markers: [Marker]?
     @State var allowTouch: Bool = true
@@ -20,6 +24,7 @@ struct PlayerProgressSliderView: View {
     @State var lastCoordinateValue: CGFloat = 0.0
     @State private var isEditing = false
     @State private var editingValue: Double?
+    @State private var lastSnappedChapter: Double?
     var sliderRange: ClosedRange<Double> = 1...100
     var thumbColor: Color = .yellow
     var minTrackColor: Color = .blue
@@ -107,12 +112,12 @@ struct PlayerProgressSliderView: View {
                             if v.translation.width > 0 {
                                 let nextCoordinateValue = min(maxValue, self.lastCoordinateValue + v.translation.width)
 
-                                let nextValue = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                                let nextValue = snappedValue(((nextCoordinateValue - minValue) / scaleFactor) + lower)
                                 editingValue = nextValue
                                 self.value = nextValue
                             } else {
                                 let nextCoordinateValue = max(minValue, self.lastCoordinateValue + v.translation.width)
-                                let nextValue = ((nextCoordinateValue - minValue) / scaleFactor) + lower
+                                let nextValue = snappedValue(((nextCoordinateValue - minValue) / scaleFactor) + lower)
                                 editingValue = nextValue
                                 self.value = nextValue
                             }
@@ -125,12 +130,13 @@ struct PlayerProgressSliderView: View {
                         let finalValue = editingValue ?? value
                         isEditing = false
                         editingValue = nil
+                        lastSnappedChapter = nil
                         onEditingChanged?(false, finalValue)
                     }
             )
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Playback position")
-            .accessibilityValue("\(max(min((self.value - lower) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0), format: .percent.precision(.fractionLength(0)))")
+            .accessibilityValue(accessibilityProgressValue)
             .accessibilityHint(allowTouch ? "Adjusts the current playback position" : "Playback scrubbing is disabled")
             .accessibilityAdjustableAction { direction in
                 guard allowTouch else { return }
@@ -149,6 +155,61 @@ struct PlayerProgressSliderView: View {
                 onEditingChanged?(false, adjustedValue)
             }
         }
+    }
+
+    private var accessibilityProgressValue: String {
+        let progress = max(min((value - sliderRange.lowerBound) / max(sliderRange.upperBound - sliderRange.lowerBound, 0.0001), 1), 0)
+        let timelineValue = (chapterTimelineDuration ?? 0) * value
+        let time = Duration.seconds(max(timelineValue, 0)).formatted(.units(allowed: [.minutes, .seconds], width: .narrow))
+        if let chapter = markers?.filter({ $0.type != .bookmark && $0.shouldPlay }).compactMap({ marker -> (Double, String)? in
+            guard let start = marker.start, start <= timelineValue else { return nil }
+            return (start, marker.title)
+        }).max(by: { $0.0 < $1.0 }) {
+            return "\(time), \(chapter.1), \(progress.formatted(.percent.precision(.fractionLength(0))))"
+        }
+        return "\(time), \(progress.formatted(.percent.precision(.fractionLength(0))))"
+    }
+
+    private func snappedValue(_ proposedValue: Double) -> Double {
+        guard let duration = chapterTimelineDuration, duration > 0,
+              let chapters = markers else { return proposedValue }
+        let timelineValue = proposedValue * duration
+        guard let nearest = Self.chapterSnapTarget(
+            proposedValue: timelineValue,
+            duration: duration,
+            range: (sliderRange.lowerBound * duration)...(sliderRange.upperBound * duration),
+            markers: chapters,
+            tolerance: min(8, duration * 0.01)
+        ) else {
+            lastSnappedChapter = nil
+            return proposedValue
+        }
+        if lastSnappedChapter != nearest {
+            #if os(iOS)
+            if !reduceMotion {
+                UISelectionFeedbackGenerator().selectionChanged()
+            }
+            #endif
+            lastSnappedChapter = nearest
+        }
+        return nearest / duration
+    }
+
+    static func chapterSnapTarget(
+        proposedValue: Double,
+        duration: Double,
+        range: ClosedRange<Double>,
+        markers: [Marker],
+        tolerance: Double
+    ) -> Double? {
+        guard proposedValue.isFinite, duration.isFinite, duration > 0,
+              tolerance.isFinite, tolerance >= 0 else { return nil }
+        return markers
+            .filter { $0.type != .bookmark && $0.shouldPlay }
+            .compactMap(\.start)
+            .filter { $0.isFinite && $0 >= range.lowerBound && $0 <= range.upperBound }
+            .min { abs($0 - proposedValue) < abs($1 - proposedValue) }
+            .flatMap { abs($0 - proposedValue) <= tolerance ? $0 : nil }
     }
 
     private func chapterMarkerPositions(width: CGFloat) -> [CGFloat] {

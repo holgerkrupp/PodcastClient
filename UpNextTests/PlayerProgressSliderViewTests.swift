@@ -34,4 +34,34 @@ final class PlayerProgressSliderViewTests: XCTestCase {
         XCTAssertEqual(positions.count, 1)
         XCTAssertEqual(positions[0], 25, accuracy: 0.001)
     }
+
+    func testChapterScrubSnapsToNearestPlayableChapterStartWithinTolerance() {
+        let skipped = Marker(start: 50, title: "Skipped")
+        skipped.shouldPlay = false
+        let bookmarks = Marker(start: 62, title: "Bookmark", type: .bookmark)
+        let chapter = Marker(start: 70, title: "Chapter")
+
+        let target = PlayerProgressSliderView.chapterSnapTarget(
+            proposedValue: 66,
+            duration: 200,
+            range: 0...200,
+            markers: [skipped, bookmarks, chapter],
+            tolerance: 8
+        )
+
+        XCTAssertEqual(target, 70)
+    }
+
+    func testChapterScrubDoesNotSnapOutsideToleranceOrToOutOfRangeMarkers() {
+        let outside = Marker(start: 250, title: "Outside")
+        let chapter = Marker(start: 60, title: "Chapter")
+
+        XCTAssertNil(PlayerProgressSliderView.chapterSnapTarget(
+            proposedValue: 40,
+            duration: 200,
+            range: 0...200,
+            markers: [outside, chapter],
+            tolerance: 8
+        ))
+    }
 }
