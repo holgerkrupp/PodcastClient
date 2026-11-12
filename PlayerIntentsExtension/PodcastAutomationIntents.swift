@@ -56,11 +56,13 @@ enum PlaybackSpeedAppEnum: String, AppEnum {
 enum SleepTimerMode: String, AppEnum {
     case minutes
     case afterEpisode
+    case afterChapter
 
     static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Sleep Timer Mode")
     static let caseDisplayRepresentations: [Self: DisplayRepresentation] = [
         .minutes: "After a number of minutes",
-        .afterEpisode: "After this episode"
+        .afterEpisode: "After this episode",
+        .afterChapter: "At the end of this chapter"
     ]
 }
 
@@ -117,11 +119,15 @@ struct SleepTimerStatusEntity: AppEntity {
     let isActive: Bool
     let remainingMinutes: Int?
     let stopsAfterEpisode: Bool
+    let stopsAfterChapter: Bool
+    let chapterTitle: String?
 
     var displayRepresentation: DisplayRepresentation {
         let title = isActive ? "Sleep Timer Active" : "Sleep Timer Off"
         let detail: String
-        if stopsAfterEpisode {
+        if stopsAfterChapter {
+            detail = "Stops at end of \(chapterTitle ?? "current chapter")"
+        } else if stopsAfterEpisode {
             detail = "Stops after this episode"
         } else if let remainingMinutes {
             detail = "\(remainingMinutes) minutes remaining"
@@ -153,16 +159,18 @@ private extension SleepTimerStatusEntity {
         let player = Player.shared
         let minutes = player.remainingTime.map { max(1, Int(ceil($0 / 60.0))) }
         return SleepTimerStatusEntity(
-            isActive: player.stopAfterEpisode || player.remainingTime != nil,
+            isActive: player.stopAfterEpisode || player.isStopAfterChapterEnabled || player.remainingTime != nil,
             remainingMinutes: minutes,
-            stopsAfterEpisode: player.stopAfterEpisode
+            stopsAfterEpisode: player.stopAfterEpisode,
+            stopsAfterChapter: player.isStopAfterChapterEnabled,
+            chapterTitle: player.stopAfterChapterTitle
         )
     }
 }
 
 struct SetSleepTimerIntent: AppIntent {
     static let title: LocalizedStringResource = "Set Sleep Timer"
-    static let description = IntentDescription("Stop playback after a number of minutes or after the current episode.")
+    static let description = IntentDescription("Stop playback after a number of minutes, at the end of the current chapter, or after the current episode.")
     static let supportedModes: IntentModes = .background
 
     @Parameter(title: "Minutes", default: 30)
@@ -193,6 +201,11 @@ struct SetSleepTimerIntent: AppIntent {
             player.setSleepTimer(minutes: 0)
             player.stopAfterEpisode = true
             return .result(dialog: "Playback will stop after this episode.")
+        case .afterChapter:
+            guard player.stopAfterCurrentChapter() else {
+                throw PodcastIntentError("A current chapter with an upcoming end time is required.")
+            }
+            return .result(dialog: "Playback will stop at the end of \(player.stopAfterChapterTitle ?? "this chapter").")
         }
     }
 }
@@ -459,6 +472,38 @@ struct UnarchiveEpisodeIntent: AppIntent {
         guard let url = URL(string: episode.id) else { throw PlayPodcastEpisodeError.episodeNotFound }
         await EpisodeActor(modelContainer: try await PodcastIntentSupport.container()).unarchiveEpisode(url)
         return .result(dialog: "Episode restored from the archive.")
+    }
+}
+
+struct SetEpisodeSavedForLaterIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Episode Saved for Later"
+    static let description = IntentDescription("Save an episode for later without adding it to Up Next, or remove it from Saved for Later.")
+
+    @Parameter(title: "Episode") var episode: EpisodeEntity
+    @Parameter(title: "Save") var save: Bool
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let url = URL(string: episode.id) else { throw PlayPodcastEpisodeError.episodeNotFound }
+        await EpisodeActor(modelContainer: try await PodcastIntentSupport.container())
+            .setTriageFlag(episodeURL: url, savedForLater: save)
+        return .result(dialog: save ? "Saved for later. It was not added to Up Next." : "Removed from Saved for Later.")
+    }
+}
+
+struct SetEpisodeFavoriteIntent: AppIntent {
+    static let title: LocalizedStringResource = "Set Episode Favorite"
+    static let description = IntentDescription("Favorite an episode or remove it from Favorites. Favorite is separate from bookmarks and queue placement.")
+
+    @Parameter(title: "Episode") var episode: EpisodeEntity
+    @Parameter(title: "Favorite") var favorite: Bool
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard let url = URL(string: episode.id) else { throw PlayPodcastEpisodeError.episodeNotFound }
+        await EpisodeActor(modelContainer: try await PodcastIntentSupport.container())
+            .setTriageFlag(episodeURL: url, favorite: favorite)
+        return .result(dialog: favorite ? "Added to Favorites." : "Removed from Favorites.")
     }
 }
 

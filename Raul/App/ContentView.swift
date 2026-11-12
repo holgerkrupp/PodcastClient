@@ -23,6 +23,7 @@ struct ContentView: View {
 
     @AppStorage("goingToBackgroundDate") var goingToBackgroundDate: Date?
     @AppStorage(OnboardingPreferenceKeys.didCompleteOnboarding) private var didCompleteOnboarding: Bool = false
+    @AppStorage("localSpotlightIndexingEnabled") private var localSpotlightIndexingEnabled = false
     @AppStorage(UpNextVisualDesignPreference.whatsNewAcknowledgementKey) private var didAcknowledgeVisualDesignWhatsNew = false
     @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID: String = ""
     @SceneStorage("mainWindow.selectedSection") private var restoredSelection = AppSection.queue.rawValue
@@ -163,6 +164,16 @@ struct ContentView: View {
                 await podcastYearShareCoordinator.handleNotificationTap(modelContext: modelContext)
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .spotlightLibraryDidChange)) { _ in
+#if canImport(CoreSpotlight) && (os(iOS) || os(macOS))
+            Task { await LocalSpotlightIndexer.refresh(container: modelContext.container) }
+#endif
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished)) { _ in
+#if canImport(CoreSpotlight) && (os(iOS) || os(macOS))
+            Task { await LocalSpotlightIndexer.refresh(container: modelContext.container) }
+#endif
+        }
         .onChange(of: selectedPlaylistID) { _, newValue in
             refreshWidgetForSelectedPlaylist(newValue)
         }
@@ -180,6 +191,9 @@ struct ContentView: View {
             guard let appLink = AppLink.parse(url) else { return }
 
             switch appLink {
+            case .showPodcast(let feedURL):
+                navigation.select(.library)
+                navigation.pathBinding(for: .library).wrappedValue.append(AppRoute.podcast(feedURL))
             case .podcastYear(let url):
                 navigation.select(.library)
                 Task {
@@ -207,6 +221,16 @@ struct ContentView: View {
                 navigation.select(.search)
                 incomingPodcastSubscription.handleIncomingURL(url)
             }
+        }
+        .task {
+#if canImport(CoreSpotlight) && (os(iOS) || os(macOS))
+            await LocalSpotlightIndexer.refresh(container: modelContext.container)
+#endif
+        }
+        .onChange(of: localSpotlightIndexingEnabled) { _, _ in
+#if canImport(CoreSpotlight) && (os(iOS) || os(macOS))
+            Task { await LocalSpotlightIndexer.refresh(container: modelContext.container, force: true) }
+#endif
         }
         .sheet(isPresented: $incomingPodcastSubscription.isPresented, onDismiss: {
             incomingPodcastSubscription.dismiss()

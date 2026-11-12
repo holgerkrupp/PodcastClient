@@ -62,6 +62,14 @@ final class AppNavigationTests: XCTestCase {
     }
 
     @MainActor
+    func testParsesSpotlightPodcastLinkToLocalPodcastRoute() throws {
+        let feedURL = URL(string: "https://example.com/feed.xml")!
+        var components = URLComponents(string: "upnext://podcast")!
+        components.queryItems = [URLQueryItem(name: "feed", value: feedURL.absoluteString)]
+        XCTAssertEqual(AppLink.parse(try XCTUnwrap(components.url)), .showPodcast(feedURL))
+    }
+
+    @MainActor
     func testOpenPlayerActionInvokesPresentationHandler() {
         var invocationCount = 0
         let action = OpenPlayerAction {

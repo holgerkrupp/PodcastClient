@@ -2912,6 +2912,7 @@ actor StoreSplitMigrationService {
             reduceSilenceGapsEnabled: setting.reduceSilenceGapsEnabled,
             silenceGapReductionLevelRawValue: setting.silenceGapReductionLevelRawValue,
             voiceEnhancementEnabled: setting.voiceEnhancementEnabled,
+            equalizerPresetRawValue: setting.equalizerPresetRawValue,
             autoSkipKeywordsJSON: (try? encoder.encode(setting.autoSkipKeywords))
                 .map { String(decoding: $0, as: UTF8.self) } ?? "[]",
             autoDownloadFilterJSON: setting.autoDownloadFilterJSON,
@@ -2956,6 +2957,7 @@ actor StoreSplitMigrationService {
         destination.reduceSilenceGapsEnabled = source.reduceSilenceGapsEnabled
         destination.silenceGapReductionLevelRawValue = source.silenceGapReductionLevelRawValue
         destination.voiceEnhancementEnabled = source.voiceEnhancementEnabled
+        destination.equalizerPresetRawValue = source.equalizerPresetRawValue
         destination.autoSkipKeywordsJSON = source.autoSkipKeywordsJSON
         destination.cutFront = source.cutFront
         destination.cutEnd = source.cutEnd
@@ -3085,6 +3087,8 @@ actor StoreSplitMigrationService {
             || (metadata.maxPlayposition ?? 0) > 0
             || flags.isPlayed
             || flags.isArchived
+            || metadata.isSavedForLater
+            || metadata.isFavorite
             || metadata.wasSkipped
             || metadata.firstListenDate != nil
             || metadata.lastPlayed != nil
@@ -3106,6 +3110,8 @@ actor StoreSplitMigrationService {
             isPlayed: flags.isPlayed,
             isArchived: flags.isArchived,
             wasSkipped: metadata.wasSkipped,
+            isSavedForLater: metadata.isSavedForLater,
+            isFavorite: metadata.isFavorite,
             completedAt: metadata.completionDate,
             archivedAt: metadata.archivedAt,
             firstPlayedAt: metadata.firstListenDate,
@@ -3137,6 +3143,8 @@ actor StoreSplitMigrationService {
         destination.isPlayed = isPlayed
         destination.isArchived = isArchived
         destination.wasSkipped = metadata.wasSkipped
+        destination.isSavedForLater = metadata.isSavedForLater
+        destination.isFavorite = metadata.isFavorite
         destination.completedAt = metadata.completionDate
         destination.archivedAt = metadata.archivedAt
         destination.firstPlayedAt = metadata.firstListenDate

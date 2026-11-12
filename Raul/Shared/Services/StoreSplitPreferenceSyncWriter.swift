@@ -16,6 +16,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
     var reduceSilenceGapsEnabled: Bool
     var silenceGapReductionLevelRawValue: String?
     var voiceEnhancementEnabled: Bool
+    var equalizerPresetRawValue: String?
     var autoSkipKeywordsJSON: String
     var autoDownloadFilterJSON: String?
     var cutFront: Double?
@@ -65,6 +66,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             reduceSilenceGapsEnabled: settings.reduceSilenceGapsEnabled,
             silenceGapReductionLevelRawValue: settings.silenceGapReductionLevelRawValue,
             voiceEnhancementEnabled: settings.voiceEnhancementEnabled,
+            equalizerPresetRawValue: settings.equalizerPresetRawValue,
             autoSkipKeywordsJSON: keywords,
             autoDownloadFilterJSON: autoDownloadFilterJSON,
             cutFront: settings.cutFront.map(Double.init),
@@ -108,6 +110,7 @@ actor StoreSplitPreferenceSyncWriter {
             reduceSilenceGapsEnabled: value.reduceSilenceGapsEnabled,
             silenceGapReductionLevelRawValue: value.silenceGapReductionLevelRawValue,
             voiceEnhancementEnabled: value.voiceEnhancementEnabled,
+            equalizerPresetRawValue: value.equalizerPresetRawValue,
             autoSkipKeywordsJSON: value.autoSkipKeywordsJSON,
             autoDownloadFilterJSON: value.autoDownloadFilterJSON,
             cutFront: value.cutFront,
@@ -154,6 +157,7 @@ actor StoreSplitPreferenceSyncWriter {
                 current.reduceSilenceGapsEnabled = candidate.reduceSilenceGapsEnabled
                 current.silenceGapReductionLevelRawValue = candidate.silenceGapReductionLevelRawValue
                 current.voiceEnhancementEnabled = candidate.voiceEnhancementEnabled
+                current.equalizerPresetRawValue = candidate.equalizerPresetRawValue
                 current.autoSkipKeywordsJSON = candidate.autoSkipKeywordsJSON
                 current.autoDownloadFilterJSON = candidate.autoDownloadFilterJSON
                 current.cutFront = candidate.cutFront

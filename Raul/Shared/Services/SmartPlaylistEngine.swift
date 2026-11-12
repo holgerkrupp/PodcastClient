@@ -210,6 +210,13 @@ enum SmartPlaylistEngine {
             let expected = queryValue.lowercased() == "yes" || queryValue.lowercased() == "true"
             return (episode.metaData?.isArchived == true) == expected
         }
+        if rule.field == .savedForLater || rule.field == .favorite {
+            let expected = queryValue.lowercased() == "yes" || queryValue.lowercased() == "true"
+            let actual = rule.field == .savedForLater
+                ? episode.metaData?.isSavedForLater == true
+                : episode.metaData?.isFavorite == true
+            return actual == expected
+        }
         if rule.field == .status {
             switch queryValue.lowercased() {
             case "played": return episode.isPlayed
@@ -322,7 +329,8 @@ enum SmartPlaylistEngine {
             let episodeTags = flattenedNamespaceText(tags: episode.optionalTags)
             let podcastTags = flattenedNamespaceText(tags: episode.podcast?.optionalTags)
             return [episodeTags, podcastTags].compactMap { $0 }
-        case .downloaded, .language, .duration, .published, .status, .archived, .episodeType, .source, .category:
+        case .downloaded, .language, .duration, .published, .status, .archived,
+             .savedForLater, .favorite, .episodeType, .source, .category:
             return []
         }
     }

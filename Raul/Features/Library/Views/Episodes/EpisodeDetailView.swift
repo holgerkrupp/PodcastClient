@@ -491,6 +491,24 @@ private struct EpisodeDetailMoreMenu: View {
                 }
             }
 
+            Button {
+                Task { await toggleSavedForLater() }
+            } label: {
+                Label(
+                    episode.metaData?.isSavedForLater == true ? "Remove from Saved for Later" : "Save for Later",
+                    systemImage: episode.metaData?.isSavedForLater == true ? "bookmark.slash" : "bookmark"
+                )
+            }
+
+            Button {
+                Task { await toggleFavorite() }
+            } label: {
+                Label(
+                    episode.metaData?.isFavorite == true ? "Remove Favorite" : "Favorite Episode",
+                    systemImage: episode.metaData?.isFavorite == true ? "heart.slash" : "heart"
+                )
+            }
+
             if episode.hasAlternateVideo {
                 Button {
                     Task { await switchEpisodeMedia() }
@@ -548,6 +566,20 @@ private struct EpisodeDetailMoreMenu: View {
         } else {
             await actor.archiveEpisode(episode.url)
         }
+    }
+
+    @MainActor
+    private func toggleSavedForLater() async {
+        guard let url = episode.url else { return }
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        await actor.setTriageFlag(episodeURL: url, savedForLater: episode.metaData?.isSavedForLater != true)
+    }
+
+    @MainActor
+    private func toggleFavorite() async {
+        guard let url = episode.url else { return }
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        await actor.setTriageFlag(episodeURL: url, favorite: episode.metaData?.isFavorite != true)
     }
 }
 
@@ -653,7 +685,7 @@ private struct EpisodeDetailMetadataSections: View {
                             SocialView(socials: episode.social)
                         }
                         if episode.people.isEmpty == false || fallbackAuthor != nil {
-                            PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor)
+                            PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor, sourceFeedURL: episode.podcast?.feed)
                         }
                     }
                     .padding(.top, 8)

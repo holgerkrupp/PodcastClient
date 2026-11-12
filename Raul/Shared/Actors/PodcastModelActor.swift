@@ -1840,6 +1840,7 @@ actor PodcastModelActor {
             if newEpisodeCount > 0 {
                 await MainActor.run {
                     NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+                    NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
                 }
             }
             writerHeld = false
@@ -2377,6 +2378,9 @@ actor PodcastModelActor {
 
         try await PodcastMutationCoordinator.shared.withExclusive(feedURL: feedURL) {
             try await self.performDeletePodcast(podcastID)
+        }
+        await MainActor.run {
+            NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
         }
     }
 

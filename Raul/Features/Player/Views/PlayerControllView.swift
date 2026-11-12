@@ -551,6 +551,11 @@ struct PlayerPlaybackUtilitiesRow: View {
     }
 
     private var sleepTimerAccessibilityValue: String {
+        if player.isStopAfterChapterEnabled {
+            let title = player.stopAfterChapterTitle ?? "current chapter"
+            let countdown = Duration.seconds(player.remainingTime ?? 0).formatted(.units(width: .wide))
+            return "Stop at end of \(title), in \(countdown)"
+        }
         if let remaining = player.remainingTime {
             return Duration.seconds(remaining).formatted(.units(width: .wide))
         }
@@ -583,6 +588,32 @@ struct PlayerPlaybackUtilitiesRow: View {
     private var sleepTimerSheet: some View {
         List {
             Section(header: Label("Sleep timer", systemImage: "zzz")) {
+                if player.isStopAfterChapterEnabled {
+                    HStack {
+                        Label(
+                            "Stop at end of \(player.stopAfterChapterTitle ?? "chapter")",
+                            systemImage: "bookmark"
+                        )
+                        Spacer()
+                        Text(Duration.seconds(player.remainingTime ?? 0).formatted(.units(width: .narrow)))
+                            .monospacedDigit()
+                            .accessibilityLabel("Time remaining")
+                    }
+                    .accessibilityElement(children: .combine)
+
+                    Button("Cancel chapter timer", systemImage: "xmark.circle") {
+                        player.cancelSleepTimer()
+                    }
+                } else {
+                    Button {
+                        _ = player.stopAfterCurrentChapter()
+                    } label: {
+                        Label("Stop after current chapter", systemImage: "bookmark")
+                    }
+                    .disabled(player.upcomingChapterSleepBoundary == nil)
+                    .accessibilityHint("Pauses at the end of the current chapter")
+                }
+
                 SleepTimerView()
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)

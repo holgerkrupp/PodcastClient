@@ -79,6 +79,8 @@ final class EpisodeStateSync: Identifiable {
     var isPlayed: Bool = false
     var isArchived: Bool = false
     var wasSkipped: Bool = false
+    var isSavedForLater: Bool = false
+    var isFavorite: Bool = false
     var completedAt: Date?
     var archivedAt: Date?
     var firstPlayedAt: Date?
@@ -95,6 +97,8 @@ final class EpisodeStateSync: Identifiable {
         isPlayed: Bool = false,
         isArchived: Bool = false,
         wasSkipped: Bool = false,
+        isSavedForLater: Bool = false,
+        isFavorite: Bool = false,
         completedAt: Date? = nil,
         archivedAt: Date? = nil,
         firstPlayedAt: Date? = nil,
@@ -111,6 +115,8 @@ final class EpisodeStateSync: Identifiable {
         self.isPlayed = isPlayed
         self.isArchived = isArchived
         self.wasSkipped = wasSkipped
+        self.isSavedForLater = isSavedForLater
+        self.isFavorite = isFavorite
         self.completedAt = completedAt
         self.archivedAt = archivedAt
         self.firstPlayedAt = firstPlayedAt
@@ -309,6 +315,7 @@ final class PodcastPreferenceSync: Identifiable {
     var reduceSilenceGapsEnabled: Bool = false
     var silenceGapReductionLevelRawValue: String?
     var voiceEnhancementEnabled: Bool = false
+    var equalizerPresetRawValue: String?
     var autoSkipKeywordsJSON: String = "[]"
     var autoDownloadFilterJSON: String?
     var cutFront: Double?
@@ -346,6 +353,7 @@ final class PodcastPreferenceSync: Identifiable {
         reduceSilenceGapsEnabled: Bool = false,
         silenceGapReductionLevelRawValue: String? = nil,
         voiceEnhancementEnabled: Bool = false,
+        equalizerPresetRawValue: String? = nil,
         autoSkipKeywordsJSON: String = "[]",
         autoDownloadFilterJSON: String? = nil,
         cutFront: Double? = nil,
@@ -384,6 +392,7 @@ final class PodcastPreferenceSync: Identifiable {
         self.reduceSilenceGapsEnabled = reduceSilenceGapsEnabled
         self.silenceGapReductionLevelRawValue = silenceGapReductionLevelRawValue
         self.voiceEnhancementEnabled = voiceEnhancementEnabled
+        self.equalizerPresetRawValue = equalizerPresetRawValue
         self.autoSkipKeywordsJSON = autoSkipKeywordsJSON
         self.autoDownloadFilterJSON = autoDownloadFilterJSON
         self.cutFront = cutFront

@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 
 
@@ -6,11 +7,14 @@ struct PeopleView: View {
     let people: [PersonInfo]
     let fallbackAuthor: String?
     let spacing: CGFloat
+    let sourceFeedURL: URL?
+    @State private var selectedPerson: PersonInfo?
 
-    init(people: [PersonInfo], fallbackAuthor: String? = nil, spacing: CGFloat = 8) {
+    init(people: [PersonInfo], fallbackAuthor: String? = nil, spacing: CGFloat = 8, sourceFeedURL: URL? = nil) {
         self.people = people
         self.fallbackAuthor = fallbackAuthor
         self.spacing = spacing
+        self.sourceFeedURL = sourceFeedURL
     }
 
     private var displayPeople: [PersonInfo] {
@@ -27,26 +31,152 @@ struct PeopleView: View {
     }
 
     var body: some View {
-        if !displayPeople.isEmpty {
-            
-        
-        FlowRows(spacing: spacing) {
-            ForEach(displayPeople) { person in
-                Group {
-                    if let href = person.href {
-                        Link(destination: href) {
-                            PersonChip(person: person)
+        Group {
+            if !displayPeople.isEmpty {
+                FlowRows(spacing: spacing) {
+                    ForEach(displayPeople) { person in
+                        HStack(spacing: 4) {
+                            Button {
+                                selectedPerson = person
+                            } label: {
+                                PersonChip(person: person)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityHint("Explore other episodes featuring this credited person")
+
+                            if let href = person.href {
+                                Link(destination: href) {
+                                    Image(systemName: "arrow.up.right.square")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                .accessibilityLabel("Open publisher profile for \(person.name)")
+                            }
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        PersonChip(person: person)
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("People")
+                .padding()
+            }
+        }
+        .sheet(item: $selectedPerson) { person in
+            PersonEpisodesView(person: person, sourceFeedURL: sourceFeedURL)
+        }
+    }
+}
+
+enum PersonCreditIdentity {
+    static func matches(
+        _ candidate: PersonInfo,
+        reference: String?,
+        name: String,
+        role: String?,
+        feedURL: String?,
+        episodeFeedURL: String?
+    ) -> Bool {
+        let candidateReference = normalizedReference(candidate.href?.absoluteString)
+        let selectedReference = normalizedReference(reference)
+        if let selectedReference, let candidateReference {
+            return selectedReference == candidateReference
+        }
+        if selectedReference != nil || candidateReference != nil {
+            return false
+        }
+
+        // A name without a stable publisher reference is only comparable within
+        // the same feed and credited role, avoiding collisions across shows.
+        guard normalizedFeed(feedURL) != nil,
+              normalizedFeed(feedURL) == normalizedFeed(episodeFeedURL),
+              normalizedName(candidate.name) == normalizedName(name) else {
+            return false
+        }
+        return normalizedRole(candidate.role) == normalizedRole(role)
+    }
+
+    private static func normalizedReference(_ value: String?) -> String? {
+        guard let value, var components = URLComponents(string: value),
+              let scheme = components.scheme?.lowercased(),
+              let host = components.host?.lowercased() else { return nil }
+        components.scheme = scheme
+        components.host = host
+        components.user = nil
+        components.password = nil
+        components.query = nil
+        components.fragment = nil
+        let path = components.path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components.path = "/" + path
+        return components.string?.lowercased()
+    }
+
+    private static func normalizedFeed(_ value: String?) -> String? {
+        guard let value, let url = URL(string: value),
+              url.user == nil, url.password == nil, url.query == nil else { return nil }
+        return normalizedReference(url.absoluteString)
+    }
+
+    private static func normalizedName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    private static func normalizedRole(_ value: String?) -> String {
+        normalizedName(value ?? "")
+    }
+}
+
+private struct PersonEpisodesView: View {
+    let person: PersonInfo
+    let sourceFeedURL: URL?
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.dismiss) private var dismiss
+    @State private var episodes: [Episode] = []
+    @State private var isLoading = true
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Publisher-provided credits in your library") {
+                    ForEach(episodes, id: \.persistentModelID) { episode in
+                        NavigationLink {
+                            EpisodeDetailView(episode: episode)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(episode.title).lineLimit(2)
+                                Text(episode.podcast?.title ?? "Unknown podcast")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 }
             }
+            .overlay {
+                if isLoading { ProgressView() }
+                else if episodes.isEmpty {
+                    ContentUnavailableView("No Other Credits Found", systemImage: "person.crop.circle", description: Text("Publisher credits are searched in your library only."))
+                }
+            }
+            .navigationTitle(person.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
         }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("People")
-        .padding()
+        .task(id: person.id) {
+            let actor = EpisodeListQueryActor(modelContainer: modelContext.container)
+            let ids = (try? await actor.episodeIDsFeaturingPerson(
+                reference: person.href?.absoluteString,
+                name: person.name,
+                role: person.role,
+                sourceFeedURL: sourceFeedURL?.absoluteString
+            )) ?? []
+            guard !Task.isCancelled else { return }
+            let models: [PersistentIdentifier: Episode] = modelContext.existingModels(for: ids)
+            episodes = ids.compactMap { models[$0] }
+            isLoading = false
         }
     }
 }

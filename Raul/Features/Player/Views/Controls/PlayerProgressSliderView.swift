@@ -25,6 +25,7 @@ struct PlayerProgressSliderView: View {
     @State private var isEditing = false
     @State private var editingValue: Double?
     @State private var lastSnappedChapter: Double?
+    @State private var snappedChaptersThisGesture = Set<Double>()
     var sliderRange: ClosedRange<Double> = 1...100
     var thumbColor: Color = .yellow
     var minTrackColor: Color = .blue
@@ -42,7 +43,7 @@ struct PlayerProgressSliderView: View {
             let lower = sliderRange.lowerBound
             let sliderVal = abs((self.value - lower) * scaleFactor + minValue)
             
-            let chapterMarkerPositions = chapterMarkerPositions(width: gr.size.width)
+            let chapterMarkers = chapterMarkerDescriptors(width: gr.size.width)
             let adRangeRects = advertisementRangeRects(width: gr.size.width)
             let trackShape = RoundedRectangle(cornerRadius: radius)
             
@@ -73,12 +74,17 @@ struct PlayerProgressSliderView: View {
                 .clipShape(trackShape)
                 if markers != nil {
                     ZStack {
-                        ForEach(Array(chapterMarkerPositions.enumerated()), id: \.offset) { _, xPosition in
+                        ForEach(Array(chapterMarkers.enumerated()), id: \.offset) { _, marker in
                             Rectangle()
-                                .fill(themePalette.primaryForeground.opacity(0.25))
+                                .fill(marker.type == .bookmark
+                                    ? Color.accentColor.opacity(0.85)
+                                    : marker.shouldPlay
+                                        ? themePalette.primaryForeground.opacity(0.25)
+                                        : Color.orange.opacity(0.9))
                                 .frame(width: 1.5, height: gr.size.height)
-                                .position(x: xPosition, y: gr.size.height / 2)
+                                .position(x: marker.position, y: gr.size.height / 2)
                                 .shadow(color: .black.opacity(0.25), radius: 0.5, x: 0, y: 0)
+                                .accessibilityHidden(true)
                         }
                     }
                     .frame(width: gr.size.width, height: gr.size.height)
@@ -131,6 +137,7 @@ struct PlayerProgressSliderView: View {
                         isEditing = false
                         editingValue = nil
                         lastSnappedChapter = nil
+                        snappedChaptersThisGesture.removeAll()
                         onEditingChanged?(false, finalValue)
                     }
             )
@@ -184,7 +191,7 @@ struct PlayerProgressSliderView: View {
             lastSnappedChapter = nil
             return proposedValue
         }
-        if lastSnappedChapter != nearest {
+        if lastSnappedChapter != nearest, snappedChaptersThisGesture.insert(nearest).inserted {
             #if os(iOS)
             if !reduceMotion {
                 UISelectionFeedbackGenerator().selectionChanged()
@@ -218,6 +225,14 @@ struct PlayerProgressSliderView: View {
             duration: chapterTimelineDuration,
             markers: markers
         )
+    }
+
+    private func chapterMarkerDescriptors(width: CGFloat) -> [(position: CGFloat, type: MarkerType, shouldPlay: Bool)] {
+        guard width > 0, let duration = chapterTimelineDuration, duration > 0 else { return [] }
+        return (markers ?? []).compactMap { marker in
+            guard let start = marker.start, start > 0, start < duration else { return nil }
+            return (width * CGFloat(start / duration), marker.type, marker.shouldPlay)
+        }
     }
 
     private func advertisementRangeRects(width: CGFloat) -> [CGRect] {

@@ -585,7 +585,11 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
             feedURL: "https://example.com/feed.xml",
             episodeID: "guid:episode"
         )
-        func snapshot(playPosition: Double) -> StoreSplitEpisodeStateSnapshot {
+        func snapshot(
+            playPosition: Double,
+            savedForLater: Bool = false,
+            favorite: Bool = false
+        ) -> StoreSplitEpisodeStateSnapshot {
             StoreSplitEpisodeStateSnapshot(
                 identity: identity,
                 playPosition: playPosition,
@@ -594,6 +598,8 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
                 isPlayed: false,
                 isArchived: false,
                 wasSkipped: false,
+                isSavedForLater: savedForLater,
+                isFavorite: favorite,
                 completedAt: nil,
                 archivedAt: nil,
                 firstPlayedAt: nil,
@@ -640,6 +646,18 @@ final class StoreSplitEpisodeStateWriteVolumeTests: XCTestCase {
         )
         XCTAssertEqual(moved.playPosition, 160)
         XCTAssertEqual(moved.updatedAt, later)
+
+        let triagedAt = later.addingTimeInterval(10)
+        let triageWrite = try await writer.upsert(
+            snapshot(playPosition: 160, savedForLater: true, favorite: true),
+            at: triagedAt
+        )
+        XCTAssertTrue(triageWrite, "personal triage choices must sync even with unchanged progress")
+        let triagedContext = ModelContext(userState)
+        let triaged = try XCTUnwrap(triagedContext.fetch(FetchDescriptor<EpisodeStateSync>()).first)
+        XCTAssertTrue(triaged.isSavedForLater)
+        XCTAssertTrue(triaged.isFavorite)
+        XCTAssertEqual(triaged.updatedAt, triagedAt)
     }
 }
 

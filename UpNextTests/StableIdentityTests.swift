@@ -934,7 +934,6 @@ final class StableIdentityTests: XCTestCase {
     }
 
     @MainActor
-    @MainActor
     func testNewStoreReadImporterAppliesSubscriptionsAndEpisodeState() async throws {
         let legacyContainer = try ModelContainerManager.makeLegacyContainer(
             isStoredInMemoryOnly: true

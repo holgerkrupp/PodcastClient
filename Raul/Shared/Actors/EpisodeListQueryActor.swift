@@ -78,6 +78,44 @@ actor EpisodeListQueryActor {
         return try modelContext.fetch(descriptor).map(\.persistentModelID)
     }
 
+    func triageEpisodeIDs(savedForLater: Bool) throws -> [PersistentIdentifier] {
+        let descriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate<Episode> { episode in
+                savedForLater
+                    ? episode.metaData?.isSavedForLater == true
+                    : episode.metaData?.isFavorite == true
+            },
+            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+        )
+        return try modelContext.fetch(descriptor).map(\.persistentModelID)
+    }
+
+    func episodeIDsFeaturingPerson(
+        reference: String?,
+        name: String,
+        role: String?,
+        sourceFeedURL: String?
+    ) throws -> [PersistentIdentifier] {
+        var descriptor = FetchDescriptor<Episode>(
+            sortBy: [SortDescriptor(\.publishDate, order: .reverse)]
+        )
+        descriptor.fetchLimit = 2_001
+        let candidates = try modelContext.fetch(descriptor)
+        return candidates.prefix(2_000).filter { episode in
+            let credits = episode.people + (episode.podcast?.people ?? [])
+            return credits.contains { credit in
+                PersonCreditIdentity.matches(
+                    credit,
+                    reference: reference,
+                    name: name,
+                    role: role,
+                    feedURL: sourceFeedURL,
+                    episodeFeedURL: episode.podcast?.feed?.absoluteString
+                )
+            }
+        }.map(\.persistentModelID)
+    }
+
     func downloadedEpisodeIDs(
         downloadedFiles: Set<URL>,
         sort: EpisodeListQuerySort

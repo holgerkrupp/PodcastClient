@@ -110,7 +110,6 @@ final class StoreSplitRepositoryMigrationTests: XCTestCase {
     }
 
     @MainActor
-    @MainActor
     func testPortablePreferenceMigrationExcludesDevicePolicyAndIsIdempotent() async throws {
         let stores = try containers()
         let setting = PodcastSettings(defaultSettings: true)
@@ -172,7 +171,6 @@ final class StoreSplitRepositoryMigrationTests: XCTestCase {
         XCTAssertEqual(row.feedURL, identity.feedURL)
     }
 
-    @MainActor
     @MainActor
     func testCleanupGateRequiresEveryIndependentCondition() throws {
         let stores = try containers()

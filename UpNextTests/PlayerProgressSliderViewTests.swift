@@ -64,4 +64,47 @@ final class PlayerProgressSliderViewTests: XCTestCase {
             tolerance: 8
         ))
     }
+
+    func testChapterSleepTimerCapturesCurrentBoundaryWithPredictableFallbacks() {
+        XCTAssertEqual(
+            ChapterSleepTimerPolicy.boundary(
+                chapterEnd: 120,
+                nextChapterStart: 110,
+                episodeDuration: 300,
+                position: 100,
+                hasChapter: true
+            ),
+            120
+        )
+        XCTAssertEqual(
+            ChapterSleepTimerPolicy.boundary(
+                chapterEnd: nil,
+                nextChapterStart: nil,
+                episodeDuration: 300,
+                position: 200,
+                hasChapter: true
+            ),
+            300,
+            "A final chapter without an explicit end falls back to the episode boundary."
+        )
+        XCTAssertNil(ChapterSleepTimerPolicy.boundary(
+            chapterEnd: nil,
+            nextChapterStart: nil,
+            episodeDuration: 300,
+            position: 200,
+            hasChapter: false
+        ))
+        XCTAssertEqual(ChapterSleepTimerPolicy.boundary(
+            chapterEnd: 150,
+            nextChapterStart: 180,
+            episodeDuration: 300,
+            position: 151,
+            hasChapter: true
+        ), 180, "If the captured end is already behind the playhead, use the next chapter boundary.")
+    }
+
+    func testChapterSleepTimerRemainingNeverGoesNegative() {
+        XCTAssertEqual(ChapterSleepTimerPolicy.remaining(target: 120, position: 30), 90)
+        XCTAssertEqual(ChapterSleepTimerPolicy.remaining(target: 120, position: 121), 0)
+    }
 }

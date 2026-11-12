@@ -159,6 +159,8 @@ struct AppSectionHost: View {
                     switch route {
                     case .episode(let url):
                         RequestedEpisodeDestination(url: url)
+                    case .podcast(let feedURL):
+                        RequestedPodcastDestination(feedURL: feedURL)
                     }
                 }
         }
@@ -229,6 +231,27 @@ private struct RequestedEpisodeDestination: View {
                 predicate: #Predicate { $0.url == url }
             )
             episode = try? modelContext.fetch(descriptor).first
+        }
+    }
+}
+
+private struct RequestedPodcastDestination: View {
+    let feedURL: URL
+    @Environment(\.modelContext) private var modelContext
+    @State private var podcast: Podcast?
+
+    var body: some View {
+        Group {
+            if let podcast {
+                PodcastDetailView(podcast: podcast)
+            } else {
+                ContentUnavailableView("Podcast Not Found", systemImage: "magnifyingglass")
+            }
+        }
+        .task(id: feedURL) {
+            guard feedURL.user == nil, feedURL.password == nil, feedURL.query == nil else { return }
+            let descriptor = FetchDescriptor<Podcast>(predicate: #Predicate { $0.feed == feedURL })
+            podcast = try? modelContext.fetch(descriptor).first
         }
     }
 }

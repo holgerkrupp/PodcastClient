@@ -1291,7 +1291,7 @@ private struct PodcastDetailMetadataSections: View {
     var body: some View {
         SocialView(socials: podcast.social)
             .padding()
-        PeopleView(people: podcast.people)
+        PeopleView(people: podcast.people, sourceFeedURL: podcast.feed)
             .padding()
         PodcastNamespaceMetadataView(
             optionalTags: podcast.optionalTags,

@@ -584,6 +584,10 @@ actor StoreSplitUserStateImporter {
                 setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
                 setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)
                 setIfChanged(settings, \.voiceEnhancementEnabled, record.voiceEnhancementEnabled)
+                if let preset = record.equalizerPresetRawValue,
+                   EqualizerPreset(rawValue: preset) != nil {
+                    setIfChanged(settings, \.equalizerPresetRawValue, preset)
+                }
                 setIfChanged(settings, \.autoDownloadFilterJSON, record.autoDownloadFilterJSON)
                 if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
                    let keywords = try? decoder.decode([skipKey].self, from: data) {
@@ -778,6 +782,8 @@ actor StoreSplitUserStateImporter {
                 setIfChanged(metadata, \.wasSkipped, state.wasSkipped)
                 setIfChanged(metadata, \.isArchived, state.isArchived)
                 setIfChanged(metadata, \.isHistory, state.isPlayed)
+                setIfChanged(metadata, \.isSavedForLater, state.isSavedForLater)
+                setIfChanged(metadata, \.isFavorite, state.isFavorite)
                 if state.isArchived || state.isPlayed {
                     setIfChanged(metadata, \.isInbox, false)
                 }
@@ -1936,6 +1942,7 @@ actor StoreSplitUserStateImporter {
         recencyCutoff: Date?
     ) -> Bool {
         let hasActiveProgress = state.playPosition > 0 || state.maxPlayPosition > 0
+            || state.isSavedForLater || state.isFavorite
         if hasActiveProgress {
             return true
         }

@@ -49,6 +49,8 @@ enum SmartPlaylistField: String, Codable, CaseIterable, Hashable, Sendable {
     case published
     case status
     case archived
+    case savedForLater
+    case favorite
     case episodeType
     case source
     case category
@@ -75,6 +77,8 @@ enum SmartPlaylistField: String, Codable, CaseIterable, Hashable, Sendable {
         case .published: return "Published"
         case .status: return "Listening status"
         case .archived: return "Archived"
+        case .savedForLater: return "Saved for Later"
+        case .favorite: return "Favorite"
         case .episodeType: return "Episode type"
         case .source: return "Source"
         case .category: return "Podcast category"

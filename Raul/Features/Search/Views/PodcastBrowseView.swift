@@ -580,7 +580,7 @@ private struct PodcastBrowseHeaderView: View {
                     }
 
                     if feed.people.isEmpty == false {
-                        PeopleView(people: feed.people)
+                        PeopleView(people: feed.people, sourceFeedURL: feed.url)
                             .padding()
                     }
 

@@ -248,6 +248,7 @@ enum StoreSplitMigrationVerifier {
             let meaningful = (metadata.playPosition ?? 0) > 0
                 || (metadata.maxPlayposition ?? 0) > 0
                 || isPlayed || isArchived || metadata.wasSkipped
+                || metadata.isSavedForLater || metadata.isFavorite
                 || metadata.firstListenDate != nil || metadata.lastPlayed != nil
             guard meaningful else { continue }
             let identity = episode.stableEpisodeIdentity
@@ -262,7 +263,7 @@ enum StoreSplitMigrationVerifier {
             sourceLines.append(canonical(
                 "episode", identity.key, metadata.playPosition ?? 0,
                 metadata.maxPlayposition ?? 0, isPlayed, isArchived,
-                metadata.wasSkipped
+                metadata.wasSkipped, metadata.isSavedForLater, metadata.isFavorite
             ))
             guard let destination = episodeStates[identity.key] else {
                 issues.append("missing_episode_state:\(identity.key)")
@@ -271,14 +272,17 @@ enum StoreSplitMigrationVerifier {
             destinationLines.append(canonical(
                 "episode", identity.key, destination.playPosition,
                 destination.maxPlayPosition, destination.isPlayed,
-                destination.isArchived, destination.wasSkipped
+                destination.isArchived, destination.wasSkipped,
+                destination.isSavedForLater, destination.isFavorite
             ))
             if destination.updatedAt <= updatedAt {
                 if destination.playPosition != metadata.playPosition ?? 0
                     || destination.maxPlayPosition < metadata.maxPlayposition ?? 0
                     || destination.isPlayed != isPlayed
                     || destination.isArchived != isArchived
-                    || destination.wasSkipped != metadata.wasSkipped {
+                    || destination.wasSkipped != metadata.wasSkipped
+                    || destination.isSavedForLater != metadata.isSavedForLater
+                    || destination.isFavorite != metadata.isFavorite {
                     issues.append("episode_state_fields:\(identity.key)")
                 }
             }

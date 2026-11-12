@@ -453,6 +453,15 @@ actor PodcastSettingsModelActor {
         return await standardSettings().voiceEnhancementEnabled
     }
 
+    func getEqualizerPreset(for podcastFeed: URL?) async -> EqualizerPreset {
+        if let podcastFeed,
+           let settings = try? await fetchPodcastSettings(for: podcastFeed),
+           settings.isEnabled {
+            return settings.equalizerPreset
+        }
+        return await standardSettings().equalizerPreset
+    }
+
     func getPlaybackTrim(for podcastFeed: URL?) async -> PodcastPlaybackTrim {
         let settings: PodcastSettings
         if let podcastFeed,

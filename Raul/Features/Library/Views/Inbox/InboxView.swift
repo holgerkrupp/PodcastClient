@@ -7,6 +7,8 @@ extension Notification.Name {
 
 enum InboxSection: String, CaseIterable, Identifiable {
     case inbox
+    case saved
+    case favorites
     case iCloudDrive
 
     var id: String { rawValue }
@@ -15,6 +17,10 @@ enum InboxSection: String, CaseIterable, Identifiable {
         switch self {
         case .inbox:
             return "Inbox"
+        case .saved:
+            return "Saved"
+        case .favorites:
+            return "Favorites"
         case .iCloudDrive:
             return "Sideloading"
         }
@@ -39,6 +45,10 @@ struct InboxView: View {
                 switch selectedSection {
                 case .inbox:
                     InboxListView()
+                case .saved:
+                    TriageEpisodeListView(savedForLater: true)
+                case .favorites:
+                    TriageEpisodeListView(savedForLater: false)
                 case .iCloudDrive:
                     SideLoadedEpisodesView(modelContainer: ModelContainerManager.shared.container)
                 }
@@ -59,6 +69,7 @@ struct InboxListView: View {
     @State private var errorMessage: String?
     @State private var liveNotificationFeed: URL?
     @State private var showLiveNotificationPodcast = false
+    @State private var undoTriage: InboxTriageUndo?
 #if DEBUG
     @State private var showReleaseCalendar = false
 #endif
@@ -114,6 +125,26 @@ struct InboxListView: View {
                             } label: {
                                 Label("Remove from Inbox", systemImage: "tray.and.arrow.up.fill")
                             }
+                        }
+                        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                            Button {
+                                Task { await updateTriage(episode, savedForLater: episode.metaData?.isSavedForLater != true, favorite: nil) }
+                            } label: {
+                                Label(
+                                    episode.metaData?.isSavedForLater == true ? "Remove Saved" : "Save for Later",
+                                    systemImage: episode.metaData?.isSavedForLater == true ? "bookmark.slash" : "bookmark"
+                                )
+                            }
+                            .tint(.indigo)
+                            Button {
+                                Task { await updateTriage(episode, savedForLater: nil, favorite: episode.metaData?.isFavorite != true) }
+                            } label: {
+                                Label(
+                                    episode.metaData?.isFavorite == true ? "Unfavorite" : "Favorite",
+                                    systemImage: episode.metaData?.isFavorite == true ? "heart.slash" : "heart"
+                                )
+                            }
+                            .tint(.pink)
                         }
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -210,6 +241,25 @@ struct InboxListView: View {
                 }
             }
         }
+        .overlay(alignment: .top) {
+            if let undoTriage {
+                HStack {
+                    Text(undoTriage.message)
+                        .font(.subheadline)
+                    Spacer()
+                    Button("Undo") {
+                        Task { await undoLastTriage() }
+                    }
+                    .fontWeight(.semibold)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .accessibilityElement(children: .contain)
+            }
+        }
         .confirmationDialog("Clear inbox?", isPresented: $showClearInboxConfirmation, titleVisibility: .visible) {
             Button("Clear inbox", role: .destructive) {
                 Task {
@@ -282,6 +332,31 @@ struct InboxListView: View {
         let episodeActor = EpisodeActor(modelContainer: modelContext.container)
         await episodeActor.removeFromInbox(episode.url)
     }
+
+    private func updateTriage(_ episode: Episode, savedForLater: Bool?, favorite: Bool?) async {
+        guard let url = episode.url else { return }
+        let previousSaved = episode.metaData?.isSavedForLater == true
+        let previousFavorite = episode.metaData?.isFavorite == true
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        await actor.setTriageFlag(episodeURL: url, savedForLater: savedForLater, favorite: favorite)
+        if let savedForLater, previousSaved != savedForLater {
+            undoTriage = InboxTriageUndo(url: url, title: episode.title, flag: .saved, previousValue: previousSaved)
+        } else if let favorite, previousFavorite != favorite {
+            undoTriage = InboxTriageUndo(url: url, title: episode.title, flag: .favorite, previousValue: previousFavorite)
+        }
+    }
+
+    private func undoLastTriage() async {
+        guard let undoTriage else { return }
+        let actor = EpisodeActor(modelContainer: modelContext.container)
+        switch undoTriage.flag {
+        case .saved:
+            await actor.setTriageFlag(episodeURL: undoTriage.url, savedForLater: undoTriage.previousValue)
+        case .favorite:
+            await actor.setTriageFlag(episodeURL: undoTriage.url, favorite: undoTriage.previousValue)
+        }
+        self.undoTriage = nil
+    }
     
     private func clearInbox() async {
         isClearingInbox = true
@@ -302,6 +377,87 @@ struct InboxListView: View {
         )
         // Per-feed failures are persisted on PodcastMetaData and shown on each
         // podcast row. Keep the inbox alert for inbox loading/maintenance errors.
+    }
+}
+
+private enum InboxTriageFlag {
+    case saved, favorite
+}
+
+private struct InboxTriageUndo {
+    let url: URL
+    let title: String
+    let flag: InboxTriageFlag
+    let previousValue: Bool
+    var message: String {
+        switch flag {
+        case .saved: "Saved for Later: \(title)"
+        case .favorite: "Favorite updated: \(title)"
+        }
+    }
+}
+
+private struct TriageEpisodeListView: View {
+    let savedForLater: Bool
+    @Environment(\.modelContext) private var modelContext
+    @State private var episodes: [Episode] = []
+
+    private var title: String { savedForLater ? "Saved for Later" : "Favorites" }
+
+    var body: some View {
+        Group {
+            if episodes.isEmpty {
+                ContentUnavailableView(
+                    savedForLater ? "No Saved Episodes" : "No Favorite Episodes",
+                    systemImage: savedForLater ? "bookmark" : "heart",
+                    description: Text(savedForLater
+                        ? "Save an Inbox episode to keep it here without adding it to Up Next."
+                        : "Favorite episodes from Inbox or episode actions to find them here.")
+                )
+            } else {
+                List(episodes, id: \.persistentModelID) { episode in
+                    ZStack {
+                        EpisodeRowView(episode: episode)
+                        NavigationLink(destination: EpisodeDetailView(episode: episode)) { EmptyView() }
+                            .opacity(0)
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            Task {
+                                await EpisodeActor(modelContainer: modelContext.container).setTriageFlag(
+                                    episodeURL: episode.url,
+                                    savedForLater: savedForLater ? false : nil,
+                                    favorite: savedForLater ? nil : false
+                                )
+                            }
+                        } label: {
+                            Label(savedForLater ? "Remove Saved" : "Unfavorite", systemImage: "xmark")
+                        }
+                        .tint(.secondary)
+                    }
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle(title)
+        .task { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
+            Task { await load() }
+        }
+    }
+
+    private func load() async {
+        do {
+            let ids = try await EpisodeListQueryActor(modelContainer: modelContext.container)
+                .triageEpisodeIDs(savedForLater: savedForLater)
+            let byID: [PersistentIdentifier: Episode] = modelContext.existingModels(for: ids)
+            episodes = ids.compactMap { byID[$0] }
+        } catch {
+            episodes = []
+        }
     }
 }
 

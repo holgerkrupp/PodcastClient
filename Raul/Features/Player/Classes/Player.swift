@@ -323,6 +323,26 @@ enum PlaybackRecoveryPositionPolicy {
     }
 }
 
+enum ChapterSleepTimerPolicy {
+    static func boundary(
+        chapterEnd: Double?,
+        nextChapterStart: Double?,
+        episodeDuration: Double?,
+        position: Double,
+        hasChapter: Bool
+    ) -> Double? {
+        guard hasChapter, position.isFinite else { return nil }
+        return [chapterEnd, nextChapterStart, episodeDuration]
+            .compactMap { $0 }
+            .first { $0.isFinite && $0 > position + 0.25 }
+    }
+
+    static func remaining(target: Double, position: Double) -> Double {
+        guard target.isFinite, position.isFinite else { return 0 }
+        return max(target - position, 0)
+    }
+}
+
 @Observable
 @MainActor
 class Player {
@@ -377,6 +397,7 @@ class Player {
         let reduceSilenceGapsEnabled: Bool
         let silenceGapReductionLevel: SilenceGapReductionLevel
         let voiceEnhancementEnabled: Bool
+        let equalizerPreset: EqualizerPreset
     }
 
     enum LivePlaybackState: Equatable, Sendable {
@@ -509,6 +530,7 @@ class Player {
     private var reduceSilenceGapsEnabled = false
     private var silenceGapReductionLevel: SilenceGapReductionLevel = .low
     private var voiceEnhancementEnabled = false
+    private var equalizerPreset: EqualizerPreset = .flat
     private var introSkipSeconds: TimeInterval = 0
     private var outroSkipSeconds: TimeInterval = 0
     private var silenceGapReductionActive = false
@@ -552,7 +574,26 @@ class Player {
     private var timer: Timer?
     var endDate: Date? // when playback should pause
     var remainingTime: TimeInterval?
-    var stopAfterEpisode: Bool = false
+    private(set) var stopAfterChapterTarget: Double?
+    private(set) var stopAfterChapterTitle: String?
+    private var stopAfterChapterEpisodeURL: URL?
+    var isStopAfterChapterEnabled: Bool { stopAfterChapterTarget != nil }
+    var upcomingChapterSleepBoundary: Double? {
+        ChapterSleepTimerPolicy.boundary(
+            chapterEnd: currentChapter?.end,
+            nextChapterStart: nextChapter?.start,
+            episodeDuration: currentEpisode?.duration,
+            position: engine.currentTime(),
+            hasChapter: currentChapter != nil || nextChapter != nil
+        )
+    }
+    var stopAfterEpisode: Bool = false {
+        didSet {
+            if stopAfterEpisode && stopAfterChapterTarget != nil {
+                cancelSleepTimer()
+            }
+        }
+    }
 
     /// While listening together over SharePlay, features that seek, change
     /// the rate or switch episodes on their own are off: the playback
@@ -578,6 +619,10 @@ class Player {
         didSet {
             scheduleCurrentArtworkUpdate()
             NotificationCenter.default.post(name: .playerChapterDataDidChange, object: nil)
+            if let stopAfterChapterEpisodeURL,
+               currentEpisode?.url != stopAfterChapterEpisodeURL {
+                cancelSleepTimer()
+            }
             if oldValue?.url != currentEpisode?.url {
                 Task { @MainActor in
                     await Task.yield()
@@ -1112,6 +1157,9 @@ class Player {
     
     func setSleepTimer(minutes: Int) {
         if minutes > 0 {
+            stopAfterChapterTarget = nil
+            stopAfterChapterTitle = nil
+            stopAfterChapterEpisodeURL = nil
             endDate = Date().addingTimeInterval(Double(minutes * 60))
             startSleepTimer()
         } else {
@@ -1119,18 +1167,39 @@ class Player {
         }
     }
 
+    @discardableResult
+    func stopAfterCurrentChapter() -> Bool {
+        guard let episodeURL = currentEpisodeURL,
+              let boundary = upcomingChapterSleepBoundary else {
+            return false
+        }
+        timer?.invalidate()
+        timer = nil
+        endDate = nil
+        stopAfterEpisode = false
+        stopAfterChapterEpisodeURL = episodeURL
+        stopAfterChapterTarget = boundary
+        stopAfterChapterTitle = currentChapter?.title ?? nextChapter?.title ?? "Episode end"
+        updateRemainingTime()
+        startSleepTimer()
+        return true
+    }
+
     private func startSleepTimer() {
         timer?.invalidate()
         timer = nil
         updateRemainingTime()
 
-        guard endDate != nil else { return }
+        guard endDate != nil || stopAfterChapterTarget != nil else { return }
 
         let interval: TimeInterval
         let repeats: Bool
         if playbackPowerMode.keepsContinuousUIProgress {
             interval = 1
             repeats = true
+        } else if let target = stopAfterChapterTarget {
+            interval = max((target - engine.currentTime()) / max(Double(playbackRate), 0.25), 1)
+            repeats = false
         } else {
             interval = max(endDate?.timeIntervalSinceNow ?? 1, 1)
             repeats = false
@@ -1140,11 +1209,39 @@ class Player {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 self.updateRemainingTime()
+                if self.playbackPowerMode == .background,
+                   self.stopAfterChapterTarget != nil {
+                    self.startSleepTimer()
+                }
             }
         }
     }
 
     private func updateRemainingTime() {
+        if let target = stopAfterChapterTarget {
+            guard stopAfterChapterEpisodeURL == currentEpisodeURL else {
+                cancelSleepTimer()
+                return
+            }
+            let remaining = ChapterSleepTimerPolicy.remaining(
+                target: target,
+                position: engine.currentTime()
+            )
+            remainingTime = max(remaining, 0)
+            guard remaining <= 0.25 else { return }
+            timer?.invalidate()
+            timer = nil
+            stopAfterChapterTarget = nil
+            stopAfterChapterTitle = nil
+            stopAfterChapterEpisodeURL = nil
+            remainingTime = nil
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.engine.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+                self.pause()
+            }
+            return
+        }
         if let endDate {
             let remaining = endDate.timeIntervalSinceNow
             remainingTime = remaining > 0 ? remaining : nil
@@ -1162,6 +1259,9 @@ class Player {
         timer = nil
         endDate = nil
         remainingTime = nil
+        stopAfterChapterTarget = nil
+        stopAfterChapterTitle = nil
+        stopAfterChapterEpisodeURL = nil
         stopAfterEpisode = false
     }
     
@@ -1373,7 +1473,8 @@ class Player {
         PlaybackAudioProcessingSettings(
             reduceSilenceGapsEnabled: await settingsActor?.getReduceSilenceGapsEnabled(for: podcastFeed) ?? false,
             silenceGapReductionLevel: await settingsActor?.getSilenceGapReductionLevel(for: podcastFeed) ?? .low,
-            voiceEnhancementEnabled: await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false
+            voiceEnhancementEnabled: await settingsActor?.getVoiceEnhancementEnabled(for: podcastFeed) ?? false,
+            equalizerPreset: await settingsActor?.getEqualizerPreset(for: podcastFeed) ?? .flat
         )
     }
 
@@ -1381,6 +1482,7 @@ class Player {
         reduceSilenceGapsEnabled = settings.reduceSilenceGapsEnabled
         silenceGapReductionLevel = settings.silenceGapReductionLevel
         voiceEnhancementEnabled = settings.voiceEnhancementEnabled
+        equalizerPreset = settings.equalizerPreset
     }
 
     @discardableResult
@@ -1576,7 +1678,7 @@ class Player {
         guard currentPlaybackSource != .liveRemote,
               currentPlaybackUsesAlternateMedia == false,
               currentPlaybackIsVideo == false,
-              reduceSilenceGapsEnabled || voiceEnhancementEnabled else {
+              reduceSilenceGapsEnabled || voiceEnhancementEnabled || equalizerPreset != .flat else {
             return
         }
 
@@ -1588,7 +1690,8 @@ class Player {
         let processor = AudioPlaybackProcessor(
             reduceSilenceGapsEnabled: reduceSilenceGapsEnabled,
             silenceGapReductionLevel: silenceGapReductionLevel,
-            voiceEnhancementEnabled: voiceEnhancementEnabled
+            voiceEnhancementEnabled: voiceEnhancementEnabled,
+            equalizerPreset: equalizerPreset
         ) { [weak self] isReducing in
             Task { @MainActor [weak self] in
                 self?.setSilenceGapReductionActive(isReducing)
@@ -2152,6 +2255,8 @@ class Player {
             isPlayed: metadata.completionDate != nil || metadata.isHistory == true,
             isArchived: metadata.isArchived == true || metadata.status == .archived,
             wasSkipped: metadata.wasSkipped,
+            isSavedForLater: metadata.isSavedForLater,
+            isFavorite: metadata.isFavorite,
             completedAt: metadata.completionDate,
             archivedAt: metadata.archivedAt,
             firstPlayedAt: metadata.firstListenDate,
@@ -3480,7 +3585,7 @@ class Player {
     }
 
     private func restartSleepTimerIfNeeded() {
-        guard endDate != nil else { return }
+        guard endDate != nil || stopAfterChapterTarget != nil else { return }
         startSleepTimer()
     }
 
@@ -3870,6 +3975,7 @@ class Player {
     
     private func updateEpisodeProgress(to time: Double) {
         guard isPlaying == true else { return }
+        updateChapterEndSleepTimer(position: time)
 
         if automaticAdvertisementSkippingEnabled {
             Task { [weak self] in
@@ -3894,6 +4000,23 @@ class Player {
         if now.timeIntervalSince(lastProgressSaveDate) >= playbackPowerMode.progressSaveInterval {
             cacheCurrentPlaybackState()
             lastProgressSaveDate = now
+        }
+    }
+
+    private func updateChapterEndSleepTimer(position: Double) {
+        guard let target = stopAfterChapterTarget,
+              stopAfterChapterEpisodeURL == currentEpisodeURL,
+              position >= target - 0.2 else { return }
+        timer?.invalidate()
+        timer = nil
+        stopAfterChapterTarget = nil
+        stopAfterChapterTitle = nil
+        stopAfterChapterEpisodeURL = nil
+        remainingTime = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.engine.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+            self.pause()
         }
     }
     

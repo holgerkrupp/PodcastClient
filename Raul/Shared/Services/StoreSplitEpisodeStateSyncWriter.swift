@@ -9,10 +9,65 @@ struct StoreSplitEpisodeStateSnapshot: Codable, Sendable {
     let isPlayed: Bool
     let isArchived: Bool
     let wasSkipped: Bool
+    let isSavedForLater: Bool
+    let isFavorite: Bool
     let completedAt: Date?
     let archivedAt: Date?
     let firstPlayedAt: Date?
     let lastPlayedAt: Date?
+
+    init(
+        identity: EpisodeStableIdentity,
+        playPosition: Double,
+        maxPlayPosition: Double,
+        duration: Double?,
+        isPlayed: Bool,
+        isArchived: Bool,
+        wasSkipped: Bool,
+        isSavedForLater: Bool = false,
+        isFavorite: Bool = false,
+        completedAt: Date?,
+        archivedAt: Date?,
+        firstPlayedAt: Date?,
+        lastPlayedAt: Date?
+    ) {
+        self.identity = identity
+        self.playPosition = playPosition
+        self.maxPlayPosition = maxPlayPosition
+        self.duration = duration
+        self.isPlayed = isPlayed
+        self.isArchived = isArchived
+        self.wasSkipped = wasSkipped
+        self.isSavedForLater = isSavedForLater
+        self.isFavorite = isFavorite
+        self.completedAt = completedAt
+        self.archivedAt = archivedAt
+        self.firstPlayedAt = firstPlayedAt
+        self.lastPlayedAt = lastPlayedAt
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case identity, playPosition, maxPlayPosition, duration, isPlayed, isArchived
+        case wasSkipped, isSavedForLater, isFavorite, completedAt, archivedAt
+        case firstPlayedAt, lastPlayedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        identity = try values.decode(EpisodeStableIdentity.self, forKey: .identity)
+        playPosition = try values.decode(Double.self, forKey: .playPosition)
+        maxPlayPosition = try values.decode(Double.self, forKey: .maxPlayPosition)
+        duration = try values.decodeIfPresent(Double.self, forKey: .duration)
+        isPlayed = try values.decode(Bool.self, forKey: .isPlayed)
+        isArchived = try values.decode(Bool.self, forKey: .isArchived)
+        wasSkipped = try values.decode(Bool.self, forKey: .wasSkipped)
+        isSavedForLater = try values.decodeIfPresent(Bool.self, forKey: .isSavedForLater) ?? false
+        isFavorite = try values.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        completedAt = try values.decodeIfPresent(Date.self, forKey: .completedAt)
+        archivedAt = try values.decodeIfPresent(Date.self, forKey: .archivedAt)
+        firstPlayedAt = try values.decodeIfPresent(Date.self, forKey: .firstPlayedAt)
+        lastPlayedAt = try values.decodeIfPresent(Date.self, forKey: .lastPlayedAt)
+    }
 }
 
 struct StoreSplitEpisodeStateWriterIO: Sendable {
@@ -83,6 +138,8 @@ actor StoreSplitEpisodeStateSyncWriter {
                     isPlayed: snapshot.isPlayed,
                     isArchived: snapshot.isArchived,
                     wasSkipped: snapshot.wasSkipped,
+                    isSavedForLater: snapshot.isSavedForLater,
+                    isFavorite: snapshot.isFavorite,
                     completedAt: snapshot.completedAt,
                     archivedAt: snapshot.archivedAt,
                     firstPlayedAt: snapshot.firstPlayedAt,
@@ -107,6 +164,8 @@ actor StoreSplitEpisodeStateSyncWriter {
         return state.isPlayed != snapshot.isPlayed
             || state.isArchived != snapshot.isArchived
             || state.wasSkipped != snapshot.wasSkipped
+            || state.isSavedForLater != snapshot.isSavedForLater
+            || state.isFavorite != snapshot.isFavorite
             || state.completedAt != snapshot.completedAt
             || state.archivedAt != snapshot.archivedAt
             || state.firstPlayedAt != snapshot.firstPlayedAt
@@ -128,6 +187,8 @@ actor StoreSplitEpisodeStateSyncWriter {
         state.isPlayed = snapshot.isPlayed
         state.isArchived = snapshot.isArchived
         state.wasSkipped = snapshot.wasSkipped
+        state.isSavedForLater = snapshot.isSavedForLater
+        state.isFavorite = snapshot.isFavorite
         state.completedAt = snapshot.completedAt
         state.archivedAt = snapshot.archivedAt
         state.firstPlayedAt = snapshot.firstPlayedAt

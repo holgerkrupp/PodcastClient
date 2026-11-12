@@ -67,6 +67,7 @@ enum AppSectionGroup: String, CaseIterable, Identifiable {
 
 enum AppRoute: Hashable {
     case episode(URL)
+    case podcast(URL)
 }
 
 @Observable
@@ -121,6 +122,7 @@ enum AppLink: Equatable {
     case selectQueue(playlistID: String?)
     case incomingSubscription(URL)
     case podcastYear(URL)
+    case showPodcast(URL)
 
     @MainActor
     static func parse(_ url: URL) -> AppLink? {
@@ -150,6 +152,10 @@ enum AppLink: Equatable {
             return episodeURL.map(AppLink.playEpisode)
         case "episode":
             return episodeURL.map { .showEpisode($0, playlistID: playlistID) }
+        case "podcast":
+            return queryItems.first(where: { $0.name == "feed" })?.value
+                .flatMap(URL.init(string:))
+                .map(AppLink.showPodcast)
         case "shareepisode":
             return episodeURL.map(AppLink.importSharedEpisode)
         default:

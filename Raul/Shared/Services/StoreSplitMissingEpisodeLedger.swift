@@ -45,7 +45,8 @@ enum StoreSplitMissingEpisodeFingerprint {
     static func episodeState(_ value: EpisodeStateSync) -> String {
         digest([value.id, value.feedURL, value.episodeID, number(value.playPosition),
                 number(value.maxPlayPosition), number(value.duration), flag(value.isPlayed),
-                flag(value.isArchived), flag(value.wasSkipped), date(value.completedAt),
+                flag(value.isArchived), flag(value.wasSkipped), flag(value.isSavedForLater),
+                flag(value.isFavorite), date(value.completedAt),
                 date(value.archivedAt), date(value.firstPlayedAt), date(value.lastPlayedAt),
                 date(value.updatedAt), text(value.sourceDeviceID)])
     }

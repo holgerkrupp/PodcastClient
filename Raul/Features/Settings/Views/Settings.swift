@@ -17,6 +17,24 @@ extension Notification.Name {
     static let livePodcastNotificationTapped = Notification.Name("livePodcastNotificationTapped")
 }
 
+enum EqualizerPreset: String, CaseIterable, Codable, Hashable, Sendable, Identifiable {
+    case flat
+    case speechClarity
+    case warm
+    case bassCut
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .flat: "Flat"
+        case .speechClarity: "Speech Clarity"
+        case .warm: "Warm"
+        case .bassCut: "Bass Cut"
+        }
+    }
+}
+
 
 @Model
 class PodcastSettings {
@@ -39,6 +57,11 @@ class PodcastSettings {
     var reduceSilenceGapsEnabled: Bool = false
     var silenceGapReductionLevelRawValue: String? = SilenceGapReductionLevel.low.rawValue
     var voiceEnhancementEnabled: Bool = false
+    var equalizerPresetRawValue: String? = EqualizerPreset.flat.rawValue
+    var equalizerPreset: EqualizerPreset {
+        get { EqualizerPreset(rawValue: equalizerPresetRawValue ?? "") ?? .flat }
+        set { equalizerPresetRawValue = newValue.rawValue }
+    }
     var autoSkipKeywords:[skipKey] = [] // to create a function to skip chapters with specific keywords
     /// Seconds automatically skipped when an episode starts from its beginning.
     /// Optional storage is retained for compatibility with existing SwiftData stores;
@@ -125,6 +148,7 @@ class PodcastSettings {
         settings.reduceSilenceGapsEnabled = global.reduceSilenceGapsEnabled
         settings.silenceGapReductionLevel = global.silenceGapReductionLevel
         settings.voiceEnhancementEnabled = global.voiceEnhancementEnabled
+        settings.equalizerPreset = global.equalizerPreset
         settings.cutFront = global.cutFront ?? 0
         settings.cutEnd = global.cutEnd ?? 0
         settings.skipForward = global.skipForward

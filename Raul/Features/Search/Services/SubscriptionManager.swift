@@ -369,6 +369,9 @@ actor SubscriptionManager:NSObject{
             }
 
             try modelContext.save()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
+            }
             await SubscriptionManifestSync.publishCurrentSubscriptions(
                 modelContainer: modelContainer,
                 allowEmpty: subscribe == false

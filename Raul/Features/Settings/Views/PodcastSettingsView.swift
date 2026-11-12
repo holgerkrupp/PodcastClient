@@ -110,6 +110,7 @@ struct PodcastSettingsView: View {
     @AppStorage(SideloadingConfiguration.enabledKey) private var sideloadingEnabled = false
     @AppStorage(PodcastNetworkPrivacyPolicy.settingKey, store: UserDefaults(suiteName: PodcastNetworkPrivacyPolicy.appGroupID) ?? .standard)
     private var networkTrackingProtectionEnabled = true
+    @AppStorage("localSpotlightIndexingEnabled") private var localSpotlightIndexingEnabled = false
     @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
 #if os(macOS)
@@ -716,6 +717,7 @@ struct PodcastSettingsView: View {
         }
     }
 
+    @ViewBuilder
     private var networkPrivacySection: some View {
         Section("Network Tracking Protection") {
             Toggle(
@@ -741,6 +743,13 @@ struct PodcastSettingsView: View {
                     .accessibilityLabel("Local network privacy request counts")
             }
         }
+#if os(iOS) || os(macOS)
+        Section("Local Search") {
+            Toggle("Show my library in Spotlight", isOn: $localSpotlightIndexingEnabled)
+            Text("Indexes podcast names and downloaded episode titles on this device. Private feeds and transcript contents are excluded. Spotlight indexing runs only while this setting is enabled.")
+                .font(.caption)
+        }
+#endif
     }
 
     private var contextSection: some View {
@@ -1501,6 +1510,26 @@ struct PodcastSettingsView: View {
                 detail: "Balance voices, reduce low-frequency rumble, and control loud peaks."
             )
         }
+
+        Picker(
+            selection: Binding(
+                get: { settings.equalizerPreset },
+                set: {
+                    settings.equalizerPreset = $0
+                    saveAndNotify()
+                }
+            )
+        ) {
+            ForEach(EqualizerPreset.allCases) { preset in
+                Text(preset.title).tag(preset)
+            }
+        } label: {
+            SettingsControlLabel(
+                title: "Equalizer",
+                detail: "Choose a gentle tone preset. Flat bypasses equalization."
+            )
+        }
+        .pickerStyle(.menu)
     }
 
     private func playbackSpeedRow(settings: PodcastSettings) -> some View {

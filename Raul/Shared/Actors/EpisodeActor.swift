@@ -731,6 +731,39 @@ actor EpisodeActor {
         WatchSyncCoordinator.refreshSoon(force: true)
     }
 
+    func setTriageFlag(
+        episodeURL: URL?,
+        savedForLater: Bool? = nil,
+        favorite: Bool? = nil
+    ) async {
+        guard let episodeURL else { return }
+        let episodes = await fetchEpisodes(byURL: episodeURL)
+        guard episodes.isEmpty == false else { return }
+        var changed: [Episode] = []
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            guard let metadata = episode.metaData else { continue }
+            var didChange = false
+            if let savedForLater, metadata.isSavedForLater != savedForLater {
+                metadata.isSavedForLater = savedForLater
+                didChange = true
+            }
+            if let favorite, metadata.isFavorite != favorite {
+                metadata.isFavorite = favorite
+                didChange = true
+            }
+            if didChange { changed.append(episode) }
+        }
+        guard changed.isEmpty == false else { return }
+        modelContext.saveIfNeeded()
+        for episode in changed { await publishSplitEpisodeState(episode) }
+        WatchSyncCoordinator.refreshSoon(force: true)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
     /// Apply one snapshot of the inbox in bounded batches, preserving playlist,
     /// playback, archive and synced user state. Publish only once after the work.
     func removeEpisodesFromInbox(episodeURLs: [URL]) async throws {
@@ -812,6 +845,8 @@ actor EpisodeActor {
             isPlayed: metadata.completionDate != nil || metadata.isHistory == true,
             isArchived: metadata.isArchived == true || metadata.status == .archived,
             wasSkipped: metadata.wasSkipped,
+            isSavedForLater: metadata.isSavedForLater,
+            isFavorite: metadata.isFavorite,
             completedAt: metadata.completionDate,
             archivedAt: metadata.archivedAt,
             firstPlayedAt: metadata.firstListenDate,
@@ -1465,6 +1500,9 @@ actor EpisodeActor {
         
         modelContext.saveIfNeeded()
         WatchSyncCoordinator.refreshSoon(force: true)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
+        }
     }
 
     func markEpisodeAvailable(fileURL: URL) async {

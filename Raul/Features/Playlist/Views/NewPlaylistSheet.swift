@@ -99,7 +99,7 @@ struct PlaylistCreationDraft {
 }
 
 enum SmartPlaylistExample: String, CaseIterable, Hashable {
-    case offlineCommute, shortEpisodes, freshNews, germanListening, deepDive, continueListening
+    case offlineCommute, shortEpisodes, freshNews, germanListening, deepDive, continueListening, savedForLater, favorites
     var title: String {
         switch self {
         case .offlineCommute: "Offline Commute"
@@ -108,6 +108,8 @@ enum SmartPlaylistExample: String, CaseIterable, Hashable {
         case .germanListening: "German Listening"
         case .deepDive: "Deep Dive"
         case .continueListening: "Continue Listening"
+        case .savedForLater: "Saved for Later"
+        case .favorites: "Favorites"
         }
     }
     var symbol: String {
@@ -118,6 +120,8 @@ enum SmartPlaylistExample: String, CaseIterable, Hashable {
         case .germanListening: "globe"
         case .deepDive: "text.book.closed.fill"
         case .continueListening: "play.circle.fill"
+        case .savedForLater: "bookmark"
+        case .favorites: "heart"
         }
     }
     var filter: SmartPlaylistFilter {
@@ -138,6 +142,10 @@ enum SmartPlaylistExample: String, CaseIterable, Hashable {
             result.rules = [rule(.duration, .greaterThan, "60")]
         case .continueListening:
             result.rules = [rule(.status, .equals, "In Progress")]
+        case .savedForLater:
+            result.rules = [rule(.savedForLater, .equals, "Yes")]
+        case .favorites:
+            result.rules = [rule(.favorite, .equals, "Yes")]
         }
         return result
     }
@@ -209,7 +217,7 @@ struct SmartPlaylistFilterEditor: View {
 
     private func valuePlaceholder(for field: SmartPlaylistField) -> String {
         switch field {
-        case .downloaded, .archived: "Yes or No"
+        case .downloaded, .archived, .savedForLater, .favorite: "Yes or No"
         case .duration: "Minutes"
         case .published: "Days (or ISO date)"
         case .status: "Unplayed, In Progress, Played"
@@ -229,7 +237,7 @@ struct SmartPlaylistFilterEditor: View {
             return Array(Set(titles)).sorted {
                 $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
             }
-        case .downloaded, .archived:
+        case .downloaded, .archived, .savedForLater, .favorite:
             return ["Yes", "No"]
         case .status:
             return ["Unplayed", "In Progress", "Played"]

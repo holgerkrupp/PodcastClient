@@ -1136,6 +1136,10 @@ enum EpisodeSystemSuppressionReason: String, Codable, Sendable {
     var isArchived: Bool? = false
     var isHistory: Bool? = false
     var isInbox: Bool? = true
+    /// Personal triage flags. These are independent of queue, bookmark,
+    /// download, archive, and played state.
+    var isSavedForLater: Bool = false
+    var isFavorite: Bool = false
     
     var status: EpisodeStatus? = EpisodeStatus.inbox
     var systemSuppressionReasonRawValue: String?
