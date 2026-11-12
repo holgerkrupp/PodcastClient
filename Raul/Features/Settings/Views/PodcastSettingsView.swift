@@ -111,6 +111,7 @@ struct PodcastSettingsView: View {
     @AppStorage(PodcastNetworkPrivacyPolicy.settingKey, store: UserDefaults(suiteName: PodcastNetworkPrivacyPolicy.appGroupID) ?? .standard)
     private var networkTrackingProtectionEnabled = true
     @AppStorage("localSpotlightIndexingEnabled") private var localSpotlightIndexingEnabled = false
+    @AppStorage(LocalPersonAssociationStore.enabledKey) private var onDevicePersonSuggestionsEnabled = false
     @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
 #if os(macOS)
@@ -1118,6 +1119,13 @@ struct PodcastSettingsView: View {
 
     private func transcriptionSection(settings: PodcastSettings) -> some View {
         Section("Transcriptions") {
+            if podcast == nil {
+                Toggle("Suggest people from episode text", isOn: $onDevicePersonSuggestionsEnabled)
+                Text("Manually suggest hosts and guests from show notes or saved transcripts using an on-device language model. You review every suggestion; audio is never analyzed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Toggle(
                 "Save episode transcriptions",
                 isOn: Binding(

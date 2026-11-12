@@ -662,8 +662,13 @@ private struct EpisodeDetailPodcastLink: View {
 // competing with the episode's primary actions and show notes.
 private struct EpisodeDetailMetadataSections: View {
     let episode: Episode
+    @AppStorage(LocalPersonAssociationStore.enabledKey) private var onDevicePersonSuggestionsEnabled = false
     @State private var isPeopleExpanded = false
     @State private var isTechnicalExpanded = false
+
+    private var hasLocalPersonAssociations: Bool {
+        LocalPersonAssociationStore.associations(for: episode.url).isEmpty == false
+    }
 
     private var fallbackAuthor: String? {
         guard episode.people.isEmpty else { return nil }
@@ -678,7 +683,7 @@ private struct EpisodeDetailMetadataSections: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if episode.social.isEmpty == false || episode.people.isEmpty == false || fallbackAuthor != nil {
+            if episode.social.isEmpty == false || episode.people.isEmpty == false || fallbackAuthor != nil || onDevicePersonSuggestionsEnabled || hasLocalPersonAssociations {
                 DisclosureGroup("People & links", isExpanded: $isPeopleExpanded) {
                     VStack(alignment: .leading, spacing: 12) {
                         if episode.social.isEmpty == false {
@@ -686,6 +691,9 @@ private struct EpisodeDetailMetadataSections: View {
                         }
                         if episode.people.isEmpty == false || fallbackAuthor != nil {
                             PeopleView(people: episode.people, fallbackAuthor: fallbackAuthor, sourceFeedURL: episode.podcast?.feed)
+                        }
+                        if onDevicePersonSuggestionsEnabled || hasLocalPersonAssociations {
+                            PersonSuggestionPanel(episode: episode)
                         }
                     }
                     .padding(.top, 8)
