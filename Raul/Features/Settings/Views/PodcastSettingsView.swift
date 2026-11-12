@@ -114,6 +114,7 @@ struct PodcastSettingsView: View {
     @AppStorage(LocalPersonAssociationStore.enabledKey) private var onDevicePersonSuggestionsEnabled = false
     @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
+    @AppStorage("SimplifiedRows") private var simplifiedRowsEnabled = false
 #if os(macOS)
     @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
     private var isMacMenuBarPlayerEnabled = true
@@ -816,6 +817,13 @@ struct PodcastSettingsView: View {
     private var appearanceSection: some View {
 #if canImport(UIKit)
         return Section("Appearance") {
+            Toggle(isOn: $simplifiedRowsEnabled) {
+                SettingsControlLabel(
+                    title: "Simplified Rows",
+                    detail: "Show quieter podcast and episode rows without inline episode controls."
+                )
+            }
+
             NavigationLink {
                 VisualDesignSettingsView()
             } label: {
@@ -851,6 +859,13 @@ struct PodcastSettingsView: View {
 #elseif os(macOS)
         return Group {
             Section("Appearance") {
+                Toggle(isOn: $simplifiedRowsEnabled) {
+                    SettingsControlLabel(
+                        title: "Simplified Rows",
+                        detail: "Show quieter podcast and episode rows without inline episode controls."
+                    )
+                }
+
                 NavigationLink {
                     VisualDesignSettingsView()
                 } label: {

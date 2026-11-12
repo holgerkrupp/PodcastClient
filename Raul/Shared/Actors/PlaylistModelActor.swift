@@ -28,6 +28,7 @@ enum SmartShuffleResult: Sendable, Equatable {
 }
 
 actor PlaylistModelActor {
+    private var episodeURLsBeingAppended: Set<URL> = []
     enum RemovalOrigin: Sendable {
         case user
         case policyMaintenance
@@ -594,6 +595,24 @@ actor PlaylistModelActor {
         guard let playlist = try fetchPlaylist() else { return false }
         guard playlist.isSmartPlaylist == false else { return false }
         return try existingEntries(for: episodeURL, in: playlistID).isEmpty == false
+    }
+
+    /// Appends an episode only when it is not already in this playlist. The
+    /// in-flight guard keeps rapid row swipes from racing across the async
+    /// playback-state lookup in `add` and moving an existing entry to the end.
+    func appendIfAbsent(episodeURL: URL) async throws -> Bool {
+        guard episodeURLsBeingAppended.insert(episodeURL).inserted else { return false }
+        defer { episodeURLsBeingAppended.remove(episodeURL) }
+        guard try fetchEpisode(byURL: episodeURL) != nil else {
+            throw NSError(
+                domain: "PlaylistModelActor",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "Episode is no longer available"]
+            )
+        }
+        guard try containsEpisodeURL(episodeURL) == false else { return false }
+        try await add(episodeURL: episodeURL, to: .end)
+        return true
     }
     
     func insert(

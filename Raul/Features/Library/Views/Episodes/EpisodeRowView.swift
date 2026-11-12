@@ -16,17 +16,20 @@ struct EpisodeRowView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
+    @AppStorage("SimplifiedRows") private var simplifiedRowsEnabled = false
 
     @Bindable var episode: Episode
     let showsRemoveFromInboxAction: Bool
     let showsRemoveFromPlaylistAction: Bool
     let usesLivePlaybackProgress: Bool
     @State private var referenceAvailability = EpisodeReferenceAvailability()
-    @ScaledMetric(relativeTo: .body) private var rowHeight: CGFloat = 210
+    @ScaledMetric(relativeTo: .body) private var standardRowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeWidth: CGFloat = 300
     @ScaledMetric(relativeTo: .title3) private var nowPlayingBadgeHeight: CGFloat = 120
+
+    private var rowHeight: CGFloat { simplifiedRowsEnabled ? 112 : standardRowHeight }
 
     init(
         episode: Episode,
@@ -61,7 +64,21 @@ struct EpisodeRowView: View {
         let hasBookmarks = referenceAvailability.hasBookmarks
         let episodeTypeBadgeText = badgeText(for: episode.type)
 
-        let rowContent = VStack(alignment: .leading, spacing: 12) {
+        let rowContent = Group {
+            if simplifiedRowsEnabled {
+                simplifiedRow(
+                    podcastTitle: podcastTitle,
+                    publishText: publishText,
+                    timeDisplay: timeDisplay,
+                    completionDate: completionDate,
+                    isDownloaded: isDownloaded,
+                    episodeTypeBadgeText: episodeTypeBadgeText,
+                    hasBookmarks: hasBookmarks,
+                    hasTranscript: hasTranscript,
+                    hasChapters: hasChapters
+                )
+            } else {
+        VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
                         CoverImageView(episode: episode, maxPixelSize: 512)
@@ -157,6 +174,8 @@ struct EpisodeRowView: View {
                 }
             }
         .padding(8)
+            }
+        }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
@@ -239,6 +258,87 @@ struct EpisodeRowView: View {
             )
         }
 
+    }
+
+    @ViewBuilder
+    private func simplifiedRow(
+        podcastTitle: String,
+        publishText: String,
+        timeDisplay: String,
+        completionDate: Date?,
+        isDownloaded: Bool,
+        episodeTypeBadgeText: String?,
+        hasBookmarks: Bool,
+        hasTranscript: Bool,
+        hasChapters: Bool
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            ZStack(alignment: .topLeading) {
+                CoverImageView(episode: episode, maxPixelSize: 384)
+                    .frame(width: 84, height: 84)
+                    .accessibilityHidden(true)
+                if let episodeTypeBadgeText {
+                    Text(episodeTypeBadgeText)
+                        .font(.caption2.weight(.semibold))
+                        .padding(5)
+                        .background(.ultraThinMaterial, in: Capsule())
+                }
+                if hasBookmarks {
+                    Image(systemName: "bookmark.fill")
+                        .font(.caption)
+                        .padding(6)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .accessibilityLabel("Has bookmarks")
+                }
+            }
+            .frame(width: 84, height: 84)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(podcastTitle)
+                    .font(.caption)
+                    .esaForeground(.secondary)
+                    .lineLimit(1)
+                Text(episode.title)
+                    .font(.headline)
+                    .lineLimit(3)
+                    .esaForeground(.primary)
+                HStack(spacing: 8) {
+                    Text(timeDisplay)
+                    if completionDate != nil {
+                        Label("Played", systemImage: "checkmark.circle")
+                    } else if isDownloaded {
+                        Label("Downloaded", systemImage: "arrow.down.circle")
+                    }
+                    if hasChapters { Image(systemName: "list.bullet").accessibilityLabel("Has chapters") }
+                    if hasTranscript { Image(systemName: "quote.bubble").accessibilityLabel("Has transcript") }
+                    Spacer(minLength: 0)
+                    Text(publishText).lineLimit(1)
+                }
+                .font(.caption2)
+                .esaForeground(.secondary)
+            }
+            .frame(maxWidth: .infinity, minHeight: 84, alignment: .topLeading)
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
+        .background {
+            if visualStyle == .artwork && colorSchemeContrast == .standard {
+                Rectangle().fill(artworkBlurLevel.rowMaterial)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            EpisodeRowPlaybackProgressView(episode: episode, usesLivePlaybackProgress: usesLivePlaybackProgress)
+        }
+        .overlay(alignment: .topTrailing) {
+            if episode.url == Player.shared.currentEpisode?.url {
+                Label(Player.shared.isPlaying ? "Now Playing" : "Paused", systemImage: Player.shared.isPlaying ? "waveform" : "waveform.low")
+                    .font(.caption.weight(.semibold))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(8)
+            }
+        }
     }
 
     private struct EpisodeRowPlaybackProgressView: View {
@@ -345,6 +445,108 @@ struct EpisodeRowView: View {
     }
     
 
+}
+
+private struct EpisodeRowSwipeActionModifier: ViewModifier {
+    @Environment(\.modelContext) private var modelContext
+    @Environment(\.episodeControlPlaylists) private var playlists
+    @AppStorage(PlaylistPreferenceKeys.selectedPlaylistID) private var selectedPlaylistID = ""
+    @State private var statusMessage: String?
+
+    let episode: Episode
+
+    private var resolvedPlaylist: EpisodeControlPlaylist? {
+        if let id = UUID(uuidString: selectedPlaylistID),
+           let selected = playlists.first(where: { $0.id == id && !$0.isDefaultQueue }) {
+            return selected
+        }
+        return playlists.first(where: \.isDefaultQueue)
+            ?? playlists.first(where: { !$0.isDefaultQueue })
+    }
+
+    private var actionTitle: String {
+        guard let playlist = resolvedPlaylist, playlist.isDefaultQueue == false else {
+            return NSLocalizedString("Add to Up Next", comment: "Adds an episode to the default Up Next queue")
+        }
+        return String.localizedStringWithFormat(
+            NSLocalizedString("Add to %@", comment: "Adds an episode to a named playlist"),
+            playlist.title
+        )
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                Button {
+                    Task { await addToSelectedPlaylist() }
+                } label: {
+                    Label(actionTitle, systemImage: "text.line.last.and.arrowtriangle.forward")
+                }
+                .tint(.accentColor)
+            }
+            .contextMenu {
+                Button(actionTitle, systemImage: "text.line.last.and.arrowtriangle.forward") {
+                    Task { await addToSelectedPlaylist() }
+                }
+            }
+            .accessibilityAction(named: Text(actionTitle)) {
+                Task { await addToSelectedPlaylist() }
+            }
+            .overlay(alignment: .topTrailing) {
+                if let statusMessage {
+                    Text(statusMessage)
+                        .font(.caption.weight(.semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(8)
+                        .accessibilityAddTraits(.updatesFrequently)
+                }
+            }
+    }
+
+    @MainActor
+    private func addToSelectedPlaylist() async {
+        guard let episodeURL = episode.url else {
+            showStatus("Episode is unavailable")
+            return
+        }
+
+        do {
+            let playlistID = try Playlist.resolvedSelectedManualPlaylistID(in: modelContext)
+            let actor = try PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlistID)
+            if try await actor.appendIfAbsent(episodeURL: episodeURL) == false {
+                let title = playlists.first(where: { $0.id == playlistID })?.title ?? "Up Next"
+                showStatus(String.localizedStringWithFormat(
+                    NSLocalizedString("Already in %@", comment: "Indicates an episode is already in a playlist"),
+                    title
+                ))
+                return
+            }
+            showStatus(String.localizedStringWithFormat(
+                NSLocalizedString("Added the episode to %@.", comment: "Confirms adding an episode to a playlist"),
+                playlists.first(where: { $0.id == playlistID })?.title ?? "Up Next"
+            ))
+        } catch {
+            AppDiagnostics.log("[Playlist] Episode swipe addition failed (\(String(describing: type(of: error))))")
+            showStatus(NSLocalizedString("Couldn’t Add Episode", comment: "Reports that an episode could not be added to a playlist"))
+        }
+    }
+
+    @MainActor
+    private func showStatus(_ message: String) {
+        statusMessage = message
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            statusMessage = nil
+        }
+    }
+}
+
+extension View {
+    func episodeRowSwipeActions(for episode: Episode) -> some View {
+        modifier(EpisodeRowSwipeActionModifier(episode: episode))
+    }
 }
 
 private struct EpisodeReferenceAvailability: Equatable {

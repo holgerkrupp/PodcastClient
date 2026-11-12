@@ -50,6 +50,7 @@ struct AllEpisodesListView: View {
                             EmptyView()
                         }.opacity(0)
                     }
+                    .episodeRowSwipeActions(for: episode)
                     .listRowInsets(EdgeInsets())
                     .listRowSeparator(.hidden)
                     .onAppear {

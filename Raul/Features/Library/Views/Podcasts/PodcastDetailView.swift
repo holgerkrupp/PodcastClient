@@ -424,6 +424,7 @@ struct PodcastDetailView: View {
                             }.opacity(0)
                         }
                         .buttonStyle(.plain)
+                        .episodeRowSwipeActions(for: episode)
                         .accessibilityLabel("Open episode \(episode.title)")
                         .accessibilityHint("Opens this episode details screen")
                         .listRowSeparator(.hidden)

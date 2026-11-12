@@ -26652,6 +26652,54 @@
           }
         }
       }
+    },
+    "Already in %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bereits in %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déjà dans %@"
+          }
+        }
+      }
+    },
+    "Simplified Rows" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vereinfachte Zeilen"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lignes simplifiées"
+          }
+        }
+      }
+    },
+    "Show quieter podcast and episode rows without inline episode controls." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zeigt übersichtlichere Podcast- und Episodenzeilen ohne integrierte Steuerelemente."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Affiche des lignes de podcasts et d’épisodes plus épurées, sans commandes intégrées."
+          }
+        }
+      }
     }
   },
   "version" : "1.1"

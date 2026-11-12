@@ -27,6 +27,7 @@ struct DownloadedEpisodesView: View {
                             }.opacity(0)
                         }
                         .buttonStyle(.plain)
+                        .episodeRowSwipeActions(for: episode)
                         .accessibilityLabel("Open episode \(episode.title)")
                         .accessibilityHint("Opens this episode details screen")
                         .swipeActions(edge: .trailing, allowsFullSwipe: true) {

@@ -157,17 +157,18 @@ struct PodcastRowContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
+    @AppStorage("SimplifiedRows") private var simplifiedRowsEnabled = false
     @ScaledMetric(relativeTo: .body) private var comfortableRowHeight: CGFloat = 140
     @ScaledMetric(relativeTo: .body) private var comfortableArtworkSize: CGFloat = 112
     @ScaledMetric(relativeTo: .body) private var compactRowHeight: CGFloat = 72
     @ScaledMetric(relativeTo: .body) private var compactArtworkSize: CGFloat = 56
 
     private var rowHeight: CGFloat {
-        density == .compact ? compactRowHeight : comfortableRowHeight
+        density == .compact ? compactRowHeight : (simplifiedRowsEnabled ? 104 : comfortableRowHeight)
     }
 
     private var artworkSize: CGFloat {
-        density == .compact ? compactArtworkSize : comfortableArtworkSize
+        density == .compact ? compactArtworkSize : (simplifiedRowsEnabled ? 76 : comfortableArtworkSize)
     }
 
     private var summaryLineLimit: Int {
@@ -284,14 +285,14 @@ struct PodcastRowContentView: View {
                         .lineLimit(1)
                 }
 
-                if let context = presentation.context {
+                if simplifiedRowsEnabled == false, let context = presentation.context {
                     Text(context)
                         .font(.caption)
                         .esaForeground(.secondary)
                         .lineLimit(1)
                 }
 
-                if let summary = presentation.summary {
+                if simplifiedRowsEnabled == false, let summary = presentation.summary {
                     Text(summary)
                         .font(.caption)
                         .esaForeground(.secondary)

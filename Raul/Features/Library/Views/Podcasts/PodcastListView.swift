@@ -478,6 +478,7 @@ struct SideLoadedEpisodesView: View {
                                         }
                                         .opacity(0)
                                     }
+                                    .episodeRowSwipeActions(for: episode)
                                     .listRowInsets(.init(top: 0,
                                                          leading: 0,
                                                          bottom: 0,

@@ -114,6 +114,7 @@ struct InboxListView: View {
                             }.opacity(0)
                         }
                         .buttonStyle(.plain)
+                        .episodeRowSwipeActions(for: episode)
                         .accessibilityLabel("Open episode \(episode.title)")
                         .accessibilityHint("Opens this episode details screen")
                         .swipeActions(edge: .trailing){
@@ -421,6 +422,7 @@ private struct TriageEpisodeListView: View {
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) { EmptyView() }
                             .opacity(0)
                     }
+                    .episodeRowSwipeActions(for: episode)
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                         Button {
                             Task {
