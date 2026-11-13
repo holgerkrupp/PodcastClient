@@ -31,7 +31,7 @@ struct InboxView: View {
     @State private var selectedSection: InboxSection = .inbox
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: 12) {
             Picker("Inbox section", selection: $selectedSection) {
                 ForEach(InboxSection.allCases) { section in
                     Text(section.title).tag(section)
