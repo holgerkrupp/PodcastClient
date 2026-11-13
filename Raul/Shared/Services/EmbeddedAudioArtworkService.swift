@@ -22,9 +22,13 @@ actor EmbeddedAudioArtworkService {
 
     private var inFlight: [String: Task<UIImage?, Never>] = [:]
 
+    nonisolated static func cachedThumbnail(for fileURL: URL, maxPixelSize: CGFloat) -> UIImage? {
+        guard let key = thumbnailKey(for: fileURL, maxPixelSize: maxPixelSize) else { return nil }
+        return thumbnailCache.object(forKey: key as NSString)
+    }
+
     func thumbnail(for fileURL: URL, maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize) async -> UIImage? {
-        guard let fingerprint = Self.fingerprint(for: fileURL) else { return nil }
-        let key = "\(fingerprint)|max:\(Int(maxPixelSize.rounded(.up)))"
+        guard let key = Self.thumbnailKey(for: fileURL, maxPixelSize: maxPixelSize) else { return nil }
         if let cached = Self.thumbnailCache.object(forKey: key as NSString) { return cached }
         if let task = inFlight[key] { return await task.value }
 
@@ -46,6 +50,11 @@ actor EmbeddedAudioArtworkService {
             )
         }
         return image
+    }
+
+    private nonisolated static func thumbnailKey(for fileURL: URL, maxPixelSize: CGFloat) -> String? {
+        guard let fingerprint = fingerprint(for: fileURL) else { return nil }
+        return "\(fingerprint)|max:\(Int(maxPixelSize.rounded(.up)))"
     }
 
     /// Shared by sideloaded metadata import and player fallback.

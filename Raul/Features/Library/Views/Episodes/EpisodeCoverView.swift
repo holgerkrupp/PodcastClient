@@ -11,6 +11,8 @@ import UIKit
 #endif
 
 struct CoverImageView: View {
+    nonisolated static let episodeRowMaxPixelSize: CGFloat = 512
+
     var episode: Episode? = nil
     var podcast: Podcast? = nil
     var imageURL: URL? = nil
