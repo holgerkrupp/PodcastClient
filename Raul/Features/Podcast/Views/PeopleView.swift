@@ -137,7 +137,7 @@ private struct PersonEpisodesView: View {
         NavigationStack {
             List {
                 Section("Publisher-provided credits in your library") {
-                    ForEach(episodes, id: \.persistentModelID) { episode in
+                    ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                         NavigationLink {
                             EpisodeDetailView(episode: episode)
                         } label: {
@@ -148,6 +148,11 @@ private struct PersonEpisodesView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
+                        .listRowBackground(
+                            EpisodeRowGroupPosition(index: index, count: episodes.count)
+                                .backgroundShape
+                                .fill(.regularMaterial)
+                        )
                     }
                 }
             }

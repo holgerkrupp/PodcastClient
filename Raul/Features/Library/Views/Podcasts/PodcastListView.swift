@@ -470,9 +470,12 @@ struct SideLoadedEpisodesView: View {
                                     .listRowBackground(Color.clear)
                                     .listRowInsets(.init(top: 8, leading: 16, bottom: 8, trailing: 16))
                             } else {
-                                ForEach(importedEpisodes, id: \.persistentModelID) { episode in
+                                ForEach(Array(importedEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                                     ZStack {
-                                        EpisodeRowView(episode: episode)
+                                        EpisodeRowView(
+                                            episode: episode,
+                                            groupPosition: EpisodeRowGroupPosition(index: index, count: importedEpisodes.count)
+                                        )
                                         NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                             EmptyView()
                                         }

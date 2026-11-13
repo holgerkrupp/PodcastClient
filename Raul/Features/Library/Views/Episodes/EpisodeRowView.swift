@@ -8,6 +8,40 @@ import SwiftUI
 import ESADesignKit
 import Combine
 
+enum EpisodeRowGroupPosition: Equatable {
+    case single
+    case first
+    case middle
+    case last
+
+    init(index: Int, count: Int) {
+        if count <= 1 {
+            self = .single
+        } else if index == 0 {
+            self = .first
+        } else if index == count - 1 {
+            self = .last
+        } else {
+            self = .middle
+        }
+    }
+
+    var backgroundShape: UnevenRoundedRectangle {
+        let radius: CGFloat = 14
+        let top = self == .single || self == .first
+        let bottom = self == .single || self == .last
+        return UnevenRoundedRectangle(
+            cornerRadii: .init(
+                topLeading: top ? radius : 0,
+                bottomLeading: bottom ? radius : 0,
+                bottomTrailing: bottom ? radius : 0,
+                topTrailing: top ? radius : 0
+            ),
+            style: .continuous
+        )
+    }
+}
+
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
@@ -22,6 +56,7 @@ struct EpisodeRowView: View {
     let showsRemoveFromInboxAction: Bool
     let showsRemoveFromPlaylistAction: Bool
     let usesLivePlaybackProgress: Bool
+    let groupPosition: EpisodeRowGroupPosition
     @State private var referenceAvailability = EpisodeReferenceAvailability()
     @ScaledMetric(relativeTo: .body) private var standardRowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
@@ -35,7 +70,8 @@ struct EpisodeRowView: View {
         episode: Episode,
         showsRemoveFromInboxAction: Bool = false,
         showsRemoveFromPlaylistAction: Bool = false,
-        usesLivePlaybackProgress: Bool = false
+        usesLivePlaybackProgress: Bool = false,
+        groupPosition: EpisodeRowGroupPosition = .single
     ) {
         self._episode = Bindable(wrappedValue: episode)
         self._referenceAvailability = State(
@@ -44,6 +80,7 @@ struct EpisodeRowView: View {
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
         self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
         self.usesLivePlaybackProgress = usesLivePlaybackProgress
+        self.groupPosition = groupPosition
     }
   
     
@@ -179,7 +216,7 @@ struct EpisodeRowView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(artworkBlurLevel.rowMaterial)
+                groupPosition.backgroundShape.fill(artworkBlurLevel.rowMaterial)
             }
         }
         .background {
@@ -190,7 +227,7 @@ struct EpisodeRowView: View {
                 maxPixelSize: 512
             )
             .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
-            .clipped()
+            .clipShape(groupPosition.backgroundShape)
             .accessibilityHidden(true)
             }
         }
@@ -256,6 +293,10 @@ struct EpisodeRowView: View {
                 image: episode.imageURL ?? episode.podcast?.imageURL,
                 minHeight: rowHeight
             )
+            // The list attaches swipe and context actions outside this view. Clip
+            // only the rendered row surface here so those interactions survive.
+            .clipShape(groupPosition.backgroundShape)
+            .contentShape(Rectangle())
         }
 
     }
@@ -323,7 +364,7 @@ struct EpisodeRowView: View {
         .frame(maxWidth: .infinity, minHeight: 104, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(artworkBlurLevel.rowMaterial)
+                groupPosition.backgroundShape.fill(artworkBlurLevel.rowMaterial)
             }
         }
         .overlay(alignment: .bottomLeading) {

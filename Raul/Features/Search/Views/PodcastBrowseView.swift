@@ -352,12 +352,13 @@ struct PodcastBrowseView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                 } else {
-                    ForEach(viewModel.episodes) { episode in
+                    ForEach(Array(viewModel.episodes.enumerated()), id: \.element.id) { index, episode in
                         PodcastBrowseEpisodeRowView(
                             episode: episode,
                             podcastFeed: viewModel.podcastFeed,
                             isSubscribed: viewModel.isSubscribed,
                             isPlaying: viewModel.playingEpisodeID == episode.id,
+                            groupPosition: EpisodeRowGroupPosition(index: index, count: viewModel.episodes.count),
                             queueAction: { position in
                                 await viewModel.queue(episode, to: position)
                             },
@@ -638,6 +639,7 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
     let podcastFeed: PodcastFeed
     let isSubscribed: Bool
     let isPlaying: Bool
+    let groupPosition: EpisodeRowGroupPosition
     let queueAction: (Playlist.Position) async -> Bool
     let playAction: () async -> Bool
     let prepareAction: () async throws -> URL
@@ -663,6 +665,7 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
             && lhs.podcastFeed.previewRefreshID == rhs.podcastFeed.previewRefreshID
             && lhs.isSubscribed == rhs.isSubscribed
             && lhs.isPlaying == rhs.isPlaying
+            && lhs.groupPosition == rhs.groupPosition
     }
 
     private var displayTime: String {
@@ -873,6 +876,8 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
                 .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
                 .accessibilityHidden(true)
         }
+        .clipShape(groupPosition.backgroundShape)
+        .contentShape(Rectangle())
     }
 }
 

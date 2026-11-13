@@ -416,9 +416,12 @@ struct PodcastDetailView: View {
                         .listRowBackground(Color.clear)
                     }
                 } else {
-                    ForEach(visibleFilteredEpisodes, id: \.persistentModelID) { episode in
+                    ForEach(Array(visibleFilteredEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                         ZStack {
-                            EpisodeRowView(episode: episode)
+                            EpisodeRowView(
+                                episode: episode,
+                                groupPosition: EpisodeRowGroupPosition(index: index, count: visibleFilteredEpisodes.count)
+                            )
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
                             }.opacity(0)

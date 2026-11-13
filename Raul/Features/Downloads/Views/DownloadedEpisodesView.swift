@@ -18,9 +18,12 @@ struct DownloadedEpisodesView: View {
                 ContentUnavailableView("No Downloads", systemImage: "arrow.down.circle", description: Text("Episodes you download will appear here."))
             } else {
                 Section {
-                    ForEach(downloadedEpisodes, id: \.persistentModelID) { episode in
+                    ForEach(Array(downloadedEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                         ZStack{
-                            EpisodeRowView(episode: episode)
+                            EpisodeRowView(
+                                episode: episode,
+                                groupPosition: EpisodeRowGroupPosition(index: index, count: downloadedEpisodes.count)
+                            )
 
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()

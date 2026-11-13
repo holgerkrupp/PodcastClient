@@ -20,9 +20,13 @@ struct SmartPlaylistPageView: View {
 
     let playlist: Playlist
 
+    private var displayedEpisodes: [Episode] {
+        matchingEpisodes.filter { $0.url != nil }
+    }
+
     var body: some View {
         Group {
-            if matchingEpisodes.isEmpty {
+            if displayedEpisodes.isEmpty {
                 if isLoadingMatches {
                     List {
                         ProgressView("Finding episodes…")
@@ -59,19 +63,19 @@ struct SmartPlaylistPageView: View {
                     }
 
                     Section {
-                        Text("\(matchingEpisodes.count) matching episodes")
+                        Text("\(displayedEpisodes.count) matching episodes")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
                     .listRowSeparator(.hidden)
 
-                    ForEach(Array(matchingEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
-                        if episode.url != nil {
+                    ForEach(Array(displayedEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                             ZStack {
                                 EpisodeRowView(
                                     episode: episode,
                                     showsRemoveFromPlaylistAction: false,
-                                    usesLivePlaybackProgress: index == 0
+                                    usesLivePlaybackProgress: index == 0,
+                                    groupPosition: EpisodeRowGroupPosition(index: index, count: displayedEpisodes.count)
                                 )
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
@@ -85,7 +89,6 @@ struct SmartPlaylistPageView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                        }
                     }
                 }
                 .listStyle(.plain)

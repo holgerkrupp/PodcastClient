@@ -499,7 +499,7 @@ private struct MacSelectedPlaylistView: View {
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                List(upcomingEntries) { entry in
+                List(Array(upcomingEntries.enumerated()), id: \.element.id) { index, entry in
                     if let episode = entry.episode {
                         Button {
                             Task {
@@ -509,6 +509,11 @@ private struct MacSelectedPlaylistView: View {
                             MacPlaylistEpisodeRow(episode: episode)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(
+                            EpisodeRowGroupPosition(index: index, count: upcomingEntries.count)
+                                .backgroundShape
+                                .fill(.regularMaterial)
+                        )
                         .listRowSeparator(.visible)
                     }
                 }

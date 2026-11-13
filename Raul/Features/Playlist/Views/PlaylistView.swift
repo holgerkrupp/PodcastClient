@@ -332,9 +332,11 @@ private struct ManualPlaylistPageView: View {
         playlistEntries.compactMap(\.episode)
     }
 
-    private var hasRenderableEpisodes: Bool {
-        episodes.contains { $0.url != nil }
+    private var displayedEpisodes: [Episode] {
+        episodes.filter { $0.url != nil }
     }
+
+    private var hasRenderableEpisodes: Bool { displayedEpisodes.isEmpty == false }
 
     var body: some View {
         Group {
@@ -350,13 +352,17 @@ private struct ManualPlaylistPageView: View {
                     TipView(reorderTip, arrowEdge: .none)
                         .listRowSeparator(.hidden)
 
+                    let displayedEpisodePositions = Dictionary(uniqueKeysWithValues: displayedEpisodes.enumerated().map {
+                        ($0.element.persistentModelID, $0.offset)
+                    })
                     ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
-                        if episode.url != nil {
+                        if episode.url != nil, let displayedIndex = displayedEpisodePositions[episode.persistentModelID] {
                             ZStack {
                                 EpisodeRowView(
                                     episode: episode,
                                     showsRemoveFromPlaylistAction: true,
-                                    usesLivePlaybackProgress: index == 0
+                                    usesLivePlaybackProgress: displayedIndex == 0,
+                                    groupPosition: EpisodeRowGroupPosition(index: displayedIndex, count: displayedEpisodes.count)
                                 )
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()

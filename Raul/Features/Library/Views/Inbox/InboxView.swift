@@ -103,11 +103,12 @@ struct InboxListView: View {
                 }
             } else {
                 List {
-                    ForEach(episodes, id: \.persistentModelID) { episode in
+                    ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                         ZStack{
                             EpisodeRowView(
                                 episode: episode,
-                                showsRemoveFromInboxAction: true
+                                showsRemoveFromInboxAction: true,
+                                groupPosition: EpisodeRowGroupPosition(index: index, count: episodes.count)
                             )
                             NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                 EmptyView()
@@ -416,9 +417,12 @@ private struct TriageEpisodeListView: View {
                         : "Favorite episodes from Inbox or episode actions to find them here.")
                 )
             } else {
-                List(episodes, id: \.persistentModelID) { episode in
+                List(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
                     ZStack {
-                        EpisodeRowView(episode: episode)
+                        EpisodeRowView(
+                            episode: episode,
+                            groupPosition: EpisodeRowGroupPosition(index: index, count: episodes.count)
+                        )
                         NavigationLink(destination: EpisodeDetailView(episode: episode)) { EmptyView() }
                             .opacity(0)
                     }
