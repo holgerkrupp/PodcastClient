@@ -41,10 +41,11 @@ struct WaveformView: View {
     private static let minWindowSpan: Double = 2.0
     // Shortest clip the handles will let the user create.
     private static let minSelectionSpan: Double = 1.0
-    // The handles are drawn narrow but grabbed wide: a 5pt target was the main reason
-    // placing a marker felt fiddly.
-    private static let handleWidth: CGFloat = 11
-    private static let handleHitWidth: CGFloat = 44
+    // Keep the handles visually prominent while giving each a comfortable touch target.
+    private static let handleWidth: CGFloat = 22
+    private static let handleHitWidth: CGFloat = 52
+    // Keep the full cap inside the waveform with a small visible gutter beyond it.
+    private static var handleInset: CGFloat { handleWidth }
     // While dragging a marker, holding the finger this close to an edge scrolls the window.
     private static let edgeScrollZone: CGFloat = 34
     // Fastest auto-scroll, as a fraction of the visible span per second.
@@ -118,7 +119,7 @@ struct WaveformView: View {
             }
             .contentShape(Rectangle())
             .gesture(panGesture(width: width))
-            .simultaneousGesture(zoomGesture())
+            .simultaneousGesture(zoomGesture(width: width))
             .onTapGesture(count: 2) { zoomToSelection() }
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .onAppear { viewWidth = width }
@@ -160,13 +161,14 @@ struct WaveformView: View {
     private func bars(width: CGFloat, height: CGFloat) -> some View {
         let spacing: CGFloat = 1
         let count = max(samples.count, 1)
-        let barWidth = max((width - spacing * CGFloat(count - 1)) / CGFloat(count), 1)
+        let contentWidth = max(width - Self.handleInset * 2, 1)
+        let barWidth = max((contentWidth - spacing * CGFloat(count - 1)) / CGFloat(count), 1)
         // Transform that maps the bars (laid out for windowStart...windowEnd) onto the
         // currently visible window, so they slide/scale live under the gesture without
         // waiting for a reload.
         let loadedSpan = max(windowEnd - windowStart, 0.0001)
         let barsScale = loadedSpan / visibleSpan
-        let barsOffset = width * CGFloat((windowStart - visibleStart) / visibleSpan)
+        let barsOffset = contentWidth * CGFloat((windowStart - visibleStart) / visibleSpan)
 
         return HStack(spacing: spacing) {
             ForEach(samples.indices, id: \.self) { index in
@@ -175,10 +177,10 @@ struct WaveformView: View {
                     .frame(width: barWidth, height: max(2, CGFloat(samples[index]) * (height - 8)))
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: contentWidth, height: height)
         .animation(reduceMotion ? nil : .easeInOut, value: samples)
         .scaleEffect(x: barsScale, y: 1, anchor: .leading)
-        .offset(x: barsOffset)
+        .offset(x: Self.handleInset + barsOffset)
         // The pan/zoom transform must snap instantly to match the live gesture and to
         // disappear the moment freshly decoded samples land — animating it (e.g. via an
         // ancestor's `.animation(value:)`) makes the zoomed-in waveform visibly shrink
@@ -229,20 +231,15 @@ struct WaveformView: View {
         let isActive = dragTarget == target
         return ZStack {
             RoundedRectangle(cornerRadius: Self.handleWidth / 2, style: .continuous)
-                .fill(Color.accentColor)
+                .fill(Color.accent)
                 .frame(width: Self.handleWidth, height: height)
                 .overlay {
-                    // Grip lines make the bar read as something you can grab.
-                    VStack(spacing: 3) {
-                        ForEach(0..<3, id: \.self) { _ in
-                            Capsule()
-                                .fill(Color.black.opacity(0.45))
-                                .frame(width: 1.5, height: 3)
-                        }
-                    }
+                    Image(systemName: target == .start ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
                 }
-                .shadow(color: .black.opacity(0.5), radius: 3)
-                .scaleEffect(isActive ? 1.15 : 1, anchor: .center)
+                .shadow(color: .black.opacity(0.5), radius: 4)
+                .scaleEffect(isActive ? 1.12 : 1, anchor: .center)
                 .animation(reduceMotion ? nil : .spring(duration: 0.2), value: isActive)
         }
         .frame(width: Self.handleHitWidth, height: height)
@@ -336,11 +333,13 @@ struct WaveformView: View {
     private func updateEdgeScroll(width: CGFloat) {
         let span = visibleSpan
         var velocity: Double = 0
-        if pointerX < Self.edgeScrollZone {
-            let intensity = Double((Self.edgeScrollZone - max(pointerX, 0)) / Self.edgeScrollZone).clamped(to: 0...1)
+        let leftEdge = Self.handleInset + Self.edgeScrollZone
+        let rightEdge = width - Self.handleInset - Self.edgeScrollZone
+        if pointerX < leftEdge {
+            let intensity = Double((leftEdge - max(pointerX, Self.handleInset)) / Self.edgeScrollZone).clamped(to: 0...1)
             velocity = -intensity * span * Self.maxEdgeScrollRate
-        } else if pointerX > width - Self.edgeScrollZone {
-            let intensity = Double((pointerX - (width - Self.edgeScrollZone)) / Self.edgeScrollZone).clamped(to: 0...1)
+        } else if pointerX > rightEdge {
+            let intensity = Double((pointerX - rightEdge) / Self.edgeScrollZone).clamped(to: 0...1)
             velocity = intensity * span * Self.maxEdgeScrollRate
         }
         edgeScrollVelocity = velocity
@@ -391,7 +390,8 @@ struct WaveformView: View {
                 let base = panBaseWindow ?? (visibleStart, visibleEnd)
                 if panBaseWindow == nil { panBaseWindow = base }
                 let span = base.end - base.start
-                let timePerPixel = span / Double(width)
+                let contentWidth = max(width - Self.handleInset * 2, 1)
+                let timePerPixel = span / Double(contentWidth)
                 // Dragging right reveals earlier content; dragging left reveals later content.
                 let deltaTime = -Double(value.translation.width) * timePerPixel
                 let clamped = clampedWindow(newStart: base.start + deltaTime, newEnd: base.end + deltaTime)
@@ -407,7 +407,7 @@ struct WaveformView: View {
 
     // Pinch: zoom in/out around the point between the fingers, so the moment under the
     // pinch stays put instead of drifting toward the centre.
-    private func zoomGesture() -> some Gesture {
+    private func zoomGesture(width: CGFloat) -> some Gesture {
         MagnifyGesture()
             .onChanged { value in
                 let base = pinchBaseWindow ?? (visibleStart, visibleEnd)
@@ -419,7 +419,8 @@ struct WaveformView: View {
                     panBaseWindow = nil
                 }
                 let originalSpan = base.end - base.start
-                let anchor = Double(value.startAnchor.x).clamped(to: 0...1)
+                let anchor = ((value.startAnchor.x * width - Self.handleInset) / max(width - Self.handleInset * 2, 1))
+                    .clamped(to: 0...1)
                 let anchorTime = base.start + originalSpan * anchor
                 let minSpan = min(Self.minWindowSpan, fullDuration)
                 let maxSpan = max(fullDuration, minSpan)
@@ -474,12 +475,12 @@ struct WaveformView: View {
 
     /// Horizontal position of a time within the live visible window.
     private func x(for time: Double, width: CGFloat) -> CGFloat {
-        CGFloat((time - visibleStart) / visibleSpan) * width
+        Self.handleInset + CGFloat((time - visibleStart) / visibleSpan) * max(width - Self.handleInset * 2, 1)
     }
 
     /// Time at a horizontal position within the live visible window.
     private func time(forX x: CGFloat, width: CGFloat) -> Double {
-        visibleStart + Double(x / max(width, 1)) * visibleSpan
+        visibleStart + Double((x - Self.handleInset) / max(width - Self.handleInset * 2, 1)) * visibleSpan
     }
 
     // MARK: - Formatting

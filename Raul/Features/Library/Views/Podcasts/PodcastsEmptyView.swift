@@ -13,7 +13,7 @@ struct PodcastsEmptyView: View {
             Text("Your Library is empty")
                 .font(.headline)
             Divider()
-            Text("You have not subscribed to any podcasts yet. Tap the + Button in the bottom right corner to subscribe to some podcasts. You can import a OPML File, search the directory or browse for trending podcasts in different languages.")
+            Text("You have not subscribed to any podcasts yet. Tap the \(Image(systemName: "magnifyingglass")) button in the bottom right corner to subscribe to some podcasts. You can import an OPML file, search the directory or browse for trending podcasts in different languages.")
         }
         .padding()
     }

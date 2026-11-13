@@ -14,6 +14,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
     @Published private(set) var snapshot: WatchSyncSnapshot
     @Published private(set) var downloadedFiles: [String: String]
     @Published private(set) var usedStorageBytes: Int64 = 0
+    @Published private(set) var isPhoneReachable = false
     @Published private(set) var downloadingEpisodeIDs: Set<String> = []
     @Published private(set) var downloadProgressByEpisodeID: [String: Double] = [:]
     @Published var storageSettings: WatchStorageSettings
@@ -39,6 +40,7 @@ final class WatchSyncStore: NSObject, ObservableObject {
 
         super.init()
 
+        isPhoneReachable = session?.isReachable ?? false
         pruneMissingDownloads()
         recalculateStorageUsage()
         enforceStorageLimit()
@@ -72,10 +74,6 @@ final class WatchSyncStore: NSObject, ObservableObject {
 
     var isRemoteControlEnabled: Bool {
         playbackMode == .remotePhone
-    }
-
-    var isPhoneReachable: Bool {
-        session?.isReachable ?? false
     }
 
     var phonePlaybackState: WatchPhonePlaybackState? {
@@ -1384,6 +1382,7 @@ extension WatchSyncStore: WCSessionDelegate {
     nonisolated func sessionReachabilityDidChange(_ session: WCSession) {
         let isReachable = session.isReachable
         Task { @MainActor in
+            self.isPhoneReachable = isReachable
             if isReachable {
                 sendStorageReport(force: true)
                 requestSnapshot()

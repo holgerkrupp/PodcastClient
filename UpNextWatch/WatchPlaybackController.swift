@@ -17,6 +17,7 @@ final class WatchPlaybackController: ObservableObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     private var playbackStatusObservation: NSKeyValueObservation?
     private var playbackRateObservation: NSKeyValueObservation?
     private var remoteProgressTimer: Timer?
@@ -493,6 +494,17 @@ final class WatchPlaybackController: ObservableObject {
             let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
             Task { @MainActor in
                 self?.handleAudioSessionInterruption(typeValue: typeValue)
+            }
+        }
+
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                // Re-evaluate the volume affordance when the active output changes.
+                self?.objectWillChange.send()
             }
         }
     }

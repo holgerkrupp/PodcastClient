@@ -114,6 +114,8 @@ struct PodcastSettingsView: View {
     @AppStorage(LocalPersonAssociationStore.enabledKey) private var onDevicePersonSuggestionsEnabled = false
     @AppStorage(UpNextVisualDesignPreference.storageKey, store: UpNextVisualDesignPreference.appDefaults())
     private var visualStyleRawValue = ESAVisualStyle.artwork.rawValue
+    @AppStorage(UpNextVisualDesignPreference.shownoteLinkPreviewsKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var shownoteLinkPreviewsEnabled = true
     @AppStorage("SimplifiedRows") private var simplifiedRowsEnabled = false
 #if os(macOS)
     @AppStorage(MacMenuBarPlayerPreferenceKeys.isEnabled)
@@ -835,6 +837,13 @@ struct PodcastSettingsView: View {
                 )
             }
 
+            Toggle(isOn: $shownoteLinkPreviewsEnabled) {
+                SettingsControlLabel(
+                    title: "Show link previews in shownotes",
+                    detail: "Replace supported social, podcast, and episode links with preview cards."
+                )
+            }
+
             NavigationLink {
                 AppIconSelectionView(
                     selectedAppIconID: $selectedAppIconID,
@@ -874,6 +883,13 @@ struct PodcastSettingsView: View {
                         summary: UpNextVisualDesignPreference.displayName(for: ESAVisualStyle(rawValue: visualStyleRawValue) ?? .artwork),
                         detail: "Choose how podcast artwork and colors appear across Up Next.",
                         systemImage: "circle.lefthalf.filled"
+                    )
+                }
+
+                Toggle(isOn: $shownoteLinkPreviewsEnabled) {
+                    SettingsControlLabel(
+                        title: "Show link previews in shownotes",
+                        detail: "Replace supported social, podcast, and episode links with preview cards."
                     )
                 }
             }

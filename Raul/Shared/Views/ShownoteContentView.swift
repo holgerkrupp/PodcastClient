@@ -17,6 +17,8 @@ struct ShownoteContentView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaThemePalette) private var themePalette
+    @AppStorage(UpNextVisualDesignPreference.shownoteLinkPreviewsKey, store: UpNextVisualDesignPreference.appDefaults())
+    private var shownoteLinkPreviewsEnabled = true
     private let html: String
     @State private var document: ShownoteDocument?
     @State private var enrichmentResults: [URL: ShownoteEnrichmentResult] = [:]
@@ -30,7 +32,7 @@ struct ShownoteContentView: View {
             if let document {
                 // The full document uses one WebKit surface. When native cards
                 // are inserted, the surrounding fragments use native text.
-                if ShownoteRenderingPolicy.needsEnrichedBlocks(
+                if shownoteLinkPreviewsEnabled && ShownoteRenderingPolicy.needsEnrichedBlocks(
                     in: document,
                     enrichmentResults: enrichmentResults
                 ) {

@@ -12,6 +12,7 @@ import AppKit
 enum UpNextVisualDesignPreference {
     static let storageKey = "upNext.visualDesign"
     static let artworkBlurLevelKey = "upNext.artworkBackgroundBlurLevel.v1"
+    static let shownoteLinkPreviewsKey = "upNext.shownoteLinkPreviews.v1"
     static let uniformColorKey = "upNext.uniformColorRGB"
     static let widgetAppearanceKey = "upNext.widgetAppearance.v1"
     static let appGroupID = "group.de.holgerkrupp.PodcastClient"

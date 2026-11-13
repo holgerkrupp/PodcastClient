@@ -1,5 +1,7 @@
 import SwiftUI
 import UIKit
+import AVFoundation
+import WatchKit
 
 extension Color {
     static let upNextAccent = Color("AccentColor")
@@ -161,6 +163,12 @@ struct WatchPlayerView: View {
                                 .accessibilityValue(playback.formattedPlaybackRate(for: episode))
                                 .accessibilityHint("Double tap to cycle playback speed")
                             }
+
+                            WatchPlayerVolumeRow(
+                                canAdjustVolume: canAdjustVolume(for: episode),
+                                unavailableMessage: "Volume is available while the selected audio source is connected and playing.",
+                                origin: store.isRemoteControlEnabled ? .companion : .local
+                            )
                         }
                         
                         WatchArtworkView(
@@ -261,6 +269,68 @@ struct WatchPlayerView: View {
             }
         }
     }
+
+    private func canAdjustVolume(for episode: WatchSyncEpisode) -> Bool {
+        guard playback.isCurrentEpisode(episode), playback.isActivelyPlaying(episode) else { return false }
+
+        if store.isRemoteControlEnabled {
+            return store.isPhoneReachable
+                && store.hasRecentPhonePlaybackState
+                && store.phonePlaybackState?.isPlaying == true
+        }
+
+        return AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty == false
+    }
+
+}
+
+private struct WatchPlayerVolumeRow: View {
+    let canAdjustVolume: Bool
+    let unavailableMessage: String
+    let origin: WKInterfaceVolumeControl.Origin
+
+    var body: some View {
+        Group {
+            if canAdjustVolume {
+                HStack(spacing: 8) {
+                    Image(systemName: "speaker.wave.2.fill")
+                        .accessibilityHidden(true)
+                    Text("Volume")
+                        .font(.footnote.weight(.medium))
+                    Spacer(minLength: 4)
+                    NativeWatchVolumeControl(origin: origin)
+                        .id(origin)
+                        .frame(width: 48, height: 32)
+                        .accessibilityLabel("Volume")
+                        .accessibilityHint("Adjust volume with the Digital Crown")
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    Label("Volume", systemImage: "speaker.wave.2.fill")
+                        .font(.footnote.weight(.medium))
+                        .labelStyle(.titleAndIcon)
+                    Text(unavailableMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.white.opacity(0.68))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
+    }
+}
+
+private struct NativeWatchVolumeControl: WKInterfaceObjectRepresentable {
+    let origin: WKInterfaceVolumeControl.Origin
+
+    func makeWKInterfaceObject(context: Context) -> WKInterfaceVolumeControl {
+        WKInterfaceVolumeControl(origin: origin)
+    }
+
+    func updateWKInterfaceObject(_ object: WKInterfaceVolumeControl, context: Context) {}
 }
 
 struct WatchAppBackground: View {
