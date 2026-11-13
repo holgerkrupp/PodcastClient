@@ -132,8 +132,12 @@ private struct PodcastCategoryViewLeaf: View {
                 }
             } else {
                 List {
-                    ForEach(viewModel.podcasts, id: \.self) { podcast in
-                        SubscribeToPodcastView(newPodcastFeed: podcast, existingPodcast: existingPodcast(for: podcast))
+                    ForEach(Array(viewModel.podcasts.enumerated()), id: \.element) { index, podcast in
+                        SubscribeToPodcastView(
+                            newPodcastFeed: podcast,
+                            existingPodcast: existingPodcast(for: podcast),
+                            groupPosition: GroupedListRowPosition(index: index, count: viewModel.podcasts.count)
+                        )
                             .modelContext(context)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)

@@ -121,8 +121,11 @@ struct DebugReleaseCalendarView: View {
                     )
                     .listRowSeparator(.hidden)
                 } else {
-                    ForEach(selectedDayReleases) { release in
-                        navigableReleaseRow(release)
+                    ForEach(Array(selectedDayReleases.enumerated()), id: \.element.id) { index, release in
+                        navigableReleaseRow(
+                            release,
+                            groupPosition: GroupedListRowPosition(index: index, count: selectedDayReleases.count)
+                        )
                     }
                 }
             } header: {
@@ -147,8 +150,11 @@ struct DebugReleaseCalendarView: View {
                 LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                     ForEach(releaseDays) { day in
                         Section {
-                            ForEach(day.releases) { release in
-                                navigableReleaseRow(release)
+                            ForEach(Array(day.releases.enumerated()), id: \.element.id) { index, release in
+                                navigableReleaseRow(
+                                    release,
+                                    groupPosition: GroupedListRowPosition(index: index, count: day.releases.count)
+                                )
                                 if release.id != day.releases.last?.id {
                                     Divider().padding(.leading, 12)
                                 }
@@ -173,10 +179,17 @@ struct DebugReleaseCalendarView: View {
         }
     }
 
-    private func navigableReleaseRow(_ release: PredictedRelease) -> some View {
+    private func navigableReleaseRow(
+        _ release: PredictedRelease,
+        groupPosition: GroupedListRowPosition
+    ) -> some View {
         ZStack {
             HStack(spacing: 8) {
-                PodcastRowView(podcast: release.podcast, density: .compact)
+                PodcastRowView(
+                    podcast: release.podcast,
+                    density: .compact,
+                    groupPosition: groupPosition
+                )
                 Text(release.date, format: .dateTime.hour().minute())
                     .font(.subheadline.monospacedDigit())
                     .foregroundStyle(.secondary)

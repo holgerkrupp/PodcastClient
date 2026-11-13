@@ -24,7 +24,8 @@ struct PodcastPodrollView: View {
                     PodcastPodrollRow(
                         item: item,
                         feed: feed,
-                        existingPodcast: subscriptionLookup.existingPodcast(for: feed, context: modelContext)
+                        existingPodcast: subscriptionLookup.existingPodcast(for: feed, context: modelContext),
+                        groupPosition: GroupedListRowPosition(index: index, count: items.count)
                     )
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
@@ -57,6 +58,7 @@ private struct PodcastPodrollRow: View {
     let item: PodcastPodrollItem
     let feed: PodcastFeed
     let existingPodcast: Podcast?
+    let groupPosition: GroupedListRowPosition
 
     var body: some View {
         if item.hasResolvableFeed {
@@ -86,6 +88,7 @@ private struct PodcastPodrollRow: View {
             SubscribeToPodcastView(
                 newPodcastFeed: feed,
                 existingPodcast: existingPodcast,
+                groupPosition: groupPosition,
                 showsBrowseNavigationLink: false
             )
 

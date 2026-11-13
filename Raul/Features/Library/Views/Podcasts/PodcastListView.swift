@@ -95,11 +95,14 @@ struct PodcastListView: View {
                         .listRowInsets(.init(top: 16, leading: 0, bottom: 16, trailing: 0))
                     }
                 } else {
-                    ForEach(visiblePodcasts) { podcast in
+                    ForEach(Array(visiblePodcasts.enumerated()), id: \.element.persistentModelID) { index, podcast in
                         
                         
                         ZStack {
-                            PodcastRowView(podcast: podcast)
+                            PodcastRowView(
+                                podcast: podcast,
+                                groupPosition: GroupedListRowPosition(index: index, count: visiblePodcasts.count)
+                            )
                             NavigationLink(destination: PodcastDetailDestination(podcast: podcast)) {
                                 EmptyView()
                             }

@@ -11,6 +11,7 @@ struct DiscoveredPodcastRowView: View {
     /// Shown in cross-provider search, where the source is not obvious from context.
     var showsSource: Bool = false
     var registry: PodcastDiscoveryRegistry = .shared
+    var groupPosition: GroupedListRowPosition = .single
 
     private var broadcaster: PublicBroadcaster? {
         registry.broadcaster(withID: podcast.broadcasterID)
@@ -20,6 +21,7 @@ struct DiscoveredPodcastRowView: View {
         PodcastRowContentView(
             presentation: presentation,
             density: .compact,
+            groupPosition: groupPosition,
             accessibilityLabel: accessibilityLabel
         )
     }

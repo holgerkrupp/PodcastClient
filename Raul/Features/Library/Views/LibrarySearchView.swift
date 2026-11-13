@@ -84,6 +84,7 @@ struct LibrarySearchView: View {
             } else {
                 List {
                     ForEach(groupedResults) { group in
+                        let podcastGroupPositions = group.podcastGroupPositions
                         let episodeGroupPositions = group.episodeGroupPositions
                         DisclosureGroup(
                             isExpanded: expandedBinding(for: group.id),
@@ -95,7 +96,8 @@ struct LibrarySearchView: View {
                                             PodcastSearchResultRow(
                                                 result: result,
                                                 artworkSize: resultArtworkSize,
-                                                rowHeight: resultRowHeight
+                                                rowHeight: resultRowHeight,
+                                                groupPosition: podcastGroupPositions[result.id] ?? .single
                                             )
                                         }
                                         .buttonStyle(.plain)
@@ -252,6 +254,7 @@ struct LibrarySearchView: View {
         let result: PodcastSearchResult
         let artworkSize: CGFloat
         let rowHeight: CGFloat
+        let groupPosition: GroupedListRowPosition
 
         var body: some View {
             HStack(spacing: 12) {
@@ -285,6 +288,8 @@ struct LibrarySearchView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .ESA_RowView(image: result.podcast.imageURL, minHeight: rowHeight)
+            .clipShape(groupPosition.backgroundShape)
+            .contentShape(Rectangle())
         }
     }
 
@@ -581,6 +586,16 @@ struct PodcastSearchResultGroup: Identifiable, Sendable {
     var resultCountLabel: String {
         let count = items.count
         return count == 1 ? "1 result" : "\(count) results"
+    }
+
+    var podcastGroupPositions: [String: EpisodeRowGroupPosition] {
+        let podcastIDs = items.compactMap { item -> String? in
+            guard case .podcast(let result) = item else { return nil }
+            return result.id
+        }
+        return Dictionary(uniqueKeysWithValues: podcastIDs.enumerated().map { index, id in
+            (id, GroupedListRowPosition(index: index, count: podcastIDs.count))
+        })
     }
 
     var episodeGroupPositions: [String: EpisodeRowGroupPosition] {

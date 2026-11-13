@@ -14,11 +14,18 @@ struct SubscribeToPodcastView: View {
 
     @Bindable var newPodcastFeed: PodcastFeed
     var existingPodcast: Podcast?
+    var groupPosition: GroupedListRowPosition = .single
     private let showsBrowseNavigationLink: Bool
 
-    init(newPodcastFeed: PodcastFeed, existingPodcast: Podcast? = nil, showsBrowseNavigationLink: Bool = true) {
+    init(
+        newPodcastFeed: PodcastFeed,
+        existingPodcast: Podcast? = nil,
+        groupPosition: GroupedListRowPosition = .single,
+        showsBrowseNavigationLink: Bool = true
+    ) {
         self.newPodcastFeed = newPodcastFeed
         self.existingPodcast = existingPodcast
+        self.groupPosition = groupPosition
         self.showsBrowseNavigationLink = showsBrowseNavigationLink
     }
 
@@ -44,7 +51,7 @@ struct SubscribeToPodcastView: View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
                 if let existingPodcast {
-                    PodcastRowView(podcast: existingPodcast, density: .compact)
+                    PodcastRowView(podcast: existingPodcast, density: .compact, groupPosition: groupPosition)
                 } else {
                     PodcastRowContentView(
                         presentation: PodcastRowPresentation(
@@ -60,7 +67,8 @@ struct SubscribeToPodcastView: View {
                             artworkURL: newPodcastFeed.artworkURL,
                             status: newPodcastFeed.existing ? .subscribed : .notSubscribed
                         ),
-                        density: .compact
+                        density: .compact,
+                        groupPosition: groupPosition
                     )
                 }
 

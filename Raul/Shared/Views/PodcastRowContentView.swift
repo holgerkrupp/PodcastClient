@@ -149,6 +149,7 @@ struct PodcastRowContentView: View {
 
     let presentation: PodcastRowPresentation
     var density: Density = .comfortable
+    var groupPosition: GroupedListRowPosition = .single
     var previewArtwork: Image? = nil
     var previewArtworkSource: ESAImageSource? = nil
     var accessibilityLabel: String? = nil
@@ -246,8 +247,12 @@ struct PodcastRowContentView: View {
                 ESARowView(image: previewArtworkSource, minHeight: rowHeight) {
                     rowContent
                 }
+                .clipShape(groupPosition.backgroundShape)
+                .contentShape(Rectangle())
             } else {
                 rowContent.ESA_RowView(image: presentation.artworkURL, minHeight: rowHeight)
+                    .clipShape(groupPosition.backgroundShape)
+                    .contentShape(Rectangle())
             }
         }
     }
@@ -313,7 +318,7 @@ struct PodcastRowContentView: View {
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {
-                Rectangle().fill(artworkBlurLevel.rowMaterial)
+                groupPosition.backgroundShape.fill(artworkBlurLevel.rowMaterial)
             }
         }
     }
@@ -321,7 +326,9 @@ struct PodcastRowContentView: View {
     @ViewBuilder
     private func artworkStyle<Content: View>(_ content: Content) -> some View {
         if colorSchemeContrast == .increased {
-            content.background(Color(white: colorScheme == .dark ? 0 : 1))
+            content.background {
+                groupPosition.backgroundShape.fill(Color(white: colorScheme == .dark ? 0 : 1))
+            }
         } else {
             // The blurred image is decoration: it must never participate in
             // measuring the Library row's width. Previously scaledToFill()
@@ -348,12 +355,11 @@ struct PodcastRowContentView: View {
                             }
                         }
                         .frame(width: geometry.size.width, height: geometry.size.height)
-                        .clipped()
+                        .clipShape(groupPosition.backgroundShape)
                         .accessibilityHidden(true)
                     }
                 }
                 .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
-                .clipped()
                 .accessibilityElement(children: .contain)
         }
     }

@@ -143,9 +143,12 @@ struct BroadcasterDiscoveryView: View {
 
     @ViewBuilder
     private func podcastRows(_ podcasts: [DiscoveredPodcast]) -> some View {
-        ForEach(podcasts) { podcast in
+        ForEach(Array(podcasts.enumerated()), id: \.element.id) { index, podcast in
             ZStack {
-                DiscoveredPodcastRowView(podcast: podcast)
+                DiscoveredPodcastRowView(
+                    podcast: podcast,
+                    groupPosition: GroupedListRowPosition(index: index, count: podcasts.count)
+                )
                 NavigationLink(destination: DiscoveredPodcastBrowseView(podcast: podcast).modelContext(context)) {
                     EmptyView()
                 }
@@ -209,9 +212,12 @@ struct BroadcasterCategoryPodcastsView: View {
                     .foregroundStyle(.secondary)
                     .padding()
             } else {
-                List(viewModel.podcasts) { podcast in
+                List(Array(viewModel.podcasts.enumerated()), id: \.element.id) { index, podcast in
                     ZStack {
-                        DiscoveredPodcastRowView(podcast: podcast)
+                        DiscoveredPodcastRowView(
+                            podcast: podcast,
+                            groupPosition: GroupedListRowPosition(index: index, count: viewModel.podcasts.count)
+                        )
                         NavigationLink(destination: DiscoveredPodcastBrowseView(podcast: podcast).modelContext(context)) {
                             EmptyView()
                         }

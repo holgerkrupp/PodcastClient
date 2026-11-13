@@ -735,8 +735,12 @@ private struct OPMLImportPreviewView: View {
 
             if !unavailablePodcasts.isEmpty {
                 Section {
-                    ForEach(unavailablePodcasts, id: \.url) { newPodcastFeed in
-                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed, showsBrowseNavigationLink: false)
+                    ForEach(Array(unavailablePodcasts.enumerated()), id: \.element.url) { index, newPodcastFeed in
+                        SubscribeToPodcastView(
+                            newPodcastFeed: newPodcastFeed,
+                            groupPosition: GroupedListRowPosition(index: index, count: unavailablePodcasts.count),
+                            showsBrowseNavigationLink: false
+                        )
                             .modelContext(context)
                             .task {
                                 await loadPreviewIfNeeded(for: newPodcastFeed)
@@ -773,8 +777,11 @@ private struct OPMLImportPreviewView: View {
                         .listRowInsets(.init(top: 4, leading: 14, bottom: 8, trailing: 14))
                     }
 
-                    ForEach(subscribablePendingPodcasts, id: \.url) { newPodcastFeed in
-                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
+                    ForEach(Array(subscribablePendingPodcasts.enumerated()), id: \.element.url) { index, newPodcastFeed in
+                        SubscribeToPodcastView(
+                            newPodcastFeed: newPodcastFeed,
+                            groupPosition: GroupedListRowPosition(index: index, count: subscribablePendingPodcasts.count)
+                        )
                             .modelContext(context)
                             .task {
                                 await loadPreviewIfNeeded(for: newPodcastFeed)
@@ -790,8 +797,11 @@ private struct OPMLImportPreviewView: View {
 
             if !existingPodcasts.isEmpty {
                 Section {
-                    ForEach(existingPodcasts, id: \.url) { newPodcastFeed in
-                        SubscribeToPodcastView(newPodcastFeed: newPodcastFeed)
+                    ForEach(Array(existingPodcasts.enumerated()), id: \.element.url) { index, newPodcastFeed in
+                        SubscribeToPodcastView(
+                            newPodcastFeed: newPodcastFeed,
+                            groupPosition: GroupedListRowPosition(index: index, count: existingPodcasts.count)
+                        )
                             .modelContext(context)
                             .task {
                                 await loadPreviewIfNeeded(for: newPodcastFeed)

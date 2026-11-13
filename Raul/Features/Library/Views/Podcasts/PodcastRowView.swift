@@ -15,6 +15,7 @@ import ESADesignKit
 struct PodcastRowView: View {
     let podcast: Podcast
     var density: PodcastRowContentView.Density = .comfortable
+    var groupPosition: GroupedListRowPosition = .single
     var previewArtwork: Image? = nil
     var previewArtworkSource: ESAImageSource? = nil
     private let presentation: PodcastRowPresentation
@@ -22,11 +23,13 @@ struct PodcastRowView: View {
     init(
         podcast: Podcast,
         density: PodcastRowContentView.Density = .comfortable,
+        groupPosition: GroupedListRowPosition = .single,
         previewArtwork: Image? = nil,
         previewArtworkSource: ESAImageSource? = nil
     ) {
         self.podcast = podcast
         self.density = density
+        self.groupPosition = groupPosition
         self.previewArtwork = previewArtwork
         self.previewArtworkSource = previewArtworkSource
         self.presentation = Self.makePresentation(from: podcast)
@@ -36,6 +39,7 @@ struct PodcastRowView: View {
         PodcastRowContentView(
             presentation: presentation,
             density: density,
+            groupPosition: groupPosition,
             previewArtwork: previewArtwork,
             previewArtworkSource: previewArtworkSource
         )

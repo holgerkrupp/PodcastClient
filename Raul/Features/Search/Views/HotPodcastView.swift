@@ -60,8 +60,12 @@ struct HotPodcastView: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
             } else {
-                    ForEach(viewModel.hotPodcasts , id: \.self) { podcast in
-                        SubscribeToPodcastView(newPodcastFeed: podcast, existingPodcast: existingPodcast(for: podcast))
+                    ForEach(Array(viewModel.hotPodcasts.enumerated()), id: \.element) { index, podcast in
+                        SubscribeToPodcastView(
+                            newPodcastFeed: podcast,
+                            existingPodcast: existingPodcast(for: podcast),
+                            groupPosition: GroupedListRowPosition(index: index, count: viewModel.hotPodcasts.count)
+                        )
                             .modelContext(context)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)

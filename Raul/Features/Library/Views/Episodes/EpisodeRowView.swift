@@ -8,7 +8,7 @@ import SwiftUI
 import ESADesignKit
 import Combine
 
-enum EpisodeRowGroupPosition: Equatable {
+enum GroupedListRowPosition: Equatable {
     case single
     case first
     case middle
@@ -41,6 +41,8 @@ enum EpisodeRowGroupPosition: Equatable {
         )
     }
 }
+
+typealias EpisodeRowGroupPosition = GroupedListRowPosition
 
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style

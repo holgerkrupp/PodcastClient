@@ -40,12 +40,13 @@ struct PublicBroadcasterSearchView: View {
                     .foregroundStyle(.secondary)
                     .listRowSeparator(.hidden)
             } else {
-                ForEach(viewModel.results) { podcast in
+                ForEach(Array(viewModel.results.enumerated()), id: \.element.id) { index, podcast in
                     ZStack {
                         DiscoveredPodcastRowView(
                             podcast: podcast,
                             showsSource: true,
-                            registry: viewModel.registry
+                            registry: viewModel.registry,
+                            groupPosition: GroupedListRowPosition(index: index, count: viewModel.results.count)
                         )
                         NavigationLink(destination: DiscoveredPodcastBrowseView(podcast: podcast).modelContext(context)) {
                             EmptyView()
