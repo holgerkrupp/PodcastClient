@@ -64,7 +64,7 @@ struct EpisodeRowView: View {
         let rowContent = VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
-                        CoverImageView(episode: episode, maxPixelSize: 512)
+                        CoverImageView(episode: episode, maxPixelSize: CoverImageView.episodeRowMaxPixelSize)
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 

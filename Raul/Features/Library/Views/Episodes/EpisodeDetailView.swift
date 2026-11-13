@@ -8,6 +8,11 @@
 import SwiftUI
 import SwiftData
 import ESADesignKit
+#if os(macOS)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 struct EpisodeDetailView: View {
     @Environment(\.modelContext) private var context
@@ -19,6 +24,8 @@ struct EpisodeDetailView: View {
     @State private var errorMessage: String? = nil
     @State private var isLoadingTranscript: Bool = false
     @State private var showTranscriptSheet: Bool = false
+    @State private var resolvedArtwork: (request: ArtworkRequest, source: ESAImageSource)?
+    @State private var artworkRetry = 0
 #if DEBUG
     @State private var isDeletingTranscript = false
     @State private var showDeleteTranscriptConfirmation = false
@@ -30,6 +37,9 @@ struct EpisodeDetailView: View {
     }
 
     var body: some View {
+        let request = artworkRequest
+        let artwork = artworkSource(for: request)
+
         ZStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
@@ -79,12 +89,21 @@ struct EpisodeDetailView: View {
                 .padding(.bottom, 24)
             }
             .coverHero(
-                image: .url(episode.imageURL ?? episode.podcast?.imageURL),
+                image: artwork,
                 title: episode.title,
                 material: artworkBlurLevel.detailMaterial
             )
         }
-        .ESAFullBackground(image: episode.imageURL ?? episode.podcast?.imageURL)
+        .esaResolveTheme(image: artwork)
+        .background {
+            ESADesignKit.ESAFullBackground(image: artwork)
+        }
+        .task(id: ArtworkTaskID(request: request, retry: artworkRetry)) {
+            await loadArtwork(for: request)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .artworkConnectivityRecovered)) { _ in
+            artworkRetry &+= 1
+        }
         .alert(
             "Transcript Error",
             isPresented: Binding(
@@ -137,6 +156,106 @@ struct EpisodeDetailView: View {
             SystemPressureGate.shared.noteUserInteraction()
         }
         .platformInlineNavigationTitle()
+    }
+
+    private struct ArtworkRequest: Equatable {
+        let episodeID: PersistentIdentifier
+        let urls: [URL]
+        let profile: PodcastAccessProfile?
+        let localFile: URL?
+
+        func cachedImage(for url: URL) -> UIImage? {
+            SharedImageRepository.cachedImage(for: url, profileID: profile?.id)
+                ?? SharedImageRepository.cachedImage(
+                    for: url,
+                    maxPixelSize: CoverImageView.episodeRowMaxPixelSize,
+                    profileID: profile?.id
+                )
+        }
+    }
+
+    private struct ArtworkTaskID: Equatable {
+        let request: ArtworkRequest
+        let retry: Int
+    }
+
+    private var artworkRequest: ArtworkRequest {
+        let localFile: URL? = if episode.source == .sideLoaded || episode.metaData?.isAvailableLocally == true {
+            episode.localFile
+        } else {
+            nil
+        }
+        return ArtworkRequest(
+            episodeID: episode.persistentModelID,
+            urls: PlayerArtworkUpdatePolicy.orderedImageURLs(
+                chapterURL: nil,
+                episodeURL: episode.imageURL,
+                podcastURL: episode.podcast?.imageURL
+            ),
+            profile: podcastAccessProfile,
+            localFile: localFile
+        )
+    }
+
+    private func artworkSource(for request: ArtworkRequest) -> ESAImageSource {
+        if let resolvedArtwork, resolvedArtwork.request == request {
+            return resolvedArtwork.source
+        }
+        return cachedArtwork(for: request) ?? .url(nil)
+    }
+
+    private func cachedArtwork(for request: ArtworkRequest) -> ESAImageSource? {
+        // The row already decoded this image. Give those pixels straight to the
+        // full-width hero before the asynchronous detail-size lookup starts.
+        for url in request.urls {
+            if let image = request.cachedImage(for: url) {
+                return Self.heroImage(image)
+            }
+        }
+        if let file = request.localFile,
+           let image = EmbeddedAudioArtworkService.cachedThumbnail(
+               for: file,
+               maxPixelSize: CoverImageView.episodeRowMaxPixelSize
+           ) {
+            return Self.heroImage(image)
+        }
+        return nil
+    }
+
+    @MainActor
+    private func loadArtwork(for request: ArtworkRequest) async {
+        guard !Task.isCancelled else { return }
+        if resolvedArtwork?.request != request, let preview = cachedArtwork(for: request) {
+            resolvedArtwork = (request, preview)
+        }
+
+        for url in request.urls {
+            let preview = request.cachedImage(for: url)
+            let image = await ImageLoaderAndCache.loadUIImage(from: url, profile: request.profile)
+            guard !Task.isCancelled else { return }
+            // Keep the preview for this source if its larger image is unavailable.
+            if let image = image ?? preview ?? request.cachedImage(for: url) {
+                resolvedArtwork = (request, Self.heroImage(image))
+                return
+            }
+        }
+
+        if let file = request.localFile,
+           let image = await EmbeddedAudioArtworkService.shared.thumbnail(for: file),
+           !Task.isCancelled {
+            resolvedArtwork = (request, Self.heroImage(image))
+        }
+    }
+
+    private static func heroImage(_ image: UIImage) -> ESAImageSource {
+#if os(macOS)
+        if let cgImage = image.cgImage {
+            return .platformImage(NSImage(cgImage: cgImage, size: image.size))
+        }
+        return .image(Image(uiImage: image))
+#else
+        return .platformImage(image)
+#endif
     }
 
     @MainActor
