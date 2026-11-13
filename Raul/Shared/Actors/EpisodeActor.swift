@@ -244,13 +244,15 @@ actor EpisodeActor {
     }
 
     func fetchMarker(byID markerID: UUID) async -> Bookmark? {
-        let predicate = #Predicate<Bookmark> { marker in
-            marker.uuid == markerID
+        let optionalID: UUID? = markerID
+        // Marker root query: inherited-keypath predicates on Bookmark trap (#420).
+        let predicate = #Predicate<Marker> { marker in
+            marker.uuid == optionalID
         }
 
         do {
-            let results = try modelContext.fetch(FetchDescriptor<Bookmark>(predicate: predicate))
-            return results.first
+            let results = try modelContext.fetch(FetchDescriptor<Marker>(predicate: predicate))
+            return results.lazy.compactMap { $0 as? Bookmark }.first
         } catch {
             print("❌ Error fetching episode for Marker ID: \(markerID), Error: \(error)")
             return nil

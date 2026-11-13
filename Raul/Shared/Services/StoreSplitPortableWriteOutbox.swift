@@ -362,9 +362,9 @@ actor StoreSplitPortableWriteOutbox {
                     }
                     let local = ModelContext(legacyContainer)
                     let optionalUUID: UUID? = uuid
-                    var descriptor = FetchDescriptor<Bookmark>(predicate: #Predicate { $0.uuid == optionalUUID })
-                    descriptor.fetchLimit = 1
-                    guard try local.fetch(descriptor).isEmpty else { throw OutboxError.localDeletionPending }
+                    // Marker root query: inherited-keypath predicates on Bookmark trap (#420).
+                    let descriptor = FetchDescriptor<Marker>(predicate: #Predicate { $0.uuid == optionalUUID })
+                    guard try local.fetch(descriptor).contains(where: { $0 is Bookmark }) == false else { throw OutboxError.localDeletionPending }
                     guard shouldContinue() else { throw CancellationError() }
                     let io = StoreSplitBookmarkWriterIO(save: { context in
                         guard shouldContinue() else { throw CancellationError() }

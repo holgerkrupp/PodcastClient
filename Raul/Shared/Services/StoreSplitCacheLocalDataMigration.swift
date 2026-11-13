@@ -190,9 +190,10 @@ enum StoreSplitCacheLocalDataMigration {
     ) throws -> Bool {
         guard let id = UUID(uuidString: detail.id) else { return false }
         let context = ModelContext(library)
-        var descriptor = FetchDescriptor<Bookmark>(predicate: #Predicate { $0.uuid == id })
-        descriptor.fetchLimit = 1
-        guard let bookmark = try context.fetch(descriptor).first else { return false }
+        // Query the Marker root: a Bookmark predicate on inherited `uuid` traps in SwiftData (#420).
+        let optionalID: UUID? = id
+        let descriptor = FetchDescriptor<Marker>(predicate: #Predicate { $0.uuid == optionalID })
+        guard let bookmark = try context.fetch(descriptor).lazy.compactMap({ $0 as? Bookmark }).first else { return false }
         if bookmark.imageData == nil { bookmark.imageData = detail.imageData }
         if bookmark.duration == nil { bookmark.duration = detail.duration }
         if bookmark.endTime == nil { bookmark.endTime = detail.endTime }
