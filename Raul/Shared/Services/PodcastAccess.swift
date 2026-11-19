@@ -470,6 +470,18 @@ final class KeychainPodcastCredentialStore: PodcastCredentialStore, @unchecked S
         }
     }
 
+    func removeAllCredentials() throws {
+        let query: [CFString: Any] = [
+            kSecClass: kSecClassGenericPassword,
+            kSecAttrService: Self.serviceIdentifier,
+            kSecAttrSynchronizable: kSecAttrSynchronizableAny
+        ]
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw PodcastCredentialStoreError.keychain(status)
+        }
+    }
+
     private func baseQuery(for profile: PodcastAccessProfile) -> [CFString: Any] {
         let query: [CFString: Any] = [
             kSecClass: kSecClassGenericPassword,
@@ -495,6 +507,10 @@ final class KeychainPodcastCredentialStore: PodcastCredentialStore, @unchecked S
     }
 
     func removeCredential(for profile: PodcastAccessProfile) throws {
+        throw PodcastCredentialStoreError.unavailable
+    }
+
+    func removeAllCredentials() throws {
         throw PodcastCredentialStoreError.unavailable
     }
 }
@@ -613,6 +629,10 @@ enum PodcastCredentialStoreProvider {
             currentUserScopeID: currentUserScopeID,
             backing: backing
         )
+    }
+
+    static func removeAllAppCredentials() throws {
+        try KeychainPodcastCredentialStore.shared.removeAllCredentials()
     }
 }
 

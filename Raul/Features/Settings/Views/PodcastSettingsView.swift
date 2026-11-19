@@ -154,6 +154,24 @@ struct PodcastSettingsView: View {
     @State private var pendingAutoDownloadPolicyChanged = false
     @State private var selectedGlobalCategory: GlobalSettingsCategory? = .playback
     @State private var showCreatePlaylistFromSettings = false
+    @State private var showDeleteAllDataConfirmation = false
+    @State private var isDeletingAllData = false
+    @State private var isPreparingBackup = false
+    @State private var isExportingBackup = false
+    @State private var backupDocument: RestorableLibraryBackupDocument?
+    @State private var backupPackageURL: URL?
+    @State private var backupExportError: String?
+    @State private var showBackupExportError = false
+    @State private var isImportingRestore = false
+    @State private var isValidatingRestore = false
+    @State private var stagedRestoreBackup: RestorableLibraryBackupArchive.StagedBackup?
+    @State private var showRestoreConfirmation = false
+    @State private var restoreBackupError: String?
+    @State private var showRestoreBackupError = false
+    @State private var restoreScheduledMessage: String?
+    @State private var deleteAllDataResult: DeleteAllDataResult?
+    @State private var deleteAllDataError: String?
+    @State private var isRetryingDeleteSync = false
     @State private var didSaveSuggestedChapterRule = false
     @StateObject private var podcastYearShareCoordinator = PodcastYearShareCoordinator()
 
@@ -719,6 +737,7 @@ struct PodcastSettingsView: View {
         case .dataAndStorage:
             sideloadingSection
             maintenanceSection
+            deleteAllDataSection
 #if DEBUG
             developmentSection
 #endif
@@ -1947,6 +1966,269 @@ struct PodcastSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var deleteAllDataSection: some View {
+        Section {
+            if isDeletingAllData || isPreparingBackup || isRetryingDeleteSync || isValidatingRestore {
+                HStack(spacing: 10) {
+                    ProgressView()
+                    Text(isDeletingAllData ? "Deleting Up Next data…" : isPreparingBackup ? "Preparing backup…" : isRetryingDeleteSync ? "Retrying iCloud reset…" : "Checking backup…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if let deleteAllDataResult {
+                Text(deleteAllDataResult.message)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            } else if DeleteAllDataService.hasPendingCloudReset {
+                if DeleteAllDataService.canRetryPendingCloudReset {
+                    Text("The local library is clear. The iCloud reset is still pending and will retry when the original account is available.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("The local library is clear. No iCloud account was available to scope the reset; sign into the original account and run Delete All Up Next Data again.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            if shouldShowDeleteAllDataRetry {
+                Button("Retry iCloud Reset") {
+                    retryDeleteAllDataSync()
+                }
+                .disabled(isRetryingDeleteSync)
+            }
+
+            if let restoreScheduledMessage {
+                Text(restoreScheduledMessage)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
+            Button("Restore from Backup…") {
+                isImportingRestore = true
+            }
+            .disabled(isDeletingAllData || isPreparingBackup || isExportingBackup || isValidatingRestore)
+
+            Button(role: .destructive) {
+                showDeleteAllDataConfirmation = true
+            } label: {
+                SettingsNavigationRow(
+                    title: "Delete All Up Next Data…",
+                    summary: "Clear this device and synced data",
+                    detail: "Optionally save a restorable backup first.",
+                    systemImage: "trash"
+                )
+            }
+            .disabled(isDeletingAllData || isPreparingBackup || isExportingBackup)
+        } header: {
+            Text("Delete All Data")
+        } footer: {
+            Text("Downloaded files, local transcripts, private-feed credentials, and app preferences are removed. Sources stored outside Up Next, such as files in iCloud Drive, stay where they are. A full backup restores database records; downloaded media, credentials, and app preferences are not included.")
+        }
+        .confirmationDialog(
+            "Delete All Up Next Data?",
+            isPresented: $showDeleteAllDataConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Create Backup…") { prepareFullBackup() }
+            Button("Delete All Data", role: .destructive) { deleteAllUpNextData() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("This clears Up Next on this device and requests deletion of its synced data from iCloud. Other devices on this iCloud account will apply the reset when they reconnect. It removes subscriptions, playlists and queue order, playback progress, listening history, bookmarks, downloads, transcripts, chapter edits and app preferences. An exported backup stays at the location you choose. Downloaded media and private-feed credentials are not included in backups.")
+        }
+        .fileExporter(
+            isPresented: $isExportingBackup,
+            document: backupDocument,
+            contentType: RestorableLibraryBackupDocument.contentType,
+            defaultFilename: "Up Next Backup"
+        ) { result in
+            finishBackupExport(result)
+        }
+        .fileImporter(
+            isPresented: $isImportingRestore,
+            allowedContentTypes: [RestorableLibraryBackupDocument.contentType]
+        ) { result in
+            validateRestoreSelection(result)
+        }
+        .alert("Backup Couldn’t Be Created", isPresented: $showBackupExportError) {
+            Button("Retry Backup") { prepareFullBackup() }
+            Button("Delete Without a Backup", role: .destructive) { deleteAllUpNextData() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text(backupExportError ?? "Choose another location or try again.")
+        }
+        .alert("Delete All Data", isPresented: Binding(
+            get: { deleteAllDataError != nil },
+            set: { if $0 == false { deleteAllDataError = nil } }
+        )) {
+            Button("Retry", role: .destructive) { deleteAllUpNextData() }
+            Button("OK", role: .cancel) { deleteAllDataError = nil }
+        } message: {
+            Text(deleteAllDataError ?? "Try again when storage is available.")
+        }
+        .alert("Restore Up Next Backup?", isPresented: $showRestoreConfirmation) {
+            Button("Restore Backup", role: .destructive) { scheduleRestoreBackup() }
+            Button("Cancel", role: .cancel) { discardStagedRestore() }
+        } message: {
+            Text(restoreConfirmationMessage)
+        }
+        .alert("Backup Couldn’t Be Restored", isPresented: $showRestoreBackupError) {
+            Button("Choose Another Backup", role: .cancel) { isImportingRestore = true }
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(restoreBackupError ?? "No data was changed.")
+        }
+    }
+
+    private var restoreConfirmationMessage: String {
+        guard let stagedRestoreBackup else { return "Choose a valid Up Next backup." }
+        let date = stagedRestoreBackup.manifest.createdAt.formatted(date: .abbreviated, time: .shortened)
+        let includes = stagedRestoreBackup.manifest.includes.joined(separator: ", ")
+        let excludes = stagedRestoreBackup.manifest.excludes.joined(separator: ", ")
+        return "Backup created \(date). It includes \(includes). It excludes \(excludes). Up Next will preserve a rollback copy, then replace the two database stores the next time the app starts. Close and reopen Up Next after confirming."
+    }
+
+    private var shouldShowDeleteAllDataRetry: Bool {
+        guard DeleteAllDataService.canRetryPendingCloudReset else { return false }
+        return deleteAllDataResult?.iCloudDeletionPending == true
+            || DeleteAllDataService.hasPendingCloudReset
+    }
+
+    private func validateRestoreSelection(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            guard let groupURL = ModelContainerManager.sharedContainerURL else {
+                restoreBackupError = "Up Next couldn’t access the backup or its local storage. No data was changed."
+                showRestoreBackupError = true
+                return
+            }
+            let didAccess = url.startAccessingSecurityScopedResource()
+            isValidatingRestore = true
+            Task {
+                do {
+                    let stagingParent = groupURL
+                        .appendingPathComponent("Library", isDirectory: true)
+                        .appendingPathComponent("ValidatedBackups", isDirectory: true)
+                    let staged = try await Task.detached(priority: .utility) {
+                        try RestorableLibraryBackupArchive.validateAndStage(
+                            selectedPackageURL: url,
+                            stagingParentURL: stagingParent
+                        )
+                    }.value
+                    stagedRestoreBackup = staged
+                    isValidatingRestore = false
+                    showRestoreConfirmation = true
+                } catch {
+                    isValidatingRestore = false
+                    restoreBackupError = (error as? RestorableLibraryBackupError)?.localizedDescription
+                        ?? "The backup could not be read or checked. No data was changed."
+                    showRestoreBackupError = true
+                }
+                if didAccess { url.stopAccessingSecurityScopedResource() }
+            }
+        case .failure(let error):
+            if (error as? CocoaError)?.code != .userCancelled {
+                restoreBackupError = "The selected backup could not be opened. No data was changed."
+                showRestoreBackupError = true
+            }
+        }
+    }
+
+    private func scheduleRestoreBackup() {
+        guard let stagedRestoreBackup else { return }
+        RestorableLibraryBackupArchive.scheduleRestore(stagedRestoreBackup)
+        restoreScheduledMessage = "Backup validated and scheduled. Close and reopen Up Next to restore it. A safety copy of the current databases will be kept in the App Group container."
+        self.stagedRestoreBackup = nil
+    }
+
+    private func discardStagedRestore() {
+        if let stagedRestoreBackup {
+            try? FileManager.default.removeItem(at: stagedRestoreBackup.directoryURL)
+        }
+        stagedRestoreBackup = nil
+    }
+
+    private func prepareFullBackup() {
+        guard let sharedURL = ModelContainerManager.sharedStoreURL,
+              let userStateURL = ModelContainerManager.userStateStoreURL else {
+            backupExportError = "Up Next could not access its database stores. Nothing was deleted."
+            showBackupExportError = true
+            return
+        }
+        isPreparingBackup = true
+        Task {
+            do {
+                let packageURL = try await Task.detached(priority: .utility) {
+                    try RestorableLibraryBackupArchive.create(
+                        sharedDatabaseURL: sharedURL,
+                        userStateDatabaseURL: userStateURL
+                    )
+                }.value
+                backupPackageURL = packageURL
+                backupDocument = try RestorableLibraryBackupDocument(packageURL: packageURL)
+                isPreparingBackup = false
+                isExportingBackup = true
+            } catch {
+                isPreparingBackup = false
+                backupExportError = (error as? RestorableLibraryBackupError)?.localizedDescription
+                    ?? "The backup could not be prepared. No data was changed."
+                showBackupExportError = true
+            }
+        }
+    }
+
+    private func finishBackupExport(_ result: Result<URL, Error>) {
+        isExportingBackup = false
+        switch result {
+        case .success:
+            deleteAllDataResult = nil
+            showDeleteAllDataConfirmation = true
+        case .failure(let error):
+            if (error as? CocoaError)?.code == .userCancelled {
+                showDeleteAllDataConfirmation = true
+            } else {
+                backupExportError = "The backup could not be saved. Choose another location or try again."
+                showBackupExportError = true
+            }
+        }
+        if let backupPackageURL {
+            try? FileManager.default.removeItem(at: backupPackageURL)
+            self.backupPackageURL = nil
+        }
+        backupDocument = nil
+    }
+
+    private func deleteAllUpNextData() {
+        guard isDeletingAllData == false else { return }
+        isDeletingAllData = true
+        deleteAllDataError = nil
+        Task {
+            do {
+                deleteAllDataResult = try await ModelContainerManager.shared.deleteAllUpNextData()
+            } catch {
+                deleteAllDataError = error.localizedDescription
+            }
+            isDeletingAllData = false
+        }
+    }
+
+    private func retryDeleteAllDataSync() {
+        guard isRetryingDeleteSync == false else { return }
+        isRetryingDeleteSync = true
+        Task {
+            let completed = await ModelContainerManager.shared.retryPendingDeleteAllDataSync()
+            if completed {
+                deleteAllDataResult = DeleteAllDataResult(
+                    localDataCleared: true,
+                    iCloudDeletionPending: false,
+                    message: "The iCloud reset has been exported. Other devices will apply it when they reconnect."
+                )
+            }
+            isRetryingDeleteSync = false
         }
     }
 

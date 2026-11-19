@@ -68,6 +68,12 @@ enum LocalSpotlightIndexer {
     private static let signatureKey = "localSpotlightIndexSignature"
 
     @MainActor
+    static func deleteAllIndexedItems() async {
+        try? await CSSearchableIndex.default()
+            .deleteSearchableItems(withDomainIdentifiers: [domain])
+    }
+
+    @MainActor
     static func refresh(container: ModelContainer, force: Bool = false) async {
         guard UserDefaults.standard.bool(forKey: settingKey) else {
             try? await CSSearchableIndex.default().deleteSearchableItems(withDomainIdentifiers: [domain])

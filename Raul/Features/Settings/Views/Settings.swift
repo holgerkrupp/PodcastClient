@@ -522,8 +522,15 @@ final class SideloadingCoordinator: NSObject {
     }
 
     func disable() {
+        refreshTask?.cancel()
+        refreshTask = nil
+        refreshQueuedWhileRunning = false
         pendingDownloadRequests.removeAll()
         clearMissingState()
+        if let folderPresenter {
+            NSFileCoordinator.removeFilePresenter(folderPresenter)
+        }
+        folderPresenter = nil
         folderURL = nil
         isRunning = false
     }

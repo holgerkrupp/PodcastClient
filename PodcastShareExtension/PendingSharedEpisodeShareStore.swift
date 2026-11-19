@@ -68,6 +68,8 @@ enum PendingSharedEpisodeShareStore {
     private static let appGroupID = "group.de.holgerkrupp.PodcastClient"
     private static let pendingRequestsKey = "PendingSharedEpisodeRequests"
     private static let playlistSnapshotKey = "SharedEpisodePlaylistSnapshot"
+    private static let resetPendingGenerationKey = "deleteAllData.pendingGeneration.v1"
+    private static let resetAppliedGenerationKey = "deleteAllData.appliedGeneration.v1"
 
     static func playlists() -> [SharedEpisodePlaylistSnapshot] {
         guard let defaults = UserDefaults(suiteName: appGroupID),
@@ -82,12 +84,24 @@ enum PendingSharedEpisodeShareStore {
         guard let defaults = UserDefaults(suiteName: appGroupID) else {
             throw ShareExtensionError.appGroupUnavailable
         }
+        guard hasPendingReset(in: defaults) == false else {
+            throw ShareExtensionError.resetInProgress
+        }
 
         var actions = actions(in: defaults)
         guard actions.contains(where: { equivalent($0, action) }) == false else { return }
         actions.append(action)
         let envelope = PendingSharedEpisodeActionEnvelope(version: 2, actions: actions)
+        guard hasPendingReset(in: defaults) == false else {
+            throw ShareExtensionError.resetInProgress
+        }
         defaults.set(try JSONEncoder().encode(envelope), forKey: pendingRequestsKey)
+    }
+
+    private static func hasPendingReset(in defaults: UserDefaults) -> Bool {
+        let pending = defaults.object(forKey: resetPendingGenerationKey) as? Int64 ?? 0
+        let applied = defaults.object(forKey: resetAppliedGenerationKey) as? Int64 ?? 0
+        return pending > applied
     }
 
     private static func actions(in defaults: UserDefaults) -> [PendingSharedEpisodeAction] {

@@ -2,19 +2,22 @@ import Foundation
 import SwiftData
 
 struct SubscriptionManifest: Codable, Sendable {
-    static let currentSchemaVersion = 1
+    static let currentSchemaVersion = 2
 
     var schemaVersion: Int
     var updatedAt: Date
+    var resetGeneration: Int64?
     var entries: [SubscriptionManifestEntry]
 
     init(
         schemaVersion: Int = Self.currentSchemaVersion,
         updatedAt: Date = Date(),
+        resetGeneration: Int64? = DeleteAllDataService.appliedGeneration,
         entries: [SubscriptionManifestEntry]
     ) {
         self.schemaVersion = schemaVersion
         self.updatedAt = updatedAt
+        self.resetGeneration = resetGeneration
         self.entries = entries
     }
 }
@@ -86,6 +89,10 @@ enum SubscriptionManifestSync {
         guard let manifest = try? JSONDecoder().decode(SubscriptionManifest.self, from: data) else {
             return nil
         }
+        let resetGeneration = DeleteAllDataService.appliedGeneration
+        guard resetGeneration == 0 || manifest.resetGeneration == resetGeneration else {
+            return nil
+        }
 
         var didSanitize = false
         let sanitizedEntries = manifest.entries.map { original -> SubscriptionManifestEntry in
@@ -120,6 +127,7 @@ enum SubscriptionManifestSync {
             var sanitizedManifest = manifest
             sanitizedManifest.entries = sanitizedEntries
             sanitizedManifest.updatedAt = Date()
+            sanitizedManifest.resetGeneration = resetGeneration
             save(sanitizedManifest)
             return sanitizedManifest
         }
@@ -168,6 +176,8 @@ enum SubscriptionManifestSync {
         modelContainer: ModelContainer,
         credentialStore: any PodcastCredentialStore = PodcastCredentialStoreProvider.current
     ) async -> SubscriptionManifestRestoreResult? {
+        guard DeleteAllDataService.hasPendingLocalReset == false,
+              DeleteAllDataService.hasPendingCloudReset == false else { return nil }
         guard var manifest = loadManifest(credentialStore: credentialStore),
               manifest.entries.isEmpty == false else { return nil }
 

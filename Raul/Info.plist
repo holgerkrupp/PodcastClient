@@ -28,6 +28,26 @@
 			</array>
 		</dict>
 	</array>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.package</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Up Next Library Backup</string>
+			<key>UTTypeIdentifier</key>
+			<string>de.holgerkrupp.upnext.library-backup</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>upnextbackup</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

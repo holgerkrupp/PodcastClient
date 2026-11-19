@@ -98,6 +98,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     private var taskIdentity = DownloadTaskIdentity()
     private var persistedTaskAssociations: [String: PersistedTaskAssociation] = [:]
     private var hasReconnectedTasks = false
+    private var isResettingAllData = false
     private var stallMonitors: [Int: Task<Void, Never>] = [:]
     private var lastProgressAt: [Int: Date] = [:]
     private var pausingTaskIdentifiers: Set<Int> = []
@@ -268,6 +269,33 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         profiles[authorizationKey] = nil
         persistProfiles()
     }
+
+    /// Cancels every background transfer before a full-library reset removes
+    /// its destination files and download metadata.
+    func cancelAllAndClear() async {
+        isResettingAllData = true
+        let tasks = await session.allTasks
+        tasks.forEach { $0.cancel() }
+        let currentItems = Array(downloads.values)
+        await MainActor.run {
+            for item in currentItems {
+                item.isDownloading = false
+            }
+        }
+        urlToTask.removeAll()
+        activeTaskIdentifiers.removeAll()
+        downloads.removeAll()
+        destinations.removeAll()
+        resumeData.removeAll()
+        profiles.removeAll()
+        pausingTaskIdentifiers.removeAll()
+        UserDefaults.standard.removeObject(forKey: Self.authorizationKey)
+        UserDefaults.standard.removeObject(forKey: Self.taskAssociationKey)
+    }
+
+    func finishFullReset() {
+        isResettingAllData = false
+    }
     
     func pauseDownload(for url: URL) async {
         guard let task = urlToTask[url] else { return }
@@ -369,6 +397,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     /// registered before `resume()`, so even early delegate callbacks can find
     /// the original episode and local destination.
     func restorePendingDownloads() async {
+        guard isResettingAllData == false,
+              DeleteAllDataService.hasPendingLocalReset == false else { return }
         guard !hasReconnectedTasks else { return }
         let tasks = await session.allTasks
         for task in tasks {
@@ -540,25 +570,22 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
                 return
             }
             var storageError: Error?
+            var didInstall = false
             do {
-                let dir = destination.deletingLastPathComponent()
-                try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-                // Keep an existing complete download. Only an empty, unusable
-                // placeholder may be replaced by the completed transfer.
-                if FileManager.default.fileExists(atPath: destination.path) {
-                    let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
-                    if attributes[.type] as? FileAttributeType == .typeRegular,
-                       (attributes[.size] as? NSNumber)?.int64Value == 0 {
-                        try FileManager.default.removeItem(at: destination)
-                    }
-                }
-                if !FileManager.default.fileExists(atPath: destination.path) {
-                    try FileManager.default.moveItem(at: tempCopy, to: destination)
-                }
+                didInstall = try await DownloadManager.shared.installDownloadFile(
+                    from: tempCopy,
+                    to: destination,
+                    for: url,
+                    taskIdentifier: downloadTask.taskIdentifier
+                )
             } catch {
                 storageError = error
             }
 
+            guard didInstall else {
+                try? FileManager.default.removeItem(at: tempCopy)
+                return
+            }
             try? FileManager.default.removeItem(at: tempCopy)
 
             if let storageError {
@@ -691,6 +718,29 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     }
     private func getDestination(for url: URL) -> URL? {
         destinations[url] ?? destinations[authorizationKeyURL(for: url)]
+    }
+
+    private func installDownloadFile(
+        from temporaryURL: URL,
+        to destination: URL,
+        for url: URL,
+        taskIdentifier: Int
+    ) throws -> Bool {
+        guard isResettingAllData == false,
+              activeTaskIdentifiers[url] == taskIdentifier else { return false }
+        let directory = destination.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        if FileManager.default.fileExists(atPath: destination.path) {
+            let attributes = try FileManager.default.attributesOfItem(atPath: destination.path)
+            if attributes[.type] as? FileAttributeType == .typeRegular,
+               (attributes[.size] as? NSNumber)?.int64Value == 0 {
+                try FileManager.default.removeItem(at: destination)
+            }
+        }
+        if FileManager.default.fileExists(atPath: destination.path) == false {
+            try FileManager.default.moveItem(at: temporaryURL, to: destination)
+        }
+        return true
     }
 
     private func failFinalization(

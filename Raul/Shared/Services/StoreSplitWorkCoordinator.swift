@@ -100,6 +100,18 @@ actor StoreSplitWorkCoordinator {
         await publishPendingState()
     }
 
+    /// Stops reconciliation work so a full reset can clear its durable inputs
+    /// and queue without an already scheduled pass recreating old state.
+    func pauseForFullReset() async {
+        runnerTask?.cancel()
+        await runnerTask?.value
+        runnerTask = nil
+        pendingReconcile = nil
+        pendingPlaybackIdleReconcile = false
+        currentJob = nil
+        await publishPendingState()
+    }
+
     /// A CloudKit import landed (or the app became active with one pending).
     /// The request is recorded durably first, so the background pass still
     /// picks it up; while the app is in the foreground the reconcile also runs

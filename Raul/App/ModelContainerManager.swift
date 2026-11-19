@@ -893,6 +893,114 @@ class ModelContainerManager: ObservableObject {
         }
         return preparedContainer
     }
+
+    func deleteAllUpNextData() async throws -> DeleteAllDataResult {
+        await prepareContainer()
+        await prepareSplitStores()
+        guard let library = preparedContainer,
+              let userState = preparedUserStateContainer else {
+            throw DeleteAllDataServiceError.storesUnavailable
+        }
+
+        let resetIntent = DeleteAllDataService.prepareResetIntent()
+        let priorExportEventID = StoreCloudKitActivityMonitor.shared
+            .diagnostics(for: .userState)?.lastExportEventID
+        DeleteAllDataService.setExportBaselineEventID(priorExportEventID)
+        await FeedRefreshCoordinator.shared.pauseForFullReset()
+        Player.shared.pause()
+        Player.shared.currentEpisode = nil
+        Player.shared.currentEpisodeURL = nil
+        Player.shared.playPosition = 0
+        await TranscriptSynchronizationService.shared.cancelAll()
+        try? await SideloadingCoordinator.shared.syncEnabledState(false)
+        await DownloadManager.shared.cancelAllAndClear()
+        let cloudResult = await DeleteAllDataService.beginReset(resetIntent)
+        await splitStoreCoordinator.pauseForFullReset()
+        let importLedger = StoreSplitPendingImportLedger.snapshot(
+            in: UserDefaults(suiteName: Self.appGroupID) ?? .standard
+        )
+        Self.clearPendingBackgroundUserStateImport(generation: importLedger.generation)
+        userStateImportTask?.cancel()
+        libraryFillTask?.cancel()
+        deferredMigrationTask?.cancel()
+        launchStoreCleanupTask?.cancel()
+        analyticsRebuildTask?.cancel()
+        _ = await userStateImportTask?.value
+        _ = await libraryFillTask?.value
+        _ = await deferredMigrationTask?.value
+        _ = await launchStoreCleanupTask?.value
+        _ = await analyticsRebuildTask?.value
+        let cleanupStartedAt = Date()
+        try await DeleteAllDataService.clearLocalData(
+            library: library,
+            userState: userState,
+            appGroupContainerURL: Self.sharedContainerURL
+        )
+        await DownloadManager.shared.finishFullReset()
+        await FeedRefreshCoordinator.shared.resumeAfterFullReset()
+        await PlayNextWidgetSync.refresh(using: library)
+        WatchSyncCoordinator.refreshSoon(force: true)
+
+        if case .saved = cloudResult {
+            DeleteAllDataService.acknowledgeFenceSaved()
+        }
+        let iCloudCompleted: Bool
+        if StoreDevelopmentConfiguration.userStateCloudSyncEnabled,
+           case .saved = cloudResult {
+            _ = await StoreCloudKitActivityMonitor.shared.waitForExportQuiescence(
+                maximumDuration: 12,
+                quietDuration: 1
+            )
+            let diagnostics = StoreCloudKitActivityMonitor.shared.diagnostics(for: .userState)
+            iCloudCompleted = diagnostics?.lastExportSucceeded == true
+                && (diagnostics?.lastExportEndedAt ?? .distantPast) >= cleanupStartedAt
+                && diagnostics?.lastExportEventID != priorExportEventID
+            if iCloudCompleted { DeleteAllDataService.acknowledgeCloudResetExported() }
+        } else {
+            iCloudCompleted = false
+            if StoreDevelopmentConfiguration.userStateCloudSyncEnabled == false {
+                DeleteAllDataService.acknowledgeNoCloudResetRequired()
+            }
+        }
+        let fenceWasSaved: Bool
+        if case .saved = cloudResult { fenceWasSaved = true } else { fenceWasSaved = false }
+        let pending = StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+            && (iCloudCompleted == false || fenceWasSaved == false)
+        let message: String
+        if pending {
+            if DeleteAllDataService.canRetryPendingCloudReset {
+                message = "This device is empty. iCloud reset work is pending for the original iCloud account and will retry automatically when it is available. Check Settings → Data & Storage for status."
+            } else {
+                message = "This device is empty, but Up Next could not identify an iCloud account for the reset. Sign into the original account and run Delete All Up Next Data again to clear its synced data."
+            }
+        } else {
+            message = StoreDevelopmentConfiguration.userStateCloudSyncEnabled
+                ? "Up Next data was deleted on this device and the iCloud reset was exported. Other devices will apply the reset when they reconnect."
+                : "Up Next data was deleted on this device. iCloud sync is disabled, so no iCloud data was changed."
+        }
+        return DeleteAllDataResult(
+            localDataCleared: true,
+            iCloudDeletionPending: pending,
+            message: message
+        )
+    }
+
+    func retryPendingDeleteAllDataSync() async -> Bool {
+        let fenceSaved = await DeleteAllDataService.retryPendingFence()
+        let hasSavedFence = fenceSaved || DeleteAllDataService.hasSavedCloudFence
+        guard hasSavedFence else { return false }
+        guard await DeleteAllDataService.isOriginalCloudAccountAvailable() else { return false }
+        _ = await StoreCloudKitActivityMonitor.shared.waitForExportQuiescence(
+            maximumDuration: 12,
+            quietDuration: 1
+        )
+        let diagnostics = StoreCloudKitActivityMonitor.shared.diagnostics(for: .userState)
+        let exported = diagnostics?.lastExportSucceeded == true
+            && (diagnostics?.lastExportEndedAt ?? .distantPast) >= (DeleteAllDataService.resetStartedAt ?? .distantFuture)
+            && diagnostics?.lastExportEventID != DeleteAllDataService.exportBaselineEventID
+        if exported { DeleteAllDataService.acknowledgeCloudResetExported() }
+        return exported
+    }
     
     nonisolated static let shared = ModelContainerManager()
 
@@ -1092,6 +1200,23 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static func makeRuntimeContainerPreparationTask(
     ) -> Task<RuntimeContainerPreparation, Error> {
         Task.detached(priority: .userInitiated) {
+            // A tiny CloudKit control record is fetched before the mirrored
+            // UserState store opens. It tells a reconnecting device to clear
+            // stale local state before normal reconciliation can publish it.
+            _ = await DeleteAllDataService.fetchNewRemoteFence()
+            if await DeleteAllDataService.retryPendingFence() {
+                // Keep the pending fence until local cleanup and export finish.
+            }
+            do {
+                _ = try RestorableLibraryBackupArchive.applyPendingRestoreBeforeStoresOpen(
+                    sharedDatabaseURL: Self.sharedStoreURL,
+                    userStateDatabaseURL: Self.userStateStoreURL,
+                    appGroupURL: Self.sharedContainerURL
+                )
+            } catch {
+                CrashBreadcrumbs.shared.record("backup_restore_retry_pending")
+                throw StoreBootstrapError.persistentStoreUnavailable
+            }
             // This runs before the stores open, which is the earliest
             // point at which Core Data can resume a persisted CloudKit export.
             // A repeated unhealthy-launch sequence can therefore quarantine the
@@ -1211,7 +1336,8 @@ class ModelContainerManager: ObservableObject {
             var timer = StoreLaunchTimer()
             let userState = try Self.makeUserStateContainerWithRetry()
             timer.mark("user_state")
-            let mayRetireCache = (bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary)
+            let mayRetireCache = DeleteAllDataService.hasEverReset
+                || ((bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary)
                 && StoreSplitCacheLocalDataMigration.isComplete
                 && StoreSplitCacheAIContentMigration.isComplete
                 && (Self.deviceUsedInMemoryProjection == false
@@ -1219,9 +1345,14 @@ class ModelContainerManager: ObservableObject {
                         >= Self.cacheRecoveryVersion)
                 && StoreCutoverState.isDeferredMigrationPending == false
                 && StoreRuntimeProjection.isLibraryBackfillPending == false
-                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false
+                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false)
             let cache: ModelContainer?
-            if mayRetireCache {
+            if DeleteAllDataService.hasEverReset {
+                // Keep production APIs that still accept a cache container
+                // available, but never reopen historical rows after a wipe.
+                cache = try Self.makeCacheContainer(isStoredInMemoryOnly: true)
+                CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "full_reset")
+            } else if mayRetireCache {
                 cache = nil
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "migrations_complete")
             } else {
@@ -1265,16 +1396,36 @@ class ModelContainerManager: ObservableObject {
                         detail: storeDetail
                     )
                 }
-                _ = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
-                    cache: cache,
-                    library: library
-                )
-                if let cache {
+                if DeleteAllDataService.hasEverReset == false {
+                    _ = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                        cache: cache,
+                        library: library
+                    )
+                }
+                if let cache, DeleteAllDataService.hasEverReset == false {
                     _ = StoreSplitCacheAIContentMigration.migrate(
                         cache: cache,
                         library: library,
                         dropUnmatchedRows: true
                     )
+                }
+                if DeleteAllDataService.hasPendingLocalReset {
+                    do {
+                        let baselineEventID = await MainActor.run {
+                            StoreCloudKitActivityMonitor.shared
+                                .diagnostics(for: .userState)?.lastExportEventID
+                        }
+                        DeleteAllDataService.setExportBaselineEventID(baselineEventID)
+                        try await DeleteAllDataService.clearLocalData(
+                            library: library,
+                            userState: userState,
+                            appGroupContainerURL: Self.sharedContainerURL
+                        )
+                        await DownloadManager.shared.finishFullReset()
+                        await FeedRefreshCoordinator.shared.resumeAfterFullReset()
+                    } catch {
+                        CrashBreadcrumbs.shared.record("delete_all_data_local_retry_pending")
+                    }
                 }
                 timer.mark("library")
                 timer.finish(libraryLogBytes: libraryLogBytes)
@@ -1342,6 +1493,24 @@ class ModelContainerManager: ObservableObject {
                 at: libraryURL,
                 isCurrent: libraryIsCurrent
             )
+            if DeleteAllDataService.hasPendingLocalReset {
+                do {
+                    let baselineEventID = await MainActor.run {
+                        StoreCloudKitActivityMonitor.shared
+                            .diagnostics(for: .userState)?.lastExportEventID
+                    }
+                    DeleteAllDataService.setExportBaselineEventID(baselineEventID)
+                    try await DeleteAllDataService.clearLocalData(
+                        library: runtimeContainer,
+                        userState: userState,
+                        appGroupContainerURL: Self.sharedContainerURL
+                    )
+                    await DownloadManager.shared.finishFullReset()
+                    await FeedRefreshCoordinator.shared.resumeAfterFullReset()
+                } catch {
+                    CrashBreadcrumbs.shared.record("delete_all_data_local_retry_pending")
+                }
+            }
             await MainActor.run {
                 SupportDiagnosticsRecorder.shared.record(
                     "Runtime library store opened",
@@ -1473,7 +1642,8 @@ class ModelContainerManager: ObservableObject {
     /// Adds the remaining episodes and saved transcripts while the app is in use.
     /// Backgrounding stops it; the next launch or activation continues.
     func runLibraryBackfillIfNeeded() async {
-        guard StoreRuntimeProjection.isLibraryBackfillPending,
+        guard DeleteAllDataService.hasEverReset == false,
+              StoreRuntimeProjection.isLibraryBackfillPending,
               libraryFillTask == nil,
               runtimeStoreReadiness == .ready,
               heavyStoreWorkMayRunInCurrentAppState,
@@ -1524,7 +1694,8 @@ class ModelContainerManager: ObservableObject {
     /// Moves listening history, baselines and AI content while the app is in
     /// use. Backgrounding stops it; the next launch or activation continues.
     func runDeferredMigrationIfNeeded() async {
-        guard bootstrapMode == .legacyUpgrade,
+        guard DeleteAllDataService.hasEverReset == false,
+              bootstrapMode == .legacyUpgrade,
               StoreCutoverState.isDeferredMigrationPending,
               deferredMigrationTask == nil,
               runtimeStoreReadiness == .ready,
@@ -1804,6 +1975,7 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func retryPortableWritesIfSafe() async {
+        guard DeleteAllDataService.hasPendingLocalReset == false else { return }
         await drainPortableWritesIfSafe()
         await rebuildUnqueuedPlaybackWritesIfNeeded()
     }
@@ -2373,6 +2545,7 @@ class ModelContainerManager: ObservableObject {
         if let userState = preparedUserStateContainer {
             let library = runtimeProjectsFromCache ? nil : preparedContainer
             let mayTombstoneLegacySubscriptions = bootstrapMode == .legacyUpgrade
+                && DeleteAllDataService.hasEverReset == false
             // Baseline repair and stale-subscription cleanup are one-time, small
             // metadata operations. ListeningTotalsDiagnostics is intentionally
             // excluded here: it walks the full listening history and belongs to
@@ -2380,7 +2553,7 @@ class ModelContainerManager: ObservableObject {
             launchStoreCleanupTask?.cancel()
             let cleanupTask = Task.detached(priority: .utility) {
                 guard Task.isCancelled == false else { return }
-                if let library {
+                if let library, DeleteAllDataService.hasEverReset == false {
                     StoreCutoverState.repairInflatedBaselineIfNeeded(library: library, userState: userState)
                     guard Task.isCancelled == false else { return }
                     if mayTombstoneLegacySubscriptions {
@@ -2623,6 +2796,7 @@ class ModelContainerManager: ObservableObject {
     /// episode state, ignoring the full reconcile's 10-minute throttle and its
     /// playback pause, then lets a paused player follow the newest session.
     func importRemotePlaybackState() async {
+        if await synchronizeRemoteDeleteAllFenceIfNeeded() { return }
         defer {
             Task { await Player.shared.followRemotePlaybackSessionIfNeeded() }
         }
@@ -2822,6 +2996,7 @@ class ModelContainerManager: ObservableObject {
         // devices, so this can't wait for a charging night. Heavy-work and
         // playback guards below still apply, and foreground callers are
         // throttled by `shouldRunUserStateImport`.
+        guard DeleteAllDataService.hasPendingLocalReset == false else { return .skipped }
         guard StoreCutoverState.isDeferredMigrationPending == false else { return .skipped }
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             lastSplitStoreReconcileSummary = "Paused for stability"
@@ -2903,6 +3078,55 @@ class ModelContainerManager: ObservableObject {
         _ = legacyContainer
         _ = userStateContainer
         return result.interruptedByPlayback ? .deferredForPlayback : .completed
+    }
+
+    /// Applies a reset fence that arrived while this process was already open.
+    /// It runs before the next UserState import can project data into the local
+    /// library. A cleanup failure remains durable and is retried on activation.
+    func synchronizeRemoteDeleteAllFenceIfNeeded() async -> Bool {
+        if DeleteAllDataService.hasPendingCloudReset {
+            _ = await retryPendingDeleteAllDataSync()
+        }
+        let newFence = await DeleteAllDataService.fetchNewRemoteFence()
+        guard newFence != nil || DeleteAllDataService.hasPendingLocalReset else { return false }
+        guard let library = preparedContainer,
+              let userState = preparedUserStateContainer else { return true }
+        do {
+            Player.shared.pause()
+            Player.shared.currentEpisode = nil
+            Player.shared.currentEpisodeURL = nil
+            Player.shared.playPosition = 0
+            await TranscriptSynchronizationService.shared.cancelAll()
+            try? await SideloadingCoordinator.shared.syncEnabledState(false)
+            await DownloadManager.shared.cancelAllAndClear()
+            await FeedRefreshCoordinator.shared.pauseForFullReset()
+            let baselineEventID = StoreCloudKitActivityMonitor.shared
+                .diagnostics(for: .userState)?.lastExportEventID
+            DeleteAllDataService.setExportBaselineEventID(baselineEventID)
+            try await DeleteAllDataService.clearLocalData(
+                library: library,
+                userState: userState,
+                appGroupContainerURL: Self.sharedContainerURL
+            )
+            await DownloadManager.shared.finishFullReset()
+            await FeedRefreshCoordinator.shared.resumeAfterFullReset()
+            await PlayNextWidgetSync.refresh(using: library)
+            WatchSyncCoordinator.refreshSoon(force: true)
+            if newFence != nil { DeleteAllDataService.acknowledgeFenceSaved() }
+            _ = await StoreCloudKitActivityMonitor.shared.waitForExportQuiescence(
+                maximumDuration: 12,
+                quietDuration: 1
+            )
+            let diagnostics = StoreCloudKitActivityMonitor.shared.diagnostics(for: .userState)
+            if diagnostics?.lastExportSucceeded == true,
+               (diagnostics?.lastExportEndedAt ?? .distantPast) >= (DeleteAllDataService.resetStartedAt ?? .distantPast),
+               diagnostics?.lastExportEventID != DeleteAllDataService.exportBaselineEventID {
+                DeleteAllDataService.acknowledgeCloudResetExported()
+            }
+        } catch {
+            CrashBreadcrumbs.shared.record("delete_all_data_local_retry_pending")
+        }
+        return true
     }
 
     /// Removes finished episodes that are still queued, and tombstones them so the
@@ -3200,6 +3424,7 @@ class ModelContainerManager: ObservableObject {
             result.failed = 1
             return result
         }
+        guard DeleteAllDataService.hasPendingLocalReset == false else { return deferredResult() }
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             return deferredResult()
         }

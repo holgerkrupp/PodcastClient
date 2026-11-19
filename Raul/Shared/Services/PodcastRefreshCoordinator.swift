@@ -221,6 +221,20 @@ actor FeedRefreshCoordinator {
     }
 
     private var flights: [String: Flight] = [:]
+    private var isPausedForFullReset = false
+
+    func pauseForFullReset() async {
+        isPausedForFullReset = true
+        let activeFlights = Array(flights.values)
+        activeFlights.forEach { $0.task.cancel() }
+        for flight in activeFlights {
+            await flight.task.value
+        }
+    }
+
+    func resumeAfterFullReset() {
+        isPausedForFullReset = false
+    }
 
     func run(
         feedURL: URL,
@@ -245,6 +259,7 @@ actor FeedRefreshCoordinator {
         let key = PodcastFeedIdentity.normalizedFeedURLString(feedURL)
             + "|" + (profileScope ?? "public")
         while true {
+            guard isPausedForFullReset == false else { throw CancellationError() }
             try Task.checkCancellation()
             if let flight = flights[key] {
                 let waiterID = UUID()

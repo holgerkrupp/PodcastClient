@@ -752,6 +752,9 @@ struct RaulApp: App {
                 // container or an actionable error.
                 Task(priority: .userInitiated) {
                     await modelContainerManager.prepareContainer()
+                    if DeleteAllDataService.hasPendingCloudReset {
+                        _ = await modelContainerManager.retryPendingDeleteAllDataSync()
+                    }
                     guard isAppActiveForForegroundWork,
                           modelContainerManager.preparedContainer != nil else { return }
                     CrashBreadcrumbs.shared.record(
@@ -1244,6 +1247,7 @@ struct RaulApp: App {
             // settling and replays it after their local projection is
             // hydrated. Calling directly avoids losing an import event
             // behind an app-side readiness check.
+            _ = await modelContainerManager.synchronizeRemoteDeleteAllFenceIfNeeded()
             await modelContainerManager.reconcileSplitRuntimePlaylists()
             await modelContainerManager.importRemotePlaybackState()
             if StoreDevelopmentConfiguration.userStateImportEnabled {
