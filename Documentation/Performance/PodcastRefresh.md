@@ -50,6 +50,16 @@ Tasks canceled while waiting for the writer leave its queue without taking a
 permit. A commit that already started finishes its current feed batch and
 saves before honoring a background stop request.
 
+Background candidate selection uses persisted release-prediction windows
+instead of recomputing predictions across every episode relationship. The
+per-feed eligibility store caches its decoded local snapshot, avoiding a full
+JSON decode for every candidate. Selection has a four-second budget. During
+audio playback, feed refresh is serial, limited to one feed and an eight-second
+run with a four-second per-feed deadline; its worker uses background priority.
+Processing-task transcript imports remain paused during playback. iOS can still
+defer or stop background work, and deadlines cannot preempt a synchronous
+parser or an already-started durable feed commit.
+
 The worker pool bounds prepared results to four. Parsed results estimated over
 6 MiB spool to an app temporary file while waiting for the writer; the file
 is removed when the prepared result is released. The writer reconstructs the

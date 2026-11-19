@@ -23,6 +23,8 @@ actor BackgroundFeedRefreshStateStore {
     private let defaults: UserDefaults
     private let key: String
     private let maximumEntries = 1_000
+    private var cachedData: Data?
+    private var cachedEntries: [String: Entry]?
 
     init(suiteName: String? = nil, key: String = "BackgroundFeedRefreshState.v1") {
         self.defaults = suiteName.flatMap { UserDefaults(suiteName: $0) } ?? .standard
@@ -73,11 +75,13 @@ actor BackgroundFeedRefreshStateStore {
     }
 
     private func load() -> [String: Entry] {
-        guard let data = defaults.data(forKey: key),
-              let decoded = try? JSONDecoder().decode([String: Entry].self, from: data) else {
-            return [:]
+        let data = defaults.data(forKey: key)
+        if data == cachedData, let cachedEntries {
+            return cachedEntries
         }
-        return decoded
+        cachedData = data
+        cachedEntries = data.flatMap { try? JSONDecoder().decode([String: Entry].self, from: $0) } ?? [:]
+        return cachedEntries ?? [:]
     }
 
     private func save(_ entries: [String: Entry]) {
@@ -91,6 +95,8 @@ actor BackgroundFeedRefreshStateStore {
             .prefix(maximumEntries)
         guard let data = try? JSONEncoder().encode(Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })) else { return }
         defaults.set(data, forKey: key)
+        cachedData = data
+        cachedEntries = Dictionary(uniqueKeysWithValues: retained.map { ($0.key, $0.value) })
     }
 }
 
@@ -783,17 +789,36 @@ actor SubscriptionManager:NSObject{
         let maxPodcastsPerRun: Int
         let maxConcurrentPodcastUpdates: Int
         let maxRuntime: TimeInterval
+        let candidateSelectionBudget: TimeInterval
         let perPodcastRuntimeLimit: TimeInterval
         let minimumRuntimeRemainingBeforeStartingFeed: TimeInterval
         let notifyNewEpisodes: Bool
 
-        static func forReason(_ reason: FeedRefreshReason) -> BackgroundFeedRefreshPolicy {
+        static func forReason(
+            _ reason: FeedRefreshReason,
+            playbackActive: Bool = false
+        ) -> BackgroundFeedRefreshPolicy {
+            if playbackActive {
+                // Keep audio ahead of feed work. One serial check may still
+                // discover and import a new episode, but the pass yields quickly.
+                return .init(
+                    maxPodcastsPerRun: 1,
+                    maxConcurrentPodcastUpdates: 1,
+                    maxRuntime: 8,
+                    candidateSelectionBudget: 1.5,
+                    perPodcastRuntimeLimit: 4,
+                    minimumRuntimeRemainingBeforeStartingFeed: 2,
+                    notifyNewEpisodes: true
+                )
+            }
+
             switch reason {
             case .foregroundQuiet:
                 return .init(
                     maxPodcastsPerRun: 10,
                     maxConcurrentPodcastUpdates: 1,
                     maxRuntime: 24,
+                    candidateSelectionBudget: 4,
                     perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 2,
                     notifyNewEpisodes: true
@@ -801,8 +826,9 @@ actor SubscriptionManager:NSObject{
             case .appRefresh:
                 return .init(
                     maxPodcastsPerRun: 20,
-                    maxConcurrentPodcastUpdates: 2,
+                    maxConcurrentPodcastUpdates: 1,
                     maxRuntime: 25,
+                    candidateSelectionBudget: 4,
                     perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 2,
                     notifyNewEpisodes: true
@@ -816,8 +842,9 @@ actor SubscriptionManager:NSObject{
                     // iOS stop and reschedule cleanly instead of killing the
                     // app after roughly 48 seconds of CPU.
                     maxPodcastsPerRun: 20,
-                    maxConcurrentPodcastUpdates: 2,
+                    maxConcurrentPodcastUpdates: 1,
                     maxRuntime: 24,
+                    candidateSelectionBudget: 4,
                     perPodcastRuntimeLimit: 7,
                     minimumRuntimeRemainingBeforeStartingFeed: 4,
                     notifyNewEpisodes: true
@@ -861,25 +888,33 @@ actor SubscriptionManager:NSObject{
         policy: BackgroundFeedRefreshPolicy
     ) async -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
+        let selectionDeadline = startedAt.addingTimeInterval(policy.candidateSelectionBudget)
 
-        for ranked in await podcastsPrioritizedForBackgroundRefresh(now: startedAt, policy: policy) {
+        for ranked in podcastsPrioritizedForBackgroundRefresh(now: startedAt, policy: policy) {
             if candidates.count >= policy.maxPodcastsPerRun {
-                CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
+                break
+            }
+
+            if Task.isCancelled || Date() >= selectionDeadline {
+                CrashBreadcrumbs.shared.record(
+                    "bgupdate_feeds_stopped",
+                    details: "reason=selection_budget,candidates=\(candidates.count)"
+                )
                 break
             }
 
             let elapsed = Date().timeIntervalSince(startedAt)
-            if elapsed >= policy.maxRuntime {
-                CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_runtime")
-                break
-            }
-            if policy.maxRuntime - elapsed < policy.minimumRuntimeRemainingBeforeStartingFeed {
+            if elapsed >= policy.maxRuntime - policy.minimumRuntimeRemainingBeforeStartingFeed {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=runtime_remaining")
                 break
             }
 
             let podcast = ranked.podcast
             guard let feed = podcast.feed else { continue }
+            guard await isBackgroundFeedCheckEligible(podcast.metaData, feed: feed, now: startedAt) else {
+                continue
+            }
+            guard Date() < selectionDeadline else { break }
 
             let lastCheckAge = podcast.metaData?.feedUpdateCheckDate.map { Int(Date().timeIntervalSince($0)) } ?? -1
             candidates.append(
@@ -1372,29 +1407,29 @@ actor SubscriptionManager:NSObject{
     private func podcastsPrioritizedForBackgroundRefresh(
         now: Date,
         policy: BackgroundFeedRefreshPolicy
-    ) async -> [(podcast: Podcast, forceParse: Bool)] {
+    ) -> [(podcast: Podcast, forceParse: Bool)] {
         let liveFeatureEnabled = showLivePodcastsEnabled()
         let rankedPodcasts = podcasts
             .filter { $0.metaData?.isSubscribed != false }
-            .map { podcast -> (podcast: Podcast, prediction: PodcastReleasePredictor.Prediction?, score: Int) in
-                let prediction = PodcastReleasePredictor.updateCachedPrediction(for: podcast, after: now)
+            .map { podcast -> (podcast: Podcast, window: PodcastReleasePredictor.RefreshWindow?, score: Int) in
+                // Selection must stay cheap enough to leave time for feed checks.
+                // Recomputing predictions here traverses every episode relationship
+                // and can consume an entire background task on a large library.
+                let window = PodcastReleasePredictor.cachedRefreshWindow(for: podcast, now: now)
                 return (
                     podcast: podcast,
-                    prediction: prediction,
-                    score: backgroundRefreshScore(for: podcast, prediction: prediction, now: now)
+                    window: window,
+                    score: backgroundRefreshScore(for: podcast, window: window, now: now)
                         + (liveFeatureEnabled ? liveRefreshPriority(for: podcast, now: now) : 0)
                 )
             }
-
-        modelContext.saveIfNeeded()
 
         let ranked = rankedPodcasts
             .sorted { lhs, rhs in
                 if lhs.score != rhs.score { return lhs.score > rhs.score }
 
                 // A HEAD-only unchanged result still counts as an actual
-                // check. Rotate short background grants to feeds that have
-                // waited longest without marking queued work as checked.
+                // check. Older feeds break ties between equally urgent feeds.
                 let lhsCheck = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
                 let rhsCheck = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
                 if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
@@ -1406,37 +1441,24 @@ actor SubscriptionManager:NSObject{
                     podcast: entry.podcast,
                     forceParse: (liveFeatureEnabled
                         && liveRefreshPriority(for: entry.podcast, now: now) > 0)
-                        || PodcastBackgroundRefreshPriority.shouldForceParse(
-                            prediction: entry.prediction,
-                            now: now
-                        )
+                        || (entry.window.map { now >= $0.refreshStart } ?? false)
                 )
             }
-        var eligible: [(podcast: Podcast, forceParse: Bool)] = []
-        for entry in ranked {
-            guard let feed = entry.podcast.feed,
-                  await isBackgroundFeedCheckEligible(entry.podcast.metaData, feed: feed, now: now) else {
-                continue
-            }
-            eligible.append(entry)
-        }
-
-        // Release predictions keep likely-new episodes near the front, but a
-        // steady stream of imminent releases must not starve older eligible
-        // feeds across short background grants. Reserve one fifth of each pass
-        // for the feeds that have gone longest without an actual check.
-        let reservedCount = min(eligible.count, max(1, policy.maxPodcastsPerRun / 5))
-        let oldestFeeds = eligible.sorted { lhs, rhs in
-            let lhsDate = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
-            let rhsDate = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
-            if lhsDate != rhsDate { return lhsDate < rhsDate }
+        // Reserve a small slice for the oldest feeds, while checking
+        // eligibility lazily under the selection budget. This keeps release
+        // urgency from starving overdue subscriptions across short grants.
+        let reservedCount = max(1, policy.maxPodcastsPerRun / 5)
+        let oldest = ranked.sorted { lhs, rhs in
+            let lhsCheck = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+            let rhsCheck = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+            if lhsCheck != rhsCheck { return lhsCheck < rhsCheck }
             return (lhs.podcast.metaData?.lastRefresh ?? .distantPast)
                 < (rhs.podcast.metaData?.lastRefresh ?? .distantPast)
         }
-        let reservedFeedIDs = Set(oldestFeeds.prefix(reservedCount).compactMap { $0.podcast.feed?.absoluteString })
-        let reserved = eligible.filter { reservedFeedIDs.contains($0.podcast.feed?.absoluteString ?? "") }
-        let prioritized = eligible.filter { reservedFeedIDs.contains($0.podcast.feed?.absoluteString ?? "") == false }
-        return reserved + prioritized
+        let reservedIDs = Set(oldest.prefix(reservedCount).compactMap { $0.podcast.feed?.absoluteString })
+        let reserved = oldest.filter { reservedIDs.contains($0.podcast.feed?.absoluteString ?? "") }
+        let remaining = ranked.filter { reservedIDs.contains($0.podcast.feed?.absoluteString ?? "") == false }
+        return reserved + remaining
     }
 
     private func isBackgroundFeedCheckEligible(_ metadata: PodcastMetaData?, feed: URL, now: Date) async -> Bool {
@@ -1531,11 +1553,9 @@ actor SubscriptionManager:NSObject{
         defer {
             os_signpost(.end, log: Self.refreshPerformanceLog, name: "Background podcast refresh run", signpostID: signpostID)
         }
-        guard Task.isCancelled == false,
-              await MainActor.run(body: { Player.hasActivePlaybackInProcess == false }) else {
-            CrashBreadcrumbs.shared.record("bgupdate_feeds_skipped", details: "reason=playback_active")
+        guard Task.isCancelled == false else {
 #if DEBUG
-            await recordSkippedFeedRefresh(Task.isCancelled ? "cancelled" : "playback_active", for: reason)
+            await recordSkippedFeedRefresh("cancelled", for: reason)
 #endif
             return
         }
@@ -1573,7 +1593,8 @@ actor SubscriptionManager:NSObject{
         let startedAt = Date()
         let cpuStartedAt = Self.processCPUTime()
         let refreshRunID = UUID()
-        let policy = BackgroundFeedRefreshPolicy.forReason(reason)
+        let playbackWasActive = await MainActor.run { Player.hasActivePlaybackInProcess }
+        let policy = BackgroundFeedRefreshPolicy.forReason(reason, playbackActive: playbackWasActive)
         fetchData()
         var updated = 0
         var processed = 0
@@ -1586,13 +1607,13 @@ actor SubscriptionManager:NSObject{
 
         CrashBreadcrumbs.shared.record(
             "bgupdate_feeds_started",
-            details: "reason=\(reason),podcasts=\(podcasts.count),limit=\(policy.maxPodcastsPerRun)"
+            details: "reason=\(reason),podcasts=\(podcasts.count),limit=\(policy.maxPodcastsPerRun),playback_limited=\(playbackWasActive)"
         )
 
         let candidates = await makeBackgroundFeedRefreshCandidates(startedAt: startedAt, policy: policy)
         let candidatePreparationDuration = Date().timeIntervalSince(startedAt)
         if candidates.isEmpty {
-            stopReason = candidatePreparationDuration >= policy.maxRuntime
+            stopReason = candidatePreparationDuration >= policy.candidateSelectionBudget
                 ? "selection_budget"
                 : "no_eligible_feeds"
         }
@@ -1608,7 +1629,8 @@ actor SubscriptionManager:NSObject{
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=cancelled")
                 break
             }
-            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+            if playbackWasActive == false,
+               await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
                 stopReason = "playback_started"
                 CrashBreadcrumbs.shared.record(
                     "bgupdate_feeds_stopped",
@@ -1655,7 +1677,7 @@ actor SubscriptionManager:NSObject{
                         policy.perPodcastRuntimeLimit,
                         max(1, remainingRuntime - policy.minimumRuntimeRemainingBeforeStartingFeed)
                     )
-                    group.addTask {
+                    group.addTask(priority: .background) {
                         let (result, newEpisodeCount, errorMessage) = await self.updatePodcastWithTimeBudget(
                             candidate.feed,
                             refreshRunID: refreshRunID,
@@ -1719,7 +1741,8 @@ actor SubscriptionManager:NSObject{
                     }
                     if Task.isCancelled {
                         stopReason = "cancelled"
-                    } else if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
+                    } else if playbackWasActive == false,
+                              await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
                         stopReason = "playback_started"
                     } else if await MainActor.run(body: { ModelContainerManager.shared.isCloudKitExportInProgress }) {
                         stopReason = "cloudkit_export"

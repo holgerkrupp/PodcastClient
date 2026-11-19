@@ -582,20 +582,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         beginBackgroundTaskDiagnostics(task)
         CrashBreadcrumbs.shared.record("feed_processing_background_task_started")
         let processingTask = Task(priority: .utility) {
-            guard Player.hasActivePlaybackInProcess == false else {
-                CrashBreadcrumbs.shared.record(
-                    "feed_processing_background_task_skipped",
-                    details: "playback_active"
-                )
-                await self.finishBackgroundProcessingTask(
-                    task,
-                    operation: "feed_processing",
-                    requestedSuccess: true,
-                    waitForExportQuiescence: false,
-                    details: "skipped=playback_active"
-                )
-                return
-            }
             await ModelContainerManager.shared.prepareContainer()
             guard let container = ModelContainerManager.shared.preparedContainer,
                   Task.isCancelled == false else {

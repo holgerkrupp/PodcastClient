@@ -891,16 +891,6 @@ struct RaulApp: App {
         .backgroundTask(.appRefresh(BackgroundTaskConfiguration.feedRefreshIdentifier)) { task in
             CrashBreadcrumbs.shared.record("feed_refresh_background_task_started")
             guard Task.isCancelled == false else { return }
-            if await MainActor.run(body: { Player.hasActivePlaybackInProcess }) {
-                // Re-arm without fetching subscription predictions or opening
-                // a CloudKit-backed container during active audio playback.
-                _ = await FeedRefreshScheduler.schedule(using: nil)
-                CrashBreadcrumbs.shared.record(
-                    "feed_refresh_background_task_skipped",
-                    details: "playback_active"
-                )
-                return
-            }
             guard Task.isCancelled == false else { return }
             await scheduleFeedRefresh()
             guard Task.isCancelled == false else { return }
@@ -1153,17 +1143,15 @@ struct RaulApp: App {
             await PlayNextWidgetSync.refresh(using: container)
             await CloudSyncProgressReferenceStore.publish(modelContainer: container)
 
-            // A foreground catch-up can be blocked by playback, CloudKit
-            // export, library backfill, or another refresh. Keep one
-            // coalesced attempt alive while the app stays active, then retry
-            // once those blockers clear instead of abandoning the catch-up.
+            // Keep one coalesced catch-up alive while the app stays active,
+            // then retry if CloudKit export, library backfill, or another
+            // refresh blocks it. Feed refresh itself is playback-limited.
             for attempt in 0..<10 {
                 guard Task.isCancelled == false,
                       isAppActiveForForegroundWork else { return }
 
                 let refreshAlreadyRunning = await FeedRefreshRunCoordinator.shared.hasActiveRefreshRun()
-                let canRefresh = Player.hasActivePlaybackInProcess == false
-                    && modelContainerManager.isCloudKitExportInProgress == false
+                let canRefresh = modelContainerManager.isCloudKitExportInProgress == false
                     && StoreRuntimeProjection.isLibraryBackfillPending == false
                     && refreshAlreadyRunning == false
                 if canRefresh {
@@ -1176,9 +1164,7 @@ struct RaulApp: App {
                 }
 
                 let skipReason: String
-                if Player.hasActivePlaybackInProcess {
-                    skipReason = "playback_active"
-                } else if modelContainerManager.isCloudKitExportInProgress {
+                if modelContainerManager.isCloudKitExportInProgress {
                     skipReason = "cloudkit_export"
                 } else if StoreRuntimeProjection.isLibraryBackfillPending {
                     skipReason = "library_backfill_pending"
