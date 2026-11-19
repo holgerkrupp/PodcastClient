@@ -22,6 +22,7 @@ Links below are a navigation inventory, not a statement that every document is c
 - [Documentation/Performance/OptionalAudioAnalysis.md](../Documentation/Performance/OptionalAudioAnalysis.md)
 - [Documentation/Performance/PlayerOpening.md](../Documentation/Performance/PlayerOpening.md)
 - [Documentation/Performance/PodcastRefresh.md](../Documentation/Performance/PodcastRefresh.md)
+- [Documentation/Performance/StoreSplitWorkerCPU.md](../Documentation/Performance/StoreSplitWorkerCPU.md)
 - [Documentation/PodcastDiscoveryProviders.md](../Documentation/PodcastDiscoveryProviders.md)
 - [Documentation/PrivatePodcastAccess.md](../Documentation/PrivatePodcastAccess.md)
 - [Documentation/PrivatePodcastAccessTestMatrix.md](../Documentation/PrivatePodcastAccessTestMatrix.md)

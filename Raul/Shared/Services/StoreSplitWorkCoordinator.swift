@@ -206,7 +206,8 @@ actor StoreSplitWorkCoordinator {
             let admission = await MainActor.run {
                 (
                     playbackActive: Player.shared.isPlaying,
-                    exportActive: ModelContainerManager.shared.isCloudKitExportInProgress
+                    exportActive: ModelContainerManager.shared.isCloudKitExportInProgress,
+                    appState: ModelContainerManager.shared.databaseWorkAppState
                 )
             }
             guard let maintenancePermit = StoreMaintenanceResourceBudget.shared.acquire(
@@ -222,6 +223,8 @@ actor StoreSplitWorkCoordinator {
             let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
             await publishCurrentJob(nextJob)
 
+            var trigger = "unknown"
+            var outcomeName = "skipped"
             switch nextJob {
             case .reconcile:
                 guard let request = pendingReconcile else {
@@ -230,6 +233,7 @@ actor StoreSplitWorkCoordinator {
                     continue
                 }
                 pendingReconcile = nil
+                trigger = request.reason
                 // Taken before the pass: an import requested while it runs has
                 // a newer generation and stays pending.
                 let importRequest = StoreSplitPendingImportLedger.snapshot(
@@ -241,6 +245,14 @@ actor StoreSplitWorkCoordinator {
                     refreshMissingFeeds: request.refreshMissingFeeds,
                     reason: request.reason
                 )
+                switch result {
+                case .completed:
+                    outcomeName = "completed"
+                case .deferredForPlayback:
+                    outcomeName = "deferred_for_playback"
+                case .skipped:
+                    outcomeName = "skipped"
+                }
                 if case .deferredForPlayback = result {
                     pendingPlaybackIdleReconcile = true
                 } else if case .completed = result {
@@ -269,7 +281,8 @@ actor StoreSplitWorkCoordinator {
             let runtimeState = await MainActor.run {
                 (
                     playbackActive: Player.hasActivePlaybackInProcess,
-                    backgroundProcessingActive: ModelContainerManager.shared.isRunningBackgroundProcessingTask
+                    backgroundProcessingActive: ModelContainerManager.shared.isRunningBackgroundProcessingTask,
+                    appState: ModelContainerManager.shared.databaseWorkAppState
                 )
             }
             let cpuDelta = max(
@@ -277,7 +290,7 @@ actor StoreSplitWorkCoordinator {
                 SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt
             )
             AppDiagnostics.log(
-                "store_split_worker_finished operation=\(nextJob.rawValue) duration_ms=\(Int(duration * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) playback_active=\(runtimeState.playbackActive) background_processing_active=\(runtimeState.backgroundProcessingActive)"
+                "database_work operation=\(nextJob.rawValue) source=store_split_work_coordinator stores=shared_database,user_state trigger=\(trigger) started_at=\(startedAt.formatted(.iso8601)) duration_ms=\(Int(duration * 1_000)) process_cpu_seconds_delta=\(String(format: "%.2f", cpuDelta)) app_state_start=\(admission.appState) app_state_end=\(runtimeState.appState) playback_active_end=\(runtimeState.playbackActive) background_processing_active_end=\(runtimeState.backgroundProcessingActive) cancelled=\(Task.isCancelled) outcome=\(outcomeName)"
             )
         }
 
