@@ -862,7 +862,7 @@ actor SubscriptionManager:NSObject{
     ) async -> [BackgroundFeedRefreshCandidate] {
         var candidates: [BackgroundFeedRefreshCandidate] = []
 
-        for ranked in await podcastsPrioritizedForBackgroundRefresh(now: startedAt) {
+        for ranked in await podcastsPrioritizedForBackgroundRefresh(now: startedAt, policy: policy) {
             if candidates.count >= policy.maxPodcastsPerRun {
                 CrashBreadcrumbs.shared.record("bgupdate_feeds_stopped", details: "reason=max_podcasts")
                 break
@@ -1370,7 +1370,8 @@ actor SubscriptionManager:NSObject{
     }
 
     private func podcastsPrioritizedForBackgroundRefresh(
-        now: Date
+        now: Date,
+        policy: BackgroundFeedRefreshPolicy
     ) async -> [(podcast: Podcast, forceParse: Bool)] {
         let liveFeatureEnabled = showLivePodcastsEnabled()
         let rankedPodcasts = podcasts
@@ -1419,7 +1420,23 @@ actor SubscriptionManager:NSObject{
             }
             eligible.append(entry)
         }
-        return eligible
+
+        // Release predictions keep likely-new episodes near the front, but a
+        // steady stream of imminent releases must not starve older eligible
+        // feeds across short background grants. Reserve one fifth of each pass
+        // for the feeds that have gone longest without an actual check.
+        let reservedCount = min(eligible.count, max(1, policy.maxPodcastsPerRun / 5))
+        let oldestFeeds = eligible.sorted { lhs, rhs in
+            let lhsDate = lhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+            let rhsDate = rhs.podcast.metaData?.feedUpdateCheckDate ?? .distantPast
+            if lhsDate != rhsDate { return lhsDate < rhsDate }
+            return (lhs.podcast.metaData?.lastRefresh ?? .distantPast)
+                < (rhs.podcast.metaData?.lastRefresh ?? .distantPast)
+        }
+        let reservedFeedIDs = Set(oldestFeeds.prefix(reservedCount).compactMap { $0.podcast.feed?.absoluteString })
+        let reserved = eligible.filter { reservedFeedIDs.contains($0.podcast.feed?.absoluteString ?? "") }
+        let prioritized = eligible.filter { reservedFeedIDs.contains($0.podcast.feed?.absoluteString ?? "") == false }
+        return reserved + prioritized
     }
 
     private func isBackgroundFeedCheckEligible(_ metadata: PodcastMetaData?, feed: URL, now: Date) async -> Bool {

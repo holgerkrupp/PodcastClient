@@ -1150,17 +1150,50 @@ struct RaulApp: App {
             await PlayNextWidgetSync.refresh(using: container)
             await CloudSyncProgressReferenceStore.publish(modelContainer: container)
 
-            guard Player.hasActivePlaybackInProcess == false else {
+            // A foreground catch-up can be blocked by playback, CloudKit
+            // export, library backfill, or another refresh. Keep one
+            // coalesced attempt alive while the app stays active, then retry
+            // once those blockers clear instead of abandoning the catch-up.
+            for attempt in 0..<10 {
+                guard Task.isCancelled == false,
+                      isAppActiveForForegroundWork else { return }
+
+                let refreshAlreadyRunning = await FeedRefreshRunCoordinator.shared.hasActiveRefreshRun()
+                let canRefresh = Player.hasActivePlaybackInProcess == false
+                    && modelContainerManager.isCloudKitExportInProgress == false
+                    && StoreRuntimeProjection.isLibraryBackfillPending == false
+                    && refreshAlreadyRunning == false
+                if canRefresh {
+                    CrashBreadcrumbs.shared.record("foreground_feed_refresh_scheduled")
+                    await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .foregroundQuiet)
+                    await MainActor.run {
+                        deferredForegroundFeedRefreshTask = nil
+                    }
+                    return
+                }
+
+                let skipReason: String
+                if Player.hasActivePlaybackInProcess {
+                    skipReason = "playback_active"
+                } else if modelContainerManager.isCloudKitExportInProgress {
+                    skipReason = "cloudkit_export"
+                } else if StoreRuntimeProjection.isLibraryBackfillPending {
+                    skipReason = "library_backfill_pending"
+                } else {
+                    skipReason = "already_running"
+                }
                 CrashBreadcrumbs.shared.record(
                     "foreground_feed_refresh_skipped",
-                    details: "reason=playback_active"
+                    details: "reason=\(skipReason),attempt=\(attempt + 1)"
                 )
-                deferredForegroundFeedRefreshTask = nil
-                return
+                guard attempt < 9 else { break }
+                do {
+                    try await Task.sleep(for: .seconds(30))
+                } catch {
+                    return
+                }
             }
 
-            CrashBreadcrumbs.shared.record("foreground_feed_refresh_scheduled")
-            await SubscriptionManager(modelContainer: container).bgupdateFeeds(reason: .foregroundQuiet)
             await MainActor.run {
                 deferredForegroundFeedRefreshTask = nil
             }
