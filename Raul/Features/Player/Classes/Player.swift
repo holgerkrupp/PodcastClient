@@ -659,6 +659,17 @@ class Player {
         return currentEpisode.localFile ?? currentEpisode.url
     }
 
+    func isPlayingTranscriptMedia(episodeURL: URL, localMediaURL: URL) -> Bool {
+        isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: localMediaURL)
+            && !currentPlaybackIsVideo
+    }
+
+    func isPlayingLocalTranscriptMedia(episodeURL: URL, localMediaURL: URL) -> Bool {
+        currentEpisodeURL == episodeURL && currentPlaybackSource == .local
+            && !currentPlaybackUsesAlternateMedia && mediaSelection == .primary
+            && currentPlaybackURL?.standardizedFileURL == localMediaURL.standardizedFileURL
+    }
+
     private var hasCurrentEpisodeChapters: Bool {
         currentEpisode?.preferredChapters.isEmpty == false
     }
@@ -3026,6 +3037,9 @@ class Player {
 
         let playbackGeneration = advancePlaybackLoadGeneration()
         mediaSelection = nextSelection
+        if let episodeURL = currentEpisodeURL {
+            TranscriptSynchronizationStore.shared.removeTimeline(for: episodeURL)
+        }
         lastTranscriptSynchronizationPosition = nil
         currentPlaybackSource = playback.source
         currentPlaybackUsesAlternateMedia = playback.usesAlternateMedia
@@ -3855,7 +3869,9 @@ class Player {
         let episodeChanged = lastTranscriptSynchronizationEpisodeURL != episodeURL
         let previousPosition = lastTranscriptSynchronizationPosition
         let seekedBack = previousPosition.map { audioTime < $0 - 30 } ?? false
-        let intervalElapsed = previousPosition.map { audioTime - $0 >= 240 } ?? (audioTime >= 20)
+        let needsCoverage = !TranscriptSynchronizationStore.shared.hasVerifiedTimeline(for: episodeURL)
+            || TranscriptSynchronizationStore.shared.isUnverifiedAudioTime(audioTime, episodeURL: episodeURL)
+        let intervalElapsed = previousPosition.map { audioTime - $0 >= (needsCoverage ? 15 : 240) } ?? (audioTime >= 20)
         guard episodeChanged || seekedBack || intervalElapsed else { return }
 
         lastTranscriptSynchronizationEpisodeURL = episodeURL
@@ -4360,7 +4376,8 @@ class Player {
         _ = await DownloadManager.shared.download(
             from: remoteURL,
             saveTo: episode.localFile,
-            profile: accessProfile(for: episode)
+            profile: accessProfile(for: episode),
+            networkTrackingProtectionEnabled: PodcastNetworkPrivacyPolicy.isEnabled(forPodcast: episode.podcast)
         )
     }
 

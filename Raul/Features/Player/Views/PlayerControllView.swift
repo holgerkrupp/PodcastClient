@@ -15,6 +15,7 @@ struct PlayerControllView: View {
     @Environment(\.openPodcastSettings) private var openSettings
 
     @Bindable private var player = Player.shared
+    @Bindable private var liveTranscript = LiveTranscriptController.shared
     @Bindable private var chapterSkipRecognition = ChapterSkipRecognition.shared
     @State private var showTranscripts: Bool = false
 
@@ -40,6 +41,7 @@ struct PlayerControllView: View {
     
     var body: some View {
         if let episode = player.currentEpisode {
+            let transcriptLines = liveTranscript.displayLines(for: episode)
             VStack(spacing: 8) {
                 if showsMedia, let mediaHeight {
                     VStack(spacing: 0) {
@@ -58,10 +60,8 @@ struct PlayerControllView: View {
                                 alignment: .top
                             )
 
-                        if let transcriptLines = player.currentEpisode?.transcriptLines,
-                           showsInlineTranscript,
-                           showTranscripts {
-                            inlineTranscriptCard(transcriptLines: transcriptLines)
+                        if showsInlineTranscript, showTranscripts {
+                            transcriptCard(episode: episode, lines: transcriptLines)
                             .frame(maxWidth: .infinity, maxHeight: mediaHeight * 0.4, alignment: .topLeading)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -84,9 +84,8 @@ struct PlayerControllView: View {
                     .aspectRatio(1, contentMode: .fit)
                 } else if !showsTranscriptOverHero,
                           showsInlineTranscript,
-                          showTranscripts,
-                          let transcriptLines = episode.transcriptLines {
-                    inlineTranscriptCard(transcriptLines: transcriptLines)
+                          showTranscripts {
+                    transcriptCard(episode: episode, lines: transcriptLines)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -158,10 +157,8 @@ struct PlayerControllView: View {
             .overlay(alignment: .top) {
                 if showsTranscriptOverHero,
                    showsInlineTranscript,
-                   showTranscripts,
-                   let transcriptLines = episode.transcriptLines,
-                   !transcriptLines.isEmpty {
-                    inlineTranscriptCard(transcriptLines: transcriptLines)
+                   showTranscripts {
+                    transcriptCard(episode: episode, lines: transcriptLines)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -173,12 +170,26 @@ struct PlayerControllView: View {
             .sheet(isPresented: $showFullTranscripts, onDismiss: {
                 openFullTranscriptFollowingPlayback = false
             }) {
-                if let transcriptLines = player.currentEpisode?.transcriptLines {
-                    TranscriptListView(
-                        transcriptLines: transcriptLines,
-                        episode: episode,
-                        startFollowingPlayback: openFullTranscriptFollowingPlayback
-                    )
+                if !transcriptLines.isEmpty {
+                    VStack(spacing: 0) {
+                        if episode.transcriptLines?.isEmpty != false {
+                            LiveTranscriptActionView(episode: episode)
+                            LiveTranscriptCoverageView(episode: episode)
+                        }
+                        TranscriptListView(
+                            transcriptLines: transcriptLines,
+                            episode: episode,
+                            startFollowingPlayback: openFullTranscriptFollowingPlayback,
+                            canFollowPlayback: episode.transcriptLines?.isEmpty == false || liveTranscript.isActive(for: episode)
+                        )
+                    }
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                } else {
+                    VStack(spacing: 12) {
+                        LiveTranscriptActionView(episode: episode)
+                        ContentUnavailableView("No Transcript", systemImage: "quote.bubble")
+                    }
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 }
@@ -221,7 +232,7 @@ struct PlayerControllView: View {
             }
 
             HStack(spacing: 0) {
-                if showsInlineTranscript, hasTranscript {
+                if showsInlineTranscript, hasTranscript || player.currentEpisode?.localFile != nil {
                     transcriptVisibilityButton
                 } else {
                     Color.clear
@@ -239,6 +250,7 @@ struct PlayerControllView: View {
 
     private var hasTranscript: Bool {
         guard let episode = player.currentEpisode else { return false }
+        if episode.liveTranscriptData != nil || liveTranscript.isActive(for: episode) { return true }
         if usesCachedContentAvailability {
             return contentAvailability?.episodeURL == episode.url
                 && contentAvailability?.hasTranscript == true
@@ -313,6 +325,24 @@ struct PlayerControllView: View {
             : "Shows the transcript panel below the artwork"
     }
 
+    @ViewBuilder
+    private func transcriptCard(episode: Episode, lines: [TranscriptLineAndTime]) -> some View {
+        if lines.isEmpty {
+            LiveTranscriptActionView(episode: episode)
+                .overlay(alignment: .bottomTrailing) {
+                    Button { showFullTranscripts = true } label: {
+                        Image("custom.quote.bubble.rectangle.portrait")
+                    }
+                    .buttonStyle(.glass(.clear))
+                    .frame(width: 44, height: 44)
+                    .padding(6)
+                    .accessibilityLabel("Open full transcript")
+                }
+        } else {
+            inlineTranscriptCard(transcriptLines: lines)
+        }
+    }
+
     private func inlineTranscriptCard(transcriptLines: [TranscriptLineAndTime]) -> some View {
         TranscriptView(
             transcriptLines: transcriptLines,
@@ -321,7 +351,9 @@ struct PlayerControllView: View {
                 openFullTranscriptFollowingPlayback = true
                 showFullTranscripts = true
             },
-            reservesBottomTrailingAccessory: true
+            reservesBottomTrailingAccessory: true,
+            canFollowPlayback: player.currentEpisode?.transcriptLines?.isEmpty == false
+                || (player.currentEpisode.map { liveTranscript.isActive(for: $0) } ?? false)
         )
         .overlay(alignment: .bottomTrailing) {
             Button {
@@ -772,6 +804,7 @@ struct PlayerPrimaryTransportControlsView: View {
                     if let episode = player.currentEpisode, let audioURL = player.currentPlaybackURL {
                         AudioClipExportView(
                             title: episode.title,
+                            episodeURL: episode.url,
                             audioURL: audioURL,
                             isVideo: player.currentPlaybackIsVideo,
                             coverImageURL: episode.imageURL,

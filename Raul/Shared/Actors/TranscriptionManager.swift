@@ -1,4 +1,5 @@
 import Foundation
+import CoreMedia
 import SwiftData
 #if canImport(UIKit)
 import UIKit
@@ -33,6 +34,7 @@ actor TranscriptionTurnQueue {
 
     private var activeEpisodeURL: URL?
     private var waiters: [Waiter] = []
+    private var cancelledClipTickets: Set<URL> = []
 
     func wait(for episodeURL: URL) async {
         if activeEpisodeURL == nil {
@@ -46,6 +48,7 @@ actor TranscriptionTurnQueue {
     }
 
     func finish(_ episodeURL: URL) {
+        cancelledClipTickets.remove(episodeURL)
         guard activeEpisodeURL == episodeURL else { return }
         guard waiters.isEmpty == false else {
             activeEpisodeURL = nil
@@ -55,6 +58,20 @@ actor TranscriptionTurnQueue {
         let next = waiters.removeFirst()
         activeEpisodeURL = next.episodeURL
         next.continuation.resume()
+    }
+
+    func waitForClip(_ ticket: URL) async {
+        guard cancelledClipTickets.remove(ticket) == nil else { return }
+        await wait(for: ticket)
+    }
+
+    func cancelClip(_ ticket: URL) {
+        guard activeEpisodeURL != ticket else { return }
+        if waiters.contains(where: { $0.episodeURL == ticket }) {
+            cancel(ticket)
+        } else {
+            cancelledClipTickets.insert(ticket)
+        }
     }
 
     func promote(_ episodeURL: URL) {
@@ -110,6 +127,22 @@ actor TranscriptionManager {
     private var container: ModelContainer?
 
     private init() {}
+
+    /// Clip-only recognition shares the existing analyzer turn and never saves
+    /// its results as an episode transcript.
+    func transcribeClip(audioURL: URL, language: String?, tentativeHandler: (@Sendable (AITranscripts.TimedResult) async -> Void)? = nil, usesTimeCodedInput: Bool = false) async throws -> [AITranscripts.TimedResult]? {
+        let ticket = URL(string: "upnext-clip-transcription://\(UUID().uuidString)")!
+        let queue = transcriptionQueue
+        return try await withTaskCancellationHandler {
+            await queue.waitForClip(ticket)
+            defer { Task { await queue.finish(ticket) } }
+            try Task.checkCancellation()
+            let transcriber = await AITranscripts(url: audioURL, language: language, diagnosticPurpose: "clip", tentativeHandler: tentativeHandler, usesTimeCodedInput: usesTimeCodedInput)
+            return try await transcriber.transcribe()
+        } onCancel: {
+            Task { await queue.cancelClip(ticket) }
+        }
+    }
 
     private func preparedModelContainer() async -> ModelContainer? {
         if let container {
@@ -258,14 +291,15 @@ actor TranscriptionManager {
                     }
                 )
 
-                // Get VTT text as String? (Sendable)
-                let vtt = try await transcriber.transcribeTovTT()
+                let mediaURL = URL(fileURLWithPath: snapshot.localFile.path)
+                let initialMediaValues = try? mediaURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                let results = try await transcriber.transcribe()
 
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.95, status: "Saving transcript…")
                 }
 
-                guard let vtt else {
+                guard let results, results.contains(where: { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }) else {
                     throw NSError(
                         domain: "TranscriptionManager",
                         code: -1,
@@ -273,6 +307,30 @@ actor TranscriptionManager {
                     )
                 }
                 try Task.checkCancellation()
+
+                // Associate generated timing with the actual bytes used for recognition.
+                // Older transcripts without this value remain readable but cannot be
+                // assumed to match a later replacement download during clip export.
+                let fingerprintTask = Task.detached(priority: .utility) {
+                    try TranscriptMediaFingerprint.make(for: mediaURL)
+                }
+                let fingerprint = await withTaskCancellationHandler {
+                    try? await fingerprintTask.value
+                } onCancel: {
+                    fingerprintTask.cancel()
+                }
+                try Task.checkCancellation()
+                let finalMediaValues = try? URL(fileURLWithPath: mediaURL.path).resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+                let sameMedia = initialMediaValues?.fileSize != nil
+                    && initialMediaValues?.contentModificationDate != nil
+                    && initialMediaValues?.fileSize == finalMediaValues?.fileSize
+                    && initialMediaValues?.contentModificationDate == finalMediaValues?.contentModificationDate
+                if initialMediaValues?.fileSize != nil, initialMediaValues?.contentModificationDate != nil,
+                   finalMediaValues?.fileSize != nil, finalMediaValues?.contentModificationDate != nil,
+                   !sameMedia {
+                    throw NSError(domain: "TranscriptionManager", code: -1,
+                                  userInfo: [NSLocalizedDescriptionKey: "The downloaded audio changed during transcription."])
+                }
 
                 // Persist the transcript first. Chapter generation is optional enrichment
                 // and can involve several on-device language-model calls; keeping it out
@@ -282,10 +340,24 @@ actor TranscriptionManager {
                     uiItem.setState(.saving, progress: 0.96, status: "Writing transcript…")
                 }
                 try Task.checkCancellation()
-                _ = try await episodeActor.decodeAndSetTranscript(
-                    for: episodeURL,
-                    vtt: vtt
-                )
+                let lines = results.compactMap { result -> TranscriptLineSnapshot? in
+                    let start = CMTimeGetSeconds(result.range.start)
+                    let end = CMTimeGetSeconds(result.range.end)
+                    guard start.isFinite, end.isFinite, start >= 0, end > start,
+                          !result.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+                    return TranscriptLineSnapshot(
+                        speaker: nil, text: result.text,
+                        startTime: start,
+                        endTime: end,
+                        timedSpans: result.timedSpans,
+                        generatedMediaFingerprint: sameMedia ? fingerprint : nil
+                    )
+                }
+                guard !lines.isEmpty, lines.count == results.count else {
+                    throw NSError(domain: "TranscriptionManager", code: -1,
+                                  userInfo: [NSLocalizedDescriptionKey: "The transcription finished without transcript data."])
+                }
+                try await episodeActor.setGeneratedTranscript(for: episodeURL, lines: lines)
                 let finishedAt = Date()
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")

@@ -19,6 +19,7 @@ struct EpisodeDetailView: View {
     @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
 
     @Bindable var episode: Episode
+    @Bindable private var liveTranscript = LiveTranscriptController.shared
     private let transcriptSearchNavigation: TranscriptSearchNavigation?
 
     @State private var errorMessage: String? = nil
@@ -139,12 +140,19 @@ struct EpisodeDetailView: View {
 #endif
         .sheet(isPresented: $showTranscriptSheet) {
             NavigationStack {
-                if let transcriptLines = episode.transcriptLines, transcriptLines.isEmpty == false {
-                    TranscriptListView(
-                        transcriptLines: transcriptLines,
-                        episode: episode,
-                        searchNavigation: transcriptSearchNavigation
-                    )
+                let transcriptLines = liveTranscript.displayLines(for: episode)
+                if !transcriptLines.isEmpty {
+                    VStack(spacing: 0) {
+                        if episode.transcriptLines?.isEmpty != false {
+                            LiveTranscriptCoverageView(episode: episode).padding()
+                        }
+                        TranscriptListView(
+                            transcriptLines: transcriptLines,
+                            episode: episode,
+                            searchNavigation: transcriptSearchNavigation,
+                            canFollowPlayback: episode.transcriptLines?.isEmpty == false || liveTranscript.isActive(for: episode)
+                        )
+                    }
                     .navigationTitle("Captions & Transcript")
                     .platformInlineNavigationTitle()
                 } else {
@@ -262,7 +270,7 @@ struct EpisodeDetailView: View {
     private func openTranscript() async {
         errorMessage = nil
 
-        if episode.transcriptLines?.isEmpty == false {
+        if episode.transcriptLines?.isEmpty == false || episode.liveTranscriptData != nil {
             showTranscriptSheet = true
             return
         }
@@ -462,6 +470,7 @@ private struct EpisodeDetailContentToolsView: View {
 
     private var hasTranscript: Bool {
         episode.transcriptLines?.isEmpty == false
+            || episode.liveTranscriptData != nil
             || episode.externalFiles.contains(where: { $0.category == .transcript })
     }
 
@@ -652,7 +661,7 @@ private struct EpisodeDetailMoreMenu: View {
                 } label: {
                     Label("Episode Debug Metadata", systemImage: "info.circle")
                 }
-                if episode.transcriptLines?.isEmpty == false {
+                if episode.transcriptLines?.isEmpty == false || episode.liveTranscriptData != nil {
                     Button("Delete Transcript", systemImage: "trash", role: .destructive, action: onDeleteTranscript)
                         .accessibilityHint("Deletes this episode's transcript so it can be generated again")
                 }

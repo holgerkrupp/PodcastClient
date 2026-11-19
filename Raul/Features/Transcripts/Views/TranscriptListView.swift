@@ -7,9 +7,8 @@ struct TranscriptSearchNavigation: Hashable, Sendable {
 }
 
 private struct TranscriptDisplayRow: Identifiable {
+    let segment: TranscriptSegment
     let id: UUID
-    /// Every transcript line merged into this row, so playback highlighting keeps working.
-    let lineIDs: [UUID]
     let speaker: String?
     let showsSpeaker: Bool
     let text: String
@@ -24,21 +23,26 @@ struct TranscriptListView: View {
     let transcriptLines: [TranscriptLineAndTime]
     let episode: Episode?
     let searchNavigation: TranscriptSearchNavigation?
+    let canFollowPlayback: Bool
 
     @Bindable private var player = Player.shared
     @State private var searchText: String
     @State private var followPlayback: Bool
     @State private var displayRows: [TranscriptDisplayRow]
     @State private var speakerColorMap: [String: Color]
-    @State private var lineToDisplayRowID: [UUID: UUID]
     @State private var selectedSearchRowID: UUID?
+    @State private var tracker = TranscriptPlaybackTracker()
+    @State private var selectionActive = false
+    @State private var frozenActive: TranscriptPlaybackTracker.Active?
+    @State private var pendingRowsUpdate = false
 
     init(
         transcriptLines: [TranscriptLineAndTime],
         episode: Episode? = nil,
         searchText: String = "",
         startFollowingPlayback: Bool = false,
-        searchNavigation: TranscriptSearchNavigation? = nil
+        searchNavigation: TranscriptSearchNavigation? = nil,
+        canFollowPlayback: Bool = true
     ) {
         let sortedLines = transcriptLines.sorted { $0.startTime < $1.startTime }
         let initialSearchText = searchNavigation?.query.isEmpty == false
@@ -49,11 +53,11 @@ struct TranscriptListView: View {
         self.transcriptLines = sortedLines
         self.episode = episode
         self.searchNavigation = searchNavigation
+        self.canFollowPlayback = canFollowPlayback
         _searchText = State(initialValue: initialSearchText)
         _followPlayback = State(initialValue: startFollowingPlayback)
         _displayRows = State(initialValue: initialRows)
         _speakerColorMap = State(initialValue: Self.makeSpeakerColorMap(from: initialRows))
-        _lineToDisplayRowID = State(initialValue: Self.makeLineToDisplayRowID(from: initialRows))
     }
 
     private static let speakerColors: [Color] = [
@@ -74,22 +78,12 @@ struct TranscriptListView: View {
     }
 
     private var isShowingCurrentEpisode: Bool {
-        guard let viewedEpisodeURL else { return false }
+        guard canFollowPlayback, let viewedEpisodeURL else { return false }
         return player.currentEpisodeURL == viewedEpisodeURL
     }
 
-    private var activeTranscriptLineID: UUID? {
-        guard isShowingCurrentEpisode,
-              let transcriptTime = synchronizationStore.transcriptTime(
-                forAudioTime: player.playPosition,
-                episodeURL: viewedEpisodeURL
-              ), transcriptTime.isFinite else { return nil }
-        return transcriptLineID(at: transcriptTime)
-    }
-
     private var activeDisplayRowID: UUID? {
-        guard let activeTranscriptLineID else { return nil }
-        return lineToDisplayRowID[activeTranscriptLineID]
+        (selectionActive ? frozenActive : tracker.active)?.segmentID
     }
 
     var body: some View {
@@ -106,22 +100,41 @@ struct TranscriptListView: View {
                 .padding(.vertical, 10)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                if isShowingCurrentEpisode {
+                if isShowingCurrentEpisode || selectionActive {
                     Button {
-                        followPlayback.toggle()
+                        let wasSelecting = selectionActive
+                        selectionActive = false
+                        if pendingRowsUpdate {
+                            pendingRowsUpdate = false
+                            rebuildDisplayRows()
+                        }
+                        if isShowingCurrentEpisode {
+                            followPlayback = wasSelecting ? true : !followPlayback
+                        }
                     } label: {
-                        Label(followPlayback ? "Following" : "Follow", systemImage: "dot.radiowaves.left.and.right")
+                        Label(selectionActive && !isShowingCurrentEpisode ? "Done Selecting" : (followPlayback ? "Following" : "Follow"), systemImage: "dot.radiowaves.left.and.right")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(followPlayback ? Color.accentColor : Color.secondary)
                     }
                     .buttonStyle(.glass(.clear))
                     .help(followPlayback ? "Stop following playback" : "Keep the current transcript line centered")
-                    .accessibilityLabel(followPlayback ? "Following playback" : "Follow playback")
-                    .accessibilityHint("Keeps captions centered around the current playback time")
+                    .accessibilityLabel(selectionActive && !isShowingCurrentEpisode ? "Done selecting" : (followPlayback ? "Following playback" : "Follow playback"))
+                    .accessibilityHint(isShowingCurrentEpisode ? "Keeps captions centered around the current playback time" : "Resumes transcript updates")
                     .accessibilityInputLabels([Text("Follow captions"), Text("Follow playback")])
                 }
             }
             .padding()
+
+            if isShowingCurrentEpisode && usesPublisherAlignment && synchronizationStore.isEnabled
+                && (!synchronizationStore.hasVerifiedTimeline(for: viewedEpisodeURL)
+                    || synchronizationStore.isUnverifiedAudioTime(player.playPosition, episodeURL: viewedEpisodeURL)) {
+                Label("Transcript timing could not be verified for this audio.", systemImage: "info.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+            }
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -147,10 +160,24 @@ struct TranscriptListView: View {
                         }
                 )
                 .onAppear {
+                    if canFollowPlayback {
+                        tracker.start(segments: displayRows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
+                    }
                     scrollToInitialLocation(with: proxy)
                 }
+                .onDisappear { tracker.stop() }
+                .onChange(of: player.playPosition) { tracker.refresh() }
+                .onChange(of: player.currentEpisodeURL) { tracker.refresh() }
+                .onChange(of: canFollowPlayback) {
+                    if canFollowPlayback {
+                        tracker.start(segments: displayRows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
+                    } else { tracker.stop() }
+                }
                 .onChange(of: searchText) {
-                    rebuildDisplayRows()
+                    if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
+                }
+                .onChange(of: transcriptLines) {
+                    if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
                 }
                 .onChange(of: activeDisplayRowID) {
                     scrollToActiveRow(with: proxy, animated: false)
@@ -188,6 +215,11 @@ struct TranscriptListView: View {
     private func transcriptRow(_ row: TranscriptDisplayRow) -> some View {
         let isActive = row.id == activeDisplayRowID
         let isFocusedSearchMatch = row.id == selectedSearchRowID
+        let canSeek = !usesPublisherAlignment || !synchronizationStore.isEnabled
+            || synchronizationStore.audioTime(forTranscriptTime: row.startTime, episodeURL: viewedEpisodeURL) != nil
+        let caption = row.segment.highlightedText(selectionActive ? frozenActive : tracker.active)
+        let displayedCaption = !searchText.isEmpty && TranscriptSearchText.matches(row.text, query: searchText)
+            ? caption.underline() : caption
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -206,8 +238,9 @@ struct TranscriptListView: View {
                     .foregroundStyle(isActive ? Color.accentColor : Color.secondary)
                 }
                 .buttonStyle(.plain)
+                .disabled(!canFollowPlayback || !canSeek)
                 .accessibilityLabel("Play from \(formatTime(row.startTime))")
-                .accessibilityHint("Starts playback from this caption line")
+                .accessibilityHint(!canFollowPlayback ? "Start live transcription to verify timing for this audio" : (canSeek ? "Starts playback from this caption line" : "Timing is not verified for this passage"))
                 .accessibilityInputLabels([Text("Play from \(formatTime(row.startTime))"), Text("Play caption")])
 
                 if row.showsSpeaker, let speaker = row.speaker {
@@ -223,14 +256,38 @@ struct TranscriptListView: View {
                 }
             }
 
-            Text(row.text)
+#if canImport(UIKit)
+            SelectableTranscriptText(
+                segment: row.segment,
+                active: selectionActive ? frozenActive : tracker.active,
+                underlineForSearch: !searchText.isEmpty && TranscriptSearchText.matches(row.text, query: searchText),
+                onSelectionChange: { selecting in
+                    if selecting && !selectionActive {
+                        frozenActive = tracker.active
+                        selectionActive = true
+                        followPlayback = false
+                    } else if !selecting && selectionActive {
+                        selectionActive = false
+                        if pendingRowsUpdate {
+                            pendingRowsUpdate = false
+                            rebuildDisplayRows()
+                        }
+                    }
+                }
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+#else
+            displayedCaption
                 .font(.body)
                 .foregroundColor(.primary)
-                .underline(
-                    searchText.isEmpty == false
-                        && TranscriptSearchText.matches(row.text, query: searchText)
-                )
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .simultaneousGesture(LongPressGesture(minimumDuration: 0.25).onEnded { _ in
+                    frozenActive = tracker.active
+                    selectionActive = true
+                    followPlayback = false
+                })
+#endif
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -263,7 +320,7 @@ struct TranscriptListView: View {
     }
 
     private func scrollToActiveRow(with proxy: ScrollViewProxy, animated: Bool = true) {
-        guard followPlayback, let activeDisplayRowID else { return }
+        guard followPlayback, !selectionActive, let activeDisplayRowID else { return }
 
         if animated && !reduceMotion {
             withAnimation(.snappy(duration: 0.18, extraBounce: 0.0)) {
@@ -290,10 +347,10 @@ struct TranscriptListView: View {
 
     @MainActor
     private func playTranscript(at time: TimeInterval) async {
-        let audioTime = synchronizationStore.audioTime(
+        guard let audioTime = (usesPublisherAlignment ? synchronizationStore.audioTime(
             forTranscriptTime: time,
             episodeURL: viewedEpisodeURL
-        ) ?? time
+        ) : time) else { return }
         guard let viewedEpisodeURL else {
             await player.jumpTo(time: audioTime)
             if player.isPlaying == false {
@@ -312,42 +369,6 @@ struct TranscriptListView: View {
         }
     }
 
-    private func transcriptLineID(at time: TimeInterval) -> UUID? {
-        guard transcriptLines.isEmpty == false else { return nil }
-
-        var low = 0
-        var high = transcriptLines.count - 1
-
-        while low <= high {
-            let mid = (low + high) / 2
-            let line = transcriptLines[mid]
-            let endTime = effectiveEndTime(for: mid)
-
-            if time < line.startTime {
-                high = mid - 1
-            } else if time >= endTime {
-                low = mid + 1
-            } else {
-                return line.id
-            }
-        }
-
-        let fallbackIndex = max(0, min(low - 1, transcriptLines.count - 1))
-        return transcriptLines[fallbackIndex].id
-    }
-
-    private func effectiveEndTime(for index: Int) -> TimeInterval {
-        if let endTime = transcriptLines[index].endTime {
-            return endTime
-        }
-
-        if index + 1 < transcriptLines.count {
-            return transcriptLines[index + 1].startTime
-        }
-
-        return .infinity
-    }
-
     private func formatTime(_ timeInterval: TimeInterval) -> String {
         let minutes = Int(timeInterval) / 60
         let seconds = Int(timeInterval) % 60
@@ -357,8 +378,8 @@ struct TranscriptListView: View {
     private func rebuildDisplayRows() {
         let rows = Self.makeDisplayRows(from: transcriptLines, matching: searchText)
         displayRows = rows
+        tracker.update(segments: rows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
         speakerColorMap = Self.makeSpeakerColorMap(from: rows)
-        lineToDisplayRowID = Self.makeLineToDisplayRowID(from: rows)
         selectedSearchRowID = nil
     }
 
@@ -369,6 +390,10 @@ struct TranscriptListView: View {
         } ?? (offset > 0 ? -1 : displayRows.count)
         let nextIndex = (currentIndex + offset + displayRows.count) % displayRows.count
         selectedSearchRowID = displayRows[nextIndex].id
+    }
+
+    private var usesPublisherAlignment: Bool {
+        transcriptLines.contains { $0.transcriptSource == .publisher }
     }
 
     private static func makeDisplayRows(from lines: [TranscriptLineAndTime], matching searchText: String) -> [TranscriptDisplayRow] {
@@ -393,8 +418,8 @@ struct TranscriptListView: View {
         for segment in filteredSegments {
             rows.append(
                 TranscriptDisplayRow(
+                    segment: segment,
                     id: segment.id,
-                    lineIDs: segment.lineIDs,
                     speaker: segment.speaker,
                     showsSpeaker: segment.speaker != previousSpeaker,
                     text: segment.text,
@@ -420,17 +445,6 @@ struct TranscriptListView: View {
         return colorMap
     }
 
-    private static func makeLineToDisplayRowID(from rows: [TranscriptDisplayRow]) -> [UUID: UUID] {
-        var mapping: [UUID: UUID] = [:]
-
-        for row in rows {
-            for lineID in row.lineIDs {
-                mapping[lineID] = row.id
-            }
-        }
-
-        return mapping
-    }
 }
 
 #Preview {

@@ -167,7 +167,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     func download(
         from url: URL,
         saveTo destination: URL? = nil,
-        profile: PodcastAccessProfile? = nil
+        profile: PodcastAccessProfile? = nil,
+        networkTrackingProtectionEnabled: Bool? = nil
     ) async -> DownloadItem? {
         if !hasReconnectedTasks { await restorePendingDownloads() }
         if let existing = downloads[url] {
@@ -215,7 +216,11 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         if let requestURL = request.url {
             let protectedURL: URL
             do {
-                protectedURL = try PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio)
+                protectedURL = try PodcastNetworkPrivacyPolicy.wireURL(
+                    for: requestURL,
+                    purpose: .audio,
+                    enabled: networkTrackingProtectionEnabled ?? PodcastNetworkPrivacyPolicy.isEnabled
+                )
             } catch {
                 downloads[url] = nil
                 destinations[url] = nil
@@ -277,7 +282,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
     }
     
-    func resumeDownload(for url: URL) async {
+    func resumeDownload(for url: URL, networkTrackingProtectionEnabled: Bool? = nil) async {
+        let protectionEnabled = networkTrackingProtectionEnabled ?? PodcastNetworkPrivacyPolicy.isEnabled
         let profile = profiles[url] ?? profiles[authorizationKeyURL(for: url)]
         if profile != nil,
            (try? accessResolver.request(for: url, profile: profile)) == nil {
@@ -287,7 +293,10 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         }
 
         guard let item = downloads[url] else {
-            _ = await download(from: url)
+            _ = await download(
+                from: url,
+                networkTrackingProtectionEnabled: networkTrackingProtectionEnabled
+            )
             return
         }
 
@@ -298,17 +307,25 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
             // with the current Keychain credential after a re-authentication
             // so a rotated token/password is used safely.
             guard let requestURL = request.url,
-                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else { return }
+                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(
+                    for: requestURL,
+                    purpose: .audio,
+                    enabled: protectionEnabled
+                  ) else { return }
             request.url = protectedURL
             task = session.downloadTask(with: request)
-        } else if PodcastNetworkPrivacyPolicy.isEnabled == false,
+        } else if protectionEnabled == false,
                   let data = resumeData.removeValue(forKey: url) {
             task = session.downloadTask(withResumeData: data)
         } else if var request = try? accessResolver.request(for: url, profile: nil) {
             // Some servers do not provide resume data. Continue with a fresh
             // request while retaining the existing observable progress item.
             guard let requestURL = request.url,
-                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: requestURL, purpose: .audio) else { return }
+                  let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(
+                    for: requestURL,
+                    purpose: .audio,
+                    enabled: protectionEnabled
+                  ) else { return }
             request.url = protectedURL
             task = session.downloadTask(with: request)
         } else {

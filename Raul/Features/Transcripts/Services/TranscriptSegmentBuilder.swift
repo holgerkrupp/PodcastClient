@@ -17,13 +17,15 @@ struct TranscriptSegmentSource: Identifiable, Hashable, Sendable {
     let text: String
     let startTime: TimeInterval
     let endTime: TimeInterval?
+    let timedSpans: [TranscriptTimedSpan]
 
-    init(id: UUID = UUID(), speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil) {
+    init(id: UUID = UUID(), speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil, timedSpans: [TranscriptTimedSpan] = []) {
         self.id = id
         self.speaker = speaker
         self.text = text
         self.startTime = startTime
         self.endTime = endTime
+        self.timedSpans = timedSpans
     }
 }
 
@@ -38,6 +40,18 @@ struct TranscriptSegment: Identifiable, Hashable, Sendable {
     let endTime: TimeInterval?
     /// Identifiers of every source line contained in this segment.
     let lineIDs: [UUID]
+    let timedSpans: [TranscriptTimedSpan]
+
+    /// Returns only spans with valid boundaries and a real time interval.
+    func activeSpan(at time: TimeInterval) -> TranscriptTimedSpan? {
+        guard time.isFinite else { return nil }
+        return timedSpans.first {
+            time >= $0.startTime && time < $0.endTime
+                && $0.location >= 0 && $0.length > 0
+                && $0.location <= text.utf16.count && $0.length <= text.utf16.count - $0.location
+                && Range(NSRange(location: $0.location, length: $0.length), in: text) != nil
+        }
+    }
 }
 
 /// Merges the very short lines automatic transcription services produce into
@@ -91,7 +105,8 @@ enum TranscriptSegmentBuilder {
                     speaker: $0.speaker,
                     text: $0.text,
                     startTime: $0.startTime,
-                    endTime: $0.endTime
+                    endTime: $0.endTime,
+                    timedSpans: $0.timedSpans
                 )
             },
             options: options
@@ -135,6 +150,7 @@ enum TranscriptSegmentBuilder {
         private(set) var endTime: TimeInterval?
         private(set) var text: String
         private(set) var lineIDs: [UUID]
+        private(set) var timedSpans: [TranscriptTimedSpan]
         private let firstLineID: UUID
 
         init(line: TranscriptSegmentSource, text: String) {
@@ -143,6 +159,7 @@ enum TranscriptSegmentBuilder {
             self.endTime = line.endTime
             self.text = text
             self.lineIDs = [line.id]
+            self.timedSpans = Self.displaySpans(for: line, trimmedText: text, offset: 0)
             self.firstLineID = line.id
         }
 
@@ -169,7 +186,9 @@ enum TranscriptSegmentBuilder {
         }
 
         mutating func append(_ line: TranscriptSegmentSource, text: String) {
+            let offset = self.text.utf16.count + 1
             self.text += " " + text
+            self.timedSpans += Self.displaySpans(for: line, trimmedText: text, offset: offset)
             self.endTime = line.endTime ?? self.endTime
             self.lineIDs.append(line.id)
         }
@@ -181,8 +200,30 @@ enum TranscriptSegmentBuilder {
                 text: text,
                 startTime: startTime,
                 endTime: endTime,
-                lineIDs: lineIDs
+                lineIDs: lineIDs,
+                timedSpans: timedSpans
             )
+        }
+
+        private static func displaySpans(for line: TranscriptSegmentSource, trimmedText: String, offset: Int) -> [TranscriptTimedSpan] {
+            let source = line.text as NSString
+            let trimmedRange = source.range(of: trimmedText)
+            guard trimmedRange.location != NSNotFound else { return [] }
+            let valid = line.timedSpans.compactMap { span -> TranscriptTimedSpan? in
+                guard span.location >= 0, span.length > 0,
+                      span.startTime.isFinite, span.endTime.isFinite, span.endTime > span.startTime,
+                      span.location <= source.length, span.length <= source.length - span.location,
+                      Range(NSRange(location: span.location, length: span.length), in: line.text) != nil else { return nil }
+                let intersection = NSIntersectionRange(NSRange(location: span.location, length: span.length), trimmedRange)
+                guard intersection.length > 0,
+                      Range(intersection, in: line.text) != nil else { return nil }
+                return TranscriptTimedSpan(location: offset + intersection.location - trimmedRange.location,
+                                           length: intersection.length, startTime: span.startTime, endTime: span.endTime,
+                                           cueLevel: span.cueLevel)
+            }
+            if !valid.isEmpty { return valid }
+            guard let end = line.endTime, line.startTime.isFinite, end.isFinite, end > line.startTime else { return [] }
+            return [TranscriptTimedSpan(location: offset, length: trimmedText.utf16.count, startTime: line.startTime, endTime: end, cueLevel: true)]
         }
     }
 

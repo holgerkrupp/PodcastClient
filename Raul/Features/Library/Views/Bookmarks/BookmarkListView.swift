@@ -205,6 +205,7 @@ struct BookmarkListView: View {
                let audioURL = resolvedAudioURL(for: episode) {
                 AudioClipExportView(
                     title: episode.title,
+                    episodeURL: episode.url,
                     audioURL: audioURL,
                     isVideo: episode.isVideo,
                     coverImageURL: episode.imageURL,

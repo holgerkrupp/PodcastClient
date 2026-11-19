@@ -1,5 +1,49 @@
 # Automatic transcription candidate scans
 
+## Live transcript input evaluation (2026-11-17)
+
+The downloaded-audio live path uses a maximum seven-second local PCM window.
+On iOS 26 it converts that bounded window with `AVAudioConverter` and sends
+time-coded `AnalyzerInput`; on iOS 27 it uses `AnalyzerInputConverter` for the
+same bounded buffers. Window timestamps start at zero and are translated to
+episode time once. The `timeIndexedProgressiveTranscription` preset emits
+tentative text for display; only final results enter saved coverage.
+
+Apple's iOS 27 [AssetInputSequenceProvider](https://developer.apple.com/documentation/speech/assetinputsequenceprovider)
+can read an asset track directly. Its published interface supplies a sequence
+for the asset, rather than a bounded window with the seeking and cancellation
+behavior needed here, so the local window path remains in use. The
+[AnalyzerInputConverter](https://developer.apple.com/documentation/speech/analyzerinputconverter)
+is evaluated only for decoded local PCM in this implementation.
+
+Apple documents an iOS 27 mixed-output audio tap for unprotected HLS and a
+sample-buffer output that can scan ahead in its [HLS update](https://developer.apple.com/streaming/Whats-new-HLS.pdf).
+The existing Up Next processing tap is attached to a specific track and does
+not currently export buffers or their timestamps to speech recognition. A
+debug-only, fixed-capacity probe was exercised on the iOS 27.2 iPhone 18 Pro
+simulator with synthetic speech served from a local HTTP fixture. Progressive
+MP3 playback delivered 22.05 kHz PCM and media timestamps; a backward seek
+was detected as a timestamp discontinuity. A deliberately throttled response
+produced waiting states and playback resumed, with no buffer truncation in the
+sample. The simulator had no installed English speech model, so recognition
+latency and whether it can keep up could not be measured.
+
+The separate unprotected HLS fixture played and reloaded a changing playlist
+with a synthetic inserted segment, but its iOS 27 mixed-output tap delivered
+no buffers or timestamps in this simulator run, including after a seek. This
+does not establish behavior on hardware or other routes. Bluetooth, AirPlay,
+real network stalls, and dynamic publisher ad variants remain unmeasured. No
+streamed live-caption workflow is enabled: the probe only sees audio as it is
+played, so any result from it would be delayed rather than ahead of playback.
+Streamed episodes continue to use publisher or previously downloaded transcripts.
+
+To repeat the simulator probe, run `python3 Scripts/stream-transcript-fixture.py`
+on the Mac (requires `say` and `ffmpeg`), then run the `StreamAudioProbeTests`
+test class on an iOS 27 simulator. The server creates anonymized synthetic
+audio in a temporary directory and listens only on localhost. Stop it after
+testing; without the fixture server, the network probes are skipped. The
+probe does not establish Bluetooth or physical-device behavior.
+
 Automatic on-device transcription is optional background work. Candidate
 selection now enters through the process-wide CPU admission budget and emits a
 privacy-safe unified-log summary with scan count, candidate count, and elapsed

@@ -291,6 +291,8 @@ class EpisodeDownloadStatus{
     var sourceRawValue: String = EpisodeSource.feedDownload.rawValue
     
     @Relationship(deleteRule: .cascade) var transcriptLines: [TranscriptLineAndTime]?
+    /// Local finalized live-caption coverage; kept separate from full transcripts.
+    var liveTranscriptData: Data?
     @Relationship(deleteRule: .noAction) var playSessions: [PlaySession]?
     
     var externalFiles:[ExternalFile] = []

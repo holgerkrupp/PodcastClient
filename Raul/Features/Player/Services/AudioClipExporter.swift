@@ -33,6 +33,8 @@ enum AudioClipExporter {
         // These are accessed exclusively on the serial writer queue below.
         var currentFrame = 0
         var isFinishing = false
+        var lastCaption: ClipCaptionTimeline.Caption?
+        var lastCaptionImage: UIImage?
 
         func install(_ continuation: CheckedContinuation<Void, Error>) {
             completionState.withLock { state in
@@ -72,6 +74,7 @@ enum AudioClipExporter {
         playbackRate: Float,
         fps: Int,
         videoSize: CGSize?,
+        captionTimeline: ClipCaptionTimeline? = nil,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         let sanitizedPlaybackRate = max(Double(playbackRate), 0.1)
@@ -146,6 +149,11 @@ enum AudioClipExporter {
                     while videoInputBox.value.isReadyForMoreMediaData && state.currentFrame < frameCount {
                         let appendSucceeded = autoreleasepool {
                             let frameProgress = Double(state.currentFrame) / Double(frameCount)
+                            let caption = captionTimeline?.caption(atMediaTime: startTime + Double(state.currentFrame) / Double(fps) * sanitizedPlaybackRate)
+                            if caption != state.lastCaption {
+                                state.lastCaption = caption
+                                state.lastCaptionImage = caption.flatMap { renderCaptionImage($0, canvasSize: videoSize) }
+                            }
                             guard let buffer = createPixelBuffer(
                                 from: template,
                                 size: videoSize,
@@ -153,7 +161,9 @@ enum AudioClipExporter {
                                 startTime: startTime,
                                 endTime: endTime,
                                 playbackRate: playbackRate,
-                                title: title
+                                title: title,
+                                caption: caption,
+                                renderedCaption: state.lastCaptionImage
                             ) else {
                                 return false
                             }
@@ -220,6 +230,7 @@ enum AudioClipExporter {
         startTime: Double,
         endTime: Double,
         playbackRate: Float,
+        captionTimeline: ClipCaptionTimeline? = nil,
         progress: @escaping @Sendable (Double) -> Void
     ) async throws -> URL {
         progress(0.05)
@@ -254,7 +265,8 @@ enum AudioClipExporter {
             CMTimeRange(start: .zero, duration: timeRange.duration),
             toDuration: scaledDuration
         )
-        compositionVideoTrack.preferredTransform = try await sourceVideoTrack.load(.preferredTransform)
+        let sourceTransform = try await sourceVideoTrack.load(.preferredTransform)
+        compositionVideoTrack.preferredTransform = sourceTransform
         progress(0.35)
 
         if let sourceAudioTrack = try await asset.loadTracks(withMediaType: .audio).first,
@@ -276,6 +288,15 @@ enum AudioClipExporter {
 
         guard let exporter = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality) else {
             throw ExportError.failedToCreateWriter
+        }
+
+        if let captionTimeline {
+            let sourceSize = try await sourceVideoTrack.load(.naturalSize)
+            let captions = captionTimeline.clipped(start: startTime, end: endTime, playbackRate: sanitizedPlaybackRate)
+            exporter.videoComposition = makeCaptionVideoComposition(
+                asset: composition, sourceSize: sourceSize, sourceTransform: sourceTransform, captions: captions
+            )
+            exporter.timeRange = CMTimeRange(start: .zero, duration: scaledDuration)
         }
 
         progress(0.75)
@@ -314,7 +335,9 @@ enum AudioClipExporter {
         startTime: Double,
         endTime: Double,
         playbackRate: Float = 1.0,
-        title: String? = nil
+        title: String? = nil,
+        caption: ClipCaptionTimeline.Caption? = nil,
+        renderedCaption: UIImage? = nil
     ) -> CVPixelBuffer? {
         let attrs: [CFString: Any] = [
             kCVPixelBufferCGImageCompatibilityKey: true,
@@ -486,6 +509,14 @@ enum AudioClipExporter {
        //  let y = ((size.height - newHeight) / 2) + (barY + barHeight + gapToBar)
          context.draw(imageCGImage, in: CGRect(x: x, y: y, width: newWidth, height: newHeight))
 
+        if let caption, let image = renderedCaption ?? renderCaptionImage(caption, canvasSize: size), let cgImage = image.cgImage {
+            let width = min(image.size.width, size.width - 32)
+            let height = min(image.size.height, size.height * 0.25)
+            context.draw(cgImage, in: CGRect(x: (size.width - width) / 2,
+                                              y: size.height - height - 20,
+                                              width: width, height: height))
+        }
+
         return buffer
     }
 
@@ -541,6 +572,79 @@ enum AudioClipExporter {
 }
 
 private extension AudioClipExporter {
+    static func makeCaptionVideoComposition(
+        asset: AVAsset, sourceSize: CGSize, sourceTransform: CGAffineTransform, captions: ClipCaptionTimeline
+    ) -> AVVideoComposition {
+        let bounds = CGRect(origin: .zero, size: sourceSize).applying(sourceTransform).standardized
+        let renderSize = CGSize(width: abs(bounds.width), height: abs(bounds.height))
+        // Render caption images once; the frame callback only selects and composites.
+        let images = UnsafeSendableBox(captions.captions.compactMap { caption -> (ClipCaptionTimeline.Caption, CIImage)? in
+            guard let image = renderCaptionImage(caption, canvasSize: renderSize), let cgImage = image.cgImage else { return nil }
+            return (caption, CIImage(cgImage: cgImage))
+        })
+        return AVVideoComposition(asset: asset, applyingCIFiltersWithHandler: { request in
+            let source = request.sourceImage
+            guard let caption = captions.caption(atMediaTime: request.compositionTime.seconds),
+                  let image = images.value.first(where: { $0.0 == caption })?.1 else {
+                request.finish(with: source, context: nil)
+                return
+            }
+            let extent = source.extent
+            let translated = image.transformed(by: CGAffineTransform(
+                translationX: extent.midX - image.extent.width / 2,
+                y: extent.maxY - image.extent.height - 20
+            ))
+            request.finish(with: translated.composited(over: source).cropped(to: extent), context: nil)
+        })
+    }
+
+    static func renderCaptionImage(_ caption: ClipCaptionTimeline.Caption, canvasSize: CGSize) -> UIImage? {
+        guard caption.location >= 0, caption.length > 0,
+              caption.location <= caption.text.utf16.count,
+              caption.length <= caption.text.utf16.count - caption.location,
+              let range = Range(NSRange(location: caption.location, length: caption.length), in: caption.text) else { return nil }
+        // Keep the genuinely timed phrase visible even when its paragraph is long.
+        let phrase = String(caption.text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !phrase.isEmpty else { return nil }
+        let prefix = caption.speaker.map { "\($0): " } ?? ""
+        let text = prefix + phrase
+        let fontSize = max(18, min(canvasSize.width * 0.045, 40))
+        let font = platformSystemFont(ofSize: fontSize, weight: .regular)
+        let value = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: platformWhiteObject])
+        value.addAttributes([
+            .font: platformSystemFont(ofSize: fontSize, weight: .bold),
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ], range: NSRange(location: prefix.utf16.count, length: phrase.utf16.count))
+        let maxWidth = max(1, canvasSize.width - 64)
+        let bounds = value.boundingRect(
+            with: CGSize(width: maxWidth, height: canvasSize.height * 0.20),
+            options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil
+        )
+        let imageSize = CGSize(width: min(maxWidth, ceil(bounds.width)) + 24,
+                               height: min(canvasSize.height * 0.20, ceil(bounds.height)) + 16)
+#if canImport(UIKit)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: imageSize, format: format)
+        return renderer.image { _ in
+            UIColor.black.withAlphaComponent(0.8).setFill()
+            UIBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), cornerRadius: 8).fill()
+            value.draw(with: CGRect(x: 12, y: 8, width: imageSize.width - 24, height: imageSize.height - 16),
+                       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+        }
+#else
+        let image = NSImage(size: imageSize)
+        image.lockFocus()
+        NSColor.black.withAlphaComponent(0.8).setFill()
+        NSBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), xRadius: 8, yRadius: 8).fill()
+        value.draw(with: CGRect(x: 12, y: 8, width: imageSize.width - 24, height: imageSize.height - 16),
+                   options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+        image.unlockFocus()
+        guard let data = image.tiffRepresentation, let rep = NSBitmapImageRep(data: data), let cgImage = rep.cgImage else { return nil }
+        return UIImage(cgImage: cgImage)
+#endif
+    }
+
     static func renderTextImage(_ text: String, attributes: [NSAttributedString.Key: Any]) -> UIImage {
         let measuredSize = (text as NSString).size(withAttributes: attributes)
         let textSize = CGSize(width: ceil(measuredSize.width), height: ceil(measuredSize.height))

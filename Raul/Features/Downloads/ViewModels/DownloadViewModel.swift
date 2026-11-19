@@ -45,7 +45,12 @@ final class DownloadViewModel: ObservableObject {
 
     private func beginDownload(for episode: Episode) async {
         guard let url = episode.url else { return }
-        let result = await DownloadManager.shared.download(from: url, saveTo: episode.localFile)
+        let protectionEnabled = PodcastNetworkPrivacyPolicy.isEnabled(forPodcast: episode.podcast)
+        let result = await DownloadManager.shared.download(
+            from: url,
+            saveTo: episode.localFile,
+            networkTrackingProtectionEnabled: protectionEnabled
+        )
         setItem(result)
     }
 
@@ -94,11 +99,15 @@ final class DownloadViewModel: ObservableObject {
         }
     }
     
-    func resumeDownload() {
+    func resumeDownload(for episode: Episode) {
         Task {
             guard let item = item else { return }
             item.isPaused = false
-            await DownloadManager.shared.resumeDownload(for: item.url)
+            let protectionEnabled = PodcastNetworkPrivacyPolicy.isEnabled(forPodcast: episode.podcast)
+            await DownloadManager.shared.resumeDownload(
+                for: item.url,
+                networkTrackingProtectionEnabled: protectionEnabled
+            )
         }
     }
     

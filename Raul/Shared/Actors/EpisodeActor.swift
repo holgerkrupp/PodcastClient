@@ -1343,7 +1343,12 @@ actor EpisodeActor {
                 )
             }
             if let url = episode.url,
-               await DownloadManager.shared.download(from: url, saveTo: localFile, profile: accessProfile) != nil {
+               await DownloadManager.shared.download(
+                from: url,
+                saveTo: localFile,
+                profile: accessProfile,
+                networkTrackingProtectionEnabled: PodcastNetworkPrivacyPolicy.isEnabled(forPodcast: episode.podcast)
+               ) != nil {
             }
             try? await downloadTranscript(episode.persistentModelID)
 
@@ -1690,7 +1695,8 @@ actor EpisodeActor {
                 speaker: $0.speaker,
                 text: $0.text,
                 startTime: $0.startTime,
-                endTime: $0.endTime
+                endTime: $0.endTime,
+                timedSpans: $0.timedSpans
             )
         }
     }
@@ -1702,7 +1708,8 @@ actor EpisodeActor {
                 speaker: $0.speaker,
                 text: $0.text,
                 startTime: $0.startTime,
-                endTime: $0.endTime
+                endTime: $0.endTime,
+                timedSpans: $0.timedSpans
             )
         }.sorted {
             if $0.startTime != $1.startTime {
@@ -2931,7 +2938,9 @@ actor EpisodeActor {
                 speaker: $0.speaker,
                 text: $0.text,
                 startTime: $0.startTime,
-                endTime: $0.endTime
+                endTime: $0.endTime,
+                timedSpans: $0.timedSpans,
+                generatedMediaFingerprint: $0.generatedMediaFingerprint
             )
         }
         try await replaceTranscriptLines(
@@ -2989,13 +2998,12 @@ actor EpisodeActor {
                 id: $0.id.uuidString,
                 transcriptTime: $0.startTime,
                 text: $0.text,
-                source: $0.transcriptSource
+                source: $0.transcriptSource,
+                endTime: $0.endTime,
+                timedSpans: $0.timedSpans
             )
         }
-        guard let revisionData = try? JSONEncoder().encode(candidates) else { return nil }
-        let revision = SHA256.hash(data: revisionData)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        guard let revision = TranscriptSynchronizationRevision.make(candidates: candidates) else { return nil }
 
         return TranscriptSynchronizationInput(
             episodeID: episode.stableEpisodeIdentity.key,
@@ -3011,6 +3019,51 @@ actor EpisodeActor {
         await transcriptSynchronizationInput(for: episodeURL)?.transcriptRevision
     }
 
+    func clipTranscriptSnapshot(for episodeURL: URL) async -> ClipTranscriptSnapshot? {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else { return nil }
+        let episodeID = episode.persistentModelID
+        let descriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { $0.episode?.persistentModelID == episodeID },
+            sortBy: [SortDescriptor(\.startTime)]
+        )
+        guard let lines = try? modelContext.fetch(descriptor) else { return nil }
+        if lines.isEmpty {
+            guard let data = episode.liveTranscriptData,
+                  let state = try? JSONDecoder().decode(LiveTranscriptState.self, from: data),
+                  !state.cues.isEmpty else { return nil }
+            return ClipTranscriptSnapshot(
+                episodeID: episode.stableEpisodeIdentity.key,
+                origin: .generated(mediaFingerprint: state.mediaFingerprint),
+                lines: state.cues.map {
+                    TranscriptSegmentSource(id: $0.id, text: $0.text, startTime: $0.start,
+                                            endTime: $0.end, timedSpans: $0.spans)
+                },
+                coverage: state.coverage
+            )
+        }
+        let origin: ClipTranscriptSnapshot.Origin
+        if lines.allSatisfy({ $0.transcriptSource == .publisher }) {
+            let candidates = lines.map {
+                TranscriptAlignmentCandidate(id: $0.id.uuidString, transcriptTime: $0.startTime,
+                    text: $0.text, source: $0.transcriptSource, endTime: $0.endTime, timedSpans: $0.timedSpans)
+            }
+            guard let revision = TranscriptSynchronizationRevision.make(candidates: candidates) else { return nil }
+            origin = .publisher(revision: revision)
+        } else {
+            guard lines.allSatisfy({ $0.transcriptSource == .localAI || $0.transcriptSource == .ai }),
+                  let fingerprint = lines.first?.generatedMediaFingerprint, !fingerprint.isEmpty,
+                  lines.allSatisfy({ $0.generatedMediaFingerprint == fingerprint }) else { return nil }
+            origin = .generated(mediaFingerprint: fingerprint)
+        }
+        return ClipTranscriptSnapshot(
+            episodeID: episode.stableEpisodeIdentity.key, origin: origin,
+            lines: lines.map {
+                TranscriptSegmentSource(id: $0.id, speaker: $0.speaker, text: $0.text,
+                    startTime: $0.startTime, endTime: $0.endTime, timedSpans: $0.timedSpans)
+            }
+        )
+    }
+
     @discardableResult
     func updateTranscriptGapChapters(
         for episodeURL: URL,
@@ -3020,7 +3073,7 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
         let chapters = gaps.compactMap { gap -> Marker? in
             let duration = gap.audioEnd - gap.audioStart
-            guard gap.audioStart.isFinite, gap.audioStart >= 0,
+            guard gap.transcriptEnd == nil, gap.audioStart.isFinite, gap.audioStart >= 0,
                   duration.isFinite, duration >= 20 else { return nil }
             let chapter = Marker(
                 start: gap.audioStart,
@@ -3071,6 +3124,14 @@ actor EpisodeActor {
         return snapshots
     }
 
+    func setGeneratedTranscript(for episodeURL: URL, lines: [TranscriptLineSnapshot]) async throws {
+        guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            throw TranscriptError.episodeNotFound
+        }
+        try await replaceTranscriptLines(for: episode, with: lines, source: .localAI)
+        episode.refresh.toggle()
+    }
+
     private func replaceTranscriptLines(
         for episode: Episode,
         with snapshots: [TranscriptLineSnapshot],
@@ -3107,7 +3168,9 @@ actor EpisodeActor {
                 text: snapshot.text,
                 startTime: snapshot.startTime,
                 endTime: snapshot.endTime,
-                source: source
+                source: source,
+                timedSpans: snapshot.timedSpans,
+                generatedMediaFingerprint: snapshot.generatedMediaFingerprint
             )
             // Insert first so SwiftData uses managed backing storage for the inverse
             // relationship update. Setting the relationship on an uninserted model
@@ -3135,11 +3198,19 @@ actor EpisodeActor {
     }
 
     func transcriptLineCount() async -> Int {
-        (try? modelContext.fetchCount(FetchDescriptor<TranscriptLineAndTime>())) ?? 0
+        let lines = (try? modelContext.fetchCount(FetchDescriptor<TranscriptLineAndTime>())) ?? 0
+        let partialEpisodes = (try? modelContext.fetchCount(FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.liveTranscriptData != nil }
+        ))) ?? 0
+        return lines + partialEpisodes
     }
 
 #if DEBUG
     func deleteTranscript(for episodeURL: URL) async throws {
+        if await LiveTranscriptController.shared.episodeURL == episodeURL {
+            await LiveTranscriptController.shared.stopAndWait()
+        }
+        await LiveTranscriptController.shared.discardPendingSaves(for: episodeURL)
         // The singleton is initialized from the app's main-actor model container.
         // Resolve it on the main actor before crossing to this model actor; accessing
         // it here can be its first initialization and trips MainActor.assumeIsolated.
@@ -3157,6 +3228,7 @@ actor EpisodeActor {
         // transcription again. Deleting every line individually updates the inverse
         // relationship once per row and becomes quadratic for long transcripts.
         episode.transcriptLines = nil
+        episode.liveTranscriptData = nil
 
         let recordDescriptor = FetchDescriptor<TranscriptionRecord>(
             predicate: #Predicate { record in
@@ -3179,10 +3251,14 @@ actor EpisodeActor {
 
     @discardableResult
     func deleteAllTranscriptLines() async -> Int {
+        await LiveTranscriptController.shared.stopAndWait()
+        await LiveTranscriptController.shared.discardPendingSaves(for: nil)
         let lines = (try? modelContext.fetch(FetchDescriptor<TranscriptLineAndTime>())) ?? []
-        guard lines.isEmpty == false else { return 0 }
-
         let episodes = (try? modelContext.fetch(FetchDescriptor<Episode>())) ?? []
+        let liveCount = episodes.compactMap(\.liveTranscriptData).reduce(0) { count, data in
+            count + ((try? JSONDecoder().decode(LiveTranscriptState.self, from: data).cues.count) ?? 0)
+        }
+        guard !lines.isEmpty || episodes.contains(where: { $0.liveTranscriptData != nil }) else { return 0 }
         let generatedEpisodeURLs = Set(
             ((try? modelContext.fetch(FetchDescriptor<TranscriptionRecord>())) ?? [])
                 .compactMap(\.episodeURL)
@@ -3195,8 +3271,9 @@ actor EpisodeActor {
             }
             return episode.stableEpisodeIdentity
         }
-        for episode in episodes where episode.transcriptLines?.isEmpty == false {
+        for episode in episodes where episode.transcriptLines?.isEmpty == false || episode.liveTranscriptData != nil {
             episode.transcriptLines = nil
+            episode.liveTranscriptData = nil
             episode.refresh.toggle()
         }
 
@@ -3214,7 +3291,7 @@ actor EpisodeActor {
             await writer.tombstoneTranscripts(identities: generatedIdentities)
         }
         WatchSyncCoordinator.refreshSoon()
-        return lines.count
+        return lines.count + liveCount
     }
 
     func saveTranscriptionRecord(

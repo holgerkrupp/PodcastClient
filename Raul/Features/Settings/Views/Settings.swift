@@ -43,6 +43,9 @@ class PodcastSettings {
     var id = UUID()
     var title:String?
     var isEnabled:Bool = true
+    /// Per-podcast override for the app-wide network tracking protection preference.
+    /// Nil keeps older/custom records inheriting the current global value.
+    var networkTrackingProtectionEnabled: Bool?
     
     var autoDownload:Bool = false
     var autoDownloadEpisodeCount: Int = 3
@@ -166,6 +169,7 @@ class PodcastSettings {
         settings.defaultPlaylistID = global.defaultPlaylistID
         settings.archiveFileRetentionDays = global.archiveFileRetentionDays
         settings.enableLiveItemNotifications = global.enableLiveItemNotifications
+        settings.networkTrackingProtectionEnabled = PodcastNetworkPrivacyPolicy.isEnabled
         return settings
     }
 

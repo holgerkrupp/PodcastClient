@@ -162,7 +162,7 @@ struct DownloadProgressView: View {
                     }
                     Spacer()
                     if item.isPaused {
-                        Button(action: { viewModel.resumeDownload() }) {
+                        Button(action: { viewModel.resumeDownload(for: episode) }) {
                             Label("Resume", systemImage: "play.circle")
                         }
                         .accessibilityHint("Continues the paused download")

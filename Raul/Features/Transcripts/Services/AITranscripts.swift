@@ -28,6 +28,11 @@ private actor SupportedSpeechLocales {
 
 @Observable
 class AITranscripts {
+    struct TimedResult: Sendable {
+        let range: CMTimeRange
+        let text: String
+        let timedSpans: [TranscriptTimedSpan]
+    }
     private static let ioLogger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PodcastClient", category: "TranscriptionIO")
     /// Controls input throttling (duty-cycling) while feeding audio to the analyzer.
     /// Automatic/background runs pause between chunks so the Speech XPC's rolling CPU
@@ -95,6 +100,8 @@ class AITranscripts {
     /// Identifies the feature path in local diagnostics without recording media URLs or transcript text.
     let diagnosticPurpose: String
     let progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
+    let tentativeHandler: (@Sendable (TimedResult) async -> Void)?
+    let usesTimeCodedInput: Bool
 
 
     //MARK: OUTPUT
@@ -116,7 +123,9 @@ class AITranscripts {
         modelRetention: SpeechAnalyzer.Options.ModelRetention = .whileInUse,
         diagnosticPurpose: String = "unspecified",
         usesCheckpoint: Bool = false,
-        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil
+        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)? = nil,
+        tentativeHandler: (@Sendable (TimedResult) async -> Void)? = nil,
+        usesTimeCodedInput: Bool = false
     ) async {
         self.url = url
         self.maxSnippetDurationSeconds = min(max(maxSnippetDurationSeconds, 0.4), 8.0)
@@ -128,6 +137,8 @@ class AITranscripts {
         self.usesCheckpoint = usesCheckpoint
         self.diagnosticPurpose = diagnosticPurpose
         self.progressHandler = progressHandler
+        self.tentativeHandler = tentativeHandler
+        self.usesTimeCodedInput = usesTimeCodedInput
         self.language = language.map { Locale(identifier: $0) } ?? Locale.current
         await resolveLanguageIfNeeded()
     }
@@ -205,33 +216,9 @@ class AITranscripts {
     }
     
     
-    func transcribeTovTT() async throws -> String? {
-        await resolveLanguageIfNeeded()
-        await reportProgress(0.02, status: "Preparing audio…")
-        // print("language finished")
-        
-        guard let segments = try await transcribe() else { return nil }
-         print("transcript finished with \(segments.count) segments")
-        
-        
-        let formatted = segments.map { segment in
-            let start = formatCMTime(segment.range.start)
-            let end = formatCMTime(segment.range.end)
-            let text = segment.text.hasSuffix("{\n}") ? String(segment.text.dropLast(3)) : segment.text
-            
-            return "\(start) --> \(end)\n\(text)"
-        }.joined(separator: "\n\n")
-        
-        let result = "WEBVTT\n\n" + formatted
-
-        
-        return result
-    }
-    
-    
-    
-    func transcribe() async throws -> [(range: CMTimeRange, text: String)]?{
+    func transcribe() async throws -> [TimedResult]?{
         try Task.checkCancellation()
+        await reportProgress(0.02, status: "Preparing audio…")
        
         guard let audioFile = try? AVAudioFile(forReading: url) else {
              print("could not load audio file")
@@ -250,12 +237,9 @@ class AITranscripts {
         // and punctuation. Skipping volatile results, alternatives, and confidence avoids
         // extra per-result compute in the Speech XPC (the `.transcription` preset bundles
         // more than this pipeline reads — it only uses `result.range` and `result.text`).
-        let transcriber = SpeechTranscriber(
-            locale: locale,
-            transcriptionOptions: [],
-            reportingOptions: [],
-            attributeOptions: [.audioTimeRange]
-        )
+        let transcriber = tentativeHandler == nil
+            ? SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [], attributeOptions: [.audioTimeRange])
+            : SpeechTranscriber(locale: locale, preset: .timeIndexedProgressiveTranscription)
         
         print("normalized:", locale.identifier(.bcp47))
         
@@ -309,6 +293,7 @@ class AITranscripts {
         }
 
         let progressReporter = self.progressHandler
+        let tentativeReporter = self.tentativeHandler
         let configuredMaxSnippetDurationSeconds = self.maxSnippetDurationSeconds
         let configuredMaxWordsPerSnippet = self.maxWordsPerSnippet
         let reportedAudioEnd = OSAllocatedUnfairLock(initialState: resumeSeconds)
@@ -320,7 +305,8 @@ class AITranscripts {
             audioDuration: audioDuration,
             maxSnippetDurationSeconds: configuredMaxSnippetDurationSeconds,
             maxWordsPerSnippet: configuredMaxWordsPerSnippet,
-            progressHandler: progressReporter
+            progressHandler: progressReporter,
+            tentativeHandler: tentativeReporter
         )
         print("2")
         
@@ -344,7 +330,12 @@ class AITranscripts {
         print("3")
 
         do {
-            if throttle.isEnabled,
+            if usesTimeCodedInput {
+                guard let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) else {
+                    throw TranscriptAudioSnippetError.invalidFormat
+                }
+                try await analyzeTimeCodedWindow(analyzer: analyzer, audioFile: audioFile, analyzerFormat: analyzerFormat)
+            } else if throttle.isEnabled,
                let analyzerFormat = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]) {
                 // Duty-cycled path: feed the file in bounded chunks with pauses so the
                 // Speech XPC's rolling CPU average stays under the background monitor.
@@ -377,6 +368,55 @@ class AITranscripts {
         Self.ioLogger.info("transcription_finished purpose=\(self.diagnosticPurpose, privacy: .public) bytes=\(sourceBytes) audio_seconds=\(audioDuration, format: .fixed(precision: 2)) elapsed_seconds=\(elapsedSeconds, format: .fixed(precision: 2)) result_count=\(transcription.count ?? 0)")
 
         return transcription
+    }
+
+    /// This path is used only for a bounded live window (at most seven seconds).
+    /// Buffer timestamps start at zero for the window; its caller adds the source
+    /// media offset once when publishing results.
+    private func analyzeTimeCodedWindow(analyzer: SpeechAnalyzer, audioFile: AVAudioFile, analyzerFormat: AVAudioFormat) async throws {
+        let sourceFormat = audioFile.processingFormat
+        let rate = sourceFormat.sampleRate
+        guard rate > 0, Double(audioFile.length) / rate <= 7.5 else { throw TranscriptAudioSnippetError.durationLimitExceeded }
+        let (inputs, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        try await analyzer.start(inputSequence: inputs)
+        audioFile.framePosition = 0
+        do {
+            if #available(iOS 27, macOS 27, tvOS 27, visionOS 27, *) {
+                let converter = AnalyzerInputConverter(analyzerFormat: analyzerFormat)
+                while true {
+                    try Task.checkCancellation()
+                    guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(rate)) else { break }
+                    let start = audioFile.framePosition
+                    try audioFile.read(into: buffer)
+                    guard buffer.frameLength > 0 else { break }
+                    let time = AVAudioTime(sampleTime: start, atRate: rate)
+                    for input in try converter.convert(buffer, at: time) { continuation.yield(input) }
+                }
+                for input in try converter.flush() { continuation.yield(input) }
+            } else {
+                let converter = sourceFormat == analyzerFormat ? nil : AVAudioConverter(from: sourceFormat, to: analyzerFormat)
+                guard sourceFormat == analyzerFormat || converter != nil else {
+                    throw TranscriptAudioSnippetError.invalidFormat
+                }
+                var outputFrame: Int64 = 0
+                while true {
+                    try Task.checkCancellation()
+                    guard let buffer = AVAudioPCMBuffer(pcmFormat: sourceFormat, frameCapacity: AVAudioFrameCount(rate)) else { break }
+                    try audioFile.read(into: buffer)
+                    guard buffer.frameLength > 0 else { break }
+                    let converted = try Self.convert(buffer, using: converter, to: analyzerFormat)
+                    let time = CMTime(value: outputFrame, timescale: CMTimeScale(analyzerFormat.sampleRate))
+                    outputFrame += Int64(converted.frameLength)
+                    continuation.yield(AnalyzerInput(buffer: converted, bufferStartTime: time))
+                }
+            }
+            continuation.finish()
+            try await analyzer.finalizeAndFinishThroughEndOfInput()
+        } catch {
+            continuation.finish()
+            await analyzer.cancelAndFinishNow()
+            throw error
+        }
     }
 
     /// Feeds the audio file to the analyzer in bounded chunks, pausing between them.
@@ -597,12 +637,13 @@ class AITranscripts {
         audioDuration: Double,
         maxSnippetDurationSeconds: Double,
         maxWordsPerSnippet: Int,
-        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?
-    ) async throws -> [(range: CMTimeRange, text: String)] {
-        var results: [(range: CMTimeRange, text: String)] = resumedSegments.map { segment in
+        progressHandler: (@Sendable (_ progress: Double, _ status: String) async -> Void)?,
+        tentativeHandler: (@Sendable (TimedResult) async -> Void)?
+    ) async throws -> [TimedResult] {
+        var results: [TimedResult] = resumedSegments.map { segment in
             let start = CMTime(seconds: segment.start, preferredTimescale: 600)
             let end = CMTime(seconds: segment.end, preferredTimescale: 600)
-            return (range: CMTimeRange(start: start, end: end), text: segment.text)
+            return TimedResult(range: CMTimeRange(start: start, end: end), text: segment.text, timedSpans: segment.timedSpans ?? [])
         }
         // Saved on a timer rather than per result, and once more on the way out,
         // including when cancellation ends the loop.
@@ -617,19 +658,24 @@ class AITranscripts {
             if resultEnd.isFinite {
                 reportedAudioEnd.withLock { $0 = max($0, resultEnd) }
             }
-            let splitSegments = Self.splitResult(
-                range: result.range,
-                rawText: Self.plainTranscriptText(result.text),
+            let timed = Self.timedResult(range: result.range, text: result.text)
+            if !result.isFinal {
+                await tentativeHandler?(timed)
+                continue
+            }
+            let splitSegments = timed.timedSpans.isEmpty ? Self.splitResult(
+                range: result.range, rawText: timed.text,
                 maxSnippetDurationSeconds: maxSnippetDurationSeconds,
                 maxWordsPerSnippet: maxWordsPerSnippet
-            )
+            ).map { TimedResult(range: $0.range, text: $0.text, timedSpans: []) } : [timed]
             results.append(contentsOf: splitSegments)
             if let checkpoint {
                 unsavedSegments.append(contentsOf: splitSegments.map {
                     TranscriptionCheckpoint.Segment(
                         start: CMTimeGetSeconds($0.range.start),
                         end: CMTimeGetSeconds($0.range.end),
-                        text: $0.text
+                        text: $0.text,
+                        timedSpans: $0.timedSpans.isEmpty ? nil : $0.timedSpans
                     )
                 })
                 if ContinuousClock.now - lastCheckpointSave >= .seconds(60) {
@@ -659,6 +705,25 @@ class AITranscripts {
     /// copy the visible characters into the persisted transcript.
     static func plainTranscriptText(_ text: AttributedString) -> String {
         String(text.characters)
+    }
+
+    static func timedResult(range: CMTimeRange, text: AttributedString) -> TimedResult {
+        var plain = ""
+        var spans: [TranscriptTimedSpan] = []
+        let cueStart = CMTimeGetSeconds(range.start)
+        let cueEnd = CMTimeGetSeconds(range.end)
+        for run in text.runs {
+            let part = String(text[run.range].characters)
+            let location = plain.utf16.count
+            plain += part
+            guard let audioRange = run.audioTimeRange else { continue }
+            let start = CMTimeGetSeconds(audioRange.start)
+            let end = CMTimeGetSeconds(audioRange.end)
+            guard !part.isEmpty, start.isFinite, end.isFinite, start >= 0, end > start,
+                  cueStart.isFinite, cueEnd.isFinite, start >= cueStart - 0.01, end <= cueEnd + 0.01 else { continue }
+            spans.append(TranscriptTimedSpan(location: location, length: part.utf16.count, startTime: start, endTime: end))
+        }
+        return TimedResult(range: range, text: plain, timedSpans: spans)
     }
 
     private static func splitResult(
@@ -746,16 +811,6 @@ class AITranscripts {
     private func reportProgress(_ progress: Double, status: String) async {
         await progressHandler?(min(max(progress, 0), 1), status)
     }
-    
-    private func formatCMTime(_ time: CMTime) -> String {
-        guard time.isNumeric else { return "00:00:00.000" }
-        let totalSeconds = Double(time.value) / Double(time.timescale)
-        let hours = Int(totalSeconds) / 3600
-        let minutes = (Int(totalSeconds) % 3600) / 60
-        let seconds = totalSeconds.truncatingRemainder(dividingBy: 60)
-        return String(format: "%02d:%02d:%06.3f", hours, minutes, seconds)
-    }
-
     
     func bestMatchingSupportedLocale(for input: String) async -> Locale? {
 

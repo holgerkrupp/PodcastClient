@@ -106,7 +106,7 @@ actor TranscriptSearchActor: TranscriptSearching {
         try Task.checkCancellation()
 
         let predicate = try transcriptPredicate(query: query, scope: request.scope)
-        let totalMatches = try modelContext.fetchCount(
+        let canonicalMatches = try modelContext.fetchCount(
             FetchDescriptor<TranscriptLineAndTime>(predicate: predicate)
         )
         try Task.checkCancellation()
@@ -115,8 +115,13 @@ actor TranscriptSearchActor: TranscriptSearching {
             predicate: predicate,
             sortBy: [SortDescriptor(\.startTime)]
         )
-        descriptor.fetchLimit = request.limit
-        descriptor.fetchOffset = request.offset
+        let livePassages = try livePassages(matching: query, scope: request.scope)
+        if livePassages.isEmpty {
+            descriptor.fetchLimit = request.limit
+            descriptor.fetchOffset = request.offset
+        } else {
+            descriptor.fetchLimit = request.offset > Int.max - request.limit ? Int.max : request.offset + request.limit
+        }
 
         let lines = try modelContext.fetch(descriptor)
         var passages: [TranscriptSearchPassage] = []
@@ -127,10 +132,12 @@ actor TranscriptSearchActor: TranscriptSearching {
             passages.append(makePassage(line: line, episode: episode, podcast: podcast, query: query))
         }
 
-        return TranscriptSearchSnapshot(
-            groups: Self.group(passages),
-            totalMatches: totalMatches
-        )
+        if !livePassages.isEmpty {
+            passages += livePassages
+            passages.sort { $0.startTime == $1.startTime ? $0.id < $1.id : $0.startTime < $1.startTime }
+            passages = Array(passages.dropFirst(request.offset).prefix(request.limit))
+        }
+        return TranscriptSearchSnapshot(groups: Self.group(passages), totalMatches: canonicalMatches + livePassages.count)
     }
 
     func hasSearchableTranscripts(in scope: TranscriptSearchScope) async throws -> Bool {
@@ -148,9 +155,47 @@ actor TranscriptSearchActor: TranscriptSearching {
                 count: resultCount
             )
         }
-        let hasLines = try modelContext.fetch(descriptor).isEmpty == false
+        let hasLines = try modelContext.fetch(descriptor).isEmpty == false || !liveEpisodes(in: scope).isEmpty
         resultCount = hasLines ? 1 : 0
         return hasLines
+    }
+
+    private func liveEpisodes(in scope: TranscriptSearchScope) throws -> [Episode] {
+        let predicate: Predicate<Episode>
+        switch scope {
+        case .library:
+            predicate = #Predicate { $0.liveTranscriptData != nil }
+        case .podcast(let identity):
+            let (feed, title) = podcastScopeValues(for: identity)
+            if let feed {
+                predicate = #Predicate { $0.liveTranscriptData != nil && $0.podcast?.feed == feed }
+            } else if let title {
+                predicate = #Predicate { $0.liveTranscriptData != nil && $0.podcast?.title == title }
+            } else { return [] }
+        case .episode(let identity):
+            guard let id = try resolveEpisodePersistentID(for: identity) else { return [] }
+            predicate = #Predicate { $0.liveTranscriptData != nil && $0.persistentModelID == id }
+        }
+        return try modelContext.fetch(FetchDescriptor<Episode>(predicate: predicate)).filter {
+            $0.transcriptLines?.isEmpty != false
+                && $0.liveTranscriptData.flatMap { try? JSONDecoder().decode(LiveTranscriptState.self, from: $0) }?.cues.isEmpty == false
+        }
+    }
+
+    private func livePassages(matching query: String, scope: TranscriptSearchScope) throws -> [TranscriptSearchPassage] {
+        try liveEpisodes(in: scope).flatMap { episode -> [TranscriptSearchPassage] in
+            guard let data = episode.liveTranscriptData,
+                  let state = try? JSONDecoder().decode(LiveTranscriptState.self, from: data),
+                  let podcast = episode.podcast else { return [] }
+            return state.cues.filter { TranscriptSearchText.matches($0.text, query: query) }.map { cue in
+                TranscriptSearchPassage(id: cue.id.uuidString, podcastID: podcast.stablePodcastIdentityKey,
+                    podcastTitle: podcast.title, podcastImageURL: podcast.imageURL,
+                    episodeID: episode.stableEpisodeIdentity.key, episodeTitle: episode.title,
+                    episodeURL: episode.url, episodeImageURL: episode.imageURL, publishDate: episode.publishDate,
+                    text: cue.text, snippet: makeSnippet(from: cue.text, query: query), speaker: nil,
+                    startTime: cue.start, endTime: cue.end, matchedTerms: queryTerms(from: query))
+            }
+        }
     }
 
     private func transcriptPredicate(

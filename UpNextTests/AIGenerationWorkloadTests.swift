@@ -85,7 +85,10 @@ struct AIGenerationWorkloadTests {
             directory: directory
         ))
         let first = TranscriptionCheckpoint.Segment(start: 0, end: 1.5, text: "Hallo Welt")
-        let second = TranscriptionCheckpoint.Segment(start: 1.5, end: 2.5, text: "zweite\nZeile")
+        let second = TranscriptionCheckpoint.Segment(
+            start: 1.5, end: 2.5, text: "zweite\nZeile",
+            timedSpans: [TranscriptTimedSpan(location: 0, length: 6, startTime: 1.5, endTime: 2)]
+        )
         checkpoint.append([first])
         checkpoint.append([second])
         #expect(checkpoint.load() == [first, second])

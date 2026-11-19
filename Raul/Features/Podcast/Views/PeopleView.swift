@@ -163,7 +163,7 @@ private struct PersonEpisodesView: View {
                 }
             }
             .navigationTitle(person.name)
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }

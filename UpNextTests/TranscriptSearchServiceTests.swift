@@ -4,6 +4,23 @@ import XCTest
 @testable import UpNext
 
 final class TranscriptSearchServiceTests: XCTestCase {
+    func testSearchIncludesSavedPartialTranscriptWithoutDuplicatingFullTranscript() async throws {
+        let fixture = try makeFixture()
+        let partial = insertEpisode(title: "Partial", guid: "partial", podcast: fixture.firstPodcast, lines: [], in: fixture.context)
+        var state = LiveTranscriptState(mediaFingerprint: "media")
+        state.append(cues: [.init(id: UUID(), text: "A searchable live passage", start: 10, end: 12, spans: [])],
+                     coverage: .init(start: 7, end: 14))
+        partial.liveTranscriptData = try JSONEncoder().encode(state)
+        _ = insertEpisode(title: "Full", guid: "full", podcast: fixture.firstPodcast,
+            lines: [TranscriptLineAndTime(text: "A searchable full passage", startTime: 20)], in: fixture.context)
+        try fixture.context.save()
+        let service = TranscriptSearchActor(modelContainer: fixture.container)
+        let result = try await service.search(TranscriptSearchQuery(text: "searchable", scope: .library, limit: 1, offset: 0))
+        XCTAssertEqual(result.totalMatches, 2)
+        XCTAssertEqual(result.groups.flatMap(\.episodes).flatMap(\.passages).first?.startTime, 10)
+        let next = try await service.search(TranscriptSearchQuery(text: "searchable", scope: .library, limit: 1, offset: 1))
+        XCTAssertEqual(next.groups.flatMap(\.episodes).flatMap(\.passages).first?.startTime, 20)
+    }
     func testSearchReadsCanonicalLinesAndGroupsLibraryResults() async throws {
         let fixture = try makeFixture()
         let first = insertEpisode(

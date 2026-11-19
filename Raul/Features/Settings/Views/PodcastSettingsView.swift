@@ -631,6 +631,20 @@ struct PodcastSettingsView: View {
             }
 
             if isPodcastCustomSettingsActive {
+                Section("Network Tracking Protection") {
+                    Toggle(
+                        "Reduce tracking in network requests",
+                        isOn: Binding(
+                            get: { settings.networkTrackingProtectionEnabled ?? networkTrackingProtectionEnabled },
+                            set: { settings.networkTrackingProtectionEnabled = $0; saveAndNotify() }
+                        )
+                    )
+                    Text("Removes recognized tracking parameters from new feed refresh and audio download requests for this podcast. Some servers can still identify requests. A few podcasts may need the original link.")
+                        .font(.caption)
+                    Text("Active playback and downloads may continue using their current request. Resuming or retrying a download uses this setting.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 podcastCustomizationSection(settings: settings)
             }
             podcastLiveNotificationsSection(settings: settings)

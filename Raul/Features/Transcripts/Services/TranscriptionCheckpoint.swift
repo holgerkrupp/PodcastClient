@@ -15,6 +15,7 @@ struct TranscriptionCheckpoint: Sendable {
         let start: Double
         let end: Double
         let text: String
+        var timedSpans: [TranscriptTimedSpan]? = nil
     }
 
     static let maximumAge: TimeInterval = 60 * 60 * 24 * 7

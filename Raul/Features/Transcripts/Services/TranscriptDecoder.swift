@@ -20,6 +20,7 @@ class TranscriptDecoder{
         var text: String
         let startTime: TimeInterval
         let endTime: TimeInterval
+        var timedSpans: [TranscriptTimedSpan] = []
     }
     
     private enum TranscriptFormat {
@@ -86,57 +87,91 @@ class TranscriptDecoder{
     }
     //MARK: WebVTT
     private func parseWebVTT() -> [TranscriptLineWithTime] {
-        let linesArray = transcriptContent.components(separatedBy: .newlines)
+        let linesArray = transcriptContent.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n").components(separatedBy: "\n")
         var transcriptLines: [TranscriptLineWithTime] = []
         var currentIndex = 0
-        
-        // Find the first timestamp line
+
         while currentIndex < linesArray.count {
-            let line = linesArray[currentIndex]
-            if line.contains(" --> ") {
-                break
-            }
-            currentIndex += 1
-        }
-        
-        // Process transcript lines
-        while currentIndex < linesArray.count {
-            // Skip empty lines
-            while currentIndex < linesArray.count && linesArray[currentIndex].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                currentIndex += 1
-            }
-            
-            // Check if we've reached the end of the file
-            if currentIndex >= linesArray.count {
-                break
-            }
-            
-            // Process timestamp line
             let timestampLine = linesArray[currentIndex]
-            let timestampComponents = timestampLine.components(separatedBy: " --> ")
-            
-            if timestampComponents.count == 2,
-               let startTime = timestampComponents[0].durationAsSeconds,
-               let endTime = timestampComponents[1].durationAsSeconds {
-                
-                // Move to the next line which should contain the transcript text
+            let parts = timestampLine.components(separatedBy: " --> ")
+            guard parts.count == 2,
+                  let startTime = webVTTTime(parts[0].trimmingCharacters(in: .whitespaces)),
+                  let endToken = parts[1].split(whereSeparator: \.isWhitespace).first,
+                  let endTime = webVTTTime(String(endToken)), endTime > startTime else {
                 currentIndex += 1
-                if currentIndex < linesArray.count {
-                    let (speaker, text) = separateSpeakerAndText(from: linesArray[currentIndex])
-                    transcriptLines.append(TranscriptLineWithTime(
-                        id: UUID(),
-                        speaker: speaker,
-                        text: text,
-                        startTime: startTime,
-                        endTime: endTime
-                    ))
-                }
+                continue
             }
-            
             currentIndex += 1
+            var textLines: [String] = []
+            while currentIndex < linesArray.count && !linesArray[currentIndex].isEmpty {
+                textLines.append(linesArray[currentIndex])
+                currentIndex += 1
+            }
+            var rawText = textLines.joined(separator: "\n")
+            var speaker: String?
+            if rawText.hasPrefix("<v "), let end = rawText.firstIndex(of: ">") {
+                speaker = String(rawText[rawText.index(rawText.startIndex, offsetBy: 3)..<end])
+                rawText.removeSubrange(rawText.startIndex...end)
+                if rawText.hasSuffix("</v>") { rawText.removeLast(4) }
+            }
+            let parsed = webVTTText(rawText, start: startTime, end: endTime)
+            transcriptLines.append(TranscriptLineWithTime(
+                id: UUID(), speaker: speaker, text: parsed.text,
+                startTime: startTime, endTime: endTime, timedSpans: parsed.spans
+            ))
         }
-        
         return sortedTranscriptLines(transcriptLines)
+    }
+
+    private func webVTTTime(_ value: String) -> TimeInterval? {
+        let parts = value.split(separator: ":", omittingEmptySubsequences: false)
+        guard (2...3).contains(parts.count),
+              parts.allSatisfy({ !$0.isEmpty }),
+              let seconds = Double(parts.last!), seconds >= 0, seconds < 60,
+              let minutes = Double(parts[parts.count - 2]), minutes >= 0, minutes < 60 else { return nil }
+        let hours: Double
+        if parts.count == 3 {
+            guard let parsed = Double(parts[0]), parsed >= 0 else { return nil }
+            hours = parsed
+        } else {
+            hours = 0
+        }
+        let time = hours * 3600 + minutes * 60 + seconds
+        return time.isFinite ? time : nil
+    }
+
+    private func webVTTText(_ raw: String, start: TimeInterval, end: TimeInterval) -> (text: String, spans: [TranscriptTimedSpan]) {
+        let pattern = #"<(?:\d{2,}:)?\d{2}:\d{2}\.\d{3}>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return (raw, []) }
+        let nsRaw = raw as NSString
+        let matches = regex.matches(in: raw, range: NSRange(location: 0, length: nsRaw.length))
+        guard !matches.isEmpty else { return (raw, []) }
+        var text = ""
+        var spans: [TranscriptTimedSpan] = []
+        var sourceOffset = 0
+        var spanStart = start
+        var valid = true
+        for match in matches {
+            let chunk = nsRaw.substring(with: NSRange(location: sourceOffset, length: match.range.location - sourceOffset))
+            let location = text.utf16.count
+            text += chunk
+            let tag = nsRaw.substring(with: match.range)
+            guard let time = webVTTTime(String(tag.dropFirst().dropLast())) else { return (raw, []) }
+            if time <= spanStart || time >= end { valid = false }
+            if !chunk.isEmpty {
+                spans.append(TranscriptTimedSpan(location: location, length: chunk.utf16.count, startTime: spanStart, endTime: time))
+            }
+            spanStart = time
+            sourceOffset = NSMaxRange(match.range)
+        }
+        let tail = nsRaw.substring(from: sourceOffset)
+        let location = text.utf16.count
+        text += tail
+        if !tail.isEmpty {
+            spans.append(TranscriptTimedSpan(location: location, length: tail.utf16.count, startTime: spanStart, endTime: end))
+        }
+        return (text, valid ? spans : [])
     }
     
     private func separateSpeakerAndText(from line: String) -> (speaker: String?, text: String) {

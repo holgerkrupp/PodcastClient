@@ -101,6 +101,9 @@ final class EqualizerDSP {
 }
 
 final class AudioPlaybackProcessor: @unchecked Sendable {
+#if DEBUG
+    var streamAudioProbe: StreamAudioProbe?
+#endif
     var reduceSilenceGapsEnabled: Bool
     let silenceGapReductionLevel: SilenceGapReductionLevel
     var voiceEnhancementEnabled: Bool
@@ -129,7 +132,7 @@ final class AudioPlaybackProcessor: @unchecked Sendable {
         detector = AudioSilenceGapDetector(level: silenceGapReductionLevel)
     }
 
-    func makeTap() -> MTAudioProcessingTap? {
+    func makeTap(useMixedOutput: Bool = false) -> MTAudioProcessingTap? {
         var callbacks = MTAudioProcessingTapCallbacks(
             version: kMTAudioProcessingTapCallbacksVersion_0,
             clientInfo: Unmanaged.passRetained(self).toOpaque(),
@@ -141,12 +144,16 @@ final class AudioPlaybackProcessor: @unchecked Sendable {
         )
 
         var newTap: MTAudioProcessingTap?
-        let status = MTAudioProcessingTapCreate(
-            kCFAllocatorDefault,
-            &callbacks,
-            kMTAudioProcessingTapCreationFlag_PostEffects,
-            &newTap
-        )
+        let status: OSStatus
+        if #available(iOS 27, macOS 27, tvOS 27, visionOS 27, *), useMixedOutput {
+            status = MTAudioProcessingTapCreateWithPreferredFormat(
+                kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, nil, &newTap
+            )
+        } else {
+            status = MTAudioProcessingTapCreate(
+                kCFAllocatorDefault, &callbacks, kMTAudioProcessingTapCreationFlag_PostEffects, &newTap
+            )
+        }
 
         guard status == noErr else {
             if let clientInfo = callbacks.clientInfo {
@@ -189,7 +196,8 @@ final class AudioPlaybackProcessor: @unchecked Sendable {
 
     fileprivate func process(
         numberFrames: CMItemCount,
-        bufferList: UnsafeMutablePointer<AudioBufferList>
+        bufferList: UnsafeMutablePointer<AudioBufferList>,
+        timeRange: CMTimeRange
     ) {
         let sampleCount = Int(numberFrames)
         let (format, enhancer, equalizer) = stateQueue.sync {
@@ -242,6 +250,10 @@ final class AudioPlaybackProcessor: @unchecked Sendable {
             channelOffset += channelsInBuffer
         }
 
+#if DEBUG
+        streamAudioProbe?.capture(bufferList, frames: sampleCount, format: format, timeRange: timeRange)
+#endif
+
         guard reduceSilenceGapsEnabled, rmsSampleCount > 0 else { return }
 
         let rms = sqrt(rmsAccumulator / Float(rmsSampleCount))
@@ -288,12 +300,13 @@ private let audioPlaybackProcessorUnprepare: MTAudioProcessingTapUnprepareCallba
 
 private let audioPlaybackProcessorProcess: MTAudioProcessingTapProcessCallback = { tap, numberFrames, flags, bufferListInOut, numberFramesOut, flagsOut in
     var itemCount = numberFrames
+    var timeRange = CMTimeRange.invalid
     let status = MTAudioProcessingTapGetSourceAudio(
         tap,
         numberFrames,
         bufferListInOut,
         flagsOut,
-        nil,
+        &timeRange,
         &itemCount
     )
 
@@ -304,6 +317,6 @@ private let audioPlaybackProcessorProcess: MTAudioProcessingTapProcessCallback =
     }
 
     numberFramesOut.pointee = itemCount
-    processor(from: tap)?.process(numberFrames: itemCount, bufferList: bufferListInOut)
+    processor(from: tap)?.process(numberFrames: itemCount, bufferList: bufferListInOut, timeRange: timeRange)
 }
 #endif

@@ -29,6 +29,15 @@ enum PodcastNetworkPrivacyPolicy {
         return defaults.object(forKey: settingKey) as? Bool ?? true
     }
 
+    static func isEnabled(forPodcast podcast: Podcast?) -> Bool {
+        guard let settings = podcast?.settings,
+              settings.isEnabled,
+              let override = settings.networkTrackingProtectionEnabled else {
+            return isEnabled
+        }
+        return override
+    }
+
     static func prepare(_ url: URL, purpose: Purpose, enabled: Bool = isEnabled) -> Decision {
         guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
               var components = URLComponents(url: url, resolvingAgainstBaseURL: false),
@@ -147,8 +156,8 @@ enum PodcastNetworkPrivacyPolicy {
         defaults.set(defaults.integer(forKey: key) + 1, forKey: key)
     }
 
-    static func wireURL(for url: URL, purpose: Purpose) throws -> URL {
-        let decision = prepare(url, purpose: purpose)
+    static func wireURL(for url: URL, purpose: Purpose, enabled: Bool = isEnabled) throws -> URL {
+        let decision = prepare(url, purpose: purpose, enabled: enabled)
         record(decision)
         guard decision.outcome != .blocked else {
             throw NSError(domain: "PodcastNetworkPrivacyPolicy", code: 1, userInfo: [NSLocalizedDescriptionKey: decision.failureMessage ?? "This network address could not be safely opened."])
@@ -156,9 +165,9 @@ enum PodcastNetworkPrivacyPolicy {
         return decision.url
     }
 
-    static func prepare(_ request: URLRequest, purpose: Purpose) throws -> URLRequest {
+    static func prepare(_ request: URLRequest, purpose: Purpose, enabled: Bool = isEnabled) throws -> URLRequest {
         var request = request
-        if let url = request.url { request.url = try wireURL(for: url, purpose: purpose) }
+        if let url = request.url { request.url = try wireURL(for: url, purpose: purpose, enabled: enabled) }
         request.setValue(nil, forHTTPHeaderField: "Referer")
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
             request.setValue("UpNext/1.0", forHTTPHeaderField: "User-Agent")

@@ -10,6 +10,7 @@ import AppKit
 
 struct PlayerView: View {
     @Bindable private var player = Player.shared
+    @Bindable private var liveTranscript = LiveTranscriptController.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -156,15 +157,23 @@ struct PlayerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 case .transcript:
-                    let transcriptLines = episode.transcriptLines ?? []
-                    if transcriptLines.isEmpty == false {
-                        TranscriptListView(
-                            transcriptLines: transcriptLines,
-                            episode: episode,
-                            startFollowingPlayback: true
-                        )
-                    } else {
-                        missingTranscriptView(episode: episode)
+                    let transcriptLines = liveTranscript.displayLines(for: episode)
+                    VStack(spacing: 0) {
+                        if episode.transcriptLines?.isEmpty != false {
+                            LiveTranscriptActionView(episode: episode)
+                            if !transcriptLines.isEmpty {
+                                LiveTranscriptCoverageView(episode: episode)
+                            }
+                        }
+                        if transcriptLines.isEmpty == false {
+                            TranscriptListView(
+                                transcriptLines: transcriptLines, episode: episode,
+                                startFollowingPlayback: true,
+                                canFollowPlayback: episode.transcriptLines?.isEmpty == false || liveTranscript.isActive(for: episode)
+                            )
+                        } else {
+                            missingTranscriptView(episode: episode)
+                        }
                     }
                 case .chapters:
                     let chapterMarkers = episode.chapters ?? []
@@ -189,8 +198,6 @@ struct PlayerView: View {
             Label("No Transcript", systemImage: "quote.bubble")
         } description: {
             Text("Generate a transcript to read along with this episode.")
-        } actions: {
-            Text("Use the chapter row to generate a transcript on this device.")
         }
     }
 

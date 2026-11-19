@@ -2929,6 +2929,7 @@ actor StoreSplitMigrationService {
             continuousPlayEnabled: setting.getContinuousPlay,
             showLivePodcasts: setting.showLivePodcasts,
             liveItemNotificationsEnabled: setting.enableLiveItemNotifications,
+            networkTrackingProtectionEnabled: setting.networkTrackingProtectionEnabled,
             sleepTimerAddMinutes: setting.sleepTimerAddMinutes,
             sleepTimerDurationToReactivate: setting.sleepTimerDurationToReactivate,
             sleepTimerVoiceFeedbackEnabled: setting.sleepTimerVoiceFeedbackEnabled,
@@ -2972,6 +2973,7 @@ actor StoreSplitMigrationService {
         destination.continuousPlayEnabled = source.continuousPlayEnabled
         destination.showLivePodcasts = source.showLivePodcasts
         destination.liveItemNotificationsEnabled = source.liveItemNotificationsEnabled
+        destination.networkTrackingProtectionEnabled = source.networkTrackingProtectionEnabled
         destination.sleepTimerAddMinutes = source.sleepTimerAddMinutes
         destination.sleepTimerDurationToReactivate = source.sleepTimerDurationToReactivate
         destination.sleepTimerVoiceFeedbackEnabled = source.sleepTimerVoiceFeedbackEnabled

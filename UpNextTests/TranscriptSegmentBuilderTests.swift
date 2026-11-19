@@ -3,6 +3,26 @@ import XCTest
 
 final class TranscriptSegmentBuilderTests: XCTestCase {
 
+    @MainActor
+    func testMergedLinesRetainUnicodeSafeTimedRangesAndCueFallback() throws {
+        let first = TranscriptSegmentSource(
+            text: "  👋 hello ", startTime: 1, endTime: 3,
+            timedSpans: [TranscriptTimedSpan(location: 2, length: 2, startTime: 1, endTime: 1.5),
+                         TranscriptTimedSpan(location: 5, length: 5, startTime: 2, endTime: 3)]
+        )
+        let second = TranscriptSegmentSource(text: "next", startTime: 3, endTime: 4)
+        let segment = try XCTUnwrap(TranscriptSegmentBuilder.makeSegments(from: [first, second], options: .compact).first)
+        XCTAssertEqual(segment.text, "👋 hello next")
+        let waving = try XCTUnwrap(segment.activeSpan(at: 1.2))
+        XCTAssertEqual((segment.text as NSString).substring(with: NSRange(location: waving.location, length: waving.length)), "👋")
+        XCTAssertNil(segment.activeSpan(at: 1.7))
+        XCTAssertEqual(TranscriptPlaybackTracker.lookup(segments: [segment], at: 1.2)?.location, waving.location)
+        XCTAssertNil(TranscriptPlaybackTracker.lookup(segments: [segment], at: 0.9))
+        XCTAssertNil(TranscriptPlaybackTracker.lookup(segments: [segment], at: 4))
+        let fallback = try XCTUnwrap(segment.activeSpan(at: 3.2))
+        XCTAssertEqual((segment.text as NSString).substring(with: NSRange(location: fallback.location, length: fallback.length)), "next")
+    }
+
     private func makeLines(_ texts: [String], speaker: String? = "Host", start: TimeInterval = 0, step: TimeInterval = 2) -> [TranscriptSegmentSource] {
         texts.enumerated().map { index, text in
             let lineStart = start + Double(index) * step

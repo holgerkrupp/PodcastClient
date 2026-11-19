@@ -2,6 +2,21 @@ import XCTest
 @testable import UpNext
 
 final class TranscriptSynchronizationTests: XCTestCase {
+    func testOlderGapEncodingStillDecodes() throws {
+        let data = Data(#"{"audioStart":10,"audioEnd":20,"transcriptTime":10}"#.utf8)
+        let gap = try JSONDecoder().decode(TranscriptAudioGap.self, from: data)
+        XCTAssertNil(gap.transcriptEnd)
+        XCTAssertEqual(gap.audioEnd, 20)
+    }
+    func testTranscriptRevisionChangesWhenInlineTimingChanges() throws {
+        let first = TranscriptAlignmentCandidate(id: "one", transcriptTime: 1, text: "hello", source: .publisher,
+            endTime: 3, timedSpans: [TranscriptTimedSpan(location: 0, length: 5, startTime: 1, endTime: 2)])
+        let changed = TranscriptAlignmentCandidate(id: "one", transcriptTime: 1, text: "hello", source: .publisher,
+            endTime: 3, timedSpans: [TranscriptTimedSpan(location: 0, length: 5, startTime: 1.5, endTime: 2)])
+        let original = try XCTUnwrap(TranscriptSynchronizationRevision.make(candidates: [first]))
+        XCTAssertEqual(original, TranscriptSynchronizationRevision.make(candidates: [first]))
+        XCTAssertNotEqual(original, TranscriptSynchronizationRevision.make(candidates: [changed]))
+    }
     func testIdentityTimelinePreservesZeroOffset() throws {
         let timeline = try XCTUnwrap(TranscriptSynchronizationTimeline(anchors: [
             .init(transcriptTime: 0, audioTime: 0, confidence: 1),
@@ -9,6 +24,8 @@ final class TranscriptSynchronizationTests: XCTestCase {
         ]))
         XCTAssertEqual(timeline.audioTime(forTranscriptTime: 42) ?? -1, 42, accuracy: 0.001)
         XCTAssertEqual(timeline.transcriptTime(forAudioTime: 42) ?? -1, 42, accuracy: 0.001)
+        XCTAssertNil(timeline.audioTime(forTranscriptTime: 121))
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 121))
     }
 
     func testOneInsertionCreatesPiecewiseCumulativeCorrection() throws {
@@ -50,7 +67,62 @@ final class TranscriptSynchronizationTests: XCTestCase {
             gaps: [.init(audioStart: 60, audioEnd: 135, transcriptTime: 60)]
         ))
         XCTAssertNil(timeline.transcriptTime(forAudioTime: 90))
-        XCTAssertEqual(timeline.transcriptTime(forAudioTime: 165) ?? -1, 106.666_667, accuracy: 0.001)
+        XCTAssertEqual(timeline.transcriptTime(forAudioTime: 165) ?? -1, 90, accuracy: 0.001)
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 60) ?? -1, 135, accuracy: 0.001)
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 90) ?? -1, 165, accuracy: 0.001)
+    }
+
+    func testMultipleGapsDoNotStretchSpeechOrSeekIntoInsertions() throws {
+        let timeline = try XCTUnwrap(TranscriptSynchronizationTimeline(
+            anchors: [
+                .init(transcriptTime: 0, audioTime: 0, confidence: 1),
+                .init(transcriptTime: 60, audioTime: 70, confidence: 1),
+                .init(transcriptTime: 120, audioTime: 250, confidence: 1),
+                .init(transcriptTime: 180, audioTime: 310, confidence: 1)
+            ],
+            gaps: [
+                .init(audioStart: 30, audioEnd: 40, transcriptTime: 30),
+                .init(audioStart: 100, audioEnd: 220, transcriptTime: 90)
+            ]
+        ))
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 29) ?? -1, 29, accuracy: 0.001)
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 30) ?? -1, 40, accuracy: 0.001)
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 89) ?? -1, 99, accuracy: 0.001)
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 90) ?? -1, 220, accuracy: 0.001)
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 35))
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 150))
+        XCTAssertEqual(timeline.transcriptTime(forAudioTime: 221) ?? -1, 91, accuracy: 0.001)
+    }
+
+    func testLongConfirmedInsertionDoesNotInvalidateOtherwiseNormalSpeechTiming() throws {
+        let timeline = try XCTUnwrap(TranscriptSynchronizationTimeline(
+            anchors: [.init(transcriptTime: 0, audioTime: 0, confidence: 1),
+                      .init(transcriptTime: 60, audioTime: 360, confidence: 1)],
+            gaps: [.init(audioStart: 30, audioEnd: 330, transcriptTime: 30)]
+        ))
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 100))
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 30), 330)
+        XCTAssertEqual(timeline.transcriptTime(forAudioTime: 340), 40)
+    }
+
+    func testSparseMatchesRequireEvidenceAndKeepUnmatchedRegionsUnmapped() throws {
+        let anchors: [TranscriptSynchronizationAnchor] = [
+            .init(transcriptTime: 0, audioTime: 0, confidence: 0.95),
+            .init(transcriptTime: 20, audioTime: 20, confidence: 0.95),
+            .init(transcriptTime: 40, audioTime: 50, confidence: 0.95),
+            .init(transcriptTime: 60, audioTime: 70, confidence: 0.95),
+            .init(transcriptTime: 80, audioTime: 390, confidence: 0.95),
+            .init(transcriptTime: 100, audioTime: 410, confidence: 0.95)
+        ]
+        XCTAssertNil(TranscriptGapInference.infer(from: Array(anchors.prefix(3))))
+        let gaps = try XCTUnwrap(TranscriptGapInference.infer(from: anchors))
+        XCTAssertEqual(gaps.count, 2)
+        let timeline = try XCTUnwrap(TranscriptSynchronizationTimeline(anchors: anchors, gaps: gaps))
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 35))
+        XCTAssertNil(timeline.audioTime(forTranscriptTime: 30))
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 40), 50)
+        XCTAssertNil(timeline.transcriptTime(forAudioTime: 200))
+        XCTAssertEqual(timeline.audioTime(forTranscriptTime: 80), 390)
     }
 
     func testRejectsSingleContradictoryOrMalformedAnchors() {
@@ -117,6 +189,24 @@ final class TranscriptSynchronizationTests: XCTestCase {
         ))
     }
 
+    func testMatcherFindsLargeOffsetOnlyWhenExpandedMatchIsUnambiguous() throws {
+        let candidate = TranscriptAlignmentCandidate(
+            transcriptTime: 100,
+            text: "A remarkable discovery changed everything in the laboratory",
+            source: .publisher
+        )
+        let match = try XCTUnwrap(TranscriptAlignmentMatcher.match(
+            recognizedText: candidate.text, actualAudioTime: 400,
+            candidates: [candidate], expectedTranscriptTime: 400
+        ))
+        XCTAssertEqual(match.transcriptTime, 100)
+        let duplicate = TranscriptAlignmentCandidate(transcriptTime: 130, text: candidate.text, source: .publisher)
+        XCTAssertNil(TranscriptAlignmentMatcher.match(
+            recognizedText: candidate.text, actualAudioTime: 400,
+            candidates: [candidate, duplicate], expectedTranscriptTime: 400
+        ))
+    }
+
     @MainActor
     func testOptOutImmediatelyRestoresOriginalTimes() throws {
         let store = TranscriptSynchronizationStore.shared
@@ -126,15 +216,18 @@ final class TranscriptSynchronizationTests: XCTestCase {
             .init(transcriptTime: 120, audioTime: 195, confidence: 0.95)
         ]))
         store.setEnabled(true)
+        XCTAssertFalse(store.hasVerifiedTimeline(for: episodeURL))
         store.install(
             timeline,
             episodeURL: episodeURL,
             mediaFingerprint: "media-a",
             transcriptRevision: "transcript-a"
         )
+        XCTAssertTrue(store.hasVerifiedTimeline(for: episodeURL))
         XCTAssertEqual(store.transcriptTime(forAudioTime: 195, episodeURL: episodeURL), 120)
 
         store.setEnabled(false)
+        XCTAssertFalse(store.hasVerifiedTimeline(for: episodeURL))
         XCTAssertEqual(store.transcriptTime(forAudioTime: 195, episodeURL: episodeURL), 195)
         XCTAssertNil(store.timeline(
             for: episodeURL,

@@ -131,7 +131,7 @@ enum RemoteEmbeddedChapterLoader {
         let header = OSAllocatedUnfairLock<Data?>(initialState: nil)
         do {
             let tag = try await tagCache.tag(for: url, profile: profile) {
-                try await fetchID3Tag(maxSize: maximumTagSize) { range in
+                try await RemoteID3TagFetcher.fetchID3Tag(maxSize: maximumTagSize) { range in
                     let (data, _) = try await client.rangeData(for: url, range: range, profile: profile)
                     if range.lowerBound == 0, range.count == 10 {
                         header.withLock { $0 = data }
@@ -152,29 +152,6 @@ enum RemoteEmbeddedChapterLoader {
             }
             return .untaggedAudio
         }
-    }
-
-    /// Fetches only the ID3 header and declared tag bytes through the app's
-    /// credential-aware range client.
-    private static func fetchID3Tag(
-        maxSize: Int,
-        fetchRange: @Sendable (Range<Int>) async throws -> Data
-    ) async throws -> Data {
-        let header = try await fetchRange(0..<10)
-        guard header.count == 10 else { throw PodcastRangeRequestError.rangeNotSatisfied }
-        guard header.starts(with: [0x49, 0x44, 0x33]) else {
-            throw RemoteID3TagFetcherError.invalidHeader
-        }
-
-        let tagBodySize = (6..<10).reduce(0) { ($0 << 7) | Int(header[$1] & 0x7F) }
-        let totalSize = 10 + tagBodySize
-        guard totalSize <= maxSize else {
-            throw RemoteID3TagFetcherError.tagTooLarge(totalSize)
-        }
-
-        let tag = try await fetchRange(0..<totalSize)
-        guard tag.count == totalSize else { throw PodcastRangeRequestError.rangeNotSatisfied }
-        return tag
     }
 
     static func record(_ outcome: RemoteChapterOutcome, for url: URL) async {

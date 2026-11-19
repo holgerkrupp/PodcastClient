@@ -100,6 +100,21 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         await queue.finish(second)
     }
 
+    func testCancelledClipWaiterDoesNotBlockEpisodeTranscription() async {
+        let queue = TranscriptionTurnQueue()
+        let episode = URL(string: "https://example.com/episode.mp3")!
+        let ticket = URL(string: "upnext-clip-transcription://cancelled")!
+        await queue.wait(for: episode)
+        await queue.cancelClip(ticket)
+        await queue.waitForClip(ticket)
+        let beforeFinish = await queue.snapshot()
+        XCTAssertEqual(beforeFinish.active, episode)
+        XCTAssertTrue(beforeFinish.queued.isEmpty)
+        await queue.finish(episode)
+        let afterFinish = await queue.snapshot()
+        XCTAssertNil(afterFinish.active)
+    }
+
     func testSpeechAttributedTextPersistsOnlyVisibleCharacters() {
         var attributedText = AttributedString("Recognized speech")
         attributedText.inlinePresentationIntent = .stronglyEmphasized
@@ -364,6 +379,64 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertEqual(chapters.first?.shouldPlay, false)
         XCTAssertEqual(chapters.first?.progress ?? -1, 0.42, accuracy: 0.0001)
         XCTAssertEqual(chapters.first?.imageData ?? Data(), Data([0x01, 0x02, 0x03]))
+    }
+
+    func testGeneratedTranscriptRetainsSpeechTimingWhenSaved() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/timed-transcript.mp3")!
+        _ = try makeEpisode(in: fixture.context, podcast: fixture.podcast, url: episodeURL, source: .feedDownload)
+        let spans = [TranscriptTimedSpan(location: 0, length: 5, startTime: 1, endTime: 1.5)]
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        try await actor.setGeneratedTranscript(for: episodeURL, lines: [
+            TranscriptLineSnapshot(speaker: nil, text: "Hello there", startTime: 1, endTime: 3, timedSpans: spans, generatedMediaFingerprint: "media-a")
+        ])
+        let episode = try fetchEpisode(in: fixture.container, url: episodeURL)
+        let line = try XCTUnwrap(episode.transcriptLines?.first)
+        XCTAssertEqual(line.text, "Hello there")
+        XCTAssertEqual(line.timedSpans, spans)
+        XCTAssertEqual(line.generatedMediaFingerprint, "media-a")
+        XCTAssertEqual(line.transcriptSource, .localAI)
+        let savedSnapshot = await actor.clipTranscriptSnapshot(for: episodeURL)
+        let snapshot = try XCTUnwrap(savedSnapshot)
+        XCTAssertNotNil(ClipCaptionTimeline.resolve(snapshot: snapshot, mediaFingerprint: "media-a", publisherAlignment: nil))
+        XCTAssertNil(ClipCaptionTimeline.resolve(snapshot: snapshot, mediaFingerprint: "media-b", publisherAlignment: nil))
+    }
+
+    func testLiveTranscriptKeepsCoverageAndRejectsAnotherMediaVariant() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/live-transcript.mp3")!
+        _ = try makeEpisode(in: fixture.context, podcast: fixture.podcast, url: episodeURL, source: .feedDownload)
+        let actor = LiveTranscriptStoreActor(modelContainer: fixture.container)
+        let cue = LiveTranscriptState.Cue(id: UUID(), text: "Hello", start: 1, end: 2, spans: [])
+        let saved = try await actor.append(episodeURL: episodeURL, fingerprint: "media-a", windows: [.init(coverage: .init(start: 0, end: 7), cues: [cue])])
+        let rejected = try await actor.append(episodeURL: episodeURL, fingerprint: "media-b", windows: [.init(coverage: .init(start: 7, end: 14), cues: [cue])])
+        XCTAssertTrue(saved)
+        XCTAssertFalse(rejected)
+        let savedState = try await actor.load(episodeURL: episodeURL)
+        let state = try XCTUnwrap(savedState)
+        XCTAssertEqual(state.mediaFingerprint, "media-a")
+        XCTAssertEqual(state.cues.count, 1)
+        XCTAssertEqual(state.coverage, [.init(start: 0, end: 7)])
+        let episodeActor = EpisodeActor(modelContainer: fixture.container)
+        let snapshotValue = await episodeActor.clipTranscriptSnapshot(for: episodeURL)
+        let snapshot = try XCTUnwrap(snapshotValue)
+        let timeline = try XCTUnwrap(ClipCaptionTimeline.resolve(snapshot: snapshot, mediaFingerprint: "media-a", publisherAlignment: nil))
+        XCTAssertEqual(timeline.coverage, [.init(start: 0, end: 7)])
+        XCTAssertNil(ClipCaptionTimeline.resolve(snapshot: snapshot, mediaFingerprint: "media-b", publisherAlignment: nil))
+    }
+
+    func testReplacingTranscriptRetainsProvidedTiming() async throws {
+        let fixture = try makeFixture()
+        let episodeURL = URL(string: "https://example.com/copied-transcript.mp3")!
+        _ = try makeEpisode(in: fixture.context, podcast: fixture.podcast, url: episodeURL, source: .feedDownload)
+        let spans = [TranscriptTimedSpan(location: 0, length: 5, startTime: 1, endTime: 1.5)]
+        let actor = EpisodeActor(modelContainer: fixture.container)
+        try await actor.setTranscript(for: episodeURL, lines: [
+            TranscriptLineAndTime(text: "Hello", startTime: 1, endTime: 2, source: .localAI, timedSpans: spans, generatedMediaFingerprint: "media-a")
+        ])
+        let episode = try fetchEpisode(in: fixture.container, url: episodeURL)
+        XCTAssertEqual(episode.transcriptLines?.first?.timedSpans, spans)
+        XCTAssertEqual(episode.transcriptLines?.first?.generatedMediaFingerprint, "media-a")
     }
 
     func testLargeTranscriptReplacementUsesPersistedLinesWithoutWholeArrayAssignment() async throws {

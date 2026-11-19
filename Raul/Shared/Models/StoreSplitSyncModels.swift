@@ -331,6 +331,7 @@ final class PodcastPreferenceSync: Identifiable {
     var continuousPlayEnabled: Bool = true
     var showLivePodcasts: Bool = true
     var liveItemNotificationsEnabled: Bool = true
+    var networkTrackingProtectionEnabled: Bool?
     var sleepTimerAddMinutes: Double = 10
     var sleepTimerDurationToReactivate: Double = 300
     var sleepTimerVoiceFeedbackEnabled: Bool = true
@@ -369,6 +370,7 @@ final class PodcastPreferenceSync: Identifiable {
         continuousPlayEnabled: Bool = true,
         showLivePodcasts: Bool = true,
         liveItemNotificationsEnabled: Bool = true,
+        networkTrackingProtectionEnabled: Bool? = nil,
         sleepTimerAddMinutes: Double = 10,
         sleepTimerDurationToReactivate: Double = 300,
         sleepTimerVoiceFeedbackEnabled: Bool = true,
@@ -408,6 +410,7 @@ final class PodcastPreferenceSync: Identifiable {
         self.continuousPlayEnabled = continuousPlayEnabled
         self.showLivePodcasts = showLivePodcasts
         self.liveItemNotificationsEnabled = liveItemNotificationsEnabled
+        self.networkTrackingProtectionEnabled = networkTrackingProtectionEnabled
         self.sleepTimerAddMinutes = sleepTimerAddMinutes
         self.sleepTimerDurationToReactivate = sleepTimerDurationToReactivate
         self.sleepTimerVoiceFeedbackEnabled = sleepTimerVoiceFeedbackEnabled

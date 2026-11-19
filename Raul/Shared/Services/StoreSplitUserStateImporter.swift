@@ -609,6 +609,9 @@ actor StoreSplitUserStateImporter {
                 setIfChanged(settings, \.getContinuousPlay, record.continuousPlayEnabled)
                 setIfChanged(settings, \.showLivePodcasts, record.showLivePodcasts)
                 setIfChanged(settings, \.enableLiveItemNotifications, record.liveItemNotificationsEnabled)
+                if let value = record.networkTrackingProtectionEnabled {
+                    setIfChanged(settings, \.networkTrackingProtectionEnabled, value)
+                }
                 setIfChanged(settings, \.sleepTimerAddMinutes, record.sleepTimerAddMinutes)
                 setIfChanged(settings, \.sleepTimerDurationToReactivate, record.sleepTimerDurationToReactivate)
                 setIfChanged(settings, \.sleepTimerVoiceFeedbackEnabled, record.sleepTimerVoiceFeedbackEnabled)

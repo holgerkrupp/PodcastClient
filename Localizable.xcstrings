@@ -12099,7 +12099,6 @@
       }
     },
     "Next predicted release: Unavailable" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

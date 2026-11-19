@@ -13,6 +13,17 @@ struct TranscriptLineSnapshot: Sendable {
     let text: String
     let startTime: TimeInterval
     let endTime: TimeInterval?
+    let timedSpans: [TranscriptTimedSpan]
+    let generatedMediaFingerprint: String?
+
+    init(speaker: String?, text: String, startTime: TimeInterval, endTime: TimeInterval?, timedSpans: [TranscriptTimedSpan] = [], generatedMediaFingerprint: String? = nil) {
+        self.speaker = speaker
+        self.text = text
+        self.startTime = startTime
+        self.endTime = endTime
+        self.timedSpans = timedSpans
+        self.generatedMediaFingerprint = generatedMediaFingerprint
+    }
 }
 
 /// Merges short transcript cues into blocks before they reach the language model.

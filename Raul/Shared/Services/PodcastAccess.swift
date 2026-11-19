@@ -1316,6 +1316,12 @@ func podcastURLSessionData(
 }
 
 struct URLSessionPodcastHTTPTransport: PodcastHTTPTransport {
+    private let networkTrackingProtectionEnabled: Bool?
+
+    init(networkTrackingProtectionEnabled: Bool? = nil) {
+        self.networkTrackingProtectionEnabled = networkTrackingProtectionEnabled
+    }
+
     func data(
         for request: URLRequest,
         profile: PodcastAccessProfile?,
@@ -1334,7 +1340,12 @@ struct URLSessionPodcastHTTPTransport: PodcastHTTPTransport {
         // same-origin redirect, this preserves access query items such as a
         // personal-feed token when the Location value omits them. The policy
         // never forwards them to another origin.
-        let delegate = PodcastRedirectDelegate(resolver: resolver, profile: profile, purpose: purpose)
+        let delegate = PodcastRedirectDelegate(
+            resolver: resolver,
+            profile: profile,
+            purpose: purpose,
+            networkTrackingProtectionEnabled: networkTrackingProtectionEnabled
+        )
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -1351,7 +1362,12 @@ struct URLSessionPodcastHTTPTransport: PodcastHTTPTransport {
         purpose: PodcastNetworkPrivacyPolicy.Purpose,
         maximumByteCount: Int
     ) async throws -> (Data, URLResponse) {
-        let delegate = PodcastRedirectDelegate(resolver: resolver, profile: profile, purpose: purpose)
+        let delegate = PodcastRedirectDelegate(
+            resolver: resolver,
+            profile: profile,
+            purpose: purpose,
+            networkTrackingProtectionEnabled: networkTrackingProtectionEnabled
+        )
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil
         configuration.httpShouldSetCookies = false
@@ -1381,17 +1397,20 @@ final class PodcastHTTPClient: @unchecked Sendable {
     private let transport: any PodcastHTTPTransport
     private let conditionalFeedURL: URL?
     private let conditionalValidator: PodcastHTTPValidatorStore.Validator?
+    private let networkTrackingProtectionEnabled: Bool?
 
     init(
         resolver: PodcastAccessResolver? = nil,
         transport: any PodcastHTTPTransport = URLSessionPodcastHTTPTransport(),
         conditionalFeedURL: URL? = nil,
-        conditionalValidator: PodcastHTTPValidatorStore.Validator? = nil
+        conditionalValidator: PodcastHTTPValidatorStore.Validator? = nil,
+        networkTrackingProtectionEnabled: Bool? = nil
     ) {
         self.injectedResolver = resolver
         self.transport = transport
         self.conditionalFeedURL = conditionalFeedURL
         self.conditionalValidator = conditionalValidator
+        self.networkTrackingProtectionEnabled = networkTrackingProtectionEnabled
     }
 
     private var resolver: PodcastAccessResolver {
@@ -1522,7 +1541,11 @@ final class PodcastHTTPClient: @unchecked Sendable {
         purpose: PodcastNetworkPrivacyPolicy.Purpose,
         maximumByteCount: Int? = nil
     ) async throws -> (Data, HTTPURLResponse) {
-        let preparedRequest = try PodcastNetworkPrivacyPolicy.prepare(request, purpose: purpose)
+        let preparedRequest = try PodcastNetworkPrivacyPolicy.prepare(
+            request,
+            purpose: purpose,
+            enabled: networkTrackingProtectionEnabled ?? PodcastNetworkPrivacyPolicy.isEnabled
+        )
         let requestedURL = preparedRequest.url ?? URL(string: "about:blank")!
         let (data, response) = try await PodcastHostRequestLimiter.shared.withPermit(for: requestedURL) {
             let result: (Data, URLResponse)
@@ -1590,15 +1613,18 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
     private let resolver: PodcastAccessResolver
     private let profile: PodcastAccessProfile?
     private let purpose: PodcastNetworkPrivacyPolicy.Purpose
+    private let networkTrackingProtectionEnabled: Bool?
 
     init(
         resolver: PodcastAccessResolver,
         profile: PodcastAccessProfile?,
-        purpose: PodcastNetworkPrivacyPolicy.Purpose
+        purpose: PodcastNetworkPrivacyPolicy.Purpose,
+        networkTrackingProtectionEnabled: Bool? = nil
     ) {
         self.resolver = resolver
         self.profile = profile
         self.purpose = purpose
+        self.networkTrackingProtectionEnabled = networkTrackingProtectionEnabled
     }
 
     func urlSession(
@@ -1622,7 +1648,11 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
                         redirectingFrom: previousURL
                     )
                 if let redirectedURL = redirected.url {
-                    guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: redirectedURL, purpose: purpose) else {
+                    guard let protectedURL = try? PodcastNetworkPrivacyPolicy.wireURL(
+                        for: redirectedURL,
+                        purpose: purpose,
+                        enabled: networkTrackingProtectionEnabled ?? PodcastNetworkPrivacyPolicy.isEnabled
+                    ) else {
                         completionHandler(nil)
                         return
                     }
@@ -1640,7 +1670,11 @@ private final class PodcastRedirectDelegate: NSObject, URLSessionTaskDelegate {
                 completionHandler(redirected)
             } else {
                 let redirectedURL = url.preservingFeedAccessComponents(from: previousURL)
-                guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(for: redirectedURL, purpose: purpose) else {
+                guard let wireURL = try? PodcastNetworkPrivacyPolicy.wireURL(
+                    for: redirectedURL,
+                    purpose: purpose,
+                    enabled: networkTrackingProtectionEnabled ?? PodcastNetworkPrivacyPolicy.isEnabled
+                ) else {
                     completionHandler(nil)
                     return
                 }

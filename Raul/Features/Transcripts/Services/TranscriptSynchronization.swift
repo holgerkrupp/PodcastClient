@@ -16,6 +16,9 @@ struct TranscriptAudioGap: Codable, Hashable, Sendable {
     let audioStart: TimeInterval
     let audioEnd: TimeInterval
     let transcriptTime: TimeInterval
+    /// When set, speech between these transcript times has not been matched.
+    /// Do not interpolate or seek inside that interval.
+    var transcriptEnd: TimeInterval? = nil
 }
 
 /// A monotonic, piecewise mapping between publisher-caption time and played-audio time.
@@ -32,13 +35,6 @@ struct TranscriptSynchronizationTimeline: Codable, Hashable, Sendable {
                       && $0.transcriptTime >= 0 && $0.audioTime >= 0
                       && $0.confidence.isFinite && (0...1).contains($0.confidence)
               }) else { return nil }
-        for pair in zip(ordered, ordered.dropFirst()) {
-            let transcriptDelta = pair.1.transcriptTime - pair.0.transcriptTime
-            let audioDelta = pair.1.audioTime - pair.0.audioTime
-            guard transcriptDelta > 0, audioDelta > 0 else { return nil }
-            let slope = audioDelta / transcriptDelta
-            guard (0.25...4).contains(slope) else { return nil }
-        }
         let orderedGaps = gaps.sorted { $0.audioStart < $1.audioStart }
         guard orderedGaps.allSatisfy({
             $0.audioStart.isFinite && $0.audioEnd.isFinite && $0.transcriptTime.isFinite
@@ -46,41 +42,82 @@ struct TranscriptSynchronizationTimeline: Codable, Hashable, Sendable {
         }), zip(orderedGaps, orderedGaps.dropFirst()).allSatisfy({ $0.audioEnd <= $1.audioStart }) else {
             return nil
         }
+        guard orderedGaps.allSatisfy({ gap in
+            gap.transcriptEnd.map { $0.isFinite && $0 > gap.transcriptTime } ?? true
+        }) else { return nil }
+        let points = ordered.map { ($0.audioTime, $0.transcriptTime) }
+            + orderedGaps.flatMap { [($0.audioStart, $0.transcriptTime), ($0.audioEnd, $0.transcriptEnd ?? $0.transcriptTime)] }
+        let audioOrdered = points.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 < $1.0 }
+        guard zip(audioOrdered, audioOrdered.dropFirst()).allSatisfy({ left, right in
+            left.1 <= right.1 && (left.0 != right.0 || left.1 == right.1)
+        }) else { return nil }
+        for pair in zip(ordered, ordered.dropFirst()) {
+            let transcriptDelta = pair.1.transcriptTime - pair.0.transcriptTime
+            let audioDelta = pair.1.audioTime - pair.0.audioTime
+            guard transcriptDelta > 0, audioDelta > 0 else { return nil }
+            let inserted = orderedGaps.filter {
+                $0.audioStart >= pair.0.audioTime && $0.audioEnd <= pair.1.audioTime
+            }.reduce(0.0) { $0 + $1.audioEnd - $1.audioStart }
+            let uncertainTranscript = orderedGaps.filter {
+                $0.audioStart >= pair.0.audioTime && $0.audioEnd <= pair.1.audioTime
+            }.reduce(0.0) { $0 + (($1.transcriptEnd ?? $1.transcriptTime) - $1.transcriptTime) }
+            let effectiveTranscript = transcriptDelta - uncertainTranscript
+            if abs(effectiveTranscript) < 0.001 {
+                guard abs(audioDelta - inserted) < 0.001 else { return nil }
+                continue
+            }
+            guard effectiveTranscript > 0 else { return nil }
+            let slope = (audioDelta - inserted) / effectiveTranscript
+            guard (0.25...4).contains(slope) else { return nil }
+        }
         self.anchors = ordered
         self.gaps = orderedGaps
     }
 
     func transcriptTime(forAudioTime time: TimeInterval) -> TimeInterval? {
         guard time.isFinite, time >= 0,
+              let first = anchors.first, let last = anchors.last,
+              time >= first.audioTime, time <= last.audioTime,
               gaps.contains(where: { time >= $0.audioStart && time < $0.audioEnd }) == false else {
             return nil
         }
-        return interpolate(time, x: \.audioTime, y: \.transcriptTime)
+        let points = anchors.map { ($0.audioTime, $0.transcriptTime) }
+            + gaps.flatMap { [($0.audioStart, $0.transcriptTime), ($0.audioEnd, $0.transcriptEnd ?? $0.transcriptTime)] }
+        return interpolate(time, points: points)
     }
 
     func audioTime(forTranscriptTime time: TimeInterval) -> TimeInterval? {
-        guard time.isFinite, time >= 0 else { return nil }
-        return interpolate(time, x: \.transcriptTime, y: \.audioTime)
+        guard time.isFinite, time >= 0, let first = anchors.first, let last = anchors.last,
+              time >= first.transcriptTime, time <= last.transcriptTime else { return nil }
+        if gaps.contains(where: { gap in
+            guard let end = gap.transcriptEnd else { return false }
+            return time > gap.transcriptTime && time < end
+        }) { return nil }
+        // A seek exactly at an insertion belongs to the speech after the gap.
+        if let gap = gaps.last(where: { $0.transcriptEnd == nil && $0.transcriptTime == time }) {
+            return gap.audioEnd
+        }
+        let points = anchors.map { ($0.transcriptTime, $0.audioTime) }
+            + gaps.flatMap { [($0.transcriptTime, $0.audioStart), ($0.transcriptEnd ?? $0.transcriptTime, $0.audioEnd)] }
+        return interpolate(time, points: points)
     }
 
     private func interpolate(
         _ value: TimeInterval,
-        x: KeyPath<TranscriptSynchronizationAnchor, TimeInterval>,
-        y: KeyPath<TranscriptSynchronizationAnchor, TimeInterval>
+        points: [(TimeInterval, TimeInterval)]
     ) -> TimeInterval {
-        guard let first = anchors.first, let last = anchors.last else { return value }
-        if value <= first[keyPath: x] {
-            return value + first[keyPath: y] - first[keyPath: x]
+        let ordered = points.sorted { $0.0 == $1.0 ? $0.1 < $1.1 : $0.0 < $1.0 }
+        guard let first = ordered.first, let last = ordered.last else { return value }
+        if value <= first.0 {
+            return value + first.1 - first.0
         }
-        if value >= last[keyPath: x] {
-            return value + last[keyPath: y] - last[keyPath: x]
+        if value >= last.0 {
+            return value + last.1 - last.0
         }
-        for (left, right) in zip(anchors, anchors.dropFirst()) {
-            let lower = left[keyPath: x]
-            let upper = right[keyPath: x]
-            guard value >= lower, value <= upper else { continue }
-            let fraction = (value - lower) / (upper - lower)
-            return left[keyPath: y] + fraction * (right[keyPath: y] - left[keyPath: y])
+        for (left, right) in zip(ordered, ordered.dropFirst()) {
+            guard value >= left.0, value <= right.0, right.0 > left.0 else { continue }
+            let fraction = (value - left.0) / (right.0 - left.0)
+            return left.1 + fraction * (right.1 - left.1)
         }
         return value
     }
@@ -91,17 +128,58 @@ struct TranscriptAlignmentCandidate: Codable, Hashable, Sendable {
     let transcriptTime: TimeInterval
     let text: String
     let source: CachedTranscriptSource?
+    let endTime: TimeInterval?
+    let timedSpans: [TranscriptTimedSpan]?
 
     init(
         id: String = "",
         transcriptTime: TimeInterval,
         text: String,
-        source: CachedTranscriptSource?
+        source: CachedTranscriptSource?,
+        endTime: TimeInterval? = nil,
+        timedSpans: [TranscriptTimedSpan]? = nil
     ) {
         self.id = id
         self.transcriptTime = transcriptTime
         self.text = text
         self.source = source
+        self.endTime = endTime
+        self.timedSpans = timedSpans
+    }
+}
+
+enum TranscriptGapInference {
+    /// Sparse phrase samples can confirm an offset change but cannot identify
+    /// the exact insertion boundaries. Hide the unmatched interval until more
+    /// evidence is available instead of stretching speech across it.
+    static func infer(from anchors: [TranscriptSynchronizationAnchor]) -> [TranscriptAudioGap]? {
+        let ordered = anchors.sorted { $0.transcriptTime < $1.transcriptTime }
+        guard ordered.count >= 2 else { return nil }
+        func offset(_ anchor: TranscriptSynchronizationAnchor) -> Double { anchor.audioTime - anchor.transcriptTime }
+        var gaps: [TranscriptAudioGap] = []
+        for index in 0..<(ordered.count - 1) {
+            let left = ordered[index], right = ordered[index + 1]
+            let jump = offset(right) - offset(left)
+            guard jump >= 3 else { continue }
+            guard index > 0, index + 2 < ordered.count,
+                  [ordered[index - 1], left, right, ordered[index + 2]].allSatisfy({ $0.confidence >= 0.82 }),
+                  abs(offset(ordered[index - 1]) - offset(left)) <= 1.5,
+                  abs(offset(ordered[index + 2]) - offset(right)) <= 1.5 else { return nil }
+            gaps.append(TranscriptAudioGap(audioStart: left.audioTime, audioEnd: right.audioTime,
+                                           transcriptTime: left.transcriptTime, transcriptEnd: right.transcriptTime))
+        }
+        return gaps
+    }
+}
+
+enum TranscriptSynchronizationRevision {
+    static func make(candidates: [TranscriptAlignmentCandidate]) -> String? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .sortedKeys
+        guard let data = try? encoder.encode(candidates) else { return nil }
+        var versioned = Data("alignment-v2:".utf8)
+        versioned.append(data)
+        return SHA256.hash(data: versioned).map { String(format: "%02x", $0) }.joined()
     }
 }
 
@@ -115,8 +193,8 @@ struct TranscriptSynchronizationInput: Sendable {
 }
 
 struct TranscriptAlignmentMatcher {
-    /// Match short ASR observations only against nearby publisher rows. A missing or
-    /// ambiguous provenance is rejected before text matching.
+    /// Prefer nearby rows, then widen the bounded search for large insertions.
+    /// Ambiguous matches are never rescued by widening the search.
     static func match(
         recognizedText: String,
         actualAudioTime: TimeInterval,
@@ -128,14 +206,21 @@ struct TranscriptAlignmentMatcher {
               let observed = normalizedTokens(recognizedText),
               informativeTokenCount(observed) >= 3 else { return nil }
 
-        let eligible = candidates.compactMap { candidate -> (TranscriptAlignmentCandidate, Double)? in
-            guard candidate.source == .publisher,
-                  abs(candidate.transcriptTime - expectedTranscriptTime) <= 90,
-                  let target = normalizedTokens(candidate.text),
-                  informativeTokenCount(target) >= 3 else { return nil }
-            let score = tokenSimilarity(observed, target)
-            return (candidate, score)
-        }.sorted { $0.1 > $1.1 }
+        func ranked(within radius: TimeInterval) -> [(TranscriptAlignmentCandidate, Double)] {
+            candidates.compactMap { candidate -> (TranscriptAlignmentCandidate, Double)? in
+                guard candidate.source == .publisher,
+                      candidate.transcriptTime.isFinite,
+                      abs(candidate.transcriptTime - expectedTranscriptTime) <= radius,
+                      let target = normalizedTokens(candidate.text),
+                      informativeTokenCount(target) >= 3 else { return nil }
+                return (candidate, tokenSimilarity(observed, target))
+            }.sorted { $0.1 > $1.1 }
+        }
+
+        var eligible = ranked(within: 90)
+        if eligible.first?.1 ?? 0 < 0.78 {
+            eligible = ranked(within: 600)
+        }
         guard let best = eligible.first, best.1 >= 0.78 else { return nil }
         if eligible.count > 1, best.1 - eligible[1].1 < 0.08 { return nil }
         return TranscriptSynchronizationAnchor(
@@ -240,6 +325,21 @@ final class TranscriptSynchronizationStore {
 
     func removeTimeline(for episodeURL: URL) {
         timelinesByEpisodeKey.removeValue(forKey: episodeURL.absoluteString)
+    }
+
+    func hasVerifiedTimeline(for episodeURL: URL?) -> Bool {
+        guard isEnabled, let episodeURL else { return false }
+        return timelinesByEpisodeKey[episodeURL.absoluteString] != nil
+    }
+
+    func isUnverifiedAudioTime(_ time: TimeInterval, episodeURL: URL?) -> Bool {
+        guard isEnabled, time.isFinite, let episodeURL,
+              let entry = timelinesByEpisodeKey[episodeURL.absoluteString] else { return false }
+        guard let first = entry.timeline.anchors.first, let last = entry.timeline.anchors.last else { return true }
+        if time < first.audioTime || time > last.audioTime { return true }
+        return entry.timeline.gaps.contains {
+            $0.transcriptEnd != nil && time >= $0.audioStart && time < $0.audioEnd
+        }
     }
 
     func transcriptTime(forAudioTime time: TimeInterval, episodeURL: URL?) -> TimeInterval? {
@@ -424,7 +524,7 @@ actor TranscriptSynchronizationService {
 
         if let lastTime = lastAnalyzedAudioTime[input.episodeID],
            audioTime >= lastTime,
-           audioTime - lastTime < 240 {
+           audioTime - lastTime < 15 {
             return
         }
         lastAnalyzedAudioTime[input.episodeID] = audioTime
@@ -537,6 +637,7 @@ actor TranscriptSynchronizationService {
             )
             if let existing {
                 await MainActor.run {
+                    guard Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
                     TranscriptSynchronizationStore.shared.install(
                         existing,
                         episodeURL: input.episodeURL,
@@ -551,7 +652,11 @@ actor TranscriptSynchronizationService {
                     episodeActor: episodeActor,
                     settingsActor: settingsActor
                 )
-                if sampleAcrossEpisode {
+                if sampleAcrossEpisode,
+                   let duration = try? TranscriptAudioSampler.duration(of: input.localMediaURL),
+                   let first = existing.anchors.first, let last = existing.anchors.last,
+                   first.audioTime <= 30, last.audioTime >= duration - 30,
+                   existing.gaps.allSatisfy({ gap in gap.transcriptEnd.map { $0 - gap.transcriptTime <= 7 } ?? true }) {
                     return true
                 }
             } else {
@@ -563,7 +668,7 @@ actor TranscriptSynchronizationService {
 
             // Synchronization must never download speech assets as a side effect.
             guard let installedLocale = await AITranscripts.installedLocale(matching: input.language) else {
-                return true
+                return false
             }
             let duration = try TranscriptAudioSampler.duration(of: input.localMediaURL)
             let sampleCenters: [TimeInterval]
@@ -573,61 +678,58 @@ actor TranscriptSynchronizationService {
                     duration * Double(index) / Double(max(sampleCount - 1, 1))
                 }
             } else {
-                sampleCenters = [audioTime - 24, audioTime, audioTime + 24]
+                sampleCenters = [audioTime - 48, audioTime - 24, audioTime, audioTime + 24, audioTime + 48]
                     .map { min(max($0, 0), max(duration - 7, 0)) }
+                    .reduce(into: []) { result, center in
+                        if !result.contains(where: { abs($0 - center) < 1 }) { result.append(center) }
+                    }
             }
             var observedAnchors: [TranscriptSynchronizationAnchor] = []
 
             for center in sampleCenters {
                 try Task.checkCancellation()
-                guard let snippet = try? TranscriptAudioSampler.writeSnippet(
-                    from: input.localMediaURL,
-                    centeredAt: center,
-                    duration: 7
-                ) else { continue }
-                defer {
-                    try? FileManager.default.removeItem(at: snippet.url.deletingLastPathComponent())
-                }
-
-                let transcriber = await AITranscripts(
-                    url: snippet.url,
-                    language: installedLocale,
-                    maxSnippetDurationSeconds: 7,
-                    maxWordsPerSnippet: 30,
-                    analyzerPriority: .utility,
-                    allowModelDownload: false,
-                    // Up to 18 short runs in a row should not reload the model each time.
-                    modelRetention: .lingering,
-                    diagnosticPurpose: "publisher_sync"
-                )
-                guard let results = try? await transcriber.transcribe(),
-                      results.isEmpty == false else { continue }
-                let recognizedText = results.map(\.text).joined(separator: " ")
-                let firstSpeechOffset = results.map { CMTimeGetSeconds($0.range.start) }
-                    .filter(\.isFinite)
-                    .min() ?? 0
-                let actualSpeechTime = snippet.startTime + firstSpeechOffset
-                let expectedTranscriptTime = existing?.transcriptTime(forAudioTime: actualSpeechTime)
-                    ?? actualSpeechTime
-
-                if let anchor = TranscriptAlignmentMatcher.match(
-                    recognizedText: recognizedText,
-                    actualAudioTime: actualSpeechTime,
-                    candidates: input.candidates,
-                    expectedTranscriptTime: expectedTranscriptTime
-                ) {
+                if let anchor = try await sampleAnchor(input: input, center: center, locale: installedLocale, existing: existing) {
                     observedAnchors.append(anchor)
                 }
             }
             try Task.checkCancellation()
 
-            let combined = Self.merge(existing?.anchors ?? [], observedAnchors)
+            var combined = Self.merge(existing?.anchors ?? [], observedAnchors)
+            // Narrow a corroborated offset transition with a few more bounded
+            // samples. Unmatched audio remains explicitly unverified.
+            if let preliminaryGaps = TranscriptGapInference.infer(from: combined) {
+                var budget = 4
+                for gap in preliminaryGaps where budget > 0 {
+                    guard let transcriptEnd = gap.transcriptEnd else { continue }
+                    var low = gap.audioStart, high = gap.audioEnd
+                    let leftOffset = gap.audioStart - gap.transcriptTime
+                    let rightOffset = gap.audioEnd - transcriptEnd
+                    for fraction in [0.5, 0.25, 0.75, 0.125] where budget > 0 && high - low > 7 {
+                        let center = low + (high - low) * fraction
+                        budget -= 1
+                        try Task.checkCancellation()
+                        guard let anchor = try await sampleAnchor(input: input, center: center, locale: installedLocale, existing: existing),
+                              anchor.confidence >= 0.9,
+                              anchor.transcriptTime > gap.transcriptTime,
+                              anchor.transcriptTime < transcriptEnd else { continue }
+                        let offset = anchor.audioTime - anchor.transcriptTime
+                        if abs(offset - leftOffset) <= 1.5 {
+                            low = max(low, anchor.audioTime)
+                        } else if abs(offset - rightOffset) <= 1.5 {
+                            high = min(high, anchor.audioTime)
+                        } else { continue }
+                        observedAnchors.append(anchor)
+                    }
+                }
+                combined = Self.merge(existing?.anchors ?? [], observedAnchors)
+            }
             guard combined.count >= 3,
                   combined.map(\.confidence).reduce(0, +) / Double(combined.count) >= 0.82,
+                  let gaps = TranscriptGapInference.infer(from: combined),
                   let timeline = TranscriptSynchronizationTimeline(
                     anchors: combined,
-                    gaps: Self.inferredGaps(from: combined)
-                  ) else { return sampleAcrossEpisode }
+                    gaps: gaps
+                  ) else { return false }
 
             await alignmentStore.save(
                 timeline,
@@ -637,6 +739,7 @@ actor TranscriptSynchronizationService {
                 transcriptRevision: input.transcriptRevision
             )
             await MainActor.run {
+                guard Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
                 TranscriptSynchronizationStore.shared.install(
                     timeline,
                     episodeURL: input.episodeURL,
@@ -651,6 +754,10 @@ actor TranscriptSynchronizationService {
                 episodeActor: episodeActor,
                 settingsActor: settingsActor
             )
+            if sampleAcrossEpisode, let first = timeline.anchors.first, let last = timeline.anchors.last {
+                return first.audioTime <= 30 && last.audioTime >= duration - 30
+                    && timeline.gaps.allSatisfy { gap in gap.transcriptEnd.map { $0 - gap.transcriptTime <= 7 } ?? true }
+            }
             return true
         } catch is CancellationError {
             return false
@@ -658,6 +765,25 @@ actor TranscriptSynchronizationService {
             AppDiagnostics.log("Publisher transcript synchronization failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    private func sampleAnchor(input: TranscriptSynchronizationInput, center: TimeInterval, locale: String,
+                              existing: TranscriptSynchronizationTimeline?) async throws -> TranscriptSynchronizationAnchor? {
+        try Task.checkCancellation()
+        guard let snippet = try? TranscriptAudioSampler.writeSnippet(from: input.localMediaURL, centeredAt: center, duration: 7) else { return nil }
+        defer { try? FileManager.default.removeItem(at: snippet.url.deletingLastPathComponent()) }
+        let transcriber = await AITranscripts(url: snippet.url, language: locale, maxSnippetDurationSeconds: 7,
+            maxWordsPerSnippet: 30, analyzerPriority: .utility, allowModelDownload: false,
+            modelRetention: .lingering, diagnosticPurpose: "publisher_sync")
+        guard let results = try? await transcriber.transcribe(), !results.isEmpty else {
+            try Task.checkCancellation()
+            return nil
+        }
+        let firstOffset = results.map { CMTimeGetSeconds($0.range.start) }.filter(\.isFinite).min() ?? 0
+        let actualTime = snippet.startTime + firstOffset
+        let expected = existing?.transcriptTime(forAudioTime: actualTime) ?? actualTime
+        return TranscriptAlignmentMatcher.match(recognizedText: results.map(\.text).joined(separator: " "),
+            actualAudioTime: actualTime, candidates: input.candidates, expectedTranscriptTime: expected)
     }
 
     private func materializeGapChaptersIfEnabled(
@@ -703,21 +829,6 @@ actor TranscriptSynchronizationService {
         return monotonic
     }
 
-    private static func inferredGaps(from anchors: [TranscriptSynchronizationAnchor]) -> [TranscriptAudioGap] {
-        zip(anchors, anchors.dropFirst()).compactMap { left, right in
-            let transcriptDelta = right.transcriptTime - left.transcriptTime
-            let audioDelta = right.audioTime - left.audioTime
-            let insertedDuration = audioDelta - transcriptDelta
-            guard insertedDuration >= 20 else { return nil }
-            let gapStart = right.audioTime - insertedDuration
-            guard gapStart > left.audioTime else { return nil }
-            return TranscriptAudioGap(
-                audioStart: gapStart,
-                audioEnd: right.audioTime,
-                transcriptTime: left.transcriptTime + gapStart - left.audioTime
-            )
-        }
-    }
 }
 
 enum TranscriptAudioSnippetError: Error {

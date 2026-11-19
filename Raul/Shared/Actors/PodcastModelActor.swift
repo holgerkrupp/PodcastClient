@@ -1481,9 +1481,19 @@ actor PodcastModelActor {
             && initialPage == nil
             ? await PodcastHTTPValidatorStore.shared.validated(for: feedURL, profile: accessProfile)
             : nil
-        let feedClient = conditionalValidator.map {
-            PodcastHTTPClient(conditionalFeedURL: feedURL, conditionalValidator: $0)
-        } ?? .shared
+        let privacyOverride: Bool?
+        if let podcast = await fetchPodcast(byFeed: feedURL),
+           podcast.settings?.isEnabled == true {
+            privacyOverride = podcast.settings?.networkTrackingProtectionEnabled
+        } else {
+            privacyOverride = nil
+        }
+        let feedClient = PodcastHTTPClient(
+            transport: URLSessionPodcastHTTPTransport(networkTrackingProtectionEnabled: privacyOverride),
+            conditionalFeedURL: conditionalValidator == nil ? nil : feedURL,
+            conditionalValidator: conditionalValidator,
+            networkTrackingProtectionEnabled: privacyOverride
+        )
 
         // Resolve only the stored feed URL. URLSession may follow an HTTP
         // redirect for this request, but website discovery must not choose a

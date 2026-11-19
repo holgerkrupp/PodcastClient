@@ -3,6 +3,7 @@ import AVFoundation
 import AVKit
 import CoreImage
 import TipKit
+import SwiftData
 
 struct AudioClipExportView: View {
     private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
@@ -12,6 +13,8 @@ struct AudioClipExportView: View {
     private static let previewCIContext = CIContext(options: [.cacheIntermediates: false])
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.modelContext) private var modelContext
+    @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
     @State private var trimStart: Double = 0
     @State private var trimEnd: Double = 60
     @State private var isExporting = false
@@ -34,8 +37,19 @@ struct AudioClipExportView: View {
     @State private var isWaveformLoading = false
     @State private var waveformLoadTask: Task<Void, Never>?
     @State private var previewUpdateTask: Task<Void, Never>?
+    @State private var resolvedCaptionTimeline: ClipCaptionTimeline?
+    @State private var includeCaptions = false
+    @State private var resolvingCaptions = false
+    @State private var captionStatus: String?
+    @State private var resolvedMediaFingerprint: String?
+    @State private var clipGeneratedTimeline: ClipCaptionTimeline?
+    @State private var clipGeneratedRange: ClosedRange<Double>?
+    @State private var clipGeneratedMediaFingerprint: String?
+    @State private var clipGenerationTask: Task<Void, Never>?
     private let waveformGesturesTip = ClipWaveformGesturesTip()
     var title: String? = nil
+    var captionTimeline: ClipCaptionTimeline? = nil
+    var episodeURL: URL? = nil
 
     let audioURL: URL // The audio file URL to trim
     var isVideo: Bool = false
@@ -62,8 +76,7 @@ struct AudioClipExportView: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .opacity(0.5)
                 
-                Group{
-                    Spacer()
+                ScrollView {
                     VStack(spacing: 16) {
                         
                         if isVideo == false {
@@ -76,6 +89,12 @@ struct AudioClipExportView: View {
                                     .aspectRatio(contentMode: .fit)
                                     .background(Color.black)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                    .overlay(alignment: .top) {
+                                        if let caption = activeCaption {
+                                            captionPreview(caption)
+                                                .padding(.top, 8)
+                                        }
+                                    }
                             } else if let previewImage {
                                 Image(uiImage: previewImage)
                                     .resizable()
@@ -97,8 +116,16 @@ struct AudioClipExportView: View {
                             height: previewHeight(for: geometry.size)
                         )
                         .onChange(of: coverImage) { schedulePreviewImageUpdate() }
-                        .onChange(of: trimStart) { schedulePreviewImageUpdate() }
-                        .onChange(of: trimEnd) { schedulePreviewImageUpdate() }
+                        .onChange(of: trimStart) {
+                            clipGenerationTask?.cancel()
+                            if availableCaptionTimeline == nil { includeCaptions = false }
+                            schedulePreviewImageUpdate()
+                        }
+                        .onChange(of: trimEnd) {
+                            clipGenerationTask?.cancel()
+                            if availableCaptionTimeline == nil { includeCaptions = false }
+                            schedulePreviewImageUpdate()
+                        }
                         .onChange(of: videoSize) { schedulePreviewImageUpdate() }
                         .onChange(of: playbackProgress) { schedulePreviewImageUpdate() }
                         
@@ -108,6 +135,33 @@ struct AudioClipExportView: View {
                             .padding(.horizontal)
 
                         playbackRateControl
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            Toggle("Include highlighted captions", isOn: $includeCaptions)
+                                .disabled(availableCaptionTimeline == nil)
+                            if resolvingCaptions {
+                                Text("Checking captions…").font(.caption).foregroundStyle(.secondary)
+                            } else if availableCaptionTimeline == nil {
+                                Text("Captions are unavailable for this media.").font(.caption).foregroundStyle(.secondary)
+                            } else if availableCaptionTimeline?.captions.contains(where: { $0.cueLevel }) == true {
+                                Text("Some captions highlight a whole passage.").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if let captionStatus {
+                                Text(captionStatus).font(.caption).foregroundStyle(.secondary)
+                            }
+                            if availableCaptionTimeline == nil, audioURL.isFileURL {
+                                Button(clipGenerationTask == nil ? "Generate captions for clip" : "Cancel caption generation") {
+                                    if let clipGenerationTask {
+                                        clipGenerationTask.cancel()
+                                    } else {
+                                        startClipCaptionGeneration()
+                                    }
+                                }
+                                .font(.caption)
+                            }
+                        }
+                        .padding(.horizontal)
+                        .onChange(of: includeCaptions) { schedulePreviewImageUpdate() }
                         
                         if waveformSamples.isEmpty {
                             ZStack {
@@ -244,6 +298,11 @@ struct AudioClipExportView: View {
                     stopAudioPlayer()
                     waveformLoadTask?.cancel()
                     previewUpdateTask?.cancel()
+                    clipGenerationTask?.cancel()
+                }
+                .task(id: audioURL) { await resolveCaptions() }
+                .onChange(of: synchronizationStore.isEnabled) {
+                    Task { await resolveCaptions() }
                 }
                 
                 
@@ -421,6 +480,131 @@ struct AudioClipExportView: View {
         }
         return 300
     }
+
+    private var clipCoversSelection: Bool {
+        clipGeneratedRange.map { trimStart >= $0.lowerBound && trimEnd <= $0.upperBound } ?? false
+    }
+
+    private var availableCaptionTimeline: ClipCaptionTimeline? {
+        let timeline = (clipCoversSelection ? clipGeneratedTimeline : nil) ?? captionTimeline ?? resolvedCaptionTimeline
+        if let intervals = timeline?.coverage,
+           !intervals.contains(where: { trimStart >= $0.start && trimEnd <= $0.end }) { return nil }
+        return timeline?.captions.isEmpty == false ? timeline : nil
+    }
+
+    private var activeCaption: ClipCaptionTimeline.Caption? {
+        guard includeCaptions else { return nil }
+        return availableCaptionTimeline?.caption(atMediaTime: trimStart + playbackProgress)
+    }
+
+    @ViewBuilder
+    private func captionPreview(_ caption: ClipCaptionTimeline.Caption) -> some View {
+        if let range = Range(NSRange(location: caption.location, length: caption.length), in: caption.text) {
+            (Text(caption.speaker.map { "\($0): " } ?? "")
+             + Text(String(caption.text[range]).trimmingCharacters(in: .whitespacesAndNewlines)).bold().underline())
+                .font(.headline)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+                .padding(.horizontal, 16)
+        }
+    }
+
+    @MainActor
+    private func resolveCaptions() async {
+        includeCaptions = false
+        resolvedCaptionTimeline = nil
+        resolvedMediaFingerprint = nil
+        guard captionTimeline == nil, let episodeURL, audioURL.isFileURL else { return }
+        resolvingCaptions = true
+        defer { resolvingCaptions = false }
+        let container = modelContext.container
+        guard let snapshot = await EpisodeActor(modelContainer: container).clipTranscriptSnapshot(for: episodeURL) else { return }
+        let mediaURL = audioURL
+        let fingerprintTask = Task.detached(priority: .utility) { try TranscriptMediaFingerprint.make(for: mediaURL) }
+        let fingerprint = await withTaskCancellationHandler {
+            try? await fingerprintTask.value
+        } onCancel: {
+            fingerprintTask.cancel()
+        }
+        guard !Task.isCancelled, let fingerprint else { return }
+        let alignment: TranscriptSynchronizationTimeline?
+        switch snapshot.origin {
+        case .generated:
+            alignment = nil
+        case .publisher(let revision):
+            guard synchronizationStore.isEnabled else { return }
+            alignment = await TranscriptAlignmentStoreActor(modelContainer: container).load(
+                episodeID: snapshot.episodeID, mediaFingerprint: fingerprint, transcriptRevision: revision
+            )
+            guard synchronizationStore.isEnabled else { return }
+        }
+        guard !Task.isCancelled else { return }
+        resolvedCaptionTimeline = ClipCaptionTimeline.resolve(
+            snapshot: snapshot, mediaFingerprint: fingerprint, publisherAlignment: alignment
+        )
+        resolvedMediaFingerprint = fingerprint
+        schedulePreviewImageUpdate()
+    }
+
+    private func startClipCaptionGeneration() {
+        let start = trimStart
+        let end = trimEnd
+        let mediaURL = audioURL
+        let selectedEpisodeURL = episodeURL
+        let container = modelContext.container
+        captionStatus = "Preparing clip audio…"
+        clipGenerationTask = Task { @MainActor in
+            defer { clipGenerationTask = nil }
+            let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
+            defer { try? FileManager.default.removeItem(at: output) }
+            do {
+                let fingerprintTask = Task.detached(priority: .utility) { try TranscriptMediaFingerprint.make(for: mediaURL) }
+                let fingerprint = try await withTaskCancellationHandler {
+                    try await fingerprintTask.value
+                } onCancel: { fingerprintTask.cancel() }
+                let asset = AVURLAsset(url: mediaURL)
+                guard let exporter = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) else {
+                    throw AudioClipExporter.ExportError.noPlayableMedia
+                }
+                exporter.timeRange = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 600),
+                                                 end: CMTime(seconds: end, preferredTimescale: 600))
+                try await exporter.export(to: output, as: .m4a)
+                try Task.checkCancellation()
+                captionStatus = "Generating captions…"
+                let language: String?
+                if let selectedEpisodeURL {
+                    language = await EpisodeActor(modelContainer: container).episodeLocalFileAndLanguage(for: selectedEpisodeURL)?.1
+                } else { language = nil }
+                guard let results = try await TranscriptionManager.shared.transcribeClip(audioURL: output, language: language),
+                      !results.isEmpty else { throw AudioClipExporter.ExportError.noPlayableMedia }
+                try Task.checkCancellation()
+                let lines = results.map { result in
+                    TranscriptSegmentSource(text: result.text,
+                        startTime: start + result.range.start.seconds, endTime: start + result.range.end.seconds,
+                        timedSpans: result.timedSpans.map {
+                            TranscriptTimedSpan(location: $0.location, length: $0.length,
+                                startTime: start + $0.startTime, endTime: start + $0.endTime, cueLevel: $0.cueLevel)
+                        })
+                }
+                let segments = TranscriptSegmentBuilder.makeSegments(from: lines, options: .compact)
+                guard let timeline = ClipCaptionTimeline.resolve(segments: segments, publisherAlignmentRequired: false, alignment: nil),
+                      !timeline.captions.isEmpty else { throw AudioClipExporter.ExportError.noPlayableMedia }
+                clipGeneratedTimeline = timeline
+                clipGeneratedRange = start...end
+                clipGeneratedMediaFingerprint = fingerprint
+                includeCaptions = true
+                captionStatus = "Clip captions are kept separate from the episode transcript."
+                schedulePreviewImageUpdate()
+            } catch is CancellationError {
+                captionStatus = nil
+            } catch {
+                captionStatus = "Could not generate captions for this clip. You can export without captions."
+            }
+        }
+    }
     
     private func pixelBufferToUIImage(_ buffer: CVPixelBuffer) -> UIImage? {
         let ciImage = CIImage(cvPixelBuffer: buffer)
@@ -481,7 +665,8 @@ struct AudioClipExportView: View {
             startTime: trimStart,
             endTime: trimEnd,
             playbackRate: exportPlaybackRate,
-            title: title
+            title: title,
+            caption: activeCaption
         ) {
             previewImage = pixelBufferToUIImage(buffer)
         } else {
@@ -495,13 +680,31 @@ struct AudioClipExportView: View {
 
         Task {
             do {
+                if includeCaptions, captionTimeline == nil {
+                    let mediaURL = audioURL
+                    let fingerprint = try await Task.detached(priority: .utility) {
+                        try TranscriptMediaFingerprint.make(for: mediaURL)
+                    }.value
+                    let expected = clipCoversSelection && clipGeneratedTimeline != nil
+                        ? clipGeneratedMediaFingerprint : resolvedMediaFingerprint
+                    guard fingerprint == expected else {
+                        includeCaptions = false
+                        resolvedCaptionTimeline = nil
+                        clipGeneratedTimeline = nil
+                        clipGeneratedMediaFingerprint = nil
+                        captionStatus = "The audio changed. Generate or check captions again."
+                        isExporting = false
+                        return
+                    }
+                }
                 let url: URL
                 if isVideo {
                     url = try await AudioClipExporter.exportVideoClipAsync(
                         videoURL: audioURL,
                         startTime: trimStart,
                         endTime: trimEnd,
-                        playbackRate: exportPlaybackRate
+                        playbackRate: exportPlaybackRate,
+                        captionTimeline: includeCaptions ? availableCaptionTimeline : nil
                     ) { progress in
                         Task {
                             await MainActor.run {
@@ -518,7 +721,8 @@ struct AudioClipExportView: View {
                         endTime: trimEnd,
                         playbackRate: exportPlaybackRate,
                         fps: 30,
-                        videoSize: videoSize
+                        videoSize: videoSize,
+                        captionTimeline: includeCaptions ? availableCaptionTimeline : nil
                     ) { progress in
                         Task{
                             await MainActor.run {
@@ -536,8 +740,9 @@ struct AudioClipExportView: View {
 
             } catch {
                 await MainActor.run {
-                    print("export FAILURE: \(error)")
+                    AppDiagnostics.log("clip_export_failed")
                     self.isExporting = false
+                    self.captionStatus = "Could not export the clip. Try again."
                 }
             }
         }

@@ -168,7 +168,7 @@ private struct PersonAssociationCorrectionSheet: View {
                 TextField("Role", text: $role)
             }
             .navigationTitle("Correct suggestion")
-            .navigationBarTitleDisplayMode(.inline)
+            .platformInlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

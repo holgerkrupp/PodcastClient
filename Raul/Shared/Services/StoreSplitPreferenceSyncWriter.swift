@@ -32,6 +32,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
     var continuousPlayEnabled: Bool
     var showLivePodcasts: Bool
     var liveItemNotificationsEnabled: Bool
+    var networkTrackingProtectionEnabled: Bool?
     var sleepTimerAddMinutes: Double
     var sleepTimerDurationToReactivate: Double
     var sleepTimerVoiceFeedbackEnabled: Bool
@@ -82,6 +83,7 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             continuousPlayEnabled: settings.getContinuousPlay,
             showLivePodcasts: settings.showLivePodcasts,
             liveItemNotificationsEnabled: settings.enableLiveItemNotifications,
+            networkTrackingProtectionEnabled: settings.networkTrackingProtectionEnabled,
             sleepTimerAddMinutes: settings.sleepTimerAddMinutes,
             sleepTimerDurationToReactivate: settings.sleepTimerDurationToReactivate,
             sleepTimerVoiceFeedbackEnabled: settings.sleepTimerVoiceFeedbackEnabled,
@@ -126,6 +128,7 @@ actor StoreSplitPreferenceSyncWriter {
             continuousPlayEnabled: value.continuousPlayEnabled,
             showLivePodcasts: value.showLivePodcasts,
             liveItemNotificationsEnabled: value.liveItemNotificationsEnabled,
+            networkTrackingProtectionEnabled: value.networkTrackingProtectionEnabled,
             sleepTimerAddMinutes: value.sleepTimerAddMinutes,
             sleepTimerDurationToReactivate: value.sleepTimerDurationToReactivate,
             sleepTimerVoiceFeedbackEnabled: value.sleepTimerVoiceFeedbackEnabled,
@@ -173,6 +176,7 @@ actor StoreSplitPreferenceSyncWriter {
                 current.continuousPlayEnabled = candidate.continuousPlayEnabled
                 current.showLivePodcasts = candidate.showLivePodcasts
                 current.liveItemNotificationsEnabled = candidate.liveItemNotificationsEnabled
+                current.networkTrackingProtectionEnabled = candidate.networkTrackingProtectionEnabled
                 current.sleepTimerAddMinutes = candidate.sleepTimerAddMinutes
                 current.sleepTimerDurationToReactivate = candidate.sleepTimerDurationToReactivate
                 current.sleepTimerVoiceFeedbackEnabled = candidate.sleepTimerVoiceFeedbackEnabled

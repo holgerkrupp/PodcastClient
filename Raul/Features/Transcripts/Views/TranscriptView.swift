@@ -16,7 +16,6 @@ import Combine
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
-    @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
 
     let transcriptLines: [TranscriptLineAndTime]
     @Binding var currentTime: TimeInterval
@@ -24,11 +23,13 @@ struct TranscriptView: View {
     var onOpenFullTranscript: (() -> Void)?
     /// Leaves the bottom-trailing corner free for controls supplied by the parent.
     var reservesBottomTrailingAccessory = false
+    var canFollowPlayback = true
 
     @State private var segments: [TranscriptSegment] = []
     @State private var speakerHeaderIDs: Set<UUID> = []
     @State private var speakerColorMap: [String: Color] = [:]
     @State private var followPlayback: Bool = true
+    @State private var tracker = TranscriptPlaybackTracker()
 
     private let speakerColors: [Color] = [
         .blue,
@@ -83,12 +84,25 @@ struct TranscriptView: View {
             }
             .onAppear {
                 rebuildSegments()
+                if canFollowPlayback {
+                    tracker.start(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
+                }
                 scroll(to: activeSegmentID, with: proxy, animated: false)
+            }
+            .onDisappear { tracker.stop() }
+            .onChange(of: currentTime) { tracker.refresh() }
+            .onChange(of: Player.shared.currentEpisodeURL) {
+                followPlayback = true
+                tracker.update(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
+            }
+            .onChange(of: canFollowPlayback) {
+                if canFollowPlayback {
+                    tracker.start(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
+                } else { tracker.stop() }
             }
             .onChange(of: transcriptLines) {
                 rebuildSegments()
-                // A different episode starts over, following playback again.
-                followPlayback = true
+                tracker.update(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
                 scroll(to: activeSegmentID, with: proxy, animated: false)
             }
             .onChange(of: activeSegmentID) {
@@ -109,7 +123,7 @@ struct TranscriptView: View {
                     .foregroundColor(differentiateWithoutColor ? .primary : (speakerColorMap[speaker] ?? .accent))
             }
 
-            Text(segment.text)
+            segment.highlightedText(tracker.active)
                 .font(.body)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .multilineTextAlignment(.leading)
@@ -128,11 +142,11 @@ struct TranscriptView: View {
     }
 
     private var activeSegmentID: UUID? {
-        guard let transcriptTime = synchronizationStore.transcriptTime(
-            forAudioTime: currentTime,
-            episodeURL: Player.shared.currentEpisodeURL
-        ), transcriptTime.isFinite else { return nil }
-        return segmentID(at: transcriptTime)
+        tracker.active?.segmentID
+    }
+
+    private var usesPublisherAlignment: Bool {
+        transcriptLines.contains { $0.transcriptSource == .publisher }
     }
 
     private func scroll(to id: UUID?, with proxy: ScrollViewProxy, animated: Bool) {
@@ -183,42 +197,4 @@ struct TranscriptView: View {
         return colorMap
     }
 
-    /// Binary search for the segment covering `time`, falling back to the last
-    /// segment that already started so gaps between segments stay highlighted.
-    private func segmentID(at time: TimeInterval) -> UUID? {
-        guard segments.isEmpty == false else { return nil }
-        guard time >= segments[0].startTime else { return nil }
-
-        var low = 0
-        var high = segments.count - 1
-
-        while low <= high {
-            let mid = (low + high) / 2
-            let segment = segments[mid]
-            let end = effectiveEndTime(for: mid)
-
-            if time < segment.startTime {
-                high = mid - 1
-            } else if time >= end {
-                low = mid + 1
-            } else {
-                return segment.id
-            }
-        }
-
-        let fallbackIndex = max(0, min(low - 1, segments.count - 1))
-        return segments[fallbackIndex].id
-    }
-
-    private func effectiveEndTime(for index: Int) -> TimeInterval {
-        if let endTime = segments[index].endTime {
-            return endTime
-        }
-
-        if index + 1 < segments.count {
-            return segments[index + 1].startTime
-        }
-
-        return .infinity
-    }
 }
