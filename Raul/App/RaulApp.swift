@@ -13,7 +13,10 @@ enum BackgroundTaskConfiguration {
     static let automaticTranscriptionIdentifier = "automaticTranscriptionProcessing"
     static let publisherTranscriptSynchronizationIdentifier = "publisherTranscriptSynchronization"
     static let storeSplitMigrationIdentifier = "processStoreSplitMigration"
-    static let feedRefreshInterval: TimeInterval = 60 * 60
+    /// Requested interval for another general feed refresh. This is only an
+    /// eligibility floor; iOS decides whether and when to launch the task.
+    static let feedRefreshInterval: TimeInterval = 60 * 30
+    static let feedRefreshMinimumDelay: TimeInterval = 60 * 15
     static let predictedReleaseRefreshOffset: TimeInterval = 5 * 60
     static let predictedReleaseRefreshMinimumScheduleDelay: TimeInterval = 60
     static let predictedReleaseRefreshRetryDelay: TimeInterval = 30 * 60
@@ -24,8 +27,8 @@ enum BackgroundTaskConfiguration {
     /// sooner and lets iOS pick the moment. A multi-hour floor only delayed the
     /// first opportunity without buying anything.
     static let storeSplitMigrationInterval: TimeInterval = 60 * 15
-    static let feedProcessingInterval: TimeInterval = 60 * 60
-    static let backgroundFeedCheckInterval: TimeInterval = 60 * 60
+    static let feedProcessingInterval: TimeInterval = 60 * 30
+    static let backgroundFeedCheckInterval: TimeInterval = 60 * 30
     static let nightlyStorageCleanupInterval: TimeInterval = 60 * 60 * 24
     static let weeklyStorageCleanupFallbackInterval: TimeInterval = 60 * 60 * 24 * 7
     /// Floor for the automatic transcription pass. The request is a floor, not a
@@ -354,7 +357,7 @@ enum FeedRefreshScheduler {
                 <= BackgroundTaskConfiguration.refreshScheduleSnapshotMaximumAge
         } ?? false
         let predicted = snapshotIsFresh ? snapshot?.feedEarliestBeginDate ?? fallback : fallback
-        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
+        let minimumDelay = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshMinimumDelay)
         let earliestBeginDate = min(max(predicted, minimumDelay), fallback)
         let request = BGAppRefreshTaskRequest(
             identifier: BackgroundTaskConfiguration.feedRefreshIdentifier
@@ -406,7 +409,7 @@ enum FeedRefreshScheduler {
             return fallback
         }
 
-        let minimumDelay = Date(timeIntervalSinceNow: 15 * 60)
+        let minimumDelay = Date(timeIntervalSinceNow: BackgroundTaskConfiguration.feedRefreshMinimumDelay)
         return min(max(predicted, minimumDelay), fallback)
     }
 }

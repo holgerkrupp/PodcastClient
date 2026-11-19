@@ -40,8 +40,12 @@ Set the device-local defaults key `PodcastRefreshNetworkConcurrency`
 to 1 for the serial fallback, or 2–3 for a reduced worker pool. Their
 HEAD, GET and XML work can overlap; `PodcastFeedCommitCoordinator` admits one
 SwiftData feed-graph import and cache projection at a time. Automatic background runs retain their existing
-small feed counts and time budgets. HTTP requests are limited to two at a time
-per origin, and a 429 Retry-After pauses that origin's queued requests.
+small feed counts and time budgets. General feed refresh and feed processing
+requests use a 30-minute eligibility interval, with a 15-minute minimum delay
+for the app-refresh task. Eligible feeds can be checked again after 30 minutes.
+These values ask iOS for an earlier opportunity; they do not set a launch
+schedule or guarantee that a task will run. HTTP requests are limited to two at
+a time per origin, and a 429 Retry-After pauses that origin's queued requests.
 Tasks canceled while waiting for the writer leave its queue without taking a
 permit. A commit that already started finishes its current feed batch and
 saves before honoring a background stop request.
