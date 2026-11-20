@@ -77,12 +77,11 @@ struct AudioClipExportView: View {
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .opacity(0.5)
                 
-                ScrollView {
-                    VStack(spacing: 16) {
-                        
-                        if isVideo == false {
-                            VideoSizePicker(videoSize: $videoSize)
-                        }
+                VStack(spacing: 0) {
+                    clipExportHeader
+
+                    ScrollView {
+                        VStack(spacing: 16) {
                         
                         Group {
                             if isVideo, let videoPlayer {
@@ -90,10 +89,9 @@ struct AudioClipExportView: View {
                                     .aspectRatio(contentMode: .fit)
                                     .background(Color.black)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay(alignment: .bottom) {
+                                    .overlay(alignment: .center) {
                                         if let caption = activeCaption {
-                                            captionPreview(caption)
-                                                .padding(.bottom, 12)
+                                            captionPreview(caption, containerWidth: previewWidth(for: geometry.size))
                                         }
                                     }
                             } else if let previewImage {
@@ -207,37 +205,13 @@ struct AudioClipExportView: View {
                             .padding(.vertical)
                         }
 
-                        HStack {
-                            Button("Cancel") {
-                                stopAudioPlayer()
-                                dismiss()
-                            }
-                            .buttonStyle(.glass(.clear))
-                            Spacer()
-                            Button {
-                                exportClip()
-                            } label: {
-                                Text("Export")
-                                    .font(.headline.weight(.semibold))
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 22)
-                                    .frame(minHeight: 44)
-                                    .background(Color.accentColor, in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isExporting)
                         }
-                        .padding(.horizontal)
+                        .padding()
                     }
-                    .padding()
-                   
+                    .ESAFullBackground(image: coverImageURL ?? fallbackCoverImageURL)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .ignoresSafeArea(.all, edges: .bottom)
                 }
-                
-                .ESAFullBackground(image: coverImageURL ?? fallbackCoverImageURL)
-                
-                
-                .frame(width: geometry.size.width, height: geometry.size.height)
-                .ignoresSafeArea(.all, edges: .bottom)
                 
                 .sheet(isPresented: $showShareSheet, onDismiss: {
                     stopAudioPlayer()
@@ -310,6 +284,48 @@ struct AudioClipExportView: View {
          
             
         }
+    }
+
+    private var clipExportHeader: some View {
+        HStack(spacing: 12) {
+            Button {
+                stopAudioPlayer()
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 52, height: 52)
+                    .background(.regularMaterial, in: Circle())
+                    .overlay(Circle().strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Close clip export")
+
+            if isVideo == false {
+                VideoSizePicker(videoSize: $videoSize)
+                    .frame(maxWidth: 220)
+                    .frame(maxWidth: .infinity)
+            } else {
+                Spacer(minLength: 0)
+            }
+
+            Button {
+                exportClip()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 19, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 52, height: 52)
+                    .background(Color.accentColor, in: Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(isExporting)
+            .accessibilityLabel("Export clip")
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
     
     func formatTime(_ time: Double) -> String {
@@ -491,17 +507,26 @@ struct AudioClipExportView: View {
     }
 
     @ViewBuilder
-    private func captionPreview(_ caption: ClipCaptionTimeline.Caption) -> some View {
+    private func captionPreview(_ source: ClipCaptionTimeline.Caption, containerWidth: CGFloat) -> some View {
+        let aspectRatio = videoSize.width / max(videoSize.height, 1)
+        let previewCanvas = CGSize(width: containerWidth, height: containerWidth / max(aspectRatio, 0.1))
+        let caption = AudioClipExporter.captionWindow(source, canvasSize: previewCanvas)
         if let range = Range(NSRange(location: caption.location, length: caption.length), in: caption.text) {
-            (Text(caption.speaker.map { "\($0): " } ?? "")
-             + Text(String(caption.text[range]).trimmingCharacters(in: .whitespacesAndNewlines)).bold().underline())
-                .font(.headline)
+            let before = String(caption.text[..<range.lowerBound])
+            let current = String(caption.text[range])
+            let after = String(caption.text[range.upperBound...])
+            (Text((caption.speaker.map { "\($0): " } ?? "") + before)
+             + Text(current).bold().underline()
+             + Text(after))
+                .font(.system(size: max(12, min(containerWidth * 0.045, 32))))
                 .foregroundStyle(.white)
+                .lineLimit(2)
                 .multilineTextAlignment(.center)
+                .frame(maxWidth: min(containerWidth * AudioClipExporter.captionWidthRatio(for: previewCanvas), 620))
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
-                .padding(.horizontal, 16)
         }
     }
 
@@ -770,6 +795,17 @@ struct AudioClipExportView: View {
         player.actionAtItemEnd = .pause
         videoPlayer = player
         seekVideoPreview(to: trimStart)
+        Task {
+            let asset = AVURLAsset(url: audioURL)
+            guard let tracks = try? await asset.loadTracks(withMediaType: .video),
+                  let track = tracks.first,
+                  let naturalSize = try? await track.load(.naturalSize),
+                  let transform = try? await track.load(.preferredTransform) else { return }
+            let bounds = CGRect(origin: .zero, size: naturalSize).applying(transform).standardized
+            let displaySize = CGSize(width: abs(bounds.width), height: abs(bounds.height))
+            guard displaySize.width > 0, displaySize.height > 0 else { return }
+            videoSize = displaySize
+        }
     }
 
     private func toggleVideoPreview() {

@@ -139,6 +139,7 @@ struct WaveformView: View {
         .onAppear {
             visibleStart = windowStart
             visibleEnd = windowEnd
+            fitSelectionIfNeeded(animated: false)
         }
         .onDisappear { stopEdgeScroll() }
         .onChange(of: windowStart) { _, newValue in
@@ -146,6 +147,12 @@ struct WaveformView: View {
         }
         .onChange(of: windowEnd) { _, newValue in
             if isIdle { visibleEnd = newValue }
+        }
+        .onChange(of: trimStart) { _, _ in
+            if dragTarget == nil { fitSelectionIfNeeded() }
+        }
+        .onChange(of: trimEnd) { _, _ in
+            if dragTarget == nil { fitSelectionIfNeeded() }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("Clip selection"))
@@ -301,6 +308,7 @@ struct WaveformView: View {
                 stopEdgeScroll()
                 dragTarget = nil
                 grabOffset = 0
+                fitSelectionIfNeeded()
                 if windowMovedDuringDrag {
                     windowMovedDuringDrag = false
                     onWindowChanged(visibleStart...visibleEnd)
@@ -422,7 +430,8 @@ struct WaveformView: View {
                 let anchor = ((value.startAnchor.x * width - Self.handleInset) / max(width - Self.handleInset * 2, 1))
                     .clamped(to: 0...1)
                 let anchorTime = base.start + originalSpan * anchor
-                let minSpan = min(Self.minWindowSpan, fullDuration)
+                // Never zoom in far enough to push either selected endpoint offscreen.
+                let minSpan = min(max(Self.minWindowSpan, trimEnd - trimStart), fullDuration)
                 let maxSpan = max(fullDuration, minSpan)
                 let newSpan = (originalSpan / max(value.magnification, 0.01)).clamped(to: minSpan...maxSpan)
                 let clamped = clampedWindow(
@@ -447,6 +456,29 @@ struct WaveformView: View {
         let center = (trimStart + trimEnd) / 2
         let clamped = clampedWindow(newStart: center - span / 2, newEnd: center + span / 2)
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.25)) {
+            visibleStart = clamped.start
+            visibleEnd = clamped.end
+        }
+        onWindowChanged(clamped.start...clamped.end)
+    }
+
+    /// Widen the visible window when an adjusted range no longer fits. Handles can
+    /// then be grabbed directly without requiring a pan to find an offscreen endpoint.
+    private func fitSelectionIfNeeded(animated: Bool = true) {
+        guard fullDuration > 0 else { return }
+        let tolerance = visibleSpan * 0.0001
+        guard trimStart < visibleStart - tolerance || trimEnd > visibleEnd + tolerance else { return }
+
+        let minSpan = min(Self.minWindowSpan, fullDuration)
+        let span = min(max((trimEnd - trimStart) * 1.3, minSpan), fullDuration)
+        let center = (trimStart + trimEnd) / 2
+        let clamped = clampedWindow(newStart: center - span / 2, newEnd: center + span / 2)
+        if animated && reduceMotion == false {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                visibleStart = clamped.start
+                visibleEnd = clamped.end
+            }
+        } else {
             visibleStart = clamped.start
             visibleEnd = clamped.end
         }

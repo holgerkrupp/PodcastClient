@@ -7,6 +7,22 @@ import AppKit
 
 enum AudioClipExporter {
 
+    /// Keeps caption windows consistent between the live preview and export.
+    /// Widescreen clips use the 16:9 line width; other ratios use the wider
+    /// 4:3 allowance.
+    static func captionWindow(_ caption: ClipCaptionTimeline.Caption, canvasSize: CGSize) -> ClipCaptionTimeline.Caption {
+        let fontSize = max(18, min(canvasSize.width * 0.045, 40))
+        let maxWidth = max(1, canvasSize.width * captionWidthRatio(for: canvasSize))
+        let charactersPerLine = max(12, Int(maxWidth / (fontSize * 0.54)))
+        let speakerLength = caption.speaker?.utf16.count ?? 0
+        return caption.contextualized(maximumUTF16Length: max(12, charactersPerLine * 2 - speakerLength))
+    }
+
+    static func captionWidthRatio(for canvasSize: CGSize) -> CGFloat {
+        let aspectRatio = canvasSize.width / max(canvasSize.height, 1)
+        return abs(aspectRatio - (16.0 / 9.0)) < 0.08 ? 0.68 : 0.90
+    }
+
     enum ExportError: Error {
         case failedToCreateWriter
         case failedToAppendFrame
@@ -513,7 +529,7 @@ enum AudioClipExporter {
             let width = min(image.size.width, size.width - 32)
             let height = min(image.size.height, size.height * 0.25)
             context.draw(cgImage, in: CGRect(x: (size.width - width) / 2,
-                                              y: size.height - height - 20,
+                                              y: (size.height - height) / 2,
                                               width: width, height: height))
         }
 
@@ -592,36 +608,40 @@ private extension AudioClipExporter {
             let extent = source.extent
             let translated = image.transformed(by: CGAffineTransform(
                 translationX: extent.midX - image.extent.width / 2,
-                y: extent.maxY - image.extent.height - 20
+                y: extent.midY - image.extent.height / 2
             ))
             request.finish(with: translated.composited(over: source).cropped(to: extent), context: nil)
         })
     }
 
     static func renderCaptionImage(_ caption: ClipCaptionTimeline.Caption, canvasSize: CGSize) -> UIImage? {
-        guard caption.location >= 0, caption.length > 0,
-              caption.location <= caption.text.utf16.count,
-              caption.length <= caption.text.utf16.count - caption.location,
-              let range = Range(NSRange(location: caption.location, length: caption.length), in: caption.text) else { return nil }
-        // Keep the genuinely timed phrase visible even when its paragraph is long.
-        let phrase = String(caption.text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !phrase.isEmpty else { return nil }
-        let prefix = caption.speaker.map { "\($0): " } ?? ""
-        let text = prefix + phrase
+        let display = captionWindow(caption, canvasSize: canvasSize)
+        guard display.location >= 0, display.length > 0,
+              display.location <= display.text.utf16.count,
+              display.length <= display.text.utf16.count - display.location,
+              Range(NSRange(location: display.location, length: display.length), in: display.text) != nil else { return nil }
+        let prefix = display.speaker.map { "\($0): " } ?? ""
+        let text = prefix + display.text
         let fontSize = max(18, min(canvasSize.width * 0.045, 40))
         let font = platformSystemFont(ofSize: fontSize, weight: .regular)
         let value = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: platformWhiteObject])
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        paragraph.lineBreakMode = .byWordWrapping
+        value.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: value.length))
         value.addAttributes([
             .font: platformSystemFont(ofSize: fontSize, weight: .bold),
             .underlineStyle: NSUnderlineStyle.single.rawValue
-        ], range: NSRange(location: prefix.utf16.count, length: phrase.utf16.count))
-        let maxWidth = max(1, canvasSize.width - 64)
+        ], range: NSRange(location: prefix.utf16.count + display.location, length: display.length))
+        let widthRatio = captionWidthRatio(for: canvasSize)
+        let maxWidth = max(1, canvasSize.width * widthRatio)
+        let maxHeight = fontSize * 2.6
         let bounds = value.boundingRect(
-            with: CGSize(width: maxWidth, height: canvasSize.height * 0.20),
+            with: CGSize(width: maxWidth - 24, height: maxHeight),
             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil
         )
-        let imageSize = CGSize(width: min(maxWidth, ceil(bounds.width)) + 24,
-                               height: min(canvasSize.height * 0.20, ceil(bounds.height)) + 16)
+        let imageSize = CGSize(width: min(maxWidth, ceil(bounds.width) + 24),
+                               height: min(maxHeight, ceil(bounds.height)) + 16)
 #if canImport(UIKit)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1

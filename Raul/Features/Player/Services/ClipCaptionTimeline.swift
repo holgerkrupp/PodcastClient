@@ -22,6 +22,111 @@ struct ClipCaptionTimeline: Sendable, Equatable {
         let end: TimeInterval
         let cueLevel: Bool
         var speaker: String? = nil
+
+        /// Keeps the active timed span in a short, sentence-aware subtitle
+        /// window. The caller derives this budget from the output aspect ratio
+        /// and font size, so preview and export use the same words.
+        func contextualized(maximumUTF16Length: Int) -> Caption {
+            let source = text as NSString
+            guard maximumUTF16Length > 0, location >= 0, length > 0,
+                  location <= source.length, length <= source.length - location,
+                  Range(NSRange(location: location, length: length), in: text) != nil,
+                  let sentenceExpression = try? NSRegularExpression(pattern: #"[.!?…。、！？][”’\"')\]]*"#),
+                  let wordExpression = try? NSRegularExpression(pattern: #"\S+"#) else { return self }
+
+            let activeEnd = location + length
+            let sentenceMatches = sentenceExpression.matches(in: text, range: NSRange(location: 0, length: source.length))
+            var sentenceStart = 0
+            var sentenceEnd = source.length
+            for match in sentenceMatches {
+                let end = NSMaxRange(match.range)
+                if end <= location { sentenceStart = end }
+                else if match.range.location >= activeEnd {
+                    sentenceEnd = end
+                    break
+                }
+            }
+            while sentenceStart < sentenceEnd,
+                  let scalar = UnicodeScalar(source.character(at: sentenceStart)),
+                  CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                sentenceStart += 1
+            }
+            while sentenceEnd > sentenceStart,
+                  let scalar = UnicodeScalar(source.character(at: sentenceEnd - 1)),
+                  CharacterSet.whitespacesAndNewlines.contains(scalar) {
+                sentenceEnd -= 1
+            }
+            guard sentenceStart < sentenceEnd else { return self }
+
+            let sentenceRange = NSRange(location: sentenceStart, length: sentenceEnd - sentenceStart)
+            let words = wordExpression.matches(in: text, range: sentenceRange).map(\.range)
+            guard let firstActive = words.firstIndex(where: { NSIntersectionRange($0, NSRange(location: location, length: length)).length > 0 }),
+                  let lastActive = words.lastIndex(where: { NSIntersectionRange($0, NSRange(location: location, length: length)).length > 0 }) else {
+                return self
+            }
+
+            var lowerIndex = 0
+            var upperIndex = words.count - 1
+            let isCropped = sentenceRange.length > maximumUTF16Length
+            let selectionBudget = max(1, maximumUTF16Length - 4)
+            if isCropped {
+                lowerIndex = firstActive
+                upperIndex = lastActive
+                while true {
+                    let currentStart = words[lowerIndex].location
+                    let currentEnd = NSMaxRange(words[upperIndex])
+                    let currentLeftContext = location - currentStart
+                    let currentRightContext = currentEnd - activeEnd
+                    let leftCandidate = lowerIndex > 0 ? words[lowerIndex - 1].location : nil
+                    let rightCandidate = upperIndex + 1 < words.count ? NSMaxRange(words[upperIndex + 1]) : nil
+                    let canAddLeft = leftCandidate.map { currentEnd - $0 <= selectionBudget } ?? false
+                    let canAddRight = rightCandidate.map { $0 - currentStart <= selectionBudget } ?? false
+                    guard canAddLeft || canAddRight else { break }
+                    if canAddLeft && canAddRight {
+                        let leftBalance = abs((currentLeftContext + currentStart - (leftCandidate ?? currentStart)) - currentRightContext)
+                        let rightBalance = abs(currentLeftContext - (currentRightContext + (rightCandidate ?? currentEnd) - currentEnd))
+                        if leftBalance <= rightBalance { lowerIndex -= 1 } else { upperIndex += 1 }
+                    } else if canAddLeft {
+                        lowerIndex -= 1
+                    } else {
+                        upperIndex += 1
+                    }
+                }
+            }
+
+            let selectedStart = words[lowerIndex].location
+            let selectedEnd = NSMaxRange(words[upperIndex])
+            let prefix = isCropped && selectedStart > sentenceStart ? "… " : ""
+            let suffix = isCropped && selectedEnd < sentenceEnd ? " …" : ""
+            let selected = prefix + source.substring(with: NSRange(location: selectedStart, length: selectedEnd - selectedStart)) + suffix
+            let activeLocation = prefix.utf16.count + location - selectedStart
+            guard Range(NSRange(location: activeLocation, length: length), in: selected) != nil else { return self }
+            let result = Caption(text: selected, location: activeLocation, length: length,
+                                 start: start, end: end, cueLevel: cueLevel, speaker: speaker)
+            return result.withLogicalLineBreak(maximumUTF16Length: maximumUTF16Length)
+        }
+
+        private func withLogicalLineBreak(maximumUTF16Length: Int) -> Caption {
+            guard text.utf16.count > max(24, maximumUTF16Length / 2),
+                  let expression = try? NSRegularExpression(pattern: #"[,;:—–-][ \t]+"#) else { return self }
+            let fullRange = NSRange(location: 0, length: (text as NSString).length)
+            let candidates = expression.matches(in: text, range: fullRange).filter { match in
+                let midpoint = Double(match.range.location) / Double(max(fullRange.length, 1))
+                let intersectsActive = NSIntersectionRange(match.range, NSRange(location: location, length: length)).length > 0
+                return (0.30...0.70).contains(midpoint) && !intersectsActive
+            }
+            guard let split = candidates.min(by: {
+                abs(Double($0.range.location) / Double(max(fullRange.length, 1)) - 0.5)
+                    < abs(Double($1.range.location) / Double(max(fullRange.length, 1)) - 0.5)
+            }) else { return self }
+            let before = (text as NSString).substring(to: split.range.location + 1)
+            let after = (text as NSString).substring(from: NSMaxRange(split.range)).trimmingCharacters(in: .whitespaces)
+            let lineBroken = before + "\n" + after
+            let removedWhitespace = split.range.length - 1
+            let adjustedLocation = location > split.range.location ? location - removedWhitespace + 1 : location
+            return Caption(text: lineBroken, location: adjustedLocation, length: length,
+                           start: start, end: end, cueLevel: cueLevel, speaker: speaker)
+        }
     }
 
     let captions: [Caption]
