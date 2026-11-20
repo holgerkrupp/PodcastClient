@@ -30,7 +30,6 @@ struct ClipCaptionTimeline: Sendable, Equatable {
             let source = text as NSString
             guard maximumUTF16Length > 0, location >= 0, length > 0,
                   location <= source.length, length <= source.length - location,
-                  Range(NSRange(location: location, length: length), in: text) != nil,
                   let sentenceExpression = try? NSRegularExpression(pattern: #"[.!?…。、！？][”’\"')\]]*"#),
                   let wordExpression = try? NSRegularExpression(pattern: #"\S+"#) else { return self }
 
@@ -94,13 +93,17 @@ struct ClipCaptionTimeline: Sendable, Equatable {
                 }
             }
 
-            let selectedStart = words[lowerIndex].location
-            let selectedEnd = NSMaxRange(words[upperIndex])
+            // Timed runs can include whitespace around the active word. Keep
+            // their exact UTF-16 span inside the selected window so converting
+            // it to a display range can never produce a negative offset.
+            let selectedStart = min(words[lowerIndex].location, location)
+            let selectedEnd = max(NSMaxRange(words[upperIndex]), activeEnd)
             let prefix = isCropped && selectedStart > sentenceStart ? "… " : ""
             let suffix = isCropped && selectedEnd < sentenceEnd ? " …" : ""
             let selected = prefix + source.substring(with: NSRange(location: selectedStart, length: selectedEnd - selectedStart)) + suffix
             let activeLocation = prefix.utf16.count + location - selectedStart
-            guard Range(NSRange(location: activeLocation, length: length), in: selected) != nil else { return self }
+            guard activeLocation >= 0, activeLocation <= selected.utf16.count,
+                  length <= selected.utf16.count - activeLocation else { return self }
             let result = Caption(text: selected, location: activeLocation, length: length,
                                  start: start, end: end, cueLevel: cueLevel, speaker: speaker)
             return result.withLogicalLineBreak(maximumUTF16Length: maximumUTF16Length)
