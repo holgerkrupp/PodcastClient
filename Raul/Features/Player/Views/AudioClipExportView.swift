@@ -24,6 +24,7 @@ struct AudioClipExportView: View {
     @State private var waveformSamples: [Float] = []
     @State private var audioPlayer: AVAudioPlayer?
     @State private var videoPlayer: AVPlayer?
+    @State private var previewAudioSessionRequestID: UInt64 = 0
     @State private var playbackProgress: Double = 0
     @State private var audioDelegate: AudioPlayerDelegateWrapper?
     @State private var showPreviewUnavailableAlert = false
@@ -811,8 +812,11 @@ struct AudioClipExportView: View {
     private func toggleVideoPreview() {
         guard let player = videoPlayer else {
             setupVideoPreviewPlayer()
-            videoPlayer?.playImmediately(atRate: exportPlaybackRate)
-            startProgressTimer()
+            startPreviewWithAudioSession {
+                guard self.videoPlayer != nil else { return }
+                self.videoPlayer?.playImmediately(atRate: self.exportPlaybackRate)
+                self.startProgressTimer()
+            }
             return
         }
 
@@ -820,9 +824,26 @@ struct AudioClipExportView: View {
             stopVideoPreview()
         } else {
             seekVideoPreview(to: trimStart + playbackProgress)
-            player.playImmediately(atRate: exportPlaybackRate)
-            startProgressTimer()
+            startPreviewWithAudioSession {
+                guard self.videoPlayer === player else { return }
+                player.playImmediately(atRate: self.exportPlaybackRate)
+                self.startProgressTimer()
+            }
         }
+    }
+
+    private func startPreviewWithAudioSession(_ start: @escaping @MainActor () -> Void) {
+        previewAudioSessionRequestID &+= 1
+        let requestID = previewAudioSessionRequestID
+#if os(iOS)
+        Task { @MainActor in
+            guard await AudioSessionConfigurator.activateForPlayback() == nil,
+                  self.previewAudioSessionRequestID == requestID else { return }
+            start()
+        }
+#else
+        start()
+#endif
     }
 
     private func seekVideoPreview(to time: Double) {
@@ -835,6 +856,7 @@ struct AudioClipExportView: View {
     }
 
     private func stopVideoPreview() {
+        previewAudioSessionRequestID &+= 1
         videoPlayer?.pause()
         stopProgressTimer()
     }
@@ -851,9 +873,12 @@ struct AudioClipExportView: View {
             player.delegate = delegate
             self.audioDelegate = delegate
             player.prepareToPlay()
-            player.play()
             audioPlayer = player
-            startProgressTimer()
+            startPreviewWithAudioSession {
+                guard self.audioPlayer === player else { return }
+                player.play()
+                self.startProgressTimer()
+            }
         } catch {
             // Could not start player; silently fail
             audioPlayer = nil

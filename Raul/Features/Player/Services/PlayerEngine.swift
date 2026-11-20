@@ -36,7 +36,7 @@ enum AudioSessionActivationRetryPolicy {
 /// cannot land out of order. Playback only starts from the completion handler:
 /// starting `AVPlayer` while activation is still queued can leave the player
 /// advancing without an output route after an interruption.
-private enum AudioSessionConfigurator {
+enum AudioSessionConfigurator {
     private static let queue = DispatchQueue(
         label: "de.holgerkrupp.upnext.audio-session",
         qos: .userInitiated
@@ -55,6 +55,14 @@ private enum AudioSessionConfigurator {
                 completion(nil)
             } catch {
                 completion(String(describing: error))
+            }
+        }
+    }
+
+    static func activateForPlayback() async -> String? {
+        await withCheckedContinuation { continuation in
+            activateForPlayback { failureDescription in
+                continuation.resume(returning: failureDescription)
             }
         }
     }
