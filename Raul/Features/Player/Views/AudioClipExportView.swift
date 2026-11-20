@@ -39,6 +39,7 @@ struct AudioClipExportView: View {
     @State private var previewUpdateTask: Task<Void, Never>?
     @State private var resolvedCaptionTimeline: ClipCaptionTimeline?
     @State private var includeCaptions = false
+    @State private var showCaptionsPopup = false
     @State private var resolvingCaptions = false
     @State private var captionStatus: String?
     @State private var resolvedMediaFingerprint: String?
@@ -130,35 +131,14 @@ struct AudioClipExportView: View {
                         .onChange(of: playbackProgress) { schedulePreviewImageUpdate() }
                         
                         
-                        Text("Select the segment to share")
-                            .font(.headline)
-                            .padding(.horizontal)
-
                         playbackRateControl
 
                         VStack(alignment: .leading, spacing: 4) {
-                            if resolvingCaptions {
-                                Text("Checking captions…").font(.caption).foregroundStyle(.secondary)
-                            } else if availableCaptionTimeline == nil {
-                                Text("Captions are unavailable for this media.").font(.caption).foregroundStyle(.secondary)
-                            } else if availableCaptionTimeline?.captions.contains(where: { $0.cueLevel }) == true {
+                            if availableCaptionTimeline?.captions.contains(where: { $0.cueLevel }) == true {
                                 Text("Some captions highlight a whole passage.").font(.caption).foregroundStyle(.secondary)
                             }
                             if captionCoverageIsPartial {
                                 Text("Captions are available for only part of this clip.").font(.caption).foregroundStyle(.secondary)
-                            }
-                            if let captionStatus {
-                                Text(captionStatus).font(.caption).foregroundStyle(.secondary)
-                            }
-                            if availableCaptionTimeline == nil, audioURL.isFileURL {
-                                Button(clipGenerationTask == nil ? "Generate captions for clip" : "Cancel caption generation") {
-                                    if let clipGenerationTask {
-                                        clipGenerationTask.cancel()
-                                    } else {
-                                        startClipCaptionGeneration()
-                                    }
-                                }
-                                .font(.caption)
                             }
                         }
                         .padding(.horizontal)
@@ -914,8 +894,12 @@ struct AudioClipExportView: View {
             .accessibilityValue(exportPlaybackRate.formattedPlaybackSpeed)
 
             Button {
-                includeCaptions.toggle()
-                schedulePreviewImageUpdate()
+                if availableCaptionTimeline == nil {
+                    showCaptionsPopup = true
+                } else {
+                    includeCaptions.toggle()
+                    schedulePreviewImageUpdate()
+                }
             } label: {
                 Image(systemName: includeCaptions ? "captions.bubble.fill" : "captions.bubble")
                     .font(.title3)
@@ -924,10 +908,15 @@ struct AudioClipExportView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.bordered)
-            .disabled(availableCaptionTimeline == nil)
             .accessibilityLabel("Captions")
-            .accessibilityValue(includeCaptions ? "On" : "Off")
-            .accessibilityHint(availableCaptionTimeline == nil ? "Captions are unavailable for this clip." : "Shows highlighted captions in preview and export.")
+            .accessibilityValue(availableCaptionTimeline == nil ? "Unavailable" : (includeCaptions ? "On" : "Off"))
+            .accessibilityHint(availableCaptionTimeline == nil ? "Shows caption availability and generation options." : "Shows highlighted captions in preview and export.")
+            .popover(isPresented: $showCaptionsPopup, arrowEdge: .bottom) {
+                captionsPopup
+                    .frame(width: 280)
+                    .padding()
+                    .presentationCompactAdaptation(.popover)
+            }
         }
         .padding(.horizontal)
         .padding(.vertical, 4)
@@ -940,6 +929,46 @@ struct AudioClipExportView: View {
 
     private func setExportPlaybackRate(_ rate: Float) {
         exportPlaybackRate = rate.clamped(to: Self.clipPlaybackRateRange)
+    }
+
+    @ViewBuilder
+    private var captionsPopup: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if resolvingCaptions {
+                Label("Checking captions…", systemImage: "ellipsis.bubble")
+                    .foregroundStyle(.secondary)
+            } else if availableCaptionTimeline != nil {
+                Label("Captions are ready", systemImage: "captions.bubble.fill")
+                Text("Tap Captions to turn the overlay on or off.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Captions are unavailable for this media.")
+                    .font(.subheadline)
+                if audioURL.isFileURL {
+                    Button(clipGenerationTask == nil ? "Generate captions for clip" : "Cancel caption generation") {
+                        if let clipGenerationTask {
+                            clipGenerationTask.cancel()
+                        } else {
+                            startClipCaptionGeneration()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(resolvingCaptions)
+                } else {
+                    Text("Download this episode to generate clip captions.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let captionStatus {
+                Text(captionStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 
