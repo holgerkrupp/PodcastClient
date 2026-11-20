@@ -560,19 +560,39 @@ struct AudioClipExportView: View {
         }
         guard !Task.isCancelled, let fingerprint else { return }
         let alignment: TranscriptSynchronizationTimeline?
+        let allowUnalignedPublisherTiming: Bool
         switch snapshot.origin {
         case .generated:
             alignment = nil
+            allowUnalignedPublisherTiming = false
         case .publisher(let revision):
-            guard synchronizationStore.isEnabled else { return }
-            alignment = await TranscriptAlignmentStoreActor(modelContainer: container).load(
-                episodeID: snapshot.episodeID, mediaFingerprint: fingerprint, transcriptRevision: revision
-            )
-            guard synchronizationStore.isEnabled else { return }
+            if synchronizationStore.isEnabled {
+                if let activeAlignment = synchronizationStore.timeline(
+                    for: episodeURL,
+                    mediaFingerprint: fingerprint,
+                    transcriptRevision: revision
+                ) {
+                    alignment = activeAlignment
+                } else {
+                    alignment = await TranscriptAlignmentStoreActor(modelContainer: container).load(
+                        episodeID: snapshot.episodeID, mediaFingerprint: fingerprint, transcriptRevision: revision
+                    )
+                }
+                guard synchronizationStore.isEnabled else { return }
+                allowUnalignedPublisherTiming = false
+            } else {
+                // Match the main player: when synchronization is opted out,
+                // follow the publisher's original cue timing as-is.
+                alignment = nil
+                allowUnalignedPublisherTiming = true
+            }
         }
         guard !Task.isCancelled else { return }
         resolvedCaptionTimeline = ClipCaptionTimeline.resolve(
-            snapshot: snapshot, mediaFingerprint: fingerprint, publisherAlignment: alignment
+            snapshot: snapshot,
+            mediaFingerprint: fingerprint,
+            publisherAlignment: alignment,
+            allowUnalignedPublisherTiming: allowUnalignedPublisherTiming
         )
         resolvedMediaFingerprint = fingerprint
         schedulePreviewImageUpdate()
