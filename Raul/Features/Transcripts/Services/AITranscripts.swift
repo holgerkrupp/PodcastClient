@@ -712,6 +712,8 @@ class AITranscripts {
         var spans: [TranscriptTimedSpan] = []
         let cueStart = CMTimeGetSeconds(range.start)
         let cueEnd = CMTimeGetSeconds(range.end)
+        var previousTimedStart: TimeInterval?
+        var invalidTimedRun = false
         for run in text.runs {
             let part = String(text[run.range].characters)
             let location = plain.utf16.count
@@ -720,10 +722,18 @@ class AITranscripts {
             let start = CMTimeGetSeconds(audioRange.start)
             let end = CMTimeGetSeconds(audioRange.end)
             guard !part.isEmpty, start.isFinite, end.isFinite, start >= 0, end > start,
-                  cueStart.isFinite, cueEnd.isFinite, start >= cueStart - 0.01, end <= cueEnd + 0.01 else { continue }
+                  cueStart.isFinite, cueEnd.isFinite, start >= cueStart - 0.01, end <= cueEnd + 0.01,
+                  previousTimedStart.map({ start >= $0 }) ?? true else {
+                // A malformed or out-of-order range cannot safely identify a spoken
+                // substring. Drop all fine timing for this cue so the UI falls back
+                // to its cue-level interval instead of showing a misleading word.
+                invalidTimedRun = true
+                continue
+            }
             spans.append(TranscriptTimedSpan(location: location, length: part.utf16.count, startTime: start, endTime: end))
+            previousTimedStart = start
         }
-        return TimedResult(range: range, text: plain, timedSpans: spans)
+        return TimedResult(range: range, text: plain, timedSpans: invalidTimedRun ? [] : spans)
     }
 
     private static func splitResult(

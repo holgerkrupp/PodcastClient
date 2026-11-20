@@ -89,10 +89,10 @@ struct AudioClipExportView: View {
                                     .aspectRatio(contentMode: .fit)
                                     .background(Color.black)
                                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                                    .overlay(alignment: .top) {
+                                    .overlay(alignment: .bottom) {
                                         if let caption = activeCaption {
                                             captionPreview(caption)
-                                                .padding(.top, 8)
+                                                .padding(.bottom, 12)
                                         }
                                     }
                             } else if let previewImage {
@@ -137,14 +137,15 @@ struct AudioClipExportView: View {
                         playbackRateControl
 
                         VStack(alignment: .leading, spacing: 4) {
-                            Toggle("Include highlighted captions", isOn: $includeCaptions)
-                                .disabled(availableCaptionTimeline == nil)
                             if resolvingCaptions {
                                 Text("Checking captions…").font(.caption).foregroundStyle(.secondary)
                             } else if availableCaptionTimeline == nil {
                                 Text("Captions are unavailable for this media.").font(.caption).foregroundStyle(.secondary)
                             } else if availableCaptionTimeline?.captions.contains(where: { $0.cueLevel }) == true {
                                 Text("Some captions highlight a whole passage.").font(.caption).foregroundStyle(.secondary)
+                            }
+                            if captionCoverageIsPartial {
+                                Text("Captions are available for only part of this clip.").font(.caption).foregroundStyle(.secondary)
                             }
                             if let captionStatus {
                                 Text(captionStatus).font(.caption).foregroundStyle(.secondary)
@@ -488,8 +489,13 @@ struct AudioClipExportView: View {
     private var availableCaptionTimeline: ClipCaptionTimeline? {
         let timeline = (clipCoversSelection ? clipGeneratedTimeline : nil) ?? captionTimeline ?? resolvedCaptionTimeline
         if let intervals = timeline?.coverage,
-           !intervals.contains(where: { trimStart >= $0.start && trimEnd <= $0.end }) { return nil }
+           !intervals.contains(where: { $0.end > trimStart && $0.start < trimEnd }) { return nil }
         return timeline?.captions.isEmpty == false ? timeline : nil
+    }
+
+    private var captionCoverageIsPartial: Bool {
+        guard let intervals = availableCaptionTimeline?.coverage else { return false }
+        return !intervals.contains(where: { $0.start <= trimStart && $0.end >= trimEnd })
     }
 
     private var activeCaption: ClipCaptionTimeline.Caption? {
@@ -884,35 +890,56 @@ struct AudioClipExportView: View {
     }
 
     private var playbackRateControl: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Label("Playback Rate", systemImage: "gauge.with.dots.needle.50percent")
+        HStack(spacing: 12) {
+            Menu {
+                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0], id: \.self) { rate in
+                    Button {
+                        setExportPlaybackRate(Float(rate))
+                    } label: {
+                        if abs(Double(exportPlaybackRate) - rate) < 0.01 {
+                            Label(Float(rate).formattedPlaybackSpeed, systemImage: "checkmark")
+                        } else {
+                            Text(Float(rate).formattedPlaybackSpeed)
+                        }
+                    }
+                }
+            } label: {
+                Label(exportPlaybackRate.formattedPlaybackSpeed, systemImage: "gauge.with.dots.needle.50percent")
                     .font(.subheadline.weight(.semibold))
-                Spacer()
-                Text(exportPlaybackRate.formattedPlaybackSpeed)
                     .monospacedDigit()
-                    .esaForeground(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
             }
-
-            Stepper(
-                value: $exportPlaybackRate,
-                in: Self.clipPlaybackRateRange,
-                step: 0.1
-            ) {
-                Text("Export speed \(exportPlaybackRate.formattedPlaybackSpeed)")
-            }
-            .onChange(of: exportPlaybackRate) { _, _ in
-                if let player = audioPlayer {
-                    player.rate = exportPlaybackRate
-                }
-                if videoPlayer?.rate ?? 0 > 0 {
-                    videoPlayer?.rate = exportPlaybackRate
-                }
-                schedulePreviewImageUpdate()
-            }
+            .accessibilityLabel("Playback speed")
             .accessibilityValue(exportPlaybackRate.formattedPlaybackSpeed)
+
+            Button {
+                includeCaptions.toggle()
+                schedulePreviewImageUpdate()
+            } label: {
+                Image(systemName: includeCaptions ? "captions.bubble.fill" : "captions.bubble")
+                    .font(.title3)
+                    .frame(width: 44, height: 40)
+                    .foregroundStyle(includeCaptions ? Color.accentColor : Color.primary)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.bordered)
+            .disabled(availableCaptionTimeline == nil)
+            .accessibilityLabel("Captions")
+            .accessibilityValue(includeCaptions ? "On" : "Off")
+            .accessibilityHint(availableCaptionTimeline == nil ? "Captions are unavailable for this clip." : "Shows highlighted captions in preview and export.")
         }
         .padding(.horizontal)
+        .padding(.vertical, 4)
+        .onChange(of: exportPlaybackRate) { _, _ in
+            if let player = audioPlayer { player.rate = exportPlaybackRate }
+            if videoPlayer?.rate ?? 0 > 0 { videoPlayer?.rate = exportPlaybackRate }
+            schedulePreviewImageUpdate()
+        }
+    }
+
+    private func setExportPlaybackRate(_ rate: Float) {
+        exportPlaybackRate = rate.clamped(to: Self.clipPlaybackRateRange)
     }
 }
 

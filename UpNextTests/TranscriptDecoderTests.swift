@@ -17,6 +17,22 @@ final class TranscriptDecoderTests: XCTestCase {
         XCTAssertEqual(result.timedSpans.map(\.endTime), [1.5, 4])
         XCTAssertEqual(result.timedSpans.map { (result.text as NSString).substring(with: NSRange(location: $0.location, length: $0.length)) }, ["👋 hello,", "friend!"])
     }
+
+    func testOutOfOrderSpeechTimingFallsBackToCueWithoutChangingText() throws {
+        var text = AttributedString("first second")
+        let first = try XCTUnwrap(text.range(of: "first"))
+        let second = try XCTUnwrap(text.range(of: "second"))
+        text[first].audioTimeRange = CMTimeRange(start: CMTime(seconds: 2, preferredTimescale: 600), duration: CMTime(seconds: 0.5, preferredTimescale: 600))
+        text[second].audioTimeRange = CMTimeRange(start: CMTime(seconds: 1, preferredTimescale: 600), duration: CMTime(seconds: 0.5, preferredTimescale: 600))
+
+        let result = AITranscripts.timedResult(
+            range: CMTimeRange(start: .zero, duration: CMTime(seconds: 3, preferredTimescale: 600)),
+            text: text
+        )
+
+        XCTAssertEqual(result.text, "first second")
+        XCTAssertTrue(result.timedSpans.isEmpty)
+    }
     func testWebVTTKeepsMultilineTextAndInlineTimingWithUnicodeOffsets() throws {
         let decoder = TranscriptDecoder("""
         WEBVTT

@@ -35,6 +35,7 @@ final class TranscriptPlaybackTracker {
     @ObservationIgnored private var useAlignment = false
     @ObservationIgnored private var observedPlayer: AVPlayer?
     @ObservationIgnored private var timeObserver: Any?
+    @ObservationIgnored private var itemObserver: NSKeyValueObservation?
     @ObservationIgnored private var jumpObserver: NSObjectProtocol?
     @ObservationIgnored private var isRunning = false
 
@@ -86,8 +87,10 @@ final class TranscriptPlaybackTracker {
 
     private func detach() {
         if let timeObserver, let observedPlayer { observedPlayer.removeTimeObserver(timeObserver) }
+        itemObserver?.invalidate()
         if let jumpObserver { NotificationCenter.default.removeObserver(jumpObserver) }
         timeObserver = nil
+        itemObserver = nil
         jumpObserver = nil
         observedPlayer = nil
     }
@@ -101,6 +104,12 @@ final class TranscriptPlaybackTracker {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.1, preferredTimescale: 600), queue: .main
         ) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+        // The player object is reused when episodes change. Observe its item
+        // directly so the transcript updates as soon as the replacement item
+        // becomes current, even before the next periodic tick.
+        itemObserver = player.observe(\.currentItem, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.refresh() }
         }
         jumpObserver = NotificationCenter.default.addObserver(
@@ -124,6 +133,21 @@ final class TranscriptPlaybackTracker {
         let end = segment.endTime ?? (low < segments.count ? segments[low].startTime : .infinity)
         guard time < end else { return nil }
         let span = segment.activeSpan(at: time)
-        return Active(segmentID: segment.id, location: span?.location, length: span?.length)
+        // Older publisher formats only have cue timing. Keep those readable
+        // with cue-level highlighting; word-level timing takes precedence when
+        // a valid span exists.
+        let hasUsableTimedSpans = segment.timedSpans.contains { candidate in
+            candidate.startTime.isFinite && candidate.endTime.isFinite
+                && candidate.endTime > candidate.startTime
+                && candidate.location >= 0 && candidate.length > 0
+                && candidate.location <= segment.text.utf16.count
+                && candidate.length <= segment.text.utf16.count - candidate.location
+                && Range(NSRange(location: candidate.location, length: candidate.length), in: segment.text) != nil
+        }
+        return Active(
+            segmentID: segment.id,
+            location: span?.location ?? (hasUsableTimedSpans ? nil : 0),
+            length: span?.length ?? (hasUsableTimedSpans ? nil : segment.text.utf16.count)
+        )
     }
 }
