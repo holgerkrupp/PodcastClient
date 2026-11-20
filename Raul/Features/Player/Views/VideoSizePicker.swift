@@ -56,6 +56,10 @@ struct VideoSizePicker: View {
             }
         }
         .pickerStyle(SegmentedPickerStyle())
+        .padding(4)
+        .background(Color.black.opacity(0.5), in: Capsule())
+        .tint(Color.accentColor)
+        .colorScheme(.dark)
         .onAppear {
             selectedOption = option(for: videoSize)
         }

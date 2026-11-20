@@ -214,10 +214,17 @@ struct AudioClipExportView: View {
                             }
                             .buttonStyle(.glass(.clear))
                             Spacer()
-                            Button("Export") {
+                            Button {
                                 exportClip()
+                            } label: {
+                                Text("Export")
+                                    .font(.headline.weight(.semibold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 22)
+                                    .frame(minHeight: 44)
+                                    .background(Color.black.opacity(0.78), in: Capsule())
                             }
-                            .buttonStyle(.glassProminent)
+                            .buttonStyle(.plain)
                             .disabled(isExporting)
                         }
                         .padding(.horizontal)
@@ -904,10 +911,18 @@ struct AudioClipExportView: View {
                 Image(systemName: includeCaptions ? "captions.bubble.fill" : "captions.bubble")
                     .font(.title3)
                     .frame(width: 44, height: 40)
-                    .foregroundStyle(includeCaptions ? Color.accentColor : Color.primary)
+                    .foregroundStyle(.white)
                     .contentShape(Rectangle())
             }
-            .buttonStyle(.bordered)
+            .background(
+                includeCaptions ? Color.accentColor : Color.black.opacity(0.72),
+                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(.white.opacity(0.28), lineWidth: 1)
+            }
+            .buttonStyle(.plain)
             .accessibilityLabel("Captions")
             .accessibilityValue(availableCaptionTimeline == nil ? "Unavailable" : (includeCaptions ? "On" : "Off"))
             .accessibilityHint(availableCaptionTimeline == nil ? "Shows caption availability and generation options." : "Shows highlighted captions in preview and export.")
@@ -953,7 +968,11 @@ struct AudioClipExportView: View {
                             startClipCaptionGeneration()
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.black.opacity(0.78), in: Capsule())
+                    .buttonStyle(.plain)
                     .disabled(resolvingCaptions)
                 } else {
                     Text("Download this episode to generate clip captions.")
