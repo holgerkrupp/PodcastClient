@@ -496,6 +496,10 @@ class Player {
     private var suspendedPlaybackContext: SuspendedPlaybackContext?
     private var currentPlaybackUsesAlternateMedia = false
     private var playbackLoadGeneration: UInt64 = 0
+    private var playEpisodeRequestGeneration: UInt64 = 0
+    /// Identity of the episode whose item is actually installed in AVPlayer.
+    /// `currentEpisodeURL` can move ahead while an async load is being prepared.
+    private var activePlaybackEpisodeURL: URL?
     private var playbackRecoveryCoordinator = PlaybackRecoveryCoordinator()
     private var hasStartedRecovery = false
     private var wasPlayingBeforeInterruption = false
@@ -777,7 +781,10 @@ class Player {
         loadPlayBackSpeed()
         listenToEvent()
         engine.setEndHandler { [weak self] in
-            guard let self else { return }
+            guard let self,
+                  let activePlaybackEpisodeURL = self.activePlaybackEpisodeURL,
+                  activePlaybackEpisodeURL == self.currentEpisodeURL,
+                  activePlaybackEpisodeURL == self.currentEpisode?.url else { return }
             self.handlePlaybackEndedEvent(
                 source: "item_end_notification",
                 observedPosition: self.engine.currentTime(),
@@ -2523,6 +2530,8 @@ class Player {
 
     private func snapshotCurrentEpisodeForFastSwitch(episodeURL: URL) async -> EpisodeUnloadSnapshot? {
         guard currentEpisodeURL == episodeURL,
+              activePlaybackEpisodeURL == episodeURL,
+              currentEpisode?.url == episodeURL,
               currentPlaybackSource != .liveRemote else {
             return nil
         }
@@ -2626,6 +2635,7 @@ class Player {
     }
 
     private func unloadEpisode(episodeURL: URL, finishedPlayback: Bool = false) async {
+        playEpisodeRequestGeneration &+= 1
         if currentEpisodeURL == episodeURL, finishedPlayback == false {
             await captureCurrentPlaybackStateFromEngine(force: true)
         } else if finishedPlayback {
@@ -2651,6 +2661,7 @@ class Player {
         lastAutomaticallySkippedAdID = nil
         currentEpisode = nil
         currentEpisodeURL = nil
+        activePlaybackEpisodeURL = nil
         currentPlaybackPlaylistID = nil
         currentChapter = nil
         chapterProgress = nil
@@ -2700,6 +2711,7 @@ class Player {
         await captureCurrentPlaybackStateFromEngine(force: true)
         engine.pause()
         engine.replaceCurrentItem(with: nil)
+        activePlaybackEpisodeURL = nil
         isPlaying = false
         nowPlayingInfoActor.clear()
         await resetPlaybackStateForFinishedEpisode(refreshPresentation: true)
@@ -2715,14 +2727,22 @@ class Player {
         mediaSelection requestedMediaSelection: PlaybackMediaSelection? = nil,
         skipProtectionBehavior: SkipProtectionBehavior = .protect
     ) async {
+        playEpisodeRequestGeneration &+= 1
+        let requestGeneration = playEpisodeRequestGeneration
+        func isLatestRequest() -> Bool {
+            requestGeneration == playEpisodeRequestGeneration
+        }
+
         guard let episodeURL,
-              let episode = await fetchEpisode(with: episodeURL) else { return }
+              let episode = await fetchEpisode(with: episodeURL),
+              isLatestRequest() else { return }
 
         // Do not let a manual switch discard a completion that still needs its
         // queue mutation. Retrying here also covers a transient store failure
         // without waiting for the next process launch.
         if PlaybackProgressDefaultsStore.pendingCompletion() != nil {
             await retryPendingFinishedEpisode()
+            guard isLatestRequest() else { return }
         }
 
         let previousEpisodeURL = currentEpisodeURL
@@ -2730,6 +2750,7 @@ class Player {
         let playbackPlaylistID = previousEpisodeURL == episodeURL
             ? currentPlaybackPlaylistID
             : await capturePlaybackPlaylistID(for: episodeURL)
+        guard isLatestRequest() else { return }
         let previousProtectionOrigin = pendingSkipProtectionOrigin
             ?? currentSkipProtectionOrigin()
         let fastSwitchUnloadSnapshot: EpisodeUnloadSnapshot?
@@ -2738,6 +2759,14 @@ class Player {
         } else {
             fastSwitchUnloadSnapshot = nil
         }
+        if let fastSwitchUnloadSnapshot {
+            // Persist by the snapshot's captured identity immediately. A newer
+            // Next request may supersede this load while preparation is suspended.
+            Task(priority: .utility) {
+                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
+            }
+        }
+        guard isLatestRequest() else { return }
 
         if skipProtectionBehavior == .protect,
            previousEpisodeURL != episodeURL || time != nil,
@@ -2789,6 +2818,7 @@ class Player {
             for: episode.podcast?.feed,
             applyToCurrentPlayback: false
         )
+        guard isLatestRequest() else { return }
         if playDirectly {
             if currentEpisode?.metaData == nil {
                 let metadata = EpisodeMetaData()
@@ -2825,6 +2855,7 @@ class Player {
         }
 
         let snapshot = await episodeActor?.playbackStateSnapshot(for: episodeURL)
+        guard isLatestRequest() else { return }
         let cachedProgress = cachedPlaybackProgress(for: episodeURL)
         if currentEpisode?.metaData == nil {
             let metadata = EpisodeMetaData()
@@ -2855,7 +2886,9 @@ class Player {
 
         engine.pause()
         await resetPlaybackAudioProcessing(for: item)
+        guard isLatestRequest() else { return }
         engine.replaceCurrentItem(with: item)
+        activePlaybackEpisodeURL = episodeURL
         // Detection owns a separate analysis reader and must never delay
         // installation or activation of the normal playback item.
         Task { @MainActor [weak self] in
@@ -2900,6 +2933,7 @@ class Player {
         isLoadingEpisodePosition = true
         if targetStartTime > 0, loadingForSharedSession == false {
             await jumpTo(time: targetStartTime, protectLargeSeek: false)
+            guard isLatestRequest() else { return }
         } else {
             playPosition = 0
             updateNowPlayingInfo()
@@ -2909,6 +2943,7 @@ class Player {
         }
         _ = updateCurrentChapter()
         await skipOverChapters()
+        guard isLatestRequest() else { return }
         isLoadingEpisodePosition = false
         if playDirectly == false {
             // Loading isn't listening, so it shouldn't count as a new session.
@@ -2919,9 +2954,11 @@ class Player {
         // must keep the current in-memory selection without reloading settings.
         if previousPodcastFeed != episode.podcast?.feed {
             await reloadPlaybackSpeedForCurrentPodcast()
+            guard isLatestRequest() else { return }
         }
         if playDirectly {
             await playPreparedEpisode()
+            guard isLatestRequest() else { return }
         }
         if playback.source == .remote, playback.usesAlternateMedia == false {
             if episode.url?.pathExtension.lowercased() == "mp3",
@@ -2949,12 +2986,6 @@ class Player {
             }
         }
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
-        if let fastSwitchUnloadSnapshot {
-            Task(priority: .utility) {
-                await finishFastSwitchUnload(fastSwitchUnloadSnapshot)
-            }
-        }
-
         Task {
             await moveEpisodeToFrontOfActivePlaybackPlaylist(episodeURL)
             if let container = ModelContainerManager.shared.preparedContainer {
@@ -3018,6 +3049,7 @@ class Player {
     }
 
     func switchCurrentEpisodeMedia(to requestedSelection: PlaybackMediaSelection? = nil) async {
+        playEpisodeRequestGeneration &+= 1
         guard let episode = currentEpisode,
               episode.hasAlternateVideo else { return }
 
@@ -3048,6 +3080,7 @@ class Player {
         }
         await resetPlaybackAudioProcessing(for: playback.item)
         engine.replaceCurrentItem(with: playback.item)
+        activePlaybackEpisodeURL = currentEpisodeURL
         configureChapterBoundaryObserver()
         if let episodeURL = currentEpisodeURL {
             schedulePlaybackAudioProcessing(
@@ -3083,6 +3116,8 @@ class Player {
             return
         }
 
+        playEpisodeRequestGeneration &+= 1
+
         await suspendNormalPlaybackIfNeeded()
         let preferredStream = liveItem.preferredStream!
         liveStreamSources = [preferredStream]
@@ -3104,6 +3139,7 @@ class Player {
         currentEpisode = liveEpisode
         currentLiveItem = liveItem
         currentEpisodeURL = firstURL
+        activePlaybackEpisodeURL = nil
         currentPlaybackPlaylistID = nil
         currentPlaybackSource = .liveRemote
         livePlaybackState = .connecting
@@ -3187,6 +3223,7 @@ class Player {
         liveStreamStatusObservation?.invalidate()
         liveStreamStatusObservation = nil
         currentEpisodeURL = source.url
+        activePlaybackEpisodeURL = source.url
         currentPlaybackSource = .liveRemote
         livePlaybackState = .connecting
         let item = authorizedPlayerItem(for: protectedURL, profile: nil)
@@ -3212,6 +3249,7 @@ class Player {
         }
         await resetPlaybackAudioProcessing(for: item)
         engine.replaceCurrentItem(with: item)
+        activePlaybackEpisodeURL = source.url
         setupStaticNowPlayingInfo()
         play()
     }
@@ -3242,6 +3280,7 @@ class Player {
         currentPlaybackSource = nil
         currentEpisode = nil
         currentEpisodeURL = nil
+        activePlaybackEpisodeURL = nil
         currentLiveItem = nil
         livePlaybackState = .ended
         isPlaying = false
@@ -3395,6 +3434,8 @@ class Player {
                 self.logPlaybackRecoveryResult("obsolete", reason: reason, attempt: attempt, itemID: replacementItemID, playerID: String(describing: ObjectIdentifier(self.engine.avPlayer)))
                 return
             }
+
+            self.activePlaybackEpisodeURL = episodeURL
 
             self.configureChapterBoundaryObserver()
             self.configureOutroBoundaryObserver()
@@ -3899,16 +3940,25 @@ class Player {
 
     private func startPlaybackUpdates() {
         stopPlaybackUpdates()
+        let generation = playbackLoadGeneration
+        let episodeURL = currentEpisodeURL
+        let item = engine.avPlayer.currentItem
         playbackTask = Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self,
+                  let episodeURL,
+                  let item,
+                  self.isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else { return }
             let stream = engine.playbackStream(interval: playbackPowerMode.progressUpdateInterval)
-            for await event in stream {
-                guard !Task.isCancelled else { break }
+            playbackEvents: for await event in stream {
+                guard !Task.isCancelled,
+                      self.isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else { break playbackEvents }
                 switch event {
                 case .position(let time):
                     let sanitizedTime = self.sanitizedPosition(time)
                     self.playPosition = sanitizedTime
                     await PlayNextWidgetSync.publishPlaybackPositionIfDue()
+                    guard !Task.isCancelled,
+                          self.isCurrentPlaybackLoad(generation, episodeURL: episodeURL, item: item) else { break playbackEvents }
                     self.requestTranscriptSynchronizationIfNeeded(at: sanitizedTime)
                     self.updateEpisodeProgress(to: sanitizedTime)
                     if self.finishAtOutroIfNeeded(
@@ -4336,6 +4386,7 @@ class Player {
         lastAutomaticallySkippedAdID = nil
         currentEpisode = nil
         currentEpisodeURL = nil
+        activePlaybackEpisodeURL = nil
         currentPlaybackPlaylistID = nil
         currentChapter = nil
         chapterProgress = nil
@@ -4417,6 +4468,7 @@ class Player {
 
         await resetPlaybackAudioProcessing(for: replacementItem)
         engine.replaceCurrentItem(with: replacementItem)
+        activePlaybackEpisodeURL = currentEpisodeURL
         currentPlaybackSource = .local
         if let episodeURL = currentEpisodeURL {
             schedulePlaybackAudioProcessing(
