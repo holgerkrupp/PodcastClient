@@ -136,16 +136,15 @@ struct ClipCaptionTimeline: Sendable, Equatable {
     var coverage: [LiveTranscriptState.Coverage]? = nil
 
     static func resolve(snapshot: ClipTranscriptSnapshot, mediaFingerprint: String,
-                        publisherAlignment: TranscriptSynchronizationTimeline?,
-                        allowUnalignedPublisherTiming: Bool = false) -> ClipCaptionTimeline? {
+                        publisherAlignment: TranscriptSynchronizationTimeline?) -> ClipCaptionTimeline? {
         let needsAlignment: Bool
         switch snapshot.origin {
         case .generated(let expected):
             guard expected == mediaFingerprint else { return nil }
             needsAlignment = false
         case .publisher:
-            guard publisherAlignment != nil || allowUnalignedPublisherTiming else { return nil }
-            needsAlignment = publisherAlignment != nil
+            guard publisherAlignment != nil else { return nil }
+            needsAlignment = true
         }
         let segments = TranscriptSegmentBuilder.makeSegments(from: snapshot.lines, options: .compact)
         guard var timeline = resolve(segments: segments, publisherAlignmentRequired: needsAlignment, alignment: publisherAlignment) else { return nil }
