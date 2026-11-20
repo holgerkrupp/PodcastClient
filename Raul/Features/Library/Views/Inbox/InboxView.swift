@@ -7,8 +7,6 @@ extension Notification.Name {
 
 enum InboxSection: String, CaseIterable, Identifiable {
     case inbox
-    case saved
-    case favorites
     case iCloudDrive
 
     var id: String { rawValue }
@@ -17,10 +15,6 @@ enum InboxSection: String, CaseIterable, Identifiable {
         switch self {
         case .inbox:
             return "Inbox"
-        case .saved:
-            return "Saved"
-        case .favorites:
-            return "Favorites"
         case .iCloudDrive:
             return "Sideloading"
         }
@@ -45,10 +39,6 @@ struct InboxView: View {
                 switch selectedSection {
                 case .inbox:
                     InboxListView()
-                case .saved:
-                    TriageEpisodeListView(savedForLater: true)
-                case .favorites:
-                    TriageEpisodeListView(savedForLater: false)
                 case .iCloudDrive:
                     SideLoadedEpisodesView(modelContainer: ModelContainerManager.shared.container)
                 }
@@ -399,7 +389,7 @@ private struct InboxTriageUndo {
     }
 }
 
-private struct TriageEpisodeListView: View {
+struct TriageEpisodeListView: View {
     let savedForLater: Bool
     @Environment(\.modelContext) private var modelContext
     @State private var episodes: [Episode] = []
@@ -413,7 +403,7 @@ private struct TriageEpisodeListView: View {
                     savedForLater ? "No Saved Episodes" : "No Favorite Episodes",
                     systemImage: savedForLater ? "bookmark" : "heart",
                     description: Text(savedForLater
-                        ? "Save an Inbox episode to keep it here without adding it to Up Next."
+                        ? "Save an episode for later to keep it here without adding it to Up Next."
                         : "Favorite episodes from Inbox or episode actions to find them here.")
                 )
             } else {

@@ -64,6 +64,16 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
+            NavigationLink(destination: TriageEpisodeListView(savedForLater: true)) {
+                Label("Saved for Later", systemImage: "bookmark")
+                    .font(.headline)
+            }
+
+            NavigationLink(destination: TriageEpisodeListView(savedForLater: false)) {
+                Label("Favorites", systemImage: "heart")
+                    .font(.headline)
+            }
+
             NavigationLink(destination: LibraryPlaylistsView()) {
                 Label("Playlists", systemImage: "list.bullet")
                     .font(.headline)
