@@ -222,7 +222,7 @@ struct AudioClipExportView: View {
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 22)
                                     .frame(minHeight: 44)
-                                    .background(Color.black.opacity(0.78), in: Capsule())
+                                    .background(Color.accentColor, in: Capsule())
                             }
                             .buttonStyle(.plain)
                             .disabled(isExporting)
