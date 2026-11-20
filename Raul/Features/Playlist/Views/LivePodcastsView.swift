@@ -152,9 +152,12 @@ struct LivePodcastRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            CoverImageView(podcast: podcast, imageURL: liveItem.artworkURL)
+            CoverImageView(
+                podcast: podcast,
+                imageURL: liveItem.artworkURL,
+                cornerRadius: GroupedListRowStyle.artworkCornerRadius
+            )
                 .frame(width: artworkSize, height: artworkSize)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .accessibilityLabel("Cover art for \(podcast.title)")
 
             VStack(alignment: .leading, spacing: 8) {

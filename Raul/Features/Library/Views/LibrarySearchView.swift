@@ -224,7 +224,10 @@ struct LibrarySearchView: View {
 
         var body: some View {
             HStack(spacing: 14) {
-                CoverImageView(imageURL: group.podcast.imageURL)
+                CoverImageView(
+                    imageURL: group.podcast.imageURL,
+                    cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                )
                     .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
 
@@ -258,7 +261,10 @@ struct LibrarySearchView: View {
 
         var body: some View {
             HStack(spacing: 12) {
-                CoverImageView(imageURL: result.podcast.imageURL)
+                CoverImageView(
+                    imageURL: result.podcast.imageURL,
+                    cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                )
                     .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
 
@@ -301,7 +307,10 @@ struct LibrarySearchView: View {
 
         var body: some View {
             HStack(alignment: .top, spacing: 12) {
-                CoverImageView(imageURL: result.episodeImageURL ?? result.podcast.imageURL)
+                CoverImageView(
+                    imageURL: result.episodeImageURL ?? result.podcast.imageURL,
+                    cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                )
                     .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
 

@@ -106,9 +106,11 @@ struct TranscriptSearchView: View {
                     }
                 } header: {
                     HStack(spacing: 10) {
-                        CoverImageView(imageURL: podcast.podcastImageURL)
+                        CoverImageView(
+                            imageURL: podcast.podcastImageURL,
+                            cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                        )
                             .frame(width: 42, height: 42)
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(podcast.podcastTitle)

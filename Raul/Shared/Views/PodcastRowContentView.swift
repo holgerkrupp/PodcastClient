@@ -269,12 +269,13 @@ struct PodcastRowContentView: View {
                         imageURL: presentation.artworkURL,
                         accessProfileOverride: presentation.artworkAccessProfile,
                         maxPixelSize: 384,
-                        loadDelay: .milliseconds(200)
+                        loadDelay: .milliseconds(200),
+                        cornerRadius: GroupedListRowStyle.artworkCornerRadius
                     )
                 }
             }
             .frame(width: artworkSize, height: artworkSize)
-            .clipShape(RoundedRectangle(cornerRadius: density == .compact ? 8 : 0, style: .continuous))
+            .clipShape(GroupedListRowStyle.artworkShape)
             .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: density == .compact ? 3 : 8) {

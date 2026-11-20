@@ -715,7 +715,8 @@ private struct PodcastBrowseEpisodeRowView: View, @preconcurrency Equatable {
                         ZStack {
                             CoverImageView(
                                 imageURL: episode.imageURL ?? podcastFeed.artworkURL,
-                                maxPixelSize: 384
+                                maxPixelSize: 384,
+                                cornerRadius: GroupedListRowStyle.artworkCornerRadius
                             )
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)

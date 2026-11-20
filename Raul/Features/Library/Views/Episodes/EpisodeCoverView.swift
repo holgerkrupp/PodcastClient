@@ -23,6 +23,9 @@ struct CoverImageView: View {
     var timecode: Double? = nil
     var maxPixelSize: CGFloat = ImageLoaderAndCache.defaultMaxPixelSize
     var loadDelay: Duration = .zero
+    /// Masks loaded, cached, and placeholder artwork identically when the cover
+    /// is used as a thumbnail in a grouped list.
+    var cornerRadius: CGFloat = 0
 
     @State private var loadedImage: Image? = nil
     @State private var lastAppliedKey: String = ""
@@ -44,6 +47,7 @@ struct CoverImageView: View {
                     .fill(Color.accent)
             }
         }
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
         .onReceive(NotificationCenter.default.publisher(for: .artworkConnectivityRecovered)) { _ in

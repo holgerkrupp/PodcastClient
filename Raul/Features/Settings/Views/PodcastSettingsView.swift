@@ -793,9 +793,11 @@ struct PodcastSettingsView: View {
         Section {
             if let podcast {
                 HStack(spacing: 14) {
-                    CoverImageView(podcast: podcast)
+                    CoverImageView(
+                        podcast: podcast,
+                        cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                    )
                         .frame(width: 56, height: 56)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
                     VStack(alignment: .leading, spacing: 4) {
                         Text(podcast.title)
@@ -3398,9 +3400,11 @@ private struct PodcastSettingsNavigationRow: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            CoverImageView(podcast: podcast)
+            CoverImageView(
+                podcast: podcast,
+                cornerRadius: GroupedListRowStyle.artworkCornerRadius
+            )
                 .frame(width: 42, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 8) {
@@ -4312,9 +4316,11 @@ private struct PodcastSettingsPodcastRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            CoverImageView(podcast: podcast)
+            CoverImageView(
+                podcast: podcast,
+                cornerRadius: GroupedListRowStyle.artworkCornerRadius
+            )
                 .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(podcast.title)

@@ -25,9 +25,11 @@ struct BookmarkRowView: View {
         let episode = marker.bookmarkEpisode
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 14) {
-                CoverImageView(episode: episode)
+                CoverImageView(
+                    episode: episode,
+                    cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                )
                     .frame(width: artworkSize, height: artworkSize)
-                    .cornerRadius(8)
                     .accessibilityHidden(true)
                 
                 VStack(alignment: .leading, spacing: 6) {

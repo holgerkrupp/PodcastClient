@@ -27,7 +27,7 @@ enum GroupedListRowPosition: Equatable {
     }
 
     var backgroundShape: UnevenRoundedRectangle {
-        let radius: CGFloat = 14
+        let radius = GroupedListRowStyle.outerCornerRadius
         let top = self == .single || self == .first
         let bottom = self == .single || self == .last
         return UnevenRoundedRectangle(
@@ -43,6 +43,15 @@ enum GroupedListRowPosition: Equatable {
 }
 
 typealias EpisodeRowGroupPosition = GroupedListRowPosition
+
+enum GroupedListRowStyle {
+    static let outerCornerRadius: CGFloat = 20
+    static let artworkCornerRadius: CGFloat = 10
+
+    static var artworkShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: artworkCornerRadius, style: .continuous)
+    }
+}
 
 struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
@@ -120,7 +129,11 @@ struct EpisodeRowView: View {
         VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 14) {
                     ZStack {
-                        CoverImageView(episode: episode, maxPixelSize: CoverImageView.episodeRowMaxPixelSize)
+                        CoverImageView(
+                            episode: episode,
+                            maxPixelSize: CoverImageView.episodeRowMaxPixelSize,
+                            cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                        )
                             .frame(width: artworkSize, height: artworkSize)
                             .accessibilityHidden(true)
 
@@ -317,7 +330,11 @@ struct EpisodeRowView: View {
     ) -> some View {
         HStack(alignment: .top, spacing: 12) {
             ZStack(alignment: .topLeading) {
-                CoverImageView(episode: episode, maxPixelSize: 384)
+                CoverImageView(
+                    episode: episode,
+                    maxPixelSize: 384,
+                    cornerRadius: GroupedListRowStyle.artworkCornerRadius
+                )
                     .frame(width: 84, height: 84)
                     .accessibilityHidden(true)
                 if let episodeTypeBadgeText {

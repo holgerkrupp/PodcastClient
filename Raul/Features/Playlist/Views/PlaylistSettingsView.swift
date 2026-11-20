@@ -272,9 +272,11 @@ struct PlaylistSettingsView: View {
 
     private func routedPodcastRow(_ podcast: PlaylistRoutedPodcast) -> some View {
         HStack(spacing: 12) {
-            CoverImageView(imageURL: podcast.imageURL)
+            CoverImageView(
+                imageURL: podcast.imageURL,
+                cornerRadius: GroupedListRowStyle.artworkCornerRadius
+            )
                 .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
