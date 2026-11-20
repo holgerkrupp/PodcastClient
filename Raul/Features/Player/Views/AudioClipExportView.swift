@@ -516,18 +516,28 @@ struct AudioClipExportView: View {
             let before = String(caption.text[..<range.lowerBound])
             let current = String(caption.text[range])
             let after = String(caption.text[range.upperBound...])
-            (Text((caption.speaker.map { "\($0): " } ?? "") + before)
-             + Text(current).bold().underline()
-             + Text(after))
-                .font(.system(size: max(12, min(containerWidth * 0.045, 32))))
-                .foregroundStyle(.white)
-                .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(maxWidth: min(containerWidth * AudioClipExporter.captionWidthRatio(for: previewCanvas), 620))
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-                .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 8))
+            VStack(alignment: .leading, spacing: 2) {
+                if let speaker = caption.speaker, speaker.isEmpty == false {
+                    Text("\(speaker):")
+                        .font(.headline)
+                        .foregroundStyle(.green)
+                }
+
+                (Text(before) + Text(current).bold().underline() + Text(after))
+                    .font(.system(size: max(12, min(containerWidth * 0.045, 32))))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: min(containerWidth * AudioClipExporter.captionWidthRatio(for: previewCanvas), 620), alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(.white.opacity(0.22), lineWidth: 1)
+            }
         }
     }
 

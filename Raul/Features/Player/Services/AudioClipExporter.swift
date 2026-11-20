@@ -620,22 +620,36 @@ private extension AudioClipExporter {
               display.location <= display.text.utf16.count,
               display.length <= display.text.utf16.count - display.location,
               Range(NSRange(location: display.location, length: display.length), in: display.text) != nil else { return nil }
-        let prefix = display.speaker.map { "\($0): " } ?? ""
-        let text = prefix + display.text
         let fontSize = max(18, min(canvasSize.width * 0.045, 40))
-        let font = platformSystemFont(ofSize: fontSize, weight: .regular)
-        let value = NSMutableAttributedString(string: text, attributes: [.font: font, .foregroundColor: platformWhiteObject])
+        let value = NSMutableAttributedString()
+        if let speaker = display.speaker, speaker.isEmpty == false {
+            value.append(NSAttributedString(
+                string: "\(speaker):\n",
+                attributes: [
+                    .font: platformSystemFont(ofSize: fontSize * 0.82, weight: .semibold),
+                    .foregroundColor: platformSpeakerColorObject
+                ]
+            ))
+        }
+        let bodyStart = value.length
+        value.append(NSAttributedString(
+            string: display.text,
+            attributes: [
+                .font: platformSystemFont(ofSize: fontSize, weight: .regular),
+                .foregroundColor: platformWhiteObject
+            ]
+        ))
         let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = .center
+        paragraph.alignment = .left
         paragraph.lineBreakMode = .byWordWrapping
         value.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: value.length))
         value.addAttributes([
             .font: platformSystemFont(ofSize: fontSize, weight: .bold),
             .underlineStyle: NSUnderlineStyle.single.rawValue
-        ], range: NSRange(location: prefix.utf16.count + display.location, length: display.length))
+        ], range: NSRange(location: bodyStart + display.location, length: display.length))
         let widthRatio = captionWidthRatio(for: canvasSize)
         let maxWidth = max(1, canvasSize.width * widthRatio)
-        let maxHeight = fontSize * 2.6
+        let maxHeight = fontSize * 3.6
         let bounds = value.boundingRect(
             with: CGSize(width: maxWidth - 24, height: maxHeight),
             options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil
@@ -647,16 +661,28 @@ private extension AudioClipExporter {
         format.scale = 1
         let renderer = UIGraphicsImageRenderer(size: imageSize, format: format)
         return renderer.image { _ in
-            UIColor.black.withAlphaComponent(0.8).setFill()
-            UIBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), cornerRadius: 8).fill()
+            let roundedRect = UIBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), cornerRadius: 16)
+            UIColor.white.withAlphaComponent(0.10).setFill()
+            roundedRect.fill()
+            UIColor.black.withAlphaComponent(0.38).setFill()
+            roundedRect.fill()
+            UIColor.white.withAlphaComponent(0.22).setStroke()
+            roundedRect.lineWidth = 1
+            roundedRect.stroke()
             value.draw(with: CGRect(x: 12, y: 8, width: imageSize.width - 24, height: imageSize.height - 16),
                        options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
         }
 #else
         let image = NSImage(size: imageSize)
         image.lockFocus()
-        NSColor.black.withAlphaComponent(0.8).setFill()
-        NSBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), xRadius: 8, yRadius: 8).fill()
+        let roundedRect = NSBezierPath(roundedRect: CGRect(origin: .zero, size: imageSize), xRadius: 16, yRadius: 16)
+        NSColor.white.withAlphaComponent(0.10).setFill()
+        roundedRect.fill()
+        NSColor.black.withAlphaComponent(0.38).setFill()
+        roundedRect.fill()
+        NSColor.white.withAlphaComponent(0.22).setStroke()
+        roundedRect.lineWidth = 1
+        roundedRect.stroke()
         value.draw(with: CGRect(x: 12, y: 8, width: imageSize.width - 24, height: imageSize.height - 16),
                    options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
         image.unlockFocus()
@@ -708,6 +734,7 @@ private extension AudioClipExporter {
 
 #if canImport(UIKit)
     static let platformWhiteObject = UIColor.white
+    static let platformSpeakerColorObject = UIColor.systemGreen
 
     static func platformWhite(alpha: CGFloat) -> CGColor {
         UIColor(white: 1.0, alpha: alpha).cgColor
@@ -726,6 +753,7 @@ private extension AudioClipExporter {
     }
 #else
     static let platformWhiteObject = NSColor.white
+    static let platformSpeakerColorObject = NSColor.systemGreen
 
     static func platformWhite(alpha: CGFloat) -> CGColor {
         NSColor.white.withAlphaComponent(alpha).cgColor
