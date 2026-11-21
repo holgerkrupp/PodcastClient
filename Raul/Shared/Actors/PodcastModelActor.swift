@@ -150,6 +150,7 @@ struct PodcastUpdateSummary: Sendable {
 struct PodcastEpisodeImportResult: Sendable {
     var newEpisodeCount = 0
     var postCreationEpisodeURLs: [URL] = []
+    var feedDataChanged = false
 }
 
 enum PodcastEpisodeImportClassification: Sendable, Equatable {
@@ -1705,6 +1706,7 @@ actor PodcastModelActor {
 
         do {
             var initialPageNewEpisodeCount = 0
+            var initialPageFeedDataChanged = false
             refreshStage = "initial_page_import"
             if endpointChanged == false,
                let resolvedInitialPage, resolvedInitialPage.matches(resolvedEndpoint),
@@ -1737,11 +1739,14 @@ actor PodcastModelActor {
                         processNewEpisodesDuringSilentRefresh: false,
                         deadline: deadline,
                         writerAlreadyHeld: true,
+                        deferAutomaticDownloadPolicy: true,
                     )
                     initialPageNewEpisodeCount = seedImportResult.newEpisodeCount
+                    initialPageFeedDataChanged = seedImportResult.feedDataChanged
                     let seedPostCreationURLs = seedImportResult.postCreationEpisodeURLs
                     modelContext.saveIfNeeded()
                     await commitCoordinator.release()
+                    await publishFeedImportInvalidations(newEpisodeCount: seedImportResult.newEpisodeCount)
                     await processCommittedNewEpisodes(
                         seedPostCreationURLs,
                         sendNotifications: silent != true || processNewEpisodesDuringSilentRefresh
@@ -1857,6 +1862,7 @@ actor PodcastModelActor {
                     deadline: deadline,
                     progress: progress,
                     writerAlreadyHeld: true,
+                    deferAutomaticDownloadPolicy: true,
                 )
                 os_signpost(.end, log: Self.refreshSignpostLog, name: "Podcast refresh store commit", signpostID: writeSignpostID)
             } catch {
@@ -1919,20 +1925,12 @@ actor PodcastModelActor {
             }
             PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
             modelContext.saveIfNeeded()
-            if newEpisodeCount > 0 {
-                await InboxChangeBroadcaster.notifyInboxDidChange()
-            }
-            // Smart playlist matching is expensive on large libraries. The
-            // feed import has already classified and updated matching episodes;
-            // only invalidate memberships when it actually added episodes.
-            if newEpisodeCount > 0 {
-                await MainActor.run {
-                    NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
-                    NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
-                }
-            }
             writerHeld = false
             await commitCoordinator.release()
+            await publishFeedImportInvalidations(newEpisodeCount: newEpisodeCount)
+            if initialPageFeedDataChanged || importResult.feedDataChanged {
+                await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: feedURL)
+            }
             await processCommittedNewEpisodes(
                 importResult.postCreationEpisodeURLs,
                 sendNotifications: silent != true || processNewEpisodesDuringSilentRefresh
@@ -2052,6 +2050,17 @@ actor PodcastModelActor {
             featureEnabled: featureEnabled
         )
     }
+
+    private func publishFeedImportInvalidations(newEpisodeCount: Int) async {
+        guard newEpisodeCount > 0 else { return }
+        await InboxChangeBroadcaster.notifyInboxDidChange()
+        // Smart playlist matching is expensive on large libraries; invalidate
+        // once per durable import batch rather than once per episode.
+        await MainActor.run {
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+            NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
+        }
+    }
     
     func updateDetails(
         _ podcast: Podcast,
@@ -2061,7 +2070,8 @@ actor PodcastModelActor {
         processNewEpisodesDuringSilentRefresh: Bool = false,
         deadline: Date? = nil,
         progress: SubscriptionProgressHandler? = nil,
-        writerAlreadyHeld: Bool = false
+        writerAlreadyHeld: Bool = false,
+        deferAutomaticDownloadPolicy: Bool = false
     ) async throws -> PodcastEpisodeImportResult {
         let commitCoordinator = PodcastFeedCommitCoordinator.shared
         if writerAlreadyHeld == false {
@@ -2361,7 +2371,7 @@ actor PodcastModelActor {
 
             await reportProgress(SubscriptionProgressUpdate(0.96, "Finalizing library updates"), using: progress)
 
-            if feedDataChanged, Task.isCancelled == false,
+            if feedDataChanged, deferAutomaticDownloadPolicy == false, Task.isCancelled == false,
                deadline.map({ Date() < $0 }) ?? true,
                let podcastFeed = podcast.feed {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: podcastFeed)
@@ -2371,6 +2381,7 @@ actor PodcastModelActor {
         // Feed parsing updates the durable library directly; persist even when
         // no new episodes were inserted so metadata-only refreshes are durable.
         modelContext.saveIfNeeded()
+        importResult.feedDataChanged = feedDataChanged
 
         return importResult
     }
@@ -2710,11 +2721,6 @@ actor PodcastModelActor {
 #endif
                 if result.success == false {
                     failed += 1
-                }
-                if result.success, result.newEpisodeCount > 0 {
-                    // Surface this feed's episodes while the remaining feeds are
-                    // still being fetched.
-                    await InboxChangeBroadcaster.notifyInboxDidChange()
                 }
                 await progress?(completed, feeds.count)
                 enqueueNext()

@@ -17,6 +17,17 @@ queue depth, wait duration, and permit hold duration. Bulk refresh events carry
 the run ID and hashed feed ID so writer wait/hold can be correlated with the
 feed completion timeline without logging raw feed identities.
 
+Feed graph imports now finish their save and release the single-writer permit
+before publishing Inbox, smart-playlist, or Spotlight invalidations. A durable
+first-page seed publishes its invalidations as soon as its permit is released
+so episodes remain visible while later pages are fetched. The final refresh pass
+does not repeat Refresh All's former per-worker Inbox notification. Automatic
+download policy is deferred from seed and final imports and runs once after the
+final permit release when either import changed episode data; standalone
+`updateDetails` callers retain the existing immediate policy behavior. This is
+an ordering/performance change with no intended user-visible behavior change,
+so no in-app guide change is needed.
+
 ## Deterministic HTTP fixtures
 
 Start a local fixture server:
