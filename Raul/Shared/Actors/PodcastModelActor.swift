@@ -2054,12 +2054,7 @@ actor PodcastModelActor {
     private func publishFeedImportInvalidations(newEpisodeCount: Int) async {
         guard newEpisodeCount > 0 else { return }
         await InboxChangeBroadcaster.notifyInboxDidChange()
-        // Smart playlist matching is expensive on large libraries; invalidate
-        // once per durable import batch rather than once per episode.
-        await MainActor.run {
-            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
-            NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
-        }
+        await PodcastFeedImportInvalidationBroadcaster.notify()
     }
     
     func updateDetails(

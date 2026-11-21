@@ -44,3 +44,51 @@ enum InboxChangeBroadcaster {
         NotificationCenter.default.post(name: .inboxDidChange, object: nil)
     }
 }
+
+/// Coalesces the expensive library-index invalidations caused by a bulk feed
+/// import. The first completed feed is published immediately; subsequent
+/// changes produce at most one trailing invalidation per interval so a long
+/// Refresh All continues to expose updates instead of waiting for the run end.
+@MainActor
+enum PodcastFeedImportInvalidationBroadcaster {
+    private static let minimumInterval: TimeInterval = 1.0
+    private static var lastPostDate: Date?
+    private static var hasScheduledTrailingPost = false
+    private static var trailingPostGeneration = 0
+
+    static func notify() {
+        guard let lastPostDate else {
+            post()
+            return
+        }
+
+        let elapsed = Date().timeIntervalSince(lastPostDate)
+        guard elapsed < minimumInterval else {
+            trailingPostGeneration &+= 1
+            hasScheduledTrailingPost = false
+            post()
+            return
+        }
+
+        guard hasScheduledTrailingPost == false else { return }
+        hasScheduledTrailingPost = true
+        trailingPostGeneration &+= 1
+        let generation = trailingPostGeneration
+        Task { @MainActor in
+            do {
+                try await Task.sleep(for: .seconds(minimumInterval - elapsed))
+            } catch {
+                return
+            }
+            guard generation == trailingPostGeneration else { return }
+            hasScheduledTrailingPost = false
+            post()
+        }
+    }
+
+    private static func post() {
+        lastPostDate = Date()
+        NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        NotificationCenter.default.post(name: .spotlightLibraryDidChange, object: nil)
+    }
+}
