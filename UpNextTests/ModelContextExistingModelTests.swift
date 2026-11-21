@@ -587,13 +587,95 @@ final class ModelContextExistingModelTests: XCTestCase {
         let userState = try XCTUnwrap(before.metaData)
         userState.playPosition = 42
         userState.setArchived(true)
+        before.url = URL(string: "https://example.com/previous-enclosure.mp3")!
         try editContext.save()
 
         _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
         let episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
         XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.guid, "fast-96-0")
+        XCTAssertEqual(episodes.first?.url, URL(string: "https://media.example.invalid/fast/96/0.mp3"))
         XCTAssertEqual(episodes.first?.metaData?.playPosition, 42)
         XCTAssertEqual(episodes.first?.metaData?.isArchived, true)
+    }
+
+    func testFixtureRefreshUsesEnclosureURLMatchWhenGUIDIsMissing() async throws {
+        let baseURL = ProcessInfo.processInfo.environment["PODCAST_REFRESH_FIXTURE_BASE"]
+            ?? "http://127.0.0.1:8787"
+        guard let feed = URL(string: baseURL + "/fast/97?run=\(UUID().uuidString)"),
+              let probe = URL(string: baseURL + "/fast/0") else {
+            throw XCTSkip("Invalid fixture server URL")
+        }
+        do {
+            var request = URLRequest(url: probe)
+            request.timeoutInterval = 1
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            throw XCTSkip("Start the fixture server with --feeds 100 --episodes 1")
+        }
+
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        context.insert(Podcast(feed: feed))
+        try context.save()
+        let worker = PodcastModelActor(modelContainer: container)
+        _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
+
+        let editContext = ModelContext(container)
+        let before = try XCTUnwrap(editContext.fetch(FetchDescriptor<Episode>()).first)
+        let userState = try XCTUnwrap(before.metaData)
+        userState.playPosition = 57
+        before.guid = nil
+        try editContext.save()
+
+        _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
+        let episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
+        XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.guid, "fast-97-0")
+        XCTAssertEqual(episodes.first?.metaData?.playPosition, 57)
+    }
+
+    func testFixtureRefreshPreservesCrossPodcastEnclosureReuse() async throws {
+        let baseURL = ProcessInfo.processInfo.environment["PODCAST_REFRESH_FIXTURE_BASE"]
+            ?? "http://127.0.0.1:8787"
+        guard let feed = URL(string: baseURL + "/fast/98?run=\(UUID().uuidString)"),
+              let probe = URL(string: baseURL + "/fast/0") else {
+            throw XCTSkip("Invalid fixture server URL")
+        }
+        do {
+            var request = URLRequest(url: probe)
+            request.timeoutInterval = 1
+            _ = try await URLSession.shared.data(for: request)
+        } catch {
+            throw XCTSkip("Start the fixture server with --feeds 100 --episodes 1")
+        }
+
+        let container = try makeContainer()
+        let context = ModelContext(container)
+        let otherPodcast = insertPodcast("other-owner", in: context)
+        let targetPodcast = Podcast(feed: feed)
+        let sharedURL = URL(string: "https://media.example.invalid/fast/98/0.mp3")!
+        let sharedEpisode = Episode(
+            guid: nil,
+            title: "Shared episode",
+            url: sharedURL,
+            podcast: otherPodcast,
+            duration: 100
+        )
+        sharedEpisode.playProgress = 0.5
+        context.insert(targetPodcast)
+        context.insert(sharedEpisode)
+        try context.save()
+
+        let worker = PodcastModelActor(modelContainer: container)
+        _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
+
+        let readContext = ModelContext(container)
+        let episodes = try readContext.fetch(FetchDescriptor<Episode>())
+        XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.url, sharedURL)
+        XCTAssertEqual(episodes.first?.podcast?.feed, feed)
+        XCTAssertEqual(episodes.first?.metaData?.playPosition, 50)
     }
 
     func testFixtureServerFailureDoesNotAdvanceSuccessfulParseTime() async throws {

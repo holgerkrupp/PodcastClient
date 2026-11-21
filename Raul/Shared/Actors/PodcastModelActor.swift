@@ -481,6 +481,72 @@ actor PodcastModelActor {
         return identifiers
     }
 
+    /// Fetch only existing episodes that can match this parsed feed. On feeds
+    /// with many historical items, a new or recently changed response usually
+    /// needs only a small subset of the podcast's stored episode models.
+    private func existingEpisodeLookupMaps(
+        for podcast: Podcast,
+        matching episodeData: [[String: Any]]
+    ) throws -> (byGUID: [String: Episode], byURL: [URL: Episode]) {
+        var byGUID: [String: Episode] = [:]
+        var byURL: [URL: Episode] = [:]
+        var foundDuplicateIdentity = false
+        let batchSize = 200
+        let podcastID = podcast.persistentModelID
+
+        for start in stride(from: 0, to: episodeData.count, by: batchSize) {
+            let batch = episodeData[start..<min(start + batchSize, episodeData.count)]
+            let identifiers = Array(Set(batch.compactMap { episodeIdentifier(from: $0) }))
+            let urls = Array(Set(batch.compactMap { episodeURL(from: $0) }))
+            guard identifiers.isEmpty == false || urls.isEmpty == false else { continue }
+
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { episode in
+                    episode.podcast?.persistentModelID == podcastID
+                        && (
+                            episode.guid != nil && identifiers.contains(episode.guid!)
+                                || episode.url != nil && urls.contains(episode.url!)
+                        )
+                }
+            )
+
+            for episode in try modelContext.fetch(descriptor) {
+                if let guid = episode.guid, guid.isEmpty == false {
+                    if let previous = byGUID[guid],
+                       previous.persistentModelID != episode.persistentModelID {
+                        foundDuplicateIdentity = true
+                    }
+                    byGUID[guid] = episode
+                }
+                if let url = episode.url {
+                    if let previous = byURL[url],
+                       previous.persistentModelID != episode.persistentModelID {
+                        foundDuplicateIdentity = true
+                    }
+                    byURL[url] = episode
+                }
+            }
+        }
+
+        // The old relationship traversal picked the last row it happened to
+        // visit when duplicate GUIDs or enclosure URLs existed. Keep that
+        // behavior for this uncommon ambiguous identity case.
+        if foundDuplicateIdentity {
+            byGUID.removeAll(keepingCapacity: true)
+            byURL.removeAll(keepingCapacity: true)
+            for episode in podcast.episodes ?? [] {
+                if let guid = episode.guid, guid.isEmpty == false {
+                    byGUID[guid] = episode
+                }
+                if let url = episode.url {
+                    byURL[url] = episode
+                }
+            }
+        }
+
+        return (byGUID, byURL)
+    }
+
     private func recoveredEndpointMatchesExistingPodcast(
         _ parsedFeed: [String: Any],
         knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
@@ -2125,19 +2191,14 @@ actor PodcastModelActor {
             // Silence controls UI and notification behavior. It must not
             // change classification. The persisted subscription date applies
             // equally to first imports, pagination, retries and later refreshes.
-            let existingEpisodes = podcast.episodes ?? []
             let shouldProcessNewEpisodes = podcast.metaData?.isSubscribed == true
                 && podcast.metaData?.subscriptionDate != nil
-            var existingEpisodesByGUID: [String: Episode] = [:]
-            var existingEpisodesByURL: [URL: Episode] = [:]
-            for episode in existingEpisodes {
-                if let guid = episode.guid, guid.isEmpty == false {
-                    existingEpisodesByGUID[guid] = episode
-                }
-                if let url = episode.url {
-                    existingEpisodesByURL[url] = episode
-                }
-            }
+            let existingLookups = try existingEpisodeLookupMaps(
+                for: podcast,
+                matching: episodesData
+            )
+            var existingEpisodesByGUID = existingLookups.byGUID
+            var existingEpisodesByURL = existingLookups.byURL
 
             for (index, episodeData) in episodesData.enumerated() {
                 // Once the writer starts a feed graph commit, finish it before
@@ -2205,20 +2266,24 @@ actor PodcastModelActor {
                     )
                     if silent == true {
                         unsavedSilentEpisodeChanges += 1
-                    } else if let existingEpisode = fetchEpisode(byURL: episodeURL) {
-                        if resolveExistingMissingDurations {
-                            await fillMissingRemoteMP3DurationIfNeeded(
-                                episodeID: existingEpisode.persistentModelID,
-                                episodeURL: existingEpisode.url,
-                                currentDuration: existingEpisode.duration
-                            )
+                    }
+                    let relinkedEpisode = fetchEpisode(byURL: episodeURL)
+                    if let relinkedEpisode {
+                        if let guid = relinkedEpisode.guid, guid.isEmpty == false {
+                            existingEpisodesByGUID[guid] = relinkedEpisode
                         }
-                        if let guid = existingEpisode.guid, guid.isEmpty == false {
-                            existingEpisodesByGUID[guid] = existingEpisode
+                        if let url = relinkedEpisode.url {
+                            existingEpisodesByURL[url] = relinkedEpisode
                         }
-                        if let url = existingEpisode.url {
-                            existingEpisodesByURL[url] = existingEpisode
-                        }
+                    }
+                    if silent != true,
+                       resolveExistingMissingDurations,
+                       let relinkedEpisode {
+                        await fillMissingRemoteMP3DurationIfNeeded(
+                            episodeID: relinkedEpisode.persistentModelID,
+                            episodeURL: relinkedEpisode.url,
+                            currentDuration: relinkedEpisode.duration
+                        )
                     }
 
                     if silent == true, unsavedSilentEpisodeChanges >= 25 {
