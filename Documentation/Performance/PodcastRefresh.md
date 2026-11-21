@@ -4,6 +4,14 @@ The refresh code emits Points of Interest signposts for the full feed refresh,
 HEAD preflight, GET/XML parse, and the episode store commit. Refresh log records
 include a random run ID and a short SHA-256 feed correlation ID. They do not
 include credentials, query strings, or raw feed URLs in the correlation field.
+Manual Refresh All also emits a `Podcast refresh feed completion` event for each
+finished feed. It records scheduled and completion ordinals, hashed feed ID,
+result, whether episodes changed, new episode count, feed wall time, cumulative
+process CPU time for the run, and process physical footprint sampled after the
+worker result is returned. CPU and memory are process-wide samples; they are
+useful for run-to-run trends, not proof that a particular feed retained memory
+or consumed that CPU. Use Instruments to attribute allocations, SQL work, and
+writer wait/hold to individual stages.
 
 ## Deterministic HTTP fixtures
 

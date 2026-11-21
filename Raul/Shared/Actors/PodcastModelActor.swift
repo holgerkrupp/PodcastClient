@@ -2534,6 +2534,8 @@ actor PodcastModelActor {
         let refreshStartedAt = ContinuousClock.now
         let runStartedAt = Date()
         let refreshRunID = UUID()
+        let cpuTimeSource = SystemProcessCPUTimeSource()
+        let processCPUAtStart = cpuTimeSource.sample().cpuTime
         await progress?(0, feeds.count)
         guard feeds.isEmpty == false else { return }
 
@@ -2542,7 +2544,7 @@ actor PodcastModelActor {
 #endif
 
         let failed = await withTaskGroup(
-            of: (success: Bool, didUpdate: Bool, title: String, feed: URL, newEpisodeCount: Int, errorMessage: String?).self,
+            of: (success: Bool, didUpdate: Bool, title: String, feed: URL, newEpisodeCount: Int, errorMessage: String?, scheduledOrdinal: Int, durationMilliseconds: Int64).self,
             returning: Int.self
         ) { group in
             var nextIndex = 0
@@ -2551,10 +2553,12 @@ actor PodcastModelActor {
 
             func enqueueNext() {
                 guard nextIndex < feeds.count else { return }
+                let scheduledOrdinal = nextIndex
                 let feed = feeds[nextIndex]
                 nextIndex += 1
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
+                    let feedStartedAt = ContinuousClock.now
                     do {
                         let summary = try await worker.updatePodcastWithSummary(
                             feed,
@@ -2562,6 +2566,7 @@ actor PodcastModelActor {
                             refreshRunID: refreshRunID,
                             resolveExistingMissingDurations: false
                         )
+                        let durationMilliseconds = Self.milliseconds(feedStartedAt.duration(to: .now))
                         let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             true,
@@ -2569,9 +2574,12 @@ actor PodcastModelActor {
                             title ?? feed.absoluteString,
                             feed,
                             summary.newEpisodeCount,
-                            nil
+                            nil,
+                            scheduledOrdinal,
+                            durationMilliseconds
                         )
                     } catch {
+                        let durationMilliseconds = Self.milliseconds(feedStartedAt.duration(to: .now))
                         let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             false,
@@ -2579,7 +2587,9 @@ actor PodcastModelActor {
                             title ?? feed.absoluteString,
                             feed,
                             0,
-                            error.localizedDescription
+                            error.localizedDescription,
+                            scheduledOrdinal,
+                            durationMilliseconds
                         )
                     }
                 }
@@ -2591,6 +2601,27 @@ actor PodcastModelActor {
 
             while let result = await group.next() {
                 completed += 1
+                let processCPU = cpuTimeSource.sample().cpuTime - processCPUAtStart
+                let memoryFootprint = MemoryFootprint.current()
+                let resultLabel = result.errorMessage == nil
+                    ? (result.didUpdate ? "updated" : "unchanged")
+                    : "failed"
+                os_signpost(
+                    .event,
+                    log: Self.refreshSignpostLog,
+                    name: "Podcast refresh feed completion",
+                    "run_id=%{public}@ scheduled=%{public}d completed=%{public}d feed_id=%{public}@ result=%{public}@ updated=%{public}d new_episodes=%{public}d feed_ms=%{public}lld process_cpu_ms=%{public}lld footprint_bytes=%{public}llu",
+                    refreshRunID.uuidString as NSString,
+                    result.scheduledOrdinal + 1,
+                    completed,
+                    Self.feedCorrelationID(result.feed) as NSString,
+                    resultLabel as NSString,
+                    result.didUpdate ? 1 : 0,
+                    result.newEpisodeCount,
+                    result.durationMilliseconds,
+                    Int64(max(0, processCPU) * 1_000),
+                    memoryFootprint
+                )
 #if DEBUG
                 let podcastResult: RefreshHistoryPodcastResult
                 if let errorMessage = result.errorMessage {
