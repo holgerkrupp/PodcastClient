@@ -197,7 +197,6 @@ private struct PodcastRefreshSnapshot: Sendable {
     let accessProfile: PodcastAccessProfile?
     let hadSuccessfulImport: Bool
     let title: String
-    let knownEpisodes: KnownPodcastEpisodeIdentifiers
     let hasTimeSensitiveLiveItem: Bool
 }
 
@@ -1407,7 +1406,6 @@ actor PodcastModelActor {
                 accessProfile: profile,
                 hadSuccessfulImport: podcast.metaData?.lastRefresh != nil,
                 title: podcast.title,
-                knownEpisodes: knownEpisodeIdentifiers(for: podcast),
                 hasTimeSensitiveLiveItem: liveNeedsGET
             )
         }
@@ -1417,8 +1415,6 @@ actor PodcastModelActor {
         let accessProfile = snapshot.accessProfile
         let hadSuccessfulImport = snapshot.hadSuccessfulImport
         let titleSnapshot = snapshot.title
-        let knownEpisodeIdentifiers = snapshot.knownEpisodes
-        let existingEpisodeIdentifiers = snapshot.knownEpisodes
         let hasTimeSensitiveLiveItem = snapshot.hasTimeSensitiveLiveItem
         /*
         if let freshPodcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
@@ -1470,6 +1466,18 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
         }
         try checkRefreshDeadline(deadline)
+
+        // Only materialize the episode relationship once this refresh is
+        // known to need a body. Most unchanged bulk-refresh candidates return
+        // from the HEAD path above without touching their episode history.
+        let knownEpisodeIdentifiers: KnownPodcastEpisodeIdentifiers
+        if let podcast: Podcast = modelContext.existingModel(for: podcastIDRef) {
+            knownEpisodeIdentifiers = self.knownEpisodeIdentifiers(for: podcast)
+        } else {
+            knownEpisodeIdentifiers = KnownPodcastEpisodeIdentifiers()
+        }
+        let existingEpisodeIdentifiers = knownEpisodeIdentifiers
+
         refreshStage = "endpoint_resolution"
 
         let conditionalValidator = policy.performHEAD
