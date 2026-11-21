@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import OSLog
 import SwiftData
 
 /// Stage A contains only immutable inputs and network/parser work. Its output
@@ -136,52 +137,118 @@ actor PodcastMutationCoordinator {
 /// from interleaving relationship mutations and saves in shared SwiftData stores.
 actor PodcastFeedCommitCoordinator {
     static let shared = PodcastFeedCommitCoordinator()
+    private static let signpostLog = OSLog(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: .pointsOfInterest
+    )
 
     private struct Waiter {
         let id: UUID
-        let continuation: CheckedContinuation<Void, any Error>
+        let queueDepthAtRequest: Int
+        let continuation: CheckedContinuation<Int, any Error>
     }
     private var occupied = false
     private var waiters: [Waiter] = []
+    private var permitStartedAt: ContinuousClock.Instant?
 
     func acquire() async throws {
         try Task.checkCancellation()
+        let requestedAt = ContinuousClock.now
         if occupied == false {
             occupied = true
+            permitStartedAt = .now
+            Self.logAcquire(wait: .zero, queueDepth: 0)
             return
         }
         let waiterID = UUID()
-        let _: Void = try await withTaskCancellationHandler {
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+        let queueDepthAtRequest = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, any Error>) in
                 if Task.isCancelled {
                     continuation.resume(throwing: CancellationError())
                 } else if occupied == false {
                     occupied = true
-                    continuation.resume(returning: ())
+                    permitStartedAt = .now
+                    continuation.resume(returning: 0)
                 } else {
-                    waiters.append(Waiter(id: waiterID, continuation: continuation))
+                    let queueDepth = waiters.count + 1
+                    waiters.append(
+                        Waiter(
+                            id: waiterID,
+                            queueDepthAtRequest: queueDepth,
+                            continuation: continuation
+                        )
+                    )
                 }
             }
         } onCancel: {
             Task { await self.cancelWaiter(waiterID) }
         }
         if Task.isCancelled {
+            Self.logCancellation(queueDepth: waiters.count)
             release()
             throw CancellationError()
         }
+        Self.logAcquire(
+            wait: requestedAt.duration(to: .now),
+            queueDepth: queueDepthAtRequest
+        )
     }
 
     func release() {
+        let holdDuration = permitStartedAt.map { $0.duration(to: .now) } ?? .zero
+        Self.logRelease(hold: holdDuration, queueDepth: waiters.count)
         if waiters.isEmpty {
             occupied = false
+            permitStartedAt = nil
         } else {
-            waiters.removeFirst().continuation.resume(returning: ())
+            let next = waiters.removeFirst()
+            permitStartedAt = .now
+            next.continuation.resume(returning: next.queueDepthAtRequest)
         }
+    }
+
+    private static func logAcquire(wait: Duration, queueDepth: Int) {
+        os_signpost(
+            .event,
+            log: signpostLog,
+            name: "Podcast feed writer acquired",
+            "queue_depth_at_request=%{public}d wait_ms=%{public}lld",
+            queueDepth,
+            milliseconds(wait)
+        )
+    }
+
+    private static func logRelease(hold: Duration, queueDepth: Int) {
+        os_signpost(
+            .event,
+            log: signpostLog,
+            name: "Podcast feed writer released",
+            "queue_depth_at_release=%{public}d hold_ms=%{public}lld",
+            queueDepth,
+            milliseconds(hold)
+        )
+    }
+
+    private static func logCancellation(queueDepth: Int) {
+        os_signpost(
+            .event,
+            log: signpostLog,
+            name: "Podcast feed writer wait cancelled",
+            "queue_depth_after_cancel=%{public}d",
+            queueDepth
+        )
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int64 {
+        let components = duration.components
+        return components.seconds * 1_000
+            + Int64(components.attoseconds / 1_000_000_000_000_000)
     }
 
     private func cancelWaiter(_ id: UUID) {
         guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
         waiters.remove(at: index).continuation.resume(throwing: CancellationError())
+        Self.logCancellation(queueDepth: waiters.count)
     }
 }
 
