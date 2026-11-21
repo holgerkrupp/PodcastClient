@@ -1283,6 +1283,10 @@ actor PodcastModelActor {
         startingAt: URL?,
         progress: SubscriptionProgressHandler?
     ) async throws -> PodcastUpdateSummary {
+        let writerDiagnosticContext = PodcastFeedWriterCorrelationContext(
+            runID: refreshRunID,
+            hashedFeedID: Self.feedCorrelationID(podcastFeed)
+        )
         let refreshSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
         os_signpost(
             .begin,
@@ -1647,7 +1651,7 @@ actor PodcastModelActor {
                 // Make the already validated first page visible and durable
                 // before downloading the rest of a large back catalogue.
                 let commitCoordinator = PodcastFeedCommitCoordinator.shared
-                try await commitCoordinator.acquire()
+                try await commitCoordinator.acquire(context: writerDiagnosticContext)
                 guard let seedPodcast: Podcast = modelContext.existingModel(for: podcastIDRef),
                       seedPodcast.feed == feedURL else {
                     await commitCoordinator.release()
@@ -1714,7 +1718,7 @@ actor PodcastModelActor {
 
             let commitCoordinator = PodcastFeedCommitCoordinator.shared
             let writerWaitStartedAt = ContinuousClock.now
-            try await commitCoordinator.acquire()
+            try await commitCoordinator.acquire(context: writerDiagnosticContext)
             var writerHeld = true
             defer {
                 if writerHeld { Task { await commitCoordinator.release() } }

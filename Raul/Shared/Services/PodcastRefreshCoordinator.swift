@@ -135,6 +135,23 @@ actor PodcastMutationCoordinator {
 
 /// One writer gate for feed-to-episode graph imports. It prevents model actors
 /// from interleaving relationship mutations and saves in shared SwiftData stores.
+struct PodcastFeedWriterCorrelationContext: Sendable {
+    let runID: UUID
+    let hashedFeedID: String
+
+    init?(runID: UUID, hashedFeedID: String) {
+        let bytes = Array(hashedFeedID.utf8)
+        guard bytes.count == 16,
+              bytes.allSatisfy({
+                  (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0)
+              }) else {
+            return nil
+        }
+        self.runID = runID
+        self.hashedFeedID = hashedFeedID
+    }
+}
+
 actor PodcastFeedCommitCoordinator {
     static let shared = PodcastFeedCommitCoordinator()
     private static let signpostLog = OSLog(
@@ -145,29 +162,39 @@ actor PodcastFeedCommitCoordinator {
     private struct Waiter {
         let id: UUID
         let queueDepthAtRequest: Int
+        let context: PodcastFeedWriterCorrelationContext?
         let continuation: CheckedContinuation<Int, any Error>
     }
     private var occupied = false
     private var waiters: [Waiter] = []
     private var permitStartedAt: ContinuousClock.Instant?
+    private var permitContext: PodcastFeedWriterCorrelationContext?
 
-    func acquire() async throws {
-        try Task.checkCancellation()
+    func acquire(context: PodcastFeedWriterCorrelationContext? = nil) async throws {
+        do {
+            try Task.checkCancellation()
+        } catch {
+            Self.logCancellation(queueDepth: waiters.count, context: context)
+            throw error
+        }
         let requestedAt = ContinuousClock.now
         if occupied == false {
             occupied = true
             permitStartedAt = .now
-            Self.logAcquire(wait: .zero, queueDepth: 0)
+            permitContext = context
+            Self.logAcquire(wait: .zero, queueDepth: 0, context: context)
             return
         }
         let waiterID = UUID()
         let queueDepthAtRequest = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Int, any Error>) in
                 if Task.isCancelled {
+                    Self.logCancellation(queueDepth: waiters.count, context: context)
                     continuation.resume(throwing: CancellationError())
                 } else if occupied == false {
                     occupied = true
                     permitStartedAt = .now
+                    permitContext = context
                     continuation.resume(returning: 0)
                 } else {
                     let queueDepth = waiters.count + 1
@@ -175,6 +202,7 @@ actor PodcastFeedCommitCoordinator {
                         Waiter(
                             id: waiterID,
                             queueDepthAtRequest: queueDepth,
+                            context: context,
                             continuation: continuation
                         )
                     )
@@ -184,30 +212,50 @@ actor PodcastFeedCommitCoordinator {
             Task { await self.cancelWaiter(waiterID) }
         }
         if Task.isCancelled {
-            Self.logCancellation(queueDepth: waiters.count)
+            Self.logCancellation(queueDepth: waiters.count, context: permitContext)
             release()
             throw CancellationError()
         }
         Self.logAcquire(
             wait: requestedAt.duration(to: .now),
-            queueDepth: queueDepthAtRequest
+            queueDepth: queueDepthAtRequest,
+            context: context
         )
     }
 
     func release() {
         let holdDuration = permitStartedAt.map { $0.duration(to: .now) } ?? .zero
-        Self.logRelease(hold: holdDuration, queueDepth: waiters.count)
+        Self.logRelease(hold: holdDuration, queueDepth: waiters.count, context: permitContext)
         if waiters.isEmpty {
             occupied = false
             permitStartedAt = nil
+            permitContext = nil
         } else {
             let next = waiters.removeFirst()
             permitStartedAt = .now
+            permitContext = next.context
             next.continuation.resume(returning: next.queueDepthAtRequest)
         }
     }
 
-    private static func logAcquire(wait: Duration, queueDepth: Int) {
+    private static func logAcquire(
+        wait: Duration,
+        queueDepth: Int,
+        context: PodcastFeedWriterCorrelationContext?
+    ) {
+        if let context {
+            os_signpost(
+                .event,
+                log: signpostLog,
+                name: "Podcast feed writer acquired",
+                "run_id=%{public}@ feed_id=%{public}@ queue_depth_at_request=%{public}d wait_ms=%{public}lld",
+                context.runID.uuidString as NSString,
+                context.hashedFeedID as NSString,
+                queueDepth,
+                milliseconds(wait)
+            )
+            return
+        }
         os_signpost(
             .event,
             log: signpostLog,
@@ -218,7 +266,24 @@ actor PodcastFeedCommitCoordinator {
         )
     }
 
-    private static func logRelease(hold: Duration, queueDepth: Int) {
+    private static func logRelease(
+        hold: Duration,
+        queueDepth: Int,
+        context: PodcastFeedWriterCorrelationContext?
+    ) {
+        if let context {
+            os_signpost(
+                .event,
+                log: signpostLog,
+                name: "Podcast feed writer released",
+                "run_id=%{public}@ feed_id=%{public}@ queue_depth_at_release=%{public}d hold_ms=%{public}lld",
+                context.runID.uuidString as NSString,
+                context.hashedFeedID as NSString,
+                queueDepth,
+                milliseconds(hold)
+            )
+            return
+        }
         os_signpost(
             .event,
             log: signpostLog,
@@ -229,7 +294,22 @@ actor PodcastFeedCommitCoordinator {
         )
     }
 
-    private static func logCancellation(queueDepth: Int) {
+    private static func logCancellation(
+        queueDepth: Int,
+        context: PodcastFeedWriterCorrelationContext?
+    ) {
+        if let context {
+            os_signpost(
+                .event,
+                log: signpostLog,
+                name: "Podcast feed writer wait cancelled",
+                "run_id=%{public}@ feed_id=%{public}@ queue_depth_after_cancel=%{public}d",
+                context.runID.uuidString as NSString,
+                context.hashedFeedID as NSString,
+                queueDepth
+            )
+            return
+        }
         os_signpost(
             .event,
             log: signpostLog,
@@ -247,8 +327,9 @@ actor PodcastFeedCommitCoordinator {
 
     private func cancelWaiter(_ id: UUID) {
         guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
-        waiters.remove(at: index).continuation.resume(throwing: CancellationError())
-        Self.logCancellation(queueDepth: waiters.count)
+        let waiter = waiters.remove(at: index)
+        Self.logCancellation(queueDepth: waiters.count, context: waiter.context)
+        waiter.continuation.resume(throwing: CancellationError())
     }
 }
 

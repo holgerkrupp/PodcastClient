@@ -13,8 +13,9 @@ useful for run-to-run trends, not proof that a particular feed retained memory
 or consumed that CPU. Use Instruments to attribute allocations, SQL work, and
 writer wait/hold to individual stages.
 The single feed writer emits acquire, release, and cancelled-wait events with
-queue depth, wait duration, and permit hold duration. These events carry no feed
-identity; align them with the feed completion timeline by time when profiling.
+queue depth, wait duration, and permit hold duration. Bulk refresh events carry
+the run ID and hashed feed ID so writer wait/hold can be correlated with the
+feed completion timeline without logging raw feed identities.
 
 ## Deterministic HTTP fixtures
 
