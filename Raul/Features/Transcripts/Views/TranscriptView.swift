@@ -8,11 +8,12 @@
 import SwiftUI
 import Combine
 
-/// Compact, scrollable transcript used inside the player.
+/// Compact, scrollable caption overlay used inside the player.
 ///
-/// Short lines coming from automatic transcriptions are merged into readable
-/// paragraphs by ``TranscriptSegmentBuilder``. The list follows playback, but the
-/// user can scroll freely at any time and jump back to the current position.
+/// When following playback, this presents only the current caption in a stable
+/// two-line region, matching live-caption conventions. Turning following off
+/// restores the scrollable transcript context. Timed word highlighting remains
+/// attached to the current segment in both modes.
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -44,7 +45,7 @@ struct TranscriptView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(segments) { segment in
+                    ForEach(visibleSegments) { segment in
                         segmentView(segment)
                             .id(segment.id)
                     }
@@ -53,7 +54,7 @@ struct TranscriptView: View {
                 .padding(.vertical, 10)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .scrollIndicators(.automatic)
+            .scrollIndicators(followPlayback ? .hidden : .automatic)
             .simultaneousGesture(
                 DragGesture(minimumDistance: 10)
                     .onChanged { _ in
@@ -127,6 +128,8 @@ struct TranscriptView: View {
                 .font(.body)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .multilineTextAlignment(.leading)
+                .lineLimit(2)
+                .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -143,6 +146,18 @@ struct TranscriptView: View {
 
     private var activeSegmentID: UUID? {
         tracker.active?.segmentID
+    }
+
+    private var visibleSegments: [TranscriptSegment] {
+        guard followPlayback else { return segments }
+        if let activeSegmentID,
+           let active = segments.first(where: { $0.id == activeSegmentID }) {
+            return [active]
+        }
+        if let current = segments.last(where: { $0.startTime <= currentTime }) {
+            return [current]
+        }
+        return Array(segments.prefix(1))
     }
 
     private var usesPublisherAlignment: Bool {
