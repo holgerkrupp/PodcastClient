@@ -92,4 +92,32 @@ final class EpisodeAIGenerationPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testSpeechLocaleResolutionNormalizesPodcastLanguageMetadata() {
+        let supported = ["en-US", "en-GB", "de-DE"]
+
+        XCTAssertEqual(
+            AITranscripts.bestMatchingSupportedLocaleIdentifier(for: "en", supportedLocales: supported),
+            "en-US"
+        )
+        XCTAssertEqual(
+            AITranscripts.bestMatchingSupportedLocaleIdentifier(for: "en-US", supportedLocales: supported),
+            "en-US"
+        )
+        XCTAssertEqual(
+            AITranscripts.bestMatchingSupportedLocaleIdentifier(for: "EN-gb", supportedLocales: supported),
+            "en-GB"
+        )
+        XCTAssertEqual(
+            AITranscripts.bestMatchingSupportedLocaleIdentifier(for: "en_US", supportedLocales: supported),
+            "en-US"
+        )
+        XCTAssertEqual(
+            AITranscripts.bestMatchingSupportedLocaleIdentifier(
+                for: nil,
+                supportedLocales: supported
+            ),
+            "en-US"
+        )
+    }
 }

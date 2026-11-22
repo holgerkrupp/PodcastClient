@@ -358,6 +358,7 @@ actor TranscriptionManager {
                                   userInfo: [NSLocalizedDescriptionKey: "The transcription finished without transcript data."])
                 }
                 try await episodeActor.setGeneratedTranscript(for: episodeURL, lines: lines)
+                await episodeActor.clearLiveTranscriptDataAfterFullTranscript(for: episodeURL)
                 let finishedAt = Date()
                 await MainActor.run {
                     uiItem.setState(.saving, progress: 0.98, status: "Saving transcription history…")

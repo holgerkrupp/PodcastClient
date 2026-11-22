@@ -13,7 +13,7 @@ enum EpisodeAIGenerationAction: String, Equatable, Sendable {
 
     var title: LocalizedStringResource {
         switch self {
-        case .transcribe: "Transcribe"
+        case .transcribe: "Transcribe full episode"
         case .generateChapters: "Generate chapters"
         case .transcribeAndGenerateChapters: "Transcribe & generate chapters"
         }
@@ -70,6 +70,10 @@ final class EpisodeAIGenerationCoordinator {
         jobs[url]
     }
 
+    func isRunning(for url: URL) -> Bool {
+        tasks[url] != nil
+    }
+
     func start(
         action: EpisodeAIGenerationAction,
         episodeURL: URL,
@@ -102,6 +106,12 @@ final class EpisodeAIGenerationCoordinator {
         let actor = EpisodeActor(modelContainer: modelContainer)
         do {
             if action != .generateChapters {
+                // Live recognition uses the same serialized Speech analyzer queue.
+                // Stop its bounded clip session before a full-file run is queued so
+                // the two modes never analyze the same episode concurrently.
+                if action == .transcribe || action == .transcribeAndGenerateChapters {
+                    await LiveTranscriptController.shared.stopAndWait()
+                }
                 jobs[episodeURL] = .running(status: String(localized: "Preparing transcript…"), progress: nil)
                 try await actor.transcribe(episodeURL, origin: .manual)
                 guard Task.isCancelled == false else { throw CancellationError() }
@@ -256,7 +266,9 @@ struct EpisodeAIGenerationControl: View {
                     .padding(.horizontal, 10)
             }
             .buttonStyle(.glass(.clear))
-            .accessibilityHint("Uses Apple Intelligence on this device")
+            .accessibilityHint(action == .transcribe
+                ? "Analyzes the downloaded episode with on-device speech recognition"
+                : "Uses Apple Intelligence on this device")
         }
     }
 }

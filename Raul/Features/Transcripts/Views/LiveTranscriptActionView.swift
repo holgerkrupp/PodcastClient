@@ -4,6 +4,8 @@ import SwiftData
 struct LiveTranscriptActionView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable private var live = LiveTranscriptController.shared
+    @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
+    @StateObject private var downloadViewModel = DownloadViewModel()
     let episode: Episode
 
     var body: some View {
@@ -14,32 +16,96 @@ struct LiveTranscriptActionView: View {
                 Button("Retry saving") { live.retryPendingSaves() }
                     .font(.caption)
             }
-            if live.isActive(for: episode) {
+
+            if isLocalMediaAvailable {
+                EpisodeAIGenerationControl(
+                    action: .transcribe,
+                    state: episode.url.flatMap { aiGeneration.state(for: $0) },
+                    start: { action in
+                        guard let episodeURL = episode.url else { return }
+                        aiGeneration.start(
+                            action: action,
+                            episodeURL: episodeURL,
+                            modelContainer: modelContext.container
+                        )
+                    },
+                    cancel: {
+                        if let episodeURL = episode.url {
+                            Task { await aiGeneration.cancel(episodeURL: episodeURL) }
+                        }
+                    }
+                )
+                .frame(maxWidth: .infinity)
+            } else if isDownloadInProgress {
+                Text("Downloading episode…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if let progress = downloadViewModel.item?.progress, progress > 0 {
+                    ProgressView(value: progress)
+                        .frame(maxWidth: 180)
+                } else {
+                    ProgressView().controlSize(.small)
+                }
+            } else if episode.source == .sideLoaded {
+                Text("The side-loaded file is unavailable.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Button("Download episode") {
+                    downloadViewModel.startDownload(for: episode)
+                }
+                .buttonStyle(.bordered)
+            }
+
+            if isFullTranscriptionRunning {
+                Text("Full transcription is in progress. Live transcription will be available when it finishes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if live.isActive(for: episode) {
                 Text(status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Stop live transcription") { live.stop() }
                     .buttonStyle(.bordered)
-            } else if episode.localFile != nil {
-                if live.episodeURL == episode.url && live.phase == .unavailable {
-                    Text("Live transcription is unavailable for this audio or language.")
+            } else if isLocalMediaAvailable {
+                if live.episodeURL == episode.url,
+                   live.phase == .unavailable,
+                   let reason = live.unavailableReason {
+                    Text(reason.message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
                 Button("Transcribe as you listen") {
-                    live.start(episode: episode, container: modelContext.container)
+                    Task {
+                        await live.start(episode: episode, container: modelContext.container)
+                    }
                 }
                 .buttonStyle(.bordered)
-            } else {
-                Text("Download this episode to transcribe as you listen.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
         }
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
         .padding(8)
         .onAppear { live.retryPendingSaves() }
+        .task(id: episode.url) {
+            await downloadViewModel.observeDownload(for: episode)
+        }
+    }
+
+    private var isLocalMediaAvailable: Bool {
+        guard let localFile = episode.localFile else { return false }
+        return FileManager.default.fileExists(atPath: localFile.path)
+    }
+
+    private var isDownloadInProgress: Bool {
+        guard let item = downloadViewModel.item else { return false }
+        return item.isDownloading || item.isPaused
+    }
+
+    private var isFullTranscriptionRunning: Bool {
+        guard let episodeURL = episode.url else { return false }
+        guard case .running = aiGeneration.state(for: episodeURL) else { return false }
+        return aiGeneration.isRunning(for: episodeURL)
     }
 
     private var status: LocalizedStringKey {

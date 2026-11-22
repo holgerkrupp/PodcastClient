@@ -44,7 +44,39 @@ final class LiveTranscriptController {
     static let shared = LiveTranscriptController()
 
     enum Phase: Equatable { case idle, preparing, catchingUp, following, unavailable }
+    enum UnavailableReason: Equatable {
+        case notDownloaded
+        case playbackMediaMismatch
+        case fullTranscriptionInProgress
+        case unsupportedLocale
+        case speechModelUnavailable
+        case invalidAudioFormat
+        case mediaChanged
+        case analysisFailed
+
+        var message: String {
+            switch self {
+            case .notDownloaded:
+                "Download this episode to transcribe as you listen."
+            case .playbackMediaMismatch:
+                "Playback is still using the streamed version. Restart from the downloaded copy to transcribe live."
+            case .fullTranscriptionInProgress:
+                "Full transcription is already in progress for this episode."
+            case .unsupportedLocale:
+                "Live transcription is not available for this episode language on this device."
+            case .speechModelUnavailable:
+                "The speech model is unavailable. Check the language model download and try again."
+            case .invalidAudioFormat:
+                "This downloaded media format cannot be transcribed."
+            case .mediaChanged:
+                "The downloaded media changed during transcription. Try again."
+            case .analysisFailed:
+                "Live transcription could not analyze this media. Try again."
+            }
+        }
+    }
     private(set) var phase: Phase = .idle
+    private(set) var unavailableReason: UnavailableReason?
     private(set) var episodeURL: URL?
     private(set) var cues: [LiveTranscriptState.Cue] = []
     private(set) var tentativeCues: [LiveTranscriptState.Cue] = []
@@ -135,12 +167,34 @@ final class LiveTranscriptController {
         }
     }
 
-    func start(episode: Episode, container: ModelContainer) {
+    func start(episode: Episode, container: ModelContainer) async {
         retryPendingSaves()
+        guard let episodeURL = episode.url else {
+            unavailableReason = .notDownloaded
+            phase = .unavailable
+            return
+        }
+        guard let media = episode.localFile,
+              FileManager.default.fileExists(atPath: media.path) else {
+            self.episodeURL = episodeURL
+            unavailableReason = .notDownloaded
+            phase = .unavailable
+            return
+        }
+        if EpisodeAIGenerationCoordinator.shared.isRunning(for: episodeURL) {
+            self.episodeURL = episodeURL
+            unavailableReason = .fullTranscriptionInProgress
+            phase = .unavailable
+            return
+        }
         stop()
-        guard let episodeURL = episode.url, let media = episode.localFile,
-              Player.shared.isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: media) else {
-            self.episodeURL = episode.url
+        // A download can finish while the player is still using its streamed
+        // item. Reuse the player's state-preserving replacement path so timed
+        // captions always match the media the listener hears.
+        await Player.shared.switchCurrentEpisodeToDownloadedCopyIfNeeded()
+        guard Player.shared.isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: media) else {
+            self.episodeURL = episodeURL
+            unavailableReason = .playbackMediaMismatch
             phase = .unavailable
             return
         }
@@ -153,6 +207,7 @@ final class LiveTranscriptController {
             storeContainerID = ObjectIdentifier(container)
         }
         phase = .preparing
+        unavailableReason = nil
         let player = Player.shared.videoPlayer
         observedPlayer = player
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
@@ -171,6 +226,7 @@ final class LiveTranscriptController {
         observer = nil
         observedPlayer = nil
         episodeURL = nil
+        unavailableReason = nil
         mediaURL = nil
         container = nil
         fingerprint = nil
@@ -204,7 +260,10 @@ final class LiveTranscriptController {
         guard phase != .idle, phase != .unavailable else { return }
         guard let episodeURL, let mediaURL,
               Player.shared.isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: mediaURL),
-              observedPlayer === Player.shared.videoPlayer else { stop(); return }
+              observedPlayer === Player.shared.videoPlayer else {
+            markUnavailable(token: generation, reason: .playbackMediaMismatch)
+            return
+        }
         guard time.isFinite else { return }
         if let lastTime, abs(time - lastTime) > 4 {
             restart()
@@ -226,11 +285,12 @@ final class LiveTranscriptController {
         }
     }
 
-    private func markUnavailable(token: UUID) {
+    private func markUnavailable(token: UUID, reason: UnavailableReason = .analysisFailed) {
         guard generation == token else { return }
         if let observer, let observedPlayer { observedPlayer.removeTimeObserver(observer) }
         observer = nil
         observedPlayer = nil
+        unavailableReason = reason
         phase = .unavailable
     }
 
@@ -270,7 +330,14 @@ final class LiveTranscriptController {
         var pending: [LiveTranscriptState.FinalWindow] = []
         var sessionFingerprint: String?
         do {
-            let initialSignature = try Self.fileSignature(mediaURL)
+            let initialSignature: FileSignature
+            do {
+                initialSignature = try Self.fileSignature(mediaURL)
+                _ = try AVAudioFile(forReading: mediaURL)
+            } catch {
+                markUnavailable(token: token, reason: .invalidAudioFormat)
+                return
+            }
             let mediaFingerprint: String
             if let fingerprint, fingerprintSignature == initialSignature { mediaFingerprint = fingerprint } else {
                 let hashTask = Task.detached(priority: .utility) { try TranscriptMediaFingerprint.make(for: mediaURL) }
@@ -281,12 +348,15 @@ final class LiveTranscriptController {
                 fingerprintSignature = initialSignature
             }
             guard try Self.fileSignature(mediaURL) == initialSignature else {
-                markUnavailable(token: token)
+                markUnavailable(token: token, reason: .mediaChanged)
                 return
             }
             sessionFingerprint = mediaFingerprint
             let saved = try await store.load(episodeURL: episodeURL)
-            guard saved == nil || saved?.mediaFingerprint == mediaFingerprint else { markUnavailable(token: token); return }
+            guard saved == nil || saved?.mediaFingerprint == mediaFingerprint else {
+                markUnavailable(token: token, reason: .mediaChanged)
+                return
+            }
             var state = saved ?? LiveTranscriptState(mediaFingerprint: mediaFingerprint)
             cues = state.cues
             coverage = state.coverage
@@ -301,8 +371,14 @@ final class LiveTranscriptController {
             let initialTime = Player.shared.videoPlayer.currentTime().seconds
             var cursor = initialTime.isFinite ? max(0, floor(initialTime / 7) * 7) : 0
             while !Task.isCancelled && generation == token {
-                guard Player.shared.isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: mediaURL) else { break }
-                guard try Self.fileSignature(mediaURL) == initialSignature else { markUnavailable(token: token); break }
+                guard Player.shared.isPlayingLocalTranscriptMedia(episodeURL: episodeURL, localMediaURL: mediaURL) else {
+                    markUnavailable(token: token, reason: .playbackMediaMismatch)
+                    break
+                }
+                guard try Self.fileSignature(mediaURL) == initialSignature else {
+                    markUnavailable(token: token, reason: .mediaChanged)
+                    break
+                }
                 if pendingSaveEpisodeURL == episodeURL {
                     retryPendingSaves()
                     try await Task.sleep(for: .seconds(5))
@@ -340,12 +416,16 @@ final class LiveTranscriptController {
                 guard let results = try await TranscriptionManager.shared.transcribeClip(audioURL: snippet.url, language: language, tentativeHandler: { [weak self] result in
                     await self?.updateTentative(result, offset: snippetStart, token: token)
                 }, usesTimeCodedInput: true) else {
-                    markUnavailable(token: token)
+                    let supported = await AITranscripts.supportedSpeechLocale(for: language) != nil
+                    markUnavailable(token: token, reason: supported ? .speechModelUnavailable : .unsupportedLocale)
                     break
                 }
                 try Task.checkCancellation()
                 guard generation == token else { break }
-                guard try Self.fileSignature(mediaURL) == initialSignature else { markUnavailable(token: token); break }
+                guard try Self.fileSignature(mediaURL) == initialSignature else {
+                    markUnavailable(token: token, reason: .mediaChanged)
+                    break
+                }
                 let end = min(duration, snippet.startTime + 7)
                 let finalCues = results.compactMap { result -> LiveTranscriptState.Cue? in
                     let start = snippet.startTime + result.range.start.seconds
@@ -359,7 +439,10 @@ final class LiveTranscriptController {
                                 cueLevel: $0.cueLevel)
                         })
                 }
-                guard finalCues.count == results.count else { markUnavailable(token: token); break }
+                guard finalCues.count == results.count else {
+                    markUnavailable(token: token, reason: .analysisFailed)
+                    break
+                }
                 let window = LiveTranscriptState.FinalWindow(coverage: .init(start: snippet.startTime, end: end), cues: finalCues)
                 tentativeCues.removeAll { $0.start < end && $0.end > snippet.startTime }
                 state.append(cues: finalCues, coverage: window.coverage)
@@ -378,8 +461,10 @@ final class LiveTranscriptController {
                 }
             }
         } catch is CancellationError {
+        } catch is TranscriptAudioSnippetError {
+            markUnavailable(token: token, reason: .invalidAudioFormat)
         } catch {
-            markUnavailable(token: token)
+            markUnavailable(token: token, reason: .analysisFailed)
         }
         if !pending.isEmpty, let sessionFingerprint {
             do {

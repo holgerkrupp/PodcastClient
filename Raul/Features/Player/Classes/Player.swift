@@ -4591,7 +4591,10 @@ class Player {
         await switchCurrentEpisodeToDownloadedCopyIfNeeded()
     }
 
-    private func switchCurrentEpisodeToDownloadedCopyIfNeeded() async {
+    /// Replaces a streamed primary item with its completed local copy while
+    /// preserving playback state. Transcription uses this before matching
+    /// timed recognition to the audio currently being heard.
+    func switchCurrentEpisodeToDownloadedCopyIfNeeded() async {
         guard currentPlaybackSource == .remote,
               currentPlaybackUsesAlternateMedia == false,
               let episode = currentEpisode,

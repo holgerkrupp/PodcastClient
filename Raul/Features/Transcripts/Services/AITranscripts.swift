@@ -112,6 +112,8 @@ class AITranscripts {
     private var cachedInstalledLocaleIDs: Set<String>?
     private var didResolveLanguage = false
 
+    static let defaultSpeechLanguageIdentifier = "en-US"
+
     init(
         url: URL,
         language: String? = nil,
@@ -139,19 +141,40 @@ class AITranscripts {
         self.progressHandler = progressHandler
         self.tentativeHandler = tentativeHandler
         self.usesTimeCodedInput = usesTimeCodedInput
-        self.language = language.map { Locale(identifier: $0) } ?? Locale.current
+        // Podcast language metadata is optional. A stable English default avoids
+        // silently selecting the device UI locale (for example German) for an
+        // English episode with missing feed metadata.
+        self.language = Locale(identifier: language ?? Self.defaultSpeechLanguageIdentifier)
         await resolveLanguageIfNeeded()
     }
 
     /// Resolves `language` to a supported locale exactly once for the lifetime of the job.
     private func resolveLanguageIfNeeded() async {
         guard didResolveLanguage == false else { return }
-        language = await bestMatchingSupportedLocale(for: language.identifier(.bcp47)) ?? Locale.current
+        let requested = language.identifier(.bcp47)
+        if let resolved = await bestMatchingSupportedLocale(for: requested) {
+            language = resolved
+            AppDiagnostics.log("transcription_language_resolved requested=\(requested) resolved=\(resolved.identifier(.bcp47)) model_installed=unknown failure=none")
+        } else {
+            // Keep the requested locale for the Speech framework to reject and
+            // diagnose; never substitute Locale.current after a failed match.
+            AppDiagnostics.log("transcription_language_resolved requested=\(requested) resolved=none model_installed=unknown failure=unsupported_locale")
+        }
         didResolveLanguage = true
     }
 
     private func supportedLocales() async -> [Locale] {
         await SupportedSpeechLocales.shared.value()
+    }
+
+    static func supportedSpeechLocale(for language: String?) async -> Locale? {
+        let requested = language ?? defaultSpeechLanguageIdentifier
+        let supported = await SupportedSpeechLocales.shared.value()
+        guard let identifier = bestMatchingSupportedLocaleIdentifier(
+            for: requested,
+            supportedLocales: supported.map { $0.identifier(.bcp47) }
+        ) else { return nil }
+        return Locale(identifier: identifier)
     }
     
     func requestAuthorization() async {
@@ -233,6 +256,10 @@ class AITranscripts {
         print("transcribe to lang: \(language.identifier(.bcp47))")
 
         let locale = self.language
+        guard await supported(locale: locale) else {
+            AppDiagnostics.log("transcription_language_unavailable requested=\(locale.identifier(.bcp47)) resolved=\(locale.identifier(.bcp47)) model_installed=false failure=unsupported_locale")
+            return nil
+        }
         // Request only what the VTT output consumes: final results with audio time ranges
         // and punctuation. Skipping volatile results, alternatives, and confidence avoids
         // extra per-result compute in the Speech XPC (the `.transcription` preset bundles
@@ -249,9 +276,12 @@ class AITranscripts {
                 try await ensureModel(transcriber: transcriber, locale: locale)
             } catch {
                 print(error)
+                let installed = await installed(locale: locale)
+                AppDiagnostics.log("transcription_language_unavailable requested=\(locale.identifier(.bcp47)) resolved=\(locale.identifier(.bcp47)) model_installed=\(installed) failure=speech_model_unavailable")
                 return nil
             }
         } else if await installed(locale: locale) == false {
+            AppDiagnostics.log("transcription_language_unavailable requested=\(locale.identifier(.bcp47)) resolved=\(locale.identifier(.bcp47)) model_installed=false failure=speech_model_unavailable")
             return nil
         }
         try Task.checkCancellation()
@@ -259,7 +289,9 @@ class AITranscripts {
         await reportProgress(0.1, status: "Starting transcription…")
 
          let isInstalled = await installed(locale: locale)
+        AppDiagnostics.log("transcription_language_model requested=\(locale.identifier(.bcp47)) resolved=\(locale.identifier(.bcp47)) model_installed=\(isInstalled) failure=none")
         guard isInstalled else {
+            AppDiagnostics.log("transcription_language_unavailable requested=\(locale.identifier(.bcp47)) resolved=\(locale.identifier(.bcp47)) model_installed=false failure=speech_model_unavailable")
             return nil
         }
         try Task.checkCancellation()
@@ -598,19 +630,16 @@ class AITranscripts {
     /// Returns a locally installed speech locale matching the requested language.
     /// Synchronization uses this check to avoid downloading a model as a side effect.
     static func installedLocale(matching languageIdentifier: String?) async -> String? {
-        let requested = Locale(identifier: languageIdentifier ?? Locale.current.identifier)
-        let requestedLanguage = requested.language.languageCode?.identifier.lowercased()
         let supportedLocales = await SupportedSpeechLocales.shared.value()
-        let supported = supportedLocales.first { locale in
-            locale.identifier(.bcp47).lowercased() == requested.identifier(.bcp47).lowercased()
-        } ?? supportedLocales.first { locale in
-            guard let requestedLanguage else { return false }
-            return locale.language.languageCode?.identifier.lowercased() == requestedLanguage
-        }
-        guard let supported else { return nil }
-        let identifier = supported.identifier(.bcp47)
+        let requested = languageIdentifier ?? Self.defaultSpeechLanguageIdentifier
+        guard let identifier = bestMatchingSupportedLocaleIdentifier(
+            for: requested,
+            supportedLocales: supportedLocales.map { $0.identifier(.bcp47) }
+        ) else { return nil }
         let installedIDs = await SpeechTranscriber.installedLocales.map { $0.identifier(.bcp47) }
-        return installedIDs.contains(identifier) ? identifier : nil
+        return installedIDs.contains(where: {
+            $0.replacingOccurrences(of: "_", with: "-").caseInsensitiveCompare(identifier) == .orderedSame
+        }) ? identifier : nil
     }
 
     private static func progressUpdate(resultEnd: CMTime, audioDuration: Double) -> (progress: Double, status: String) {
@@ -823,41 +852,48 @@ class AITranscripts {
     }
     
     func bestMatchingSupportedLocale(for input: String) async -> Locale? {
-
         let supported = await supportedLocales()
+        guard let identifier = Self.bestMatchingSupportedLocaleIdentifier(
+            for: input,
+            supportedLocales: supported.map { $0.identifier(.bcp47) }
+        ) else { return nil }
+        return Locale(identifier: identifier)
+    }
 
+    /// Pure locale selection keeps feed metadata normalization deterministic and
+    /// makes the language mapping testable without querying Speech.framework.
+    static func bestMatchingSupportedLocaleIdentifier(
+        for input: String?,
+        supportedLocales: [String]
+    ) -> String? {
+        let normalizedInput = (input ?? defaultSpeechLanguageIdentifier)
+            .replacingOccurrences(of: "_", with: "-")
+            .lowercased()
+        let candidates = supportedLocales.map {
+            (original: $0, normalized: $0.replacingOccurrences(of: "_", with: "-").lowercased())
+        }
+
+        if let exact = candidates.first(where: { $0.normalized == normalizedInput }) {
+            return exact.original
+        }
+
+        let language = normalizedInput.split(separator: "-").first.map(String.init) ?? normalizedInput
         let preferred: [String: String] = [
-            "de": "de-DE",
-            "en": "en-US", // 'en-EN' does not exist; 'en-US' or 'en-GB' are standard
-            "fr": "fr-FR",
-            "it": "it-IT",
-            "es": "es-ES"
+            "de": "de-de",
+            "en": "en-us",
+            "fr": "fr-fr",
+            "it": "it-it",
+            "es": "es-es"
         ]
-#if targetEnvironment(simulator)
-            // print("---- TRANSCRIPT NOT SUPPORT IN SIMULATOR ----")
-#endif
-    //    // print("Supported:", supported.map { $0.identifier(.bcp47) })
-       
-        
+        if let preferred = preferred[language],
+           let match = candidates.first(where: { $0.normalized == preferred }) {
+            return match.original
+        }
 
-        
-        // First, try for exact language-region match
-        if let fullMatch = supported.first(where: { $0.identifier(.bcp47).lowercased() == input.lowercased() }) {
-            return fullMatch
+        if let languageOnly = candidates.first(where: { $0.normalized == language }) {
+            return languageOnly.original
         }
-        
-        if let mapped = preferred[input.lowercased()],
-           supported.contains(where: { $0.identifier(.bcp47).lowercased() == mapped.lowercased() }) {
-            return Locale(identifier: mapped)
-        }
-        
-        
-        // Then, try for a language-only match (e.g., "de" matches "de-DE")
-        if let prefixMatch = supported.first(where: { $0.identifier(.bcp47).lowercased().hasPrefix(input.lowercased() + "-") }) {
-             print("Best Match:", prefixMatch.identifier(.bcp47))
-            return prefixMatch
-        }
-        return nil // No match
+        return candidates.first(where: { $0.normalized.hasPrefix(language + "-") })?.original
     }
     
 }

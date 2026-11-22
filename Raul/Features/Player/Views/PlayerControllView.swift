@@ -232,7 +232,7 @@ struct PlayerControllView: View {
             }
 
             HStack(spacing: 0) {
-                if showsInlineTranscript, hasTranscript || player.currentEpisode?.localFile != nil {
+                if showsInlineTranscript, hasTranscript || hasLocalMedia {
                     transcriptVisibilityButton
                 } else {
                     Color.clear
@@ -259,6 +259,11 @@ struct PlayerControllView: View {
             return contentAvailability?.hasTranscript == true
         }
         return episode.transcriptLines?.isEmpty == false
+    }
+
+    private var hasLocalMedia: Bool {
+        guard let localFile = player.currentEpisode?.localFile else { return false }
+        return FileManager.default.fileExists(atPath: localFile.path)
     }
 
     private var hasChapterSelectionUI: Bool {

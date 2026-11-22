@@ -1623,6 +1623,17 @@ actor EpisodeActor {
         )
     }
 
+    /// Full transcription supersedes partial live coverage. Keep this separate
+    /// from the transcription write so failed runs leave live coverage intact.
+    func clearLiveTranscriptDataAfterFullTranscript(for episodeURL: URL) async {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
+              episode.transcriptLines?.isEmpty == false,
+              episode.liveTranscriptData != nil else { return }
+        episode.liveTranscriptData = nil
+        try? modelContext.save()
+        episode.refresh.toggle()
+    }
+
     private func transcriptionSnapshot(
         for fileURL: URL,
         origin: TranscriptionStartOrigin
@@ -2964,8 +2975,8 @@ actor EpisodeActor {
 
     func transcriptionSnapshot(for episodeURL: URL) async -> TranscriptionEpisodeSnapshot? {
         guard let episode = await fetchEpisode(byURL: episodeURL),
-              episode.metaData?.calculatedIsAvailableLocally == true,
-              let localFile = episode.localFile else { return nil }
+              let localFile = episode.localFile,
+              FileManager.default.fileExists(atPath: localFile.path) else { return nil }
 
         return TranscriptionEpisodeSnapshot(
             episodeURL: episodeURL,
