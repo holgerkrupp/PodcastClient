@@ -1,5 +1,6 @@
 import Foundation
 import CarPlay
+import Combine
 import SwiftData
 
 private final class CarPlayInboxNotificationObserver: @unchecked Sendable {
@@ -17,8 +18,16 @@ class CarPlayInbox {
     var template: CPListTemplate
     private var notificationObserver: CarPlayInboxNotificationObserver?
     private var artworkSettingsObserver: CarPlayInboxNotificationObserver?
+    private var refreshProgressCancellable: AnyCancellable?
     private var refreshTask: Task<Void, Never>?
     private var artworkTask: Task<Void, Never>?
+    private lazy var refreshButton: CPBarButton = CPBarButton(title: "Refresh") { [weak self] _ in
+        Task { @MainActor [weak self] in
+            await self?.requestRefresh()
+        }
+    }
+    private var refreshProgress = PodcastRefreshCoordinator.shared.progress
+    private var isInvalidated = false
     private var generation = 0
 
     init(playlistActor: PlaylistModelActor, interfaceController: CPInterfaceController) {
@@ -30,13 +39,17 @@ class CarPlayInbox {
         self.template = CPListTemplate(title: "Inbox", sections: [])
         self.template.emptyViewTitleVariants = ["Your Inbox is empty"]
         self.template.emptyViewSubtitleVariants = ["New episodes will appear here."]
+        self.template.trailingNavigationBarButtons = [refreshButton]
         observeChanges()
+        observeRefreshProgress()
+        updateRefreshButton()
         scheduleRefresh()
     }
 
     deinit { refreshTask?.cancel(); artworkTask?.cancel() }
 
     func invalidate() {
+        isInvalidated = true
         generation &+= 1
         refreshTask?.cancel()
         refreshTask = nil
@@ -44,6 +57,7 @@ class CarPlayInbox {
         artworkTask = nil
         notificationObserver = nil
         artworkSettingsObserver = nil
+        refreshProgressCancellable = nil
     }
 
     func refreshForArtworkPreferenceChange() { scheduleRefresh() }
@@ -65,6 +79,51 @@ class CarPlayInbox {
             Task { @MainActor [weak self] in self?.scheduleRefresh() }
         }
         artworkSettingsObserver = CarPlayInboxNotificationObserver(token: artworkToken)
+    }
+
+    private func observeRefreshProgress() {
+        refreshProgressCancellable = PodcastRefreshCoordinator.shared.progressPublisher.sink { [weak self] progress in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.refreshProgress = progress
+                self.updateRefreshButton()
+            }
+        }
+    }
+
+    private func updateRefreshButton() {
+        refreshButton.isEnabled = refreshProgress.isRefreshing == false
+        refreshButton.title = refreshProgress.isRefreshing ? "Refreshing…" : "Refresh"
+    }
+
+    private func requestRefresh() async {
+        guard isInvalidated == false, refreshProgress.isRefreshing == false else { return }
+
+        await PodcastRefreshCoordinator.shared.refreshAllPodcasts(
+            modelContainer: modelContext.container
+        )
+        guard isInvalidated == false else { return }
+
+        let completedProgress = PodcastRefreshCoordinator.shared.progress
+        scheduleRefresh()
+        if completedProgress.errorMessage != nil {
+            presentRefreshError()
+        }
+    }
+
+    private func presentRefreshError() {
+        guard isInvalidated == false else { return }
+        let retry = CPAlertAction(title: "Retry", style: .default) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                await self?.requestRefresh()
+            }
+        }
+        let cancel = CPAlertAction(title: "Cancel", style: .cancel) { _ in }
+        let alert = CPAlertTemplate(
+            titleVariants: ["Refresh unavailable"],
+            actions: [retry, cancel]
+        )
+        interfaceController.presentTemplate(alert, animated: true, completion: nil)
     }
 
     private func scheduleRefresh() {
