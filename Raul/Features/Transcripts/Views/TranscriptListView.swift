@@ -32,6 +32,7 @@ struct TranscriptListView: View {
     @State private var speakerColorMap: [String: Color]
     @State private var selectedSearchRowID: UUID?
     @State private var tracker = TranscriptPlaybackTracker()
+    @State private var passageSelectionMode = false
     @State private var selectionActive = false
     @State private var frozenActive: TranscriptPlaybackTracker.Active?
     @State private var pendingRowsUpdate = false
@@ -100,7 +101,27 @@ struct TranscriptListView: View {
                 .padding(.vertical, 10)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                if isShowingCurrentEpisode || selectionActive {
+                Button {
+                    passageSelectionMode.toggle()
+                    if passageSelectionMode {
+                        frozenActive = tracker.active
+                        selectionActive = true
+                        followPlayback = false
+                    } else {
+                        selectionActive = false
+                        if pendingRowsUpdate {
+                            pendingRowsUpdate = false
+                            rebuildDisplayRows()
+                        }
+                    }
+                } label: {
+                    Label(passageSelectionMode ? "Done Copying" : "Select Passage", systemImage: "text.cursor")
+                        .font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityHint("Select and copy words across multiple transcript lines without changing playback")
+
+                if (isShowingCurrentEpisode || selectionActive) && !passageSelectionMode {
                     Button {
                         let wasSelecting = selectionActive
                         selectionActive = false
@@ -138,7 +159,13 @@ struct TranscriptListView: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    if displayRows.isEmpty {
+                    if passageSelectionMode {
+                        Text(displayRows.map(\.text).joined(separator: "\n"))
+                            .font(.body)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding()
+                    } else if displayRows.isEmpty {
                         ContentUnavailableView("No Matching Transcript", systemImage: "magnifyingglass")
                             .padding(.top, 60)
                     } else {
