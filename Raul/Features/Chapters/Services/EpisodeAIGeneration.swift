@@ -81,6 +81,7 @@ final class EpisodeAIGenerationCoordinator {
     ) {
         guard tasks[episodeURL] == nil else { return }
         cleanupTasks.removeValue(forKey: episodeURL)?.cancel()
+        jobs[episodeURL] = .running(status: String(localized: "Queued for transcription"), progress: nil)
         let task = Task { [weak self] in
             guard let self else { return }
             await self.run(action: action, episodeURL: episodeURL, modelContainer: modelContainer)
@@ -117,6 +118,11 @@ final class EpisodeAIGenerationCoordinator {
                 guard Task.isCancelled == false else { throw CancellationError() }
                 guard let item = await TranscriptionManager.shared.item(for: episodeURL) else {
                     // A publisher transcript may have been imported synchronously.
+                    // An unavailable container, missing file, or rejected enqueue
+                    // must not look like a successful transcription.
+                    guard await actor.hasTranscript(for: episodeURL) else {
+                        throw EpisodeAIGenerationError.transcriptUnavailable
+                    }
                     if action == .transcribe {
                         jobs[episodeURL] = .finished
                         tasks[episodeURL] = nil

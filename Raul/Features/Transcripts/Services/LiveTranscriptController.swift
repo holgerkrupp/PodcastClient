@@ -188,6 +188,9 @@ final class LiveTranscriptController {
             return
         }
         stop()
+        self.episodeURL = episodeURL
+        phase = .preparing
+        unavailableReason = nil
         // A download can finish while the player is still using its streamed
         // item. Reuse the player's state-preserving replacement path so timed
         // captions always match the media the listener hears.
