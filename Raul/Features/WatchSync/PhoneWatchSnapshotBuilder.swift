@@ -255,6 +255,8 @@ actor PhoneWatchSnapshotBuilder {
             playbackSpeed: settings.playbackSpeed ?? 1.0,
             skipBackSeconds: settings.skipBack.rawValue,
             skipForwardSeconds: settings.skipForward.rawValue,
+            skipBackBehavior: WatchSkipButtonBehavior(rawValue: settings.skipBackBehavior.rawValue) ?? .seconds,
+            skipForwardBehavior: WatchSkipButtonBehavior(rawValue: settings.skipForwardBehavior.rawValue) ?? .seconds,
             continuousPlay: settings.getContinuousPlay,
             isPodcastSpecific: isPodcastSpecific
         )

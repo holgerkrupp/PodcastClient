@@ -11,7 +11,8 @@ struct WatchRootView: View {
     @EnvironmentObject private var store: WatchSyncStore
     @EnvironmentObject private var playback: WatchPlaybackController
     @State private var isShowingSettings = false
-    @State private var selectedPage: WatchPage = .upNext
+    @State private var selectedPage: WatchPage = .nowPlaying
+    @State private var selectedPlayerSource: WatchPlaybackMode?
 
     private var alertMessage: String? {
         playback.errorMessage ?? store.errorMessage
@@ -20,7 +21,10 @@ struct WatchRootView: View {
     private var pageTitle: String {
         switch selectedPage {
         case .nowPlaying:
-            return store.isRemoteControlEnabled ? "iPhone" : "Now Playing"
+            if let selectedPlayerSource {
+                return selectedPlayerSource.displayName
+            }
+            return "Now Playing"
         case .upNext:
             return store.selectedPlaylistTitle
         case .inbox:
@@ -31,10 +35,8 @@ struct WatchRootView: View {
     var body: some View {
         NavigationStack {
             TabView(selection: $selectedPage) {
-                if let currentEpisode = playback.currentEpisode {
-                    WatchPlayerView(episodeID: currentEpisode.id, presentationStyle: .page)
-                        .tag(WatchPage.nowPlaying)
-                }
+                WatchNowPlayingPage(selectedSource: $selectedPlayerSource)
+                    .tag(WatchPage.nowPlaying)
 
                 WatchPlaylistPage {
                     selectedPage = .nowPlaying
@@ -65,15 +67,15 @@ struct WatchRootView: View {
                     }
                 }
 
-                if selectedPage == .nowPlaying, store.isRemoteControlEnabled {
+                if selectedPage == .nowPlaying, selectedPlayerSource != nil {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
-                            selectedPage = .upNext
+                            selectedPlayerSource = nil
                         } label: {
-                            Label("Playlist", systemImage: "list.bullet")
+                            Label("Sources", systemImage: "rectangle.stack")
                         }
                         .foregroundStyle(.white)
-                        .accessibilityHint("Returns to the watch playlist")
+                        .accessibilityHint("Returns to the playback source cards")
                     }
                 }
 
@@ -103,11 +105,6 @@ struct WatchRootView: View {
                     .environmentObject(store)
             }
         }
-        .onChange(of: playback.currentEpisode?.id) { _, newEpisodeID in
-            if newEpisodeID == nil, selectedPage == .nowPlaying {
-                selectedPage = .upNext
-            }
-        }
         .alert(
             "Up Next Watch",
             isPresented: Binding(
@@ -126,6 +123,176 @@ struct WatchRootView: View {
             }
         } message: {
             Text(alertMessage ?? "")
+        }
+    }
+}
+
+private extension WatchPlaybackMode {
+    var displayName: String {
+        switch self {
+        case .local: "Apple Watch"
+        case .remotePhone: "iPhone"
+        }
+    }
+}
+
+private struct WatchNowPlayingPage: View {
+    @EnvironmentObject private var store: WatchSyncStore
+    @EnvironmentObject private var playback: WatchPlaybackController
+    @Binding var selectedSource: WatchPlaybackMode?
+
+    var body: some View {
+        Group {
+            if let selectedSource {
+                WatchSourcePlayerView(source: selectedSource)
+            } else {
+                WatchNowPlayingSourcesView { source in
+                    store.setPlaybackMode(source)
+                    selectedSource = source
+                }
+            }
+        }
+        .id(selectedSource?.rawValue ?? "sources")
+    }
+}
+
+private struct WatchSourcePlayerView: View {
+    @EnvironmentObject private var store: WatchSyncStore
+    @EnvironmentObject private var playback: WatchPlaybackController
+    let source: WatchPlaybackMode
+
+    private var episodeID: String? {
+        switch source {
+        case .local:
+            playback.localCurrentEpisode?.id
+        case .remotePhone:
+            store.phonePlaybackState?.currentEpisodeURL
+        }
+    }
+
+    var body: some View {
+        if let episodeID {
+            WatchPlayerView(episodeID: episodeID, presentationStyle: .page)
+        } else {
+            WatchSourceIdleView(source: source)
+        }
+    }
+}
+
+private struct WatchNowPlayingSourcesView: View {
+    @EnvironmentObject private var store: WatchSyncStore
+    @EnvironmentObject private var playback: WatchPlaybackController
+    let selectSource: (WatchPlaybackMode) -> Void
+
+    var body: some View {
+        ZStack {
+            WatchAppBackground()
+
+            ScrollView {
+                VStack(spacing: 12) {
+                    Text("Choose a playback source")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.white.opacity(0.82))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    WatchPlaybackSourceCard(
+                        source: .local,
+                        episode: playback.localCurrentEpisode,
+                        status: playback.localCurrentEpisode == nil
+                            ? "Idle"
+                            : (playback.localIsPlaying ? "Playing" : "Paused"),
+                        position: playback.localDisplayedPlayPosition,
+                        selectSource: selectSource
+                    )
+
+                    WatchPlaybackSourceCard(
+                        source: .remotePhone,
+                        episode: store.phonePlaybackState?.currentEpisodeURL.flatMap(store.episode(withID:)),
+                        status: phoneStatus,
+                        position: store.phonePlaybackState?.playPosition ?? 0,
+                        selectSource: selectSource
+                    )
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+            }
+            .scrollIndicators(.hidden)
+        }
+    }
+
+    private var phoneStatus: String {
+        guard store.isPhoneReachable, store.hasRecentPhonePlaybackState else {
+            return store.phonePlaybackState?.currentEpisodeURL == nil ? "Unavailable" : "Last known"
+        }
+        guard let state = store.phonePlaybackState else { return "Unavailable" }
+        guard state.currentEpisodeURL != nil else { return "Idle" }
+        return state.isPlaying ? "Playing" : "Paused"
+    }
+}
+
+private struct WatchPlaybackSourceCard: View {
+    let source: WatchPlaybackMode
+    let episode: WatchSyncEpisode?
+    let status: String
+    let position: Double
+    let selectSource: (WatchPlaybackMode) -> Void
+
+    var body: some View {
+        Button {
+            selectSource(source)
+        } label: {
+            WatchPanel {
+                HStack(spacing: 10) {
+                    WatchArtworkView(url: episode?.artworkURL(at: position), title: source.displayName)
+                        .frame(width: 62, height: 62)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Label(source.displayName, systemImage: source == .local ? "applewatch" : "iphone")
+                                .font(.headline)
+                            Spacer()
+                            Text(status)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(status == "Unavailable" ? .orange : .white.opacity(0.78))
+                        }
+
+                        Text(episode?.title ?? (status == "Unavailable" ? "Playback state is unavailable" : "No episode selected"))
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.88))
+                            .lineLimit(2)
+                            .multilineTextAlignment(.leading)
+
+                        if let podcastTitle = episode?.podcastTitle, podcastTitle.isEmpty == false {
+                            Text(podcastTitle)
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.64))
+                                .lineLimit(1)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(source.displayName) playback")
+        .accessibilityValue("\(status), \(episode?.title ?? "no episode")")
+        .accessibilityHint("Opens this playback source")
+    }
+}
+
+private struct WatchSourceIdleView: View {
+    let source: WatchPlaybackMode
+
+    var body: some View {
+        ZStack {
+            WatchAppBackground()
+            WatchEmptyState(
+                systemName: source == .local ? "applewatch" : "iphone",
+                title: "\(source.displayName) is idle",
+                detail: source == .local
+                    ? "Choose an episode from Up Next to start playback on Apple Watch."
+                    : "Start playback on the iPhone to control it from this watch."
+            ) {}
         }
     }
 }

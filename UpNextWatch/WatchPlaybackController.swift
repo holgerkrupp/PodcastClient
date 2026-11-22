@@ -137,12 +137,51 @@ final class WatchPlaybackController: ObservableObject {
         effectivePlaybackSettings.skipForwardSeconds
     }
 
+    var skipBackUsesChapter: Bool {
+        effectivePlaybackSettings.skipBackBehavior == .chapter
+            && currentEpisode?.chapters.isEmpty == false
+    }
+
+    var skipForwardUsesChapter: Bool {
+        effectivePlaybackSettings.skipForwardBehavior == .chapter
+            && currentEpisode?.chapters.isEmpty == false
+    }
+
     var skipBackSystemName: String {
-        "gobackward.\(skipBackSeconds)"
+        skipBackUsesChapter ? "backward.end.fill" : "gobackward.\(skipBackSeconds)"
     }
 
     var skipForwardSystemName: String {
-        "goforward.\(skipForwardSeconds)"
+        skipForwardUsesChapter ? "forward.end.fill" : "goforward.\(skipForwardSeconds)"
+    }
+
+    var localCurrentEpisode: WatchSyncEpisode? {
+        guard let currentEpisodeID else { return nil }
+        return store?.episode(withID: currentEpisodeID)
+            ?? (fallbackEpisode?.episodeURL == currentEpisodeID ? fallbackEpisode : nil)
+    }
+
+    var localIsPlaying: Bool { isPlaying }
+
+    var localDisplayedPlayPosition: Double { playPosition }
+
+    var audioOutputName: String {
+        if isRemoteControlEnabled {
+            return remoteState?.outputName ?? "iPhone audio"
+        }
+        return AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName ?? "System audio"
+    }
+
+    var remotePlaybackAvailable: Bool {
+        guard isRemoteControlEnabled else { return true }
+        guard let store else { return false }
+        return store.isPhoneReachable
+            && store.hasRecentPhonePlaybackState
+            && remoteState?.currentEpisodeURL != nil
+    }
+
+    func presentAudioOutputGuidance() {
+        errorMessage = "Audio Output: \(audioOutputName). Use Apple Watch Control Center or the iPhone output picker to choose a destination."
     }
 
     func isCurrentEpisode(_ episode: WatchSyncEpisode) -> Bool {
@@ -319,6 +358,8 @@ final class WatchPlaybackController: ObservableObject {
             playbackSpeed: newRate,
             skipBackSeconds: currentSettings.skipBackSeconds,
             skipForwardSeconds: currentSettings.skipForwardSeconds,
+            skipBackBehavior: currentSettings.skipBackBehavior,
+            skipForwardBehavior: currentSettings.skipForwardBehavior,
             continuousPlay: currentSettings.continuousPlay,
             isPodcastSpecific: currentSettings.isPodcastSpecific
         )
@@ -331,7 +372,11 @@ final class WatchPlaybackController: ObservableObject {
             return
         }
 
-        seek(to: playPosition - Double(skipBackSeconds))
+        if skipBackUsesChapter {
+            skipToPreviousChapter()
+        } else {
+            seek(to: playPosition - Double(skipBackSeconds))
+        }
     }
 
     func skipForward() {
@@ -340,7 +385,11 @@ final class WatchPlaybackController: ObservableObject {
             return
         }
 
-        seek(to: playPosition + Double(skipForwardSeconds))
+        if skipForwardUsesChapter {
+            skipToNextChapter()
+        } else {
+            seek(to: playPosition + Double(skipForwardSeconds))
+        }
     }
 
     func skipToNextChapter() {
@@ -363,6 +412,15 @@ final class WatchPlaybackController: ObservableObject {
 
         let referenceTime = max(playPosition - 3, 0)
         let targetChapter = chapters.last(where: { $0.start <= referenceTime }) ?? currentChapter
+        guard let targetChapter else { return }
+        seek(to: targetChapter.start)
+    }
+
+    private func skipToPreviousChapter() {
+        guard let chapters = currentEpisode?.chapters, chapters.isEmpty == false else { return }
+
+        let referenceTime = max(playPosition - 0.5, 0)
+        let targetChapter = chapters.last(where: { $0.start < referenceTime }) ?? chapters.first
         guard let targetChapter else { return }
         seek(to: targetChapter.start)
     }

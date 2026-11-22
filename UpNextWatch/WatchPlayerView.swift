@@ -34,6 +34,10 @@ struct WatchPlayerView: View {
         return playback.isCurrentEpisode(episode) ? playback.currentChapter : episode.chapter(at: episode.playPosition)
     }
 
+    private var remotePlaybackUnavailable: Bool {
+        store.isRemoteControlEnabled && !playback.remotePlaybackAvailable
+    }
+
     var body: some View {
         Group {
             if presentationStyle == .pushed {
@@ -56,18 +60,47 @@ struct WatchPlayerView: View {
             if let episode {
                 ScrollView {
                     VStack(spacing: 12) {
-                        HStack{
-                            WatchArtworkView(
-                                url: playback.artworkURL(for: episode),
-                                title: ""
-                            )
-                            .frame(width: 30, height: 30)
-                            .accessibilityHidden(true)
-                            
-                            Text(episode.title)
-                                .font(.headline)
+                        HStack {
+                            Spacer()
+                            Button {
+                                playback.presentAudioOutputGuidance()
+                            } label: {
+                                Image(systemName: "airplayaudio")
+                                    .font(.headline)
+                            }
+                            .foregroundStyle(.white)
+                            .accessibilityLabel("Audio Output")
+                            .accessibilityValue(playback.audioOutputName)
+                            .accessibilityHint("Choose an audio destination from the system controls")
+                            .disabled(remotePlaybackUnavailable)
+                        }
+
+                        WatchArtworkView(
+                            url: playback.artworkURL(for: episode),
+                            title: episode.title
+                        )
+                        .frame(width: 112, height: 112)
+                        .frame(maxWidth: .infinity, alignment: .center)
+
+                        Text(episode.title)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.white)
+
+                        if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
+                            Text(podcastTitle)
+                                .font(.footnote)
+                                .foregroundStyle(.white.opacity(0.84))
                                 .multilineTextAlignment(.center)
-                                .foregroundStyle(.white)
+                        }
+                        if remotePlaybackUnavailable {
+                            Label(
+                                "iPhone playback is unavailable or out of date.",
+                                systemImage: "iphone.slash"
+                            )
+                            .font(.caption2)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
                         }
                         if let activeChapter {
                             Text(activeChapter.title)
@@ -98,14 +131,14 @@ struct WatchPlayerView: View {
                         VStack(spacing: 8) {
                             HStack(spacing: 8) {
                                 WatchSmallControlButton(
-                                    systemName: "backward.end.fill",
-                                    accessibilityLabel: "Previous chapter",
-                                    accessibilityHint: "Jumps to the start of the previous chapter"
+                                    systemName: skipBackSystemName(for: episode),
+                                    accessibilityLabel: skipBackLabel(for: episode),
+                                    accessibilityHint: skipBackHint(for: episode)
                                 ) {
                                     if playback.isCurrentEpisode(episode) {
-                                        playback.skipToChapterStart()
+                                        playback.skipBackward()
                                     } else {
-                                        playback.play(episode, startingAt: max(activePosition - 3, 0))
+                                        playback.play(episode, startingAt: skipBackPosition(for: episode))
                                     }
                                 }
 
@@ -118,43 +151,19 @@ struct WatchPlayerView: View {
                                 }
 
                                 WatchSmallControlButton(
-                                    systemName: "forward.end.fill",
-                                    accessibilityLabel: "Next chapter",
-                                    accessibilityHint: "Skips to the next chapter"
+                                    systemName: skipForwardSystemName(for: episode),
+                                    accessibilityLabel: skipForwardLabel(for: episode),
+                                    accessibilityHint: skipForwardHint(for: episode)
                                 ) {
                                     if playback.isCurrentEpisode(episode) {
-                                        playback.skipToNextChapter()
-                                    } else if let nextChapter = episode.chapters.first(where: { $0.start > activePosition }) {
-                                        playback.play(episode, startingAt: nextChapter.start)
+                                        playback.skipForward()
+                                    } else {
+                                        playback.play(episode, startingAt: skipForwardPosition(for: episode))
                                     }
                                 }
                             }
 
                             HStack(spacing: 8) {
-                                WatchSmallControlButton(
-                                    systemName: playback.skipBackSystemName,
-                                    accessibilityLabel: "Skip back \(playback.skipBackSeconds) seconds",
-                                    accessibilityHint: "Moves playback backward by \(playback.skipBackSeconds) seconds"
-                                ) {
-                                    if playback.isCurrentEpisode(episode) {
-                                        playback.skipBackward()
-                                    } else {
-                                        playback.play(episode, startingAt: max(activePosition - Double(playback.skipBackSeconds), 0))
-                                    }
-                                }
-
-                                WatchSmallControlButton(
-                                    systemName: playback.skipForwardSystemName,
-                                    accessibilityLabel: "Skip forward \(playback.skipForwardSeconds) seconds",
-                                    accessibilityHint: "Moves playback forward by \(playback.skipForwardSeconds) seconds"
-                                ) {
-                                    if playback.isCurrentEpisode(episode) {
-                                        playback.skipForward()
-                                    } else {
-                                        playback.play(episode, startingAt: activePosition + Double(playback.skipForwardSeconds))
-                                    }
-                                }
-
                                 Button(playback.formattedPlaybackRate(for: episode)) {
                                     playback.cyclePlaybackRate(for: episode)
                                 }
@@ -162,37 +171,15 @@ struct WatchPlayerView: View {
                                 .accessibilityLabel("Playback speed")
                                 .accessibilityValue(playback.formattedPlaybackRate(for: episode))
                                 .accessibilityHint("Double tap to cycle playback speed")
+
+                                WatchPlayerVolumeRow(
+                                    canAdjustVolume: canAdjustVolume(for: episode),
+                                    unavailableMessage: "Volume is available while the selected audio source is connected and playing.",
+                                    origin: store.isRemoteControlEnabled ? .companion : .local
+                                )
                             }
-
-                            WatchPlayerVolumeRow(
-                                canAdjustVolume: canAdjustVolume(for: episode),
-                                unavailableMessage: "Volume is available while the selected audio source is connected and playing.",
-                                origin: store.isRemoteControlEnabled ? .companion : .local
-                            )
+                            .disabled(remotePlaybackUnavailable)
                         }
-                        
-                        WatchArtworkView(
-                            url: playback.artworkURL(for: episode),
-                            title: ""
-                        )
-                        .frame(width: 104, height: 104)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .accessibilityHidden(true)
-
-                        VStack(spacing: 4) {
-
-
-                            if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
-                                Text(podcastTitle)
-                                    .font(.footnote)
-                                    .foregroundStyle(.white.opacity(0.84))
-                                    .multilineTextAlignment(.center)
-                            }
-
-
-                        }
-
-
 
                         if episode.chapters.isEmpty == false {
                             WatchPanel {
@@ -204,19 +191,23 @@ struct WatchPlayerView: View {
                                     ForEach(episode.chapters) { chapter in
                                         VStack(alignment: .leading, spacing: 6) {
                                             Button {
-                                                playback.play(episode, startingAt: chapter.start)
+                                                if playback.isCurrentEpisode(episode) {
+                                                    playback.playChapter(chapter)
+                                                } else {
+                                                    playback.play(episode, startingAt: chapter.start)
+                                                }
                                             } label: {
                                                 HStack(spacing: 8) {
                                                     VStack(alignment: .leading, spacing: 2) {
                                                         Text(chapter.title)
                                                             .font(.caption)
                                                             .multilineTextAlignment(.leading)
-                                                            .foregroundStyle(chapter.shouldPlay ? .white : .white.opacity(0.54))
+                                                            .foregroundStyle(activeChapter?.id == chapter.id ? .white : .white.opacity(0.54))
                                                             .frame(maxWidth: .infinity, alignment: .leading)
 
                                                         Text(watchPlaybackTime(chapter.start))
                                                             .font(.caption2.monospacedDigit())
-                                                            .foregroundStyle(.white.opacity(chapter.shouldPlay ? 0.78 : 0.48))
+                                                            .foregroundStyle(.white.opacity(activeChapter?.id == chapter.id ? 0.78 : 0.48))
                                                     }
 
                                                     
@@ -250,6 +241,7 @@ struct WatchPlayerView: View {
                                     }
                                 }
                             }
+                            .disabled(remotePlaybackUnavailable)
                         }
                     }
                     .padding(.horizontal, 10)
@@ -280,6 +272,83 @@ struct WatchPlayerView: View {
         }
 
         return AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty == false
+    }
+
+    private func skipBackSystemName(for episode: WatchSyncEpisode) -> String {
+        skipBackBehavior(for: episode) == .chapter
+            ? "backward.end.fill"
+            : "gobackward.\(episode.playbackSettings?.skipBackSeconds ?? store.snapshot.playbackSettings.skipBackSeconds)"
+    }
+
+    private func skipForwardSystemName(for episode: WatchSyncEpisode) -> String {
+        skipForwardBehavior(for: episode) == .chapter
+            ? "forward.end.fill"
+            : "goforward.\(episode.playbackSettings?.skipForwardSeconds ?? store.snapshot.playbackSettings.skipForwardSeconds)"
+    }
+
+    private func skipBackBehavior(for episode: WatchSyncEpisode) -> WatchSkipButtonBehavior {
+        if playback.isCurrentEpisode(episode) {
+            return playback.skipBackUsesChapter ? .chapter : .seconds
+        }
+        guard episode.chapters.isEmpty == false else { return .seconds }
+        return episode.playbackSettings?.skipBackBehavior
+            ?? store.snapshot.playbackSettings.skipBackBehavior
+    }
+
+    private func skipForwardBehavior(for episode: WatchSyncEpisode) -> WatchSkipButtonBehavior {
+        if playback.isCurrentEpisode(episode) {
+            return playback.skipForwardUsesChapter ? .chapter : .seconds
+        }
+        guard episode.chapters.isEmpty == false else { return .seconds }
+        return episode.playbackSettings?.skipForwardBehavior
+            ?? store.snapshot.playbackSettings.skipForwardBehavior
+    }
+
+    private func skipBackLabel(for episode: WatchSyncEpisode) -> String {
+        switch skipBackBehavior(for: episode) {
+        case .chapter:
+            "Previous chapter"
+        case .seconds:
+            "Skip back \(episode.playbackSettings?.skipBackSeconds ?? store.snapshot.playbackSettings.skipBackSeconds) seconds"
+        }
+    }
+
+    private func skipForwardLabel(for episode: WatchSyncEpisode) -> String {
+        switch skipForwardBehavior(for: episode) {
+        case .chapter:
+            "Next chapter"
+        case .seconds:
+            "Skip forward \(episode.playbackSettings?.skipForwardSeconds ?? store.snapshot.playbackSettings.skipForwardSeconds) seconds"
+        }
+    }
+
+    private func skipBackHint(for episode: WatchSyncEpisode) -> String {
+        switch skipBackBehavior(for: episode) {
+        case .chapter: "Jumps to the start of the previous chapter"
+        case .seconds: "Moves playback backward by the configured number of seconds"
+        }
+    }
+
+    private func skipForwardHint(for episode: WatchSyncEpisode) -> String {
+        switch skipForwardBehavior(for: episode) {
+        case .chapter: "Skips to the next chapter"
+        case .seconds: "Moves playback forward by the configured number of seconds"
+        }
+    }
+
+    private func skipBackPosition(for episode: WatchSyncEpisode) -> Double {
+        guard skipBackBehavior(for: episode) == .chapter else {
+            return max(activePosition - Double(episode.playbackSettings?.skipBackSeconds ?? store.snapshot.playbackSettings.skipBackSeconds), 0)
+        }
+        let reference = max(activePosition - 3, 0)
+        return episode.chapters.last(where: { $0.start <= reference })?.start ?? 0
+    }
+
+    private func skipForwardPosition(for episode: WatchSyncEpisode) -> Double {
+        guard skipForwardBehavior(for: episode) == .chapter else {
+            return activePosition + Double(episode.playbackSettings?.skipForwardSeconds ?? store.snapshot.playbackSettings.skipForwardSeconds)
+        }
+        return episode.chapters.first(where: { $0.start > activePosition + 0.5 })?.start ?? activePosition
     }
 
 }
@@ -331,6 +400,14 @@ private struct NativeWatchVolumeControl: WKInterfaceObjectRepresentable {
     }
 
     func updateWKInterfaceObject(_ object: WKInterfaceVolumeControl, context: Context) {}
+
+    static func dismantleWKInterfaceObject(_ object: WKInterfaceVolumeControl, coordinator: ()) {
+        if #available(watchOS 6.0, *) {
+            // Return Digital Crown ownership to a containing ScrollView when
+            // the volume control leaves the selected source player.
+            object.resignFocus()
+        }
+    }
 }
 
 struct WatchAppBackground: View {

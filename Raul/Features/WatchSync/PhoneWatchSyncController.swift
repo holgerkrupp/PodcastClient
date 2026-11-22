@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import SwiftData
 #if canImport(UIKit)
 import UIKit
@@ -160,7 +161,8 @@ final class PhoneWatchSyncController: NSObject {
             duration: player.currentEpisode?.duration,
             isPlaying: player.isPlaying,
             isBuffering: false,
-            playbackRate: player.playbackRate
+            playbackRate: player.playbackRate,
+            outputName: AVAudioSession.sharedInstance().currentRoute.outputs.first?.portName
         )
     }
 
@@ -216,7 +218,8 @@ final class PhoneWatchSyncController: NSObject {
                 "\(state.duration ?? 0)",
                 "\(state.isPlaying)",
                 "\(state.isBuffering)",
-                "\(state.playbackRate)"
+                "\(state.playbackRate)",
+                state.outputName ?? ""
             ].joined(separator: "|")
         } ?? ""
 

@@ -701,6 +701,8 @@ final class WatchSyncStore: NSObject, ObservableObject {
             playbackSpeed: playbackSettings.playbackSpeed,
             skipBackSeconds: playbackSettings.skipBackSeconds,
             skipForwardSeconds: playbackSettings.skipForwardSeconds,
+            skipBackBehavior: playbackSettings.skipBackBehavior,
+            skipForwardBehavior: playbackSettings.skipForwardBehavior,
             continuousPlay: playbackSettings.continuousPlay,
             isPodcastSpecific: episode?.playbackSettings?.isPodcastSpecific == true
         )

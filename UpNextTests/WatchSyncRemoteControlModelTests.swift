@@ -35,6 +35,42 @@ final class WatchSyncRemoteControlModelTests: XCTestCase {
         XCTAssertNil(snapshot.phonePlaybackState)
         XCTAssertEqual(snapshot.playbackSettings.playbackSpeed, 1.0)
         XCTAssertEqual(snapshot.selectedPlaylistTitle, "Up Next")
+        XCTAssertEqual(snapshot.playbackSettings.skipBackBehavior, .seconds)
+        XCTAssertEqual(snapshot.playbackSettings.skipForwardBehavior, .seconds)
+    }
+
+    func testLegacyPhonePlaybackStateDecodesWithoutOutputName() throws {
+        let json = """
+        {
+          "generatedAt": "2026-06-02T06:00:00Z",
+          "currentEpisodeURL": "https://example.com/episode.mp3",
+          "playPosition": 12,
+          "duration": 120,
+          "isPlaying": true,
+          "isBuffering": false,
+          "playbackRate": 1
+        }
+        """
+
+        let state = try XCTUnwrap(WatchSyncTransport.decode(WatchPhonePlaybackState.self, from: Data(json.utf8)))
+
+        XCTAssertEqual(state.currentEpisodeURL, "https://example.com/episode.mp3")
+        XCTAssertNil(state.outputName)
+    }
+
+    func testPlaybackSettingsRoundTripChapterSkipBehavior() throws {
+        let settings = WatchPlaybackSettings(
+            skipBackSeconds: 15,
+            skipForwardSeconds: 30,
+            skipBackBehavior: .chapter,
+            skipForwardBehavior: .seconds
+        )
+
+        let data = try XCTUnwrap(WatchSyncTransport.encode(settings))
+        let decoded = try XCTUnwrap(WatchSyncTransport.decode(WatchPlaybackSettings.self, from: data))
+
+        XCTAssertEqual(decoded.skipBackBehavior, .chapter)
+        XCTAssertEqual(decoded.skipForwardBehavior, .seconds)
     }
 
     func testRemoteMoveCommandRoundTripsIndexes() throws {

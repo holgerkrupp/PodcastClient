@@ -15,15 +15,7 @@ struct WatchStorageSettingsView: View {
     var body: some View {
         Form {
             Section("Playback") {
-                Toggle(
-                    "Remote Control iPhone",
-                    isOn: Binding(
-                        get: { store.storageSettings.playbackMode == .remotePhone },
-                        set: { store.setPlaybackMode($0 ? .remotePhone : .local) }
-                    )
-                )
-
-                Text(store.storageSettings.playbackMode == .remotePhone ? "Playback controls manage the iPhone app." : "Playback uses files and streams on the watch.")
+                Text("Open Now Playing to choose Apple Watch or iPhone. Each source keeps its own playback state and controls.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }

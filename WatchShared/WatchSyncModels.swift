@@ -49,10 +49,17 @@ struct WatchSyncChapter: Codable, Hashable, Identifiable, Sendable {
     }
 }
 
+enum WatchSkipButtonBehavior: String, Codable, Hashable, Sendable {
+    case seconds
+    case chapter
+}
+
 struct WatchPlaybackSettings: Codable, Hashable, Sendable {
     let playbackSpeed: Float
     let skipBackSeconds: Int
     let skipForwardSeconds: Int
+    let skipBackBehavior: WatchSkipButtonBehavior
+    let skipForwardBehavior: WatchSkipButtonBehavior
     let continuousPlay: Bool
     let isPodcastSpecific: Bool
 
@@ -60,6 +67,8 @@ struct WatchPlaybackSettings: Codable, Hashable, Sendable {
         playbackSpeed: 1.0,
         skipBackSeconds: 15,
         skipForwardSeconds: 30,
+        skipBackBehavior: .seconds,
+        skipForwardBehavior: .seconds,
         continuousPlay: true,
         isPodcastSpecific: false
     )
@@ -68,14 +77,39 @@ struct WatchPlaybackSettings: Codable, Hashable, Sendable {
         playbackSpeed: Float = 1.0,
         skipBackSeconds: Int = 15,
         skipForwardSeconds: Int = 30,
+        skipBackBehavior: WatchSkipButtonBehavior = .seconds,
+        skipForwardBehavior: WatchSkipButtonBehavior = .seconds,
         continuousPlay: Bool = true,
         isPodcastSpecific: Bool = false
     ) {
         self.playbackSpeed = playbackSpeed
         self.skipBackSeconds = skipBackSeconds
         self.skipForwardSeconds = skipForwardSeconds
+        self.skipBackBehavior = skipBackBehavior
+        self.skipForwardBehavior = skipForwardBehavior
         self.continuousPlay = continuousPlay
         self.isPodcastSpecific = isPodcastSpecific
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case playbackSpeed
+        case skipBackSeconds
+        case skipForwardSeconds
+        case skipBackBehavior
+        case skipForwardBehavior
+        case continuousPlay
+        case isPodcastSpecific
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        playbackSpeed = try container.decodeIfPresent(Float.self, forKey: .playbackSpeed) ?? 1.0
+        skipBackSeconds = try container.decodeIfPresent(Int.self, forKey: .skipBackSeconds) ?? 15
+        skipForwardSeconds = try container.decodeIfPresent(Int.self, forKey: .skipForwardSeconds) ?? 30
+        skipBackBehavior = try container.decodeIfPresent(WatchSkipButtonBehavior.self, forKey: .skipBackBehavior) ?? .seconds
+        skipForwardBehavior = try container.decodeIfPresent(WatchSkipButtonBehavior.self, forKey: .skipForwardBehavior) ?? .seconds
+        continuousPlay = try container.decodeIfPresent(Bool.self, forKey: .continuousPlay) ?? true
+        isPodcastSpecific = try container.decodeIfPresent(Bool.self, forKey: .isPodcastSpecific) ?? false
     }
 }
 
@@ -226,6 +260,44 @@ struct WatchPhonePlaybackState: Codable, Hashable, Sendable {
     let isPlaying: Bool
     let isBuffering: Bool
     let playbackRate: Float
+    let outputName: String?
+
+    init(
+        generatedAt: Date,
+        currentEpisodeURL: String?,
+        playPosition: Double,
+        duration: Double?,
+        isPlaying: Bool,
+        isBuffering: Bool,
+        playbackRate: Float,
+        outputName: String? = nil
+    ) {
+        self.generatedAt = generatedAt
+        self.currentEpisodeURL = currentEpisodeURL
+        self.playPosition = playPosition
+        self.duration = duration
+        self.isPlaying = isPlaying
+        self.isBuffering = isBuffering
+        self.playbackRate = playbackRate
+        self.outputName = outputName
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case generatedAt, currentEpisodeURL, playPosition, duration
+        case isPlaying, isBuffering, playbackRate, outputName
+    }
+
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try container.decode(Date.self, forKey: .generatedAt)
+        currentEpisodeURL = try container.decodeIfPresent(String.self, forKey: .currentEpisodeURL)
+        playPosition = try container.decode(Double.self, forKey: .playPosition)
+        duration = try container.decodeIfPresent(Double.self, forKey: .duration)
+        isPlaying = try container.decode(Bool.self, forKey: .isPlaying)
+        isBuffering = try container.decode(Bool.self, forKey: .isBuffering)
+        playbackRate = try container.decode(Float.self, forKey: .playbackRate)
+        outputName = try container.decodeIfPresent(String.self, forKey: .outputName)
+    }
 
     static let empty = WatchPhonePlaybackState(
         generatedAt: .distantPast,
@@ -234,7 +306,8 @@ struct WatchPhonePlaybackState: Codable, Hashable, Sendable {
         duration: nil,
         isPlaying: false,
         isBuffering: false,
-        playbackRate: 1.0
+        playbackRate: 1.0,
+        outputName: nil
     )
 }
 
