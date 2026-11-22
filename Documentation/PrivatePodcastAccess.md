@@ -113,9 +113,12 @@ the user can choose Basic, private RSS URL, or Bearer explicitly.
 
 The app distinguishes a missing Keychain item from a Keychain lookup failure,
 and from a server-observed rejected credential (`needsLogin`). A credential
-being present is not proof that the server accepts it. Only a 401 or an
-explicit authentication-required resolver result marks the feed as requiring
-login; a generic 403 is not treated as a Basic challenge.
+being present is not proof that the server accepts it. A 401, an explicit
+authentication-required resolver result, or a 403 received while refreshing a
+protected subscription marks the feed as requiring login. A 403 without a
+challenge still does not open a Basic credential form during feed discovery;
+it only keeps an existing protected subscription recoverable through **Fix
+Authentication**.
 
 Credentials are device-only today. Subscription records and manifests carry
 only profile identifiers and access kind. A newly connected device can restore

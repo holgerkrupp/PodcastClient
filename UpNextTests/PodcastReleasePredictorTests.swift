@@ -433,6 +433,37 @@ final class PodcastReleasePredictorTests: XCTestCase {
         }
     }
 
+    func testProtectedFeed403IsRecoverableButPublicFeed403IsNotAuthentication() {
+        XCTAssertTrue(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.privateURL.rawValue
+            )
+        )
+        XCTAssertTrue(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.httpBasic.rawValue
+            )
+        )
+        XCTAssertTrue(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.bearerToken.rawValue
+            )
+        )
+        XCTAssertFalse(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.publicFeed.rawValue
+            )
+        )
+    }
+
     func testMissedPredictedReleasesMarkLikelyCancelledPodcast() throws {
         let podcast = Podcast(feed: URL(string: "https://example.com/cancelled-weekly.xml")!)
         podcast.title = "Cancelled Weekly"

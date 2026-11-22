@@ -54,6 +54,26 @@ struct PodcastRefreshRequestPolicy: Sendable, Equatable {
     )
 }
 
+/// A protected subscription can report authorization failure without sending
+/// an HTTP authentication challenge. Keep that state recoverable without
+/// turning an ordinary public-feed 403 into a credential prompt.
+enum PodcastRefreshFailureClassifier {
+    static func isAuthenticationFailure(
+        statusCode: Int?,
+        explicitAuthenticationFailure: Bool,
+        accessKindRawValue: String?
+    ) -> Bool {
+        if explicitAuthenticationFailure || statusCode == 401 {
+            return true
+        }
+        guard statusCode == 403,
+              let accessKind = accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) else {
+            return false
+        }
+        return accessKind != .publicFeed
+    }
+}
+
 enum PodcastFeedSwitchError: LocalizedError {
     case feedAlreadyExists
 
@@ -426,7 +446,11 @@ actor PodcastModelActor {
             if case .bearerAuthenticationRequired = resolverError { return true }
             return false
         } ?? false
-        if statusCode == 401 || explicitAuthenticationFailure {
+        if PodcastRefreshFailureClassifier.isAuthenticationFailure(
+            statusCode: statusCode,
+            explicitAuthenticationFailure: explicitAuthenticationFailure,
+            accessKindRawValue: metadata.accessKindRawValue
+        ) {
             metadata.credentialState = .needsLogin
             if let resolverError = error as? PodcastFeedResolverError {
                 switch resolverError {

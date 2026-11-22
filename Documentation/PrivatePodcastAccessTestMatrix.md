@@ -17,7 +17,7 @@ depend on a subscriber URL that may later be revoked.
 | Keychain unavailable | `PodcastPrivateFeedTests.testUnavailableCredentialStoreProducesRecoverableCredentialRequiredState` |
 | Local Keychain lookup failure is distinguishable from a missing item | `testUnavailableCredentialStoreProducesRecoverableCredentialRequiredState` asserts `.storageUnavailable` |
 | Expired provider session, cancellation, renewal, and sign-out | `testProviderLifecycleCoversExpiredRefreshCancellationRenewalAndRevocation` |
-| 401/403 recovery without abandonment | `PodcastReleasePredictorTests.testAuthenticationFailuresNeverMarkPodcastFeedUnavailable` |
+| 401/403 recovery without abandonment | `PodcastReleasePredictorTests.testAuthenticationFailuresNeverMarkPodcastFeedUnavailable` and `testProtectedFeed403IsRecoverableButPublicFeed403IsNotAuthentication` |
 | Token rotation and stable identity | `testCredentialRotationUsesTheLatestCredentialWithoutChangingProfileIdentity` and `testHTTPClientRequestOverloadRebuildsRotatedAuthorization` |
 | Background-download association after token rotation | `testDownloadAssociationSurvivesPrivateURLTokenRotation` |
 | Background-download 401/403 recovery | `testProtectedDownloadAuthFailuresPreserveExplicitRetryAssociation`; the download delegate preserves the profile/destination and waits for an explicit retry with current credentials |
