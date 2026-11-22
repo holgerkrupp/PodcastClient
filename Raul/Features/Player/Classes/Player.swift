@@ -324,6 +324,18 @@ enum PlaybackRecoveryPositionPolicy {
 }
 
 enum ChapterSleepTimerPolicy {
+    static func effectiveEnd(
+        chapterEnd: Double?,
+        nextChapterStart: Double?,
+        episodeDuration: Double?,
+        chapterStart: Double
+    ) -> Double? {
+        guard chapterStart.isFinite else { return nil }
+        return [chapterEnd, nextChapterStart, episodeDuration]
+            .compactMap { $0 }
+            .first { $0.isFinite && $0 > chapterStart + 0.25 }
+    }
+
     static func boundary(
         chapterEnd: Double?,
         nextChapterStart: Double?,
@@ -341,6 +353,16 @@ enum ChapterSleepTimerPolicy {
         guard target.isFinite, position.isFinite else { return 0 }
         return max(target - position, 0)
     }
+}
+
+struct ChapterSleepTimerOption: Identifiable, Equatable {
+    let id: String
+    let chapterID: UUID?
+    let episodeURL: URL
+    let title: String
+    let start: Double
+    let stopBoundary: Double
+    let isCurrent: Bool
 }
 
 @Observable
@@ -580,6 +602,8 @@ class Player {
     var remainingTime: TimeInterval?
     private(set) var stopAfterChapterTarget: Double?
     private(set) var stopAfterChapterTitle: String?
+    private var stopAfterChapterID: UUID?
+    private var stopAfterChapterStart: Double?
     private var stopAfterChapterEpisodeURL: URL?
     var isStopAfterChapterEnabled: Bool { stopAfterChapterTarget != nil }
     var upcomingChapterSleepBoundary: Double? {
@@ -593,10 +617,160 @@ class Player {
     }
     var stopAfterEpisode: Bool = false {
         didSet {
-            if stopAfterEpisode && stopAfterChapterTarget != nil {
-                cancelSleepTimer()
-            }
+            guard stopAfterEpisode else { return }
+            timer?.invalidate()
+            timer = nil
+            endDate = nil
+            clearChapterSleepTarget()
+            remainingTime = nil
         }
+    }
+
+    var chapterSleepTimerOptions: [ChapterSleepTimerOption] {
+        guard let episodeURL = currentEpisodeURL else { return [] }
+        let rawPosition = engine.currentTime()
+        let position = rawPosition.isFinite ? max(rawPosition, 0) : max(playPosition, 0)
+        let sortedChapters = (chapters ?? currentEpisode?.preferredChapters ?? [])
+            .compactMap { chapter -> (chapter: Marker, start: Double)? in
+                guard let start = chapter.start, start.isFinite else { return nil }
+                return (chapter, start)
+            }
+            .sorted { $0.start < $1.start }
+        guard sortedChapters.isEmpty == false else { return [] }
+
+        let currentIndex = sortedChapters.lastIndex { $0.start <= position }
+        let firstEligibleIndex = currentIndex ?? sortedChapters.startIndex
+        return sortedChapters.indices.compactMap { index in
+            guard index >= firstEligibleIndex else { return nil }
+            let entry = sortedChapters[index]
+            let nextStart = sortedChapters.indices.contains(index + 1)
+                ? sortedChapters[index + 1].start
+                : nil
+            guard let boundary = ChapterSleepTimerPolicy.effectiveEnd(
+                chapterEnd: entry.chapter.end,
+                nextChapterStart: nextStart,
+                episodeDuration: currentEpisode?.duration,
+                chapterStart: entry.start
+            ), boundary > position + 0.25 else {
+                return nil
+            }
+
+            let title = entry.chapter.displayTitle
+            let id = entry.chapter.uuid?.uuidString
+                ?? "\(entry.start)|\(title)|\(index)"
+            return ChapterSleepTimerOption(
+                id: id,
+                chapterID: entry.chapter.uuid,
+                episodeURL: episodeURL,
+                title: title,
+                start: entry.start,
+                stopBoundary: boundary,
+                isCurrent: currentIndex == index
+            )
+        }
+    }
+
+    func isSelectedChapter(_ option: ChapterSleepTimerOption) -> Bool {
+        guard isStopAfterChapterEnabled,
+              stopAfterChapterEpisodeURL == option.episodeURL else {
+            return false
+        }
+        if let stopAfterChapterID {
+            return option.chapterID == stopAfterChapterID
+        }
+        guard let stopAfterChapterStart else { return false }
+        return abs(stopAfterChapterStart - option.start) <= 0.25
+            && stopAfterChapterTitle == option.title
+    }
+
+    @discardableResult
+    func stopAfterChapter(_ option: ChapterSleepTimerOption) -> Bool {
+        let rawPosition = engine.currentTime()
+        let currentPosition = rawPosition.isFinite ? max(playPosition, rawPosition) : playPosition
+        guard currentEpisodeURL == option.episodeURL,
+              option.stopBoundary > currentPosition + 0.25 else {
+            return false
+        }
+        timer?.invalidate()
+        timer = nil
+        endDate = nil
+        stopAfterEpisode = false
+        stopAfterChapterEpisodeURL = option.episodeURL
+        stopAfterChapterID = option.chapterID
+        stopAfterChapterStart = option.start
+        stopAfterChapterTarget = option.stopBoundary
+        stopAfterChapterTitle = option.title
+        updateRemainingTime()
+        startSleepTimer()
+        return true
+    }
+
+    private func clearChapterSleepTarget() {
+        stopAfterChapterTarget = nil
+        stopAfterChapterTitle = nil
+        stopAfterChapterID = nil
+        stopAfterChapterStart = nil
+        stopAfterChapterEpisodeURL = nil
+    }
+
+    private func reconcileChapterSleepTarget() {
+        guard let target = stopAfterChapterTarget else { return }
+        guard stopAfterChapterEpisodeURL == currentEpisodeURL else {
+            cancelSleepTimer()
+            return
+        }
+        guard let option = chapterSleepTimerOptions.first(where: { option in
+            if let stopAfterChapterID {
+                return option.chapterID == stopAfterChapterID
+            }
+            return abs((stopAfterChapterStart ?? .nan) - option.start) <= 0.25
+                && option.title == stopAfterChapterTitle
+        }) else {
+            cancelSleepTimer()
+            return
+        }
+
+        stopAfterChapterStart = option.start
+        stopAfterChapterTitle = option.title
+        if abs(option.stopBoundary - target) > 0.25 {
+            stopAfterChapterTarget = option.stopBoundary
+        }
+        updateRemainingTime()
+        startSleepTimer()
+    }
+
+    private func finishChapterSleepTimer(at target: Double) {
+        guard stopAfterChapterTarget != nil else { return }
+        timer?.invalidate()
+        timer = nil
+        clearChapterSleepTarget()
+        remainingTime = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.engine.seek(to: CMTime(seconds: target, preferredTimescale: 600))
+            self.pause()
+        }
+    }
+
+    private func cancelChapterSleepTimerForManualSeekIfNeeded(to time: Double) {
+        guard let target = stopAfterChapterTarget,
+              stopAfterChapterEpisodeURL == currentEpisodeURL,
+              time > target + 0.2 else { return }
+        timer?.invalidate()
+        timer = nil
+        clearChapterSleepTarget()
+        remainingTime = nil
+    }
+
+    /// The old action remains the first eligible chapter, preserving the
+    /// App Intent and existing player behavior while using the generalized target state.
+    @discardableResult
+    func stopAfterCurrentChapter() -> Bool {
+        guard let option = chapterSleepTimerOptions.first(where: \.isCurrent)
+            ?? chapterSleepTimerOptions.first else {
+            return false
+        }
+        return stopAfterChapter(option)
     }
 
     /// While listening together over SharePlay, features that seek, change
@@ -736,7 +910,11 @@ class Player {
         }
     }
     var nextChapter: Marker?
-    var chapters: [Marker]?
+    var chapters: [Marker]? {
+        didSet {
+            reconcileChapterSleepTarget()
+        }
+    }
     /// Detected ranges are transient playback evidence, never SwiftData
     /// chapters. They are published for the timeline and explicit skip action.
     var adSegments: [AdSegment] = []
@@ -1175,32 +1353,13 @@ class Player {
     
     func setSleepTimer(minutes: Int) {
         if minutes > 0 {
-            stopAfterChapterTarget = nil
-            stopAfterChapterTitle = nil
-            stopAfterChapterEpisodeURL = nil
+            stopAfterEpisode = false
+            clearChapterSleepTarget()
             endDate = Date().addingTimeInterval(Double(minutes * 60))
             startSleepTimer()
         } else {
             cancelSleepTimer()
         }
-    }
-
-    @discardableResult
-    func stopAfterCurrentChapter() -> Bool {
-        guard let episodeURL = currentEpisodeURL,
-              let boundary = upcomingChapterSleepBoundary else {
-            return false
-        }
-        timer?.invalidate()
-        timer = nil
-        endDate = nil
-        stopAfterEpisode = false
-        stopAfterChapterEpisodeURL = episodeURL
-        stopAfterChapterTarget = boundary
-        stopAfterChapterTitle = currentChapter?.title ?? nextChapter?.title ?? "Episode end"
-        updateRemainingTime()
-        startSleepTimer()
-        return true
     }
 
     private func startSleepTimer() {
@@ -1247,17 +1406,7 @@ class Player {
             )
             remainingTime = max(remaining, 0)
             guard remaining <= 0.25 else { return }
-            timer?.invalidate()
-            timer = nil
-            stopAfterChapterTarget = nil
-            stopAfterChapterTitle = nil
-            stopAfterChapterEpisodeURL = nil
-            remainingTime = nil
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                await self.engine.seek(to: CMTime(seconds: target, preferredTimescale: 600))
-                self.pause()
-            }
+            finishChapterSleepTimer(at: target)
             return
         }
         if let endDate {
@@ -1277,9 +1426,7 @@ class Player {
         timer = nil
         endDate = nil
         remainingTime = nil
-        stopAfterChapterTarget = nil
-        stopAfterChapterTitle = nil
-        stopAfterChapterEpisodeURL = nil
+        clearChapterSleepTarget()
         stopAfterEpisode = false
     }
     
@@ -2010,6 +2157,12 @@ class Player {
             offerSkipProtectionUndo(from: origin, force: true)
         }
         AppDiagnostics.log("automatic ad skip id=\(segment.id) from=\(playPosition) to=\(end)")
+        if let target = stopAfterChapterTarget,
+           stopAfterChapterEpisodeURL == currentEpisodeURL,
+           end >= target - 0.2 {
+            finishChapterSleepTimer(at: target)
+            return
+        }
         await jumpTo(time: end, protectLargeSeek: false)
     }
 
@@ -3841,6 +3994,7 @@ class Player {
     func jumpTo(time: Double, protectLargeSeek: Bool = true) async {
         guard currentPlaybackSource != .liveRemote else { return }
         let safeTime = max(0, time)
+        cancelChapterSleepTimerForManualSeekIfNeeded(to: safeTime)
         if protectLargeSeek,
            pendingSkipProtectionOrigin == nil,
            let episodeURL = currentEpisodeURL {
@@ -4073,17 +4227,7 @@ class Player {
         guard let target = stopAfterChapterTarget,
               stopAfterChapterEpisodeURL == currentEpisodeURL,
               position >= target - 0.2 else { return }
-        timer?.invalidate()
-        timer = nil
-        stopAfterChapterTarget = nil
-        stopAfterChapterTitle = nil
-        stopAfterChapterEpisodeURL = nil
-        remainingTime = nil
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.engine.seek(to: CMTime(seconds: target, preferredTimescale: 600))
-            self.pause()
-        }
+        finishChapterSleepTimer(at: target)
     }
     
     // Helper to cascade skip consecutive skipped chapters and handle last skipped chapter
@@ -4113,6 +4257,13 @@ class Player {
 
         guard resumeAt < (currentEpisode?.duration ?? .greatestFiniteMagnitude) else {
             handlePlaybackFinished()
+            return
+        }
+
+        if let target = stopAfterChapterTarget,
+           stopAfterChapterEpisodeURL == currentEpisodeURL,
+           resumeAt >= target - 0.2 {
+            finishChapterSleepTimer(at: target)
             return
         }
 

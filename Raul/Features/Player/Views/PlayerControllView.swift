@@ -632,20 +632,64 @@ struct PlayerPlaybackUtilitiesRow: View {
                             .accessibilityLabel("Time remaining")
                     }
                     .accessibilityElement(children: .combine)
-
-                    Button("Cancel chapter timer", systemImage: "xmark.circle") {
-                        player.cancelSleepTimer()
-                    }
-                } else {
-                    Button {
-                        _ = player.stopAfterCurrentChapter()
-                    } label: {
-                        Label("Stop after current chapter", systemImage: "bookmark")
-                    }
-                    .disabled(player.upcomingChapterSleepBoundary == nil)
-                    .accessibilityHint("Pauses at the end of the current chapter")
                 }
 
+                if player.stopAfterEpisode == false {
+                    Text("Choose a duration, chapter, or episode end. Selecting one replaces the active sleep mode.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .listRowSeparator(.hidden)
+                }
+            }
+
+            Section(header: Label("Stop after chapter", systemImage: "bookmark")) {
+                if player.chapterSleepTimerOptions.isEmpty {
+                    Text("No current or upcoming chapter has a known end time.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(player.chapterSleepTimerOptions) { option in
+                        Button {
+                            _ = player.stopAfterChapter(option)
+                        } label: {
+                            HStack(spacing: 12) {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    HStack(spacing: 6) {
+                                        Text(option.title)
+                                            .lineLimit(2)
+                                        if option.isCurrent {
+                                            Text("Current")
+                                                .font(.caption.weight(.semibold))
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                    Text(Duration.seconds(option.start).formatted(.units(width: .narrow)))
+                                        .font(.caption)
+                                        .monospacedDigit()
+                                        .foregroundStyle(.secondary)
+                                }
+
+                                Spacer(minLength: 8)
+
+                                if player.isSelectedChapter(option) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(.tint)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(
+                            option.isCurrent ? "\(option.title), current chapter" : option.title
+                        )
+                        .accessibilityValue(
+                            player.isSelectedChapter(option) ? "Selected" : "Starts at \(Duration.seconds(option.start).formatted(.units(width: .wide)))"
+                        )
+                        .accessibilityHint("Stops playback at the end of this chapter")
+                    }
+                }
+            }
+
+            Section(header: Label("Timed sleep", systemImage: "clock")) {
                 SleepTimerView()
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
@@ -659,12 +703,23 @@ struct PlayerPlaybackUtilitiesRow: View {
                 .listRowBackground(Color.clear)
                 .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
             }
+
+            if player.isStopAfterChapterEnabled || player.remainingTime != nil || player.stopAfterEpisode {
+                Section {
+                    Button("Off / Cancel sleep timer", systemImage: "xmark.circle", role: .destructive) {
+                        player.cancelSleepTimer()
+                    }
+                    .accessibilityHint("Turns off timed, chapter, and episode-end sleep modes")
+                }
+            }
         }
         .listStyle(.plain)
         .padding()
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
-        .presentationDetents([.fraction(0.25)])
+#if os(iOS)
+        .presentationDetents([.fraction(0.5), .large])
+#endif
     }
 }
 
