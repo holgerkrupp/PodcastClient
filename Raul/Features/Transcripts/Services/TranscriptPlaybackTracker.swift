@@ -133,21 +133,15 @@ final class TranscriptPlaybackTracker {
         let end = segment.endTime ?? (low < segments.count ? segments[low].startTime : .infinity)
         guard time < end else { return nil }
         let span = segment.activeSpan(at: time)
-        // Older publisher formats only have cue timing. Keep those readable
-        // with cue-level highlighting; word-level timing takes precedence when
-        // a valid span exists.
-        let hasUsableTimedSpans = segment.timedSpans.contains { candidate in
-            candidate.startTime.isFinite && candidate.endTime.isFinite
-                && candidate.endTime > candidate.startTime
-                && candidate.location >= 0 && candidate.length > 0
-                && candidate.location <= segment.text.utf16.count
-                && candidate.length <= segment.text.utf16.count - candidate.location
-                && Range(NSRange(location: candidate.location, length: candidate.length), in: segment.text) != nil
-        }
+        // Cue-level timing is enough to identify the current caption, but it is
+        // not enough to claim that the whole caption is the spoken word. Keep
+        // the row/caption active while reserving bold/underline for real word
+        // timing only.
+        let wordSpan = span?.cueLevel == false ? span : nil
         return Active(
             segmentID: segment.id,
-            location: span?.location ?? (hasUsableTimedSpans ? nil : 0),
-            length: span?.length ?? (hasUsableTimedSpans ? nil : segment.text.utf16.count)
+            location: wordSpan?.location,
+            length: wordSpan?.length
         )
     }
 }

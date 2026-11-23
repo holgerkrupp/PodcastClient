@@ -23,6 +23,21 @@ final class TranscriptSegmentBuilderTests: XCTestCase {
         XCTAssertEqual((segment.text as NSString).substring(with: NSRange(location: fallback.location, length: fallback.length)), "next")
     }
 
+    @MainActor
+    func testCueLevelTimingMarksCaptionWithoutFormattingWholeSentence() throws {
+        let line = TranscriptSegmentSource(
+            text: "A caption without word timing.",
+            startTime: 1,
+            endTime: 3
+        )
+        let segment = try XCTUnwrap(TranscriptSegmentBuilder.makeSegments(from: [line], options: .compact).first)
+
+        let active = try XCTUnwrap(TranscriptPlaybackTracker.lookup(segments: [segment], at: 2))
+        XCTAssertEqual(active.segmentID, segment.id)
+        XCTAssertNil(active.location)
+        XCTAssertNil(active.length)
+    }
+
     private func makeLines(_ texts: [String], speaker: String? = "Host", start: TimeInterval = 0, step: TimeInterval = 2) -> [TranscriptSegmentSource] {
         texts.enumerated().map { index, text in
             let lineStart = start + Double(index) * step
