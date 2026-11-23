@@ -4,6 +4,11 @@ import AVKit
 import CoreImage
 import TipKit
 import SwiftData
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 struct AudioClipExportView: View {
     private static let clipPlaybackRateRange: ClosedRange<Float> = 0.5...3.0
@@ -48,10 +53,13 @@ struct AudioClipExportView: View {
     @State private var clipGeneratedRange: ClosedRange<Double>?
     @State private var clipGeneratedMediaFingerprint: String?
     @State private var clipGenerationTask: Task<Void, Never>?
+    @State private var lastExportedShareLink: ClipExportShareLink?
+    @State private var exportConfirmation: String?
     private let waveformGesturesTip = ClipWaveformGesturesTip()
     var title: String? = nil
     var captionTimeline: ClipCaptionTimeline? = nil
     var episodeURL: URL? = nil
+    var episodeLink: URL? = nil
 
     let audioURL: URL // The audio file URL to trim
     var isVideo: Bool = false
@@ -80,6 +88,10 @@ struct AudioClipExportView: View {
                 
                 VStack(spacing: 0) {
                     clipExportHeader
+
+                    if exportConfirmation != nil {
+                        exportConfirmationView
+                    }
 
                     ScrollView {
                         VStack(spacing: 16) {
@@ -216,7 +228,6 @@ struct AudioClipExportView: View {
                 
                 .sheet(isPresented: $showShareSheet, onDismiss: {
                     stopAudioPlayer()
-                    dismiss() 
                 }) {
                     if let exportURL {
                         ShareSheet(activityItems: [exportURL])
@@ -327,6 +338,39 @@ struct AudioClipExportView: View {
         .padding(.horizontal, 20)
         .padding(.top, 8)
         .padding(.bottom, 4)
+    }
+
+    private var exportConfirmationView: some View {
+        HStack(spacing: 10) {
+            Image(systemName: lastExportedShareLink == nil ? "checkmark.circle" : "checkmark.circle.fill")
+                .foregroundStyle(.green)
+            Text(exportConfirmation ?? "")
+                .font(.footnote.weight(.semibold))
+                .multilineTextAlignment(.leading)
+            Spacer(minLength: 8)
+            if lastExportedShareLink != nil {
+                Button("Copy Link") {
+                    copyLastExportedLink()
+                }
+                .font(.footnote.weight(.semibold))
+                .buttonStyle(.bordered)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func copyLastExportedLink() {
+        guard let lastExportedShareLink else { return }
+        if ClipExportClipboard.copy(lastExportedShareLink.payload) {
+            exportConfirmation = "Video saved · Episode link copied"
+        } else {
+            exportConfirmation = "Video saved · Copying the episode link was unavailable"
+        }
     }
     
     func formatTime(_ time: Double) -> String {
@@ -771,6 +815,20 @@ struct AudioClipExportView: View {
 
                 await MainActor.run {
                     self.exportURL = url
+                    let shareLink = ClipExportShareLinkBuilder.make(
+                        episodeLink: self.episodeLink,
+                        fallbackURL: self.episodeURL,
+                        startTime: self.trimStart
+                    )
+                    self.lastExportedShareLink = shareLink
+                    if let shareLink {
+                        let copied = ClipExportClipboard.copy(shareLink.payload)
+                        self.exportConfirmation = copied
+                            ? "Video saved · Episode link copied"
+                            : "Video saved · Copying the episode link was unavailable"
+                    } else {
+                        self.exportConfirmation = "Video saved · Episode link unavailable"
+                    }
                     self.showShareSheet = true
                     self.isExporting = false
                 }
@@ -1092,6 +1150,77 @@ private class AudioPlayerDelegateWrapper: NSObject, AVAudioPlayerDelegate {
     }
     func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         onFinish()
+    }
+}
+
+struct ClipExportShareLink: Equatable, Sendable {
+    let url: URL
+    let payload: String
+    let timecode: String
+}
+
+enum ClipExportShareLinkBuilder {
+    static func make(episodeLink: URL?, fallbackURL: URL?, startTime: Double) -> ClipExportShareLink? {
+        guard let url = [episodeLink, fallbackURL]
+            .compactMap({ $0 })
+            .first(where: isShareableURL) else {
+            return nil
+        }
+
+        let timecode = formatTimecode(startTime)
+        let destination = timestampedURL(for: url, startTime: startTime) ?? url
+        return ClipExportShareLink(
+            url: destination,
+            payload: "\(destination.absoluteString)\n\nAt \(timecode)",
+            timecode: timecode
+        )
+    }
+
+    static func formatTimecode(_ time: Double) -> String {
+        let total = max(0, Int(time.rounded()))
+        return String(format: "%02d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
+    }
+
+    private static func isShareableURL(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https",
+              let host = url.host, host.isEmpty == false,
+              url.user == nil, url.password == nil else {
+            return false
+        }
+        return true
+    }
+
+    /// Only add a timestamp query for destinations whose public URL format documents it.
+    /// Podcast episode pages are otherwise left untouched so the copied link cannot be
+    /// broken by an unsupported `?t=` parameter.
+    private static func timestampedURL(for url: URL, startTime: Double) -> URL? {
+        let seconds = max(0, Int(startTime.rounded()))
+        guard seconds > 0,
+              let host = url.host?.lowercased(),
+              host == "youtu.be" || host == "youtube.com" || host.hasSuffix(".youtube.com"),
+              var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name.lowercased() == "t" }
+        queryItems.append(URLQueryItem(name: "t", value: String(seconds)))
+        components.queryItems = queryItems
+        return components.url
+    }
+}
+
+@MainActor
+enum ClipExportClipboard {
+    static func copy(_ payload: String) -> Bool {
+#if os(iOS)
+        UIPasteboard.general.string = payload
+        return true
+#elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.setString(payload, forType: .string)
+#else
+        return false
+#endif
     }
 }
 

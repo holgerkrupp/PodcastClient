@@ -219,3 +219,54 @@ final class ClipCaptionTimelineTests: XCTestCase {
         XCTAssertTrue(timeline.captions.isEmpty)
     }
 }
+
+final class ClipExportShareLinkTests: XCTestCase {
+    func testPrefersEpisodePageAndKeepsArbitraryPodcastURLValid() throws {
+        let page = try XCTUnwrap(URL(string: "https://publisher.example/episodes/42"))
+        let enclosure = try XCTUnwrap(URL(string: "https://cdn.example/episode.mp3"))
+
+        let link = try XCTUnwrap(ClipExportShareLinkBuilder.make(
+            episodeLink: page, fallbackURL: enclosure, startTime: 3723.4
+        ))
+
+        XCTAssertEqual(link.url, page)
+        XCTAssertEqual(link.payload, "https://publisher.example/episodes/42\n\nAt 01:02:03")
+    }
+
+    func testUsesTimestampQueryOnlyForYouTube() throws {
+        let youtube = try XCTUnwrap(URL(string: "https://www.youtube.com/watch?v=abc&list=xyz"))
+        let link = try XCTUnwrap(ClipExportShareLinkBuilder.make(
+            episodeLink: youtube, fallbackURL: nil, startTime: 90
+        ))
+
+        XCTAssertEqual(link.url.absoluteString, "https://www.youtube.com/watch?v=abc&list=xyz&t=90")
+        XCTAssertEqual(link.payload, "https://www.youtube.com/watch?v=abc&list=xyz&t=90\n\nAt 00:01:30")
+    }
+
+    func testRejectsMissingAndCredentialBearingURLs() throws {
+        let privateURL = try XCTUnwrap(URL(string: "https://user:password@example.com/episode"))
+        XCTAssertNil(ClipExportShareLinkBuilder.make(episodeLink: nil, fallbackURL: nil, startTime: 1))
+        XCTAssertNil(ClipExportShareLinkBuilder.make(episodeLink: privateURL, fallbackURL: nil, startTime: 1))
+        XCTAssertNil(ClipExportShareLinkBuilder.make(
+            episodeLink: URL(fileURLWithPath: "/tmp/episode.mp3"), fallbackURL: nil, startTime: 1
+        ))
+    }
+
+#if canImport(UIKit)
+    @MainActor
+    func testMissingLinkDoesNotChangeClipboard() throws {
+        UIPasteboard.general.string = "keep this"
+        XCTAssertNil(ClipExportShareLinkBuilder.make(episodeLink: nil, fallbackURL: nil, startTime: 12))
+        XCTAssertEqual(UIPasteboard.general.string, "keep this")
+    }
+
+    @MainActor
+    func testCopyWritesTheCompletePayload() {
+        let previous = UIPasteboard.general.string
+        defer { UIPasteboard.general.string = previous }
+
+        XCTAssertTrue(ClipExportClipboard.copy("https://publisher.example/episode\n\nAt 00:01:30"))
+        XCTAssertEqual(UIPasteboard.general.string, "https://publisher.example/episode\n\nAt 00:01:30")
+    }
+#endif
+}

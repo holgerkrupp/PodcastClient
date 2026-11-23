@@ -206,6 +206,7 @@ struct BookmarkListView: View {
                 AudioClipExportView(
                     title: episode.title,
                     episodeURL: episode.url,
+                    episodeLink: episode.link,
                     audioURL: audioURL,
                     isVideo: episode.isVideo,
                     coverImageURL: episode.imageURL,

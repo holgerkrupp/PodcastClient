@@ -865,6 +865,7 @@ struct PlayerPrimaryTransportControlsView: View {
                         AudioClipExportView(
                             title: episode.title,
                             episodeURL: episode.url,
+                            episodeLink: episode.link,
                             audioURL: audioURL,
                             isVideo: player.currentPlaybackIsVideo,
                             coverImageURL: episode.imageURL,
