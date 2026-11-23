@@ -66,3 +66,38 @@ final class DownloadTaskIdentityTests: XCTestCase {
         XCTAssertNil(identity.episodeURL(for: 7))
     }
 }
+
+#if canImport(UIKit)
+@MainActor
+final class BackgroundSessionCompletionCoordinatorTests: XCTestCase {
+    func testCompletionIsReleasedExactlyOnce() {
+        let coordinator = BackgroundSessionCompletionCoordinator()
+        var completionCount = 0
+
+        coordinator.install(identifier: "com.yourapp.downloads", handler: {
+            completionCount += 1
+        })
+        coordinator.complete(identifier: "com.yourapp.downloads", reason: "test")
+        coordinator.complete(identifier: "com.yourapp.downloads", reason: "duplicate")
+
+        XCTAssertEqual(completionCount, 1)
+    }
+
+    func testReplacingCompletionReleasesThePreviousOwner() {
+        let coordinator = BackgroundSessionCompletionCoordinator()
+        var firstCompletionCount = 0
+        var secondCompletionCount = 0
+
+        coordinator.install(identifier: "com.yourapp.downloads", handler: {
+            firstCompletionCount += 1
+        })
+        coordinator.install(identifier: "com.yourapp.downloads", handler: {
+            secondCompletionCount += 1
+        })
+        coordinator.complete(identifier: "com.yourapp.downloads", reason: "test")
+
+        XCTAssertEqual(firstCompletionCount, 1)
+        XCTAssertEqual(secondCompletionCount, 1)
+    }
+}
+#endif

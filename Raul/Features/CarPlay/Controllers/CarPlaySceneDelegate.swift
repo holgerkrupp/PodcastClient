@@ -11,6 +11,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     var playNext: CarPlayPlayNext?
     var nowPlaying: CarPlayNowPlaying?
     private var connectionTask: Task<Void, Never>?
+    private var activationObserver: NSObjectProtocol?
     private var connectionGeneration: UInt64 = 0
 
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didConnect interfaceController: CPInterfaceController) {
@@ -18,7 +19,9 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown"
         let icon = UIApplication.shared.alternateIconName ?? "primary"
         logger.info("CarPlay connected; scene=UpNext template=queue artwork=\(CarPlayArtworkSettings.showArtwork ? "enabled" : "text-only", privacy: .public) app=\(version, privacy: .public)(\(build, privacy: .public)) iOS=\(UIDevice.current.systemVersion, privacy: .public) icon=\(icon, privacy: .public)")
+        let applicationState = applicationStateName(UIApplication.shared.applicationState)
         connectionTask?.cancel()
+        removeActivationObserver()
         playNext?.invalidate()
         nowPlaying?.invalidate()
         playNext = nil
@@ -26,7 +29,7 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
         let generation = connectionGeneration
         let connectedAt = ContinuousClock.now
         self.interfaceController = interfaceController
-        CarPlayDiagnostics.recordTransition("carplay_connected")
+        CarPlayDiagnostics.recordTransition("carplay_connected", details: "applicationState=\(applicationState)")
 
         // Now Playing needs only the player, so the controls work while a slow
         // library load is still running.
@@ -47,12 +50,50 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             CarPlayDiagnostics.logger.info("Loading template set; success=\(success, privacy: .public) failed=\(error != nil, privacy: .public)")
         }
 
+        if UIApplication.shared.applicationState == .active {
+            startContainerPreparation(
+                interfaceController: interfaceController,
+                loadingTemplate: loadingTemplate,
+                generation: generation,
+                connectedAt: connectedAt
+            )
+        } else {
+            CarPlayDiagnostics.recordTransition(
+                "carplay_container_deferred",
+                details: "applicationState=\(applicationState),reason=background_launch"
+            )
+            activationObserver = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          self.connectionGeneration == generation,
+                          self.interfaceController === interfaceController else { return }
+                    self.removeActivationObserver()
+                    self.startContainerPreparation(
+                        interfaceController: interfaceController,
+                        loadingTemplate: loadingTemplate,
+                        generation: generation,
+                        connectedAt: connectedAt
+                    )
+                }
+            }
+        }
+    }
+
+    private func startContainerPreparation(
+        interfaceController: CPInterfaceController,
+        loadingTemplate: CPListTemplate,
+        generation: UInt64,
+        connectedAt: ContinuousClock.Instant
+    ) {
+        connectionTask?.cancel()
         connectionTask = Task { @MainActor [weak self, weak interfaceController] in
             guard let self, let interfaceController else { return }
 
             let containerManager = ModelContainerManager.shared
-            // Never wait silently: say so in the car and in diagnostics when
-            // the library takes long, without giving up on it.
             let slowLoadNotice = Task { @MainActor in
                 try? await Task.sleep(for: .seconds(10))
                 guard Task.isCancelled == false else { return }
@@ -60,9 +101,11 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 CarPlayDiagnostics.recordTransition("carplay_container_slow", details: "waitedS=10")
             }
             let prepareStartedAt = ContinuousClock.now
+            CarPlayDiagnostics.recordTransition("carplay_container_prepare_started", details: "applicationState=active")
             await containerManager.prepareContainer()
             slowLoadNotice.cancel()
             let prepareMs = CarPlayPlayNext.milliseconds(since: prepareStartedAt)
+            CarPlayDiagnostics.recordTransition("carplay_container_prepare_finished", details: "prepareMs=\(prepareMs)")
 
             guard Task.isCancelled == false,
                   self.connectionGeneration == generation,
@@ -91,7 +134,6 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
                 playNext.invalidate()
                 return
             }
-            // CarPlay may call this off the main thread.
             interfaceController.setRootTemplate(playNext.template, animated: false) { @Sendable success, error in
                 let details = "success=\(success) failed=\(error != nil) prepareMs=\(prepareMs) totalMs=\(CarPlayPlayNext.milliseconds(since: connectedAt))"
                 Task { @MainActor in
@@ -100,11 +142,28 @@ class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
             }
         }
     }
+
+    private func removeActivationObserver() {
+        if let activationObserver {
+            NotificationCenter.default.removeObserver(activationObserver)
+            self.activationObserver = nil
+        }
+    }
+
+    private func applicationStateName(_ state: UIApplication.State) -> String {
+        switch state {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
+        }
+    }
     
     func templateApplicationScene(_ templateApplicationScene: CPTemplateApplicationScene, didDisconnectInterfaceController interfaceController: CPInterfaceController) {
         guard self.interfaceController === interfaceController else { return }
         CarPlayDiagnostics.recordTransition("carplay_disconnected")
         connectionGeneration &+= 1
+        removeActivationObserver()
         connectionTask?.cancel()
         connectionTask = nil
         playNext?.invalidate()

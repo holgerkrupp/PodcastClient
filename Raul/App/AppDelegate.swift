@@ -3,10 +3,87 @@ import UIKit
 import BackgroundTasks
 import UserNotifications
 
+@MainActor
+final class BackgroundSessionCompletionCoordinator {
+    static let shared = BackgroundSessionCompletionCoordinator()
+
+    private struct PendingCompletion {
+        let installedAt: Date
+        let handler: () -> Void
+    }
+
+    private var pendingCompletions: [String: PendingCompletion] = [:]
+    private var fallbackTasks: [String: Task<Void, Never>] = [:]
+
+    func install(identifier: String, handler: @escaping () -> Void) {
+        fallbackTasks.removeValue(forKey: identifier)?.cancel()
+        if let previous = pendingCompletions.removeValue(forKey: identifier) {
+            record(
+                "background_urlsession_completion_replaced",
+                identifier: identifier,
+                details: "previous_age_ms=\(elapsedMilliseconds(since: previous.installedAt))"
+            )
+            previous.handler()
+        }
+
+        pendingCompletions[identifier] = PendingCompletion(installedAt: .now, handler: handler)
+        record("background_urlsession_completion_installed", identifier: identifier)
+    }
+
+    func complete(identifier: String, reason: String) {
+        fallbackTasks.removeValue(forKey: identifier)?.cancel()
+        guard let completion = pendingCompletions.removeValue(forKey: identifier) else {
+            record(
+                "background_urlsession_completion_ignored",
+                identifier: identifier,
+                details: "reason=\(reason)"
+            )
+            return
+        }
+
+        record(
+            reason == "idle_session_fallback"
+                ? "background_urlsession_completion_force_released"
+                : "background_urlsession_completion_released",
+            identifier: identifier,
+            details: "reason=\(reason),age_ms=\(elapsedMilliseconds(since: completion.installedAt))"
+        )
+        completion.handler()
+    }
+
+    /// A relaunch can legitimately have no tasks left by the time the exact
+    /// background session is inspected. Keep the system assertion bounded even
+    /// if URLSession does not deliver a finish-events callback for that launch.
+    func scheduleIdleFallback(identifier: String) {
+        guard pendingCompletions[identifier] != nil else { return }
+        fallbackTasks.removeValue(forKey: identifier)?.cancel()
+        fallbackTasks[identifier] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard Task.isCancelled == false else { return }
+            self?.complete(identifier: identifier, reason: "idle_session_fallback")
+        }
+        record(
+            "background_urlsession_completion_fallback_scheduled",
+            identifier: identifier,
+            details: "delay_ms=2000"
+        )
+    }
+
+    private func record(_ event: String, identifier: String, details: String? = nil) {
+        let category = DownloadManager.backgroundSessionCategory(for: identifier)
+        let suffix = details.map { ",\($0)" } ?? ""
+        CrashBreadcrumbs.shared.record(
+            event,
+            details: "category=\(category),suspendable=true\(suffix)"
+        )
+    }
+
+    private func elapsedMilliseconds(since date: Date) -> Int {
+        max(0, Int(Date().timeIntervalSince(date) * 1_000))
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
-    // This is where the system gives us a completion handler
-    // when background URLSession events are delivered
-    var backgroundSessionCompletionHandler: (() -> Void)?
     private var playbackStateFlushTask: Task<Void, Never>?
     private var playbackStateBackgroundTaskID = UIBackgroundTaskIdentifier.invalid
     private var backgroundTaskCPUStart: [String: Double] = [:]
@@ -46,9 +123,26 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      handleEventsForBackgroundURLSession identifier: String,
                      completionHandler: @escaping () -> Void) {
-        // Save for later, DownloadManager will call this in urlSessionDidFinishEvents
-        backgroundSessionCompletionHandler = completionHandler
-        Task {
+        let category = DownloadManager.backgroundSessionCategory(for: identifier)
+        CrashBreadcrumbs.shared.record(
+            "background_urlsession_relaunch_received",
+            details: "category=\(category),application_state=\(applicationStateName(application.applicationState)),suspendable=true"
+        )
+        BackgroundSessionCompletionCoordinator.shared.install(
+            identifier: identifier,
+            handler: completionHandler
+        )
+
+        Task(priority: .utility) {
+            let prepareStartedAt = Date()
+            let reconnection = await DownloadManager.shared.reconnectBackgroundSession(for: identifier)
+            CrashBreadcrumbs.shared.record(
+                "background_urlsession_reconnected",
+                details: "category=\(category),task_count=\(reconnection.taskCount),prepare_ms=\(Int(Date().timeIntervalSince(prepareStartedAt) * 1_000)),application_state=\(applicationStateName(application.applicationState)),suspendable=true"
+            )
+            if reconnection.taskCount == 0 {
+                BackgroundSessionCompletionCoordinator.shared.scheduleIdleFallback(identifier: identifier)
+            }
             await DownloadManager.shared.restorePendingDownloads()
         }
     }
@@ -57,7 +151,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        CrashBreadcrumbs.shared.record("app_delegate_did_finish_launching")
+        CrashBreadcrumbs.shared.record(
+            "app_delegate_did_finish_launching",
+            details: "application_state=\(applicationStateName(application.applicationState)),launch_categories=\(launchOptionCategories(launchOptions))"
+        )
         // Begin whole-process CPU accounting before any optional background
         // maintenance is admitted later in this process lifetime.
         _ = StoreMaintenanceResourceBudget.shared
@@ -116,6 +213,31 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         return true
+    }
+
+    private func applicationStateName(_ state: UIApplication.State) -> String {
+        switch state {
+        case .active: return "active"
+        case .inactive: return "inactive"
+        case .background: return "background"
+        @unknown default: return "unknown"
+        }
+    }
+
+    private func launchOptionCategories(_ options: [UIApplication.LaunchOptionsKey: Any]?) -> String {
+        guard let options, options.isEmpty == false else { return "none" }
+        return options.keys.map { key in
+            switch key.rawValue {
+            case UIApplication.LaunchOptionsKey.remoteNotification.rawValue:
+                return "remote_notification"
+            case UIApplication.LaunchOptionsKey.location.rawValue:
+                return "location"
+            case UIApplication.LaunchOptionsKey.shortcutItem.rawValue:
+                return "shortcut_item"
+            default:
+                return "other"
+            }
+        }.sorted().joined(separator: "+")
     }
 
     /// Schedules the store-sync background pass (the task identifier is kept

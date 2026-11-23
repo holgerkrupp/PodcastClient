@@ -64,6 +64,15 @@ enum PodcastDownloadCompletionPolicy {
 
 actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     static let shared = DownloadManager()
+    static let backgroundSessionIdentifier = "com.yourapp.downloads"
+
+    struct BackgroundSessionReconnection: Sendable {
+        let taskCount: Int
+    }
+
+    static func backgroundSessionCategory(for identifier: String) -> String {
+        identifier == backgroundSessionIdentifier ? "downloads" : "other"
+    }
 
     private struct PersistedAuthorization: Codable, Sendable {
         let profileID: String
@@ -115,7 +124,7 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     
     // MARK: - Background Session
     private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.background(withIdentifier: "com.yourapp.downloads")
+        let config = URLSessionConfiguration.background(withIdentifier: Self.backgroundSessionIdentifier)
         config.sessionSendsLaunchEvents = true
         config.isDiscretionary = false
         config.httpCookieStorage = nil
@@ -123,6 +132,16 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         config.httpCookieAcceptPolicy = .never
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
+
+    /// Reconnect the exact background session as early as possible. This only
+    /// asks URLSession for its task list; local model work is intentionally
+    /// kept out of the system completion-assertion release path.
+    func reconnectBackgroundSession(for identifier: String) async -> BackgroundSessionReconnection {
+        guard identifier == Self.backgroundSessionIdentifier else {
+            return BackgroundSessionReconnection(taskCount: 0)
+        }
+        return BackgroundSessionReconnection(taskCount: await session.allTasks.count)
+    }
     
     private override init() {
         if let data = UserDefaults.standard.data(forKey: Self.taskAssociationKey),
@@ -695,11 +714,15 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
     nonisolated func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
         Task { @MainActor in
 #if canImport(UIKit)
-            if let appDelegate = UIApplication.shared.delegate as? AppDelegate,
-               let completionHandler = appDelegate.backgroundSessionCompletionHandler {
-                appDelegate.backgroundSessionCompletionHandler = nil
-                completionHandler()
-            }
+            let identifier = session.configuration.identifier ?? Self.backgroundSessionIdentifier
+            CrashBreadcrumbs.shared.record(
+                "background_urlsession_finish_events",
+                details: "category=\(Self.backgroundSessionCategory(for: identifier)),application_state=\(UIApplication.shared.applicationState == .background ? "background" : "foreground"),suspendable=true"
+            )
+            BackgroundSessionCompletionCoordinator.shared.complete(
+                identifier: identifier,
+                reason: "urlsession_did_finish_events"
+            )
 #endif
         }
     }
