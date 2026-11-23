@@ -1,153 +1,146 @@
-# Podcast refresh profiling
+# Podcast refresh profiling and regression suite
 
-The refresh code emits Points of Interest signposts for the full feed refresh,
-HEAD preflight, GET/XML parse, and the episode store commit. Refresh log records
-include a random run ID and a short SHA-256 feed correlation ID. They do not
-include credentials, query strings, or raw feed URLs in the correlation field.
-Manual Refresh All also emits a `Podcast refresh feed completion` event for each
-finished feed. It records scheduled and completion ordinals, hashed feed ID,
-result, whether episodes changed, new episode count, feed wall time, cumulative
-process CPU time for the run, and process physical footprint sampled after the
-worker result is returned. CPU and memory are process-wide samples; they are
-useful for run-to-run trends, not proof that a particular feed retained memory
-or consumed that CPU. Use Instruments to attribute allocations, SQL work, and
-writer wait/hold to individual stages.
-The single feed writer emits acquire, release, and cancelled-wait events with
-queue depth, wait duration, and permit hold duration. Bulk refresh events carry
-the run ID and hashed feed ID so writer wait/hold can be correlated with the
-feed completion timeline without logging raw feed identities.
+Refresh emits Points of Interest signposts for the full feed refresh, HEAD
+preflight, GET/XML parse, episode-store commit, and per-feed completion. The
+completion event includes a run ID, hashed feed ID, scheduled/completion
+ordinals, result, update/new-episode counts, feed wall time, cumulative process
+CPU, and process physical footprint. Writer acquire/release/cancel events add
+queue depth, wait time, and permit hold time. These fields intentionally omit
+raw feed URLs, query strings, credentials, titles, and listening-history data.
 
-Feed graph imports now finish their save and release the single-writer permit
-before publishing Inbox, smart-playlist, or Spotlight invalidations. A durable
-first-page seed publishes its invalidations as soon as its permit is released
-so episodes remain visible while later pages are fetched. Inbox changes are
-coalesced by its existing one-second leading/trailing broadcaster; smart
-playlist and Spotlight invalidations use the same cadence so later feeds in a
-long run keep the surfaces current without repeating a full refresh for every
-feed. The final refresh pass does not repeat Refresh All's former per-worker
-Inbox notification. Automatic download policy is deferred from seed and final
-imports and runs once after the final permit release when either import changed
-episode data; standalone `updateDetails` callers retain the existing immediate
-policy behavior. This is an ordering/performance change with no intended
-user-visible behavior change, so no in-app guide change is needed.
+Use `Instruments` to attribute allocations, SQL work, and writer wait/hold to
+individual stages. Process CPU and memory are run-level samples; they do not
+prove that one feed retained memory or consumed a particular amount of CPU.
 
-## Deterministic HTTP fixtures
+## Deterministic fixture server
 
-Start a local fixture server:
+Start the local server from the repository root:
 
 ```sh
-python3 Scripts/podcast-refresh-fixture-server.py --feeds 100 --episodes 10
+python3 Scripts/podcast-refresh-fixture-server.py --feeds 100 --episodes 10 --delay 0.05
 ```
 
-Each feed is available at `http://127.0.0.1:8787/<profile>/<number>`. The
-profiles are `fast`, `slow-head`, `slow-get`, `unchanged`, `head-unsupported`,
-`malformed`, `paged`, `private`, `large`, `dynamic`, `rate-limited`, and `server-error`.
-Use `--delay` to set the simulated network delay and `--episodes 5000` for a
-large back catalogue. The `private`
-fixture expects HTTP Basic credentials `fixture` / `password`. The server logs
-method, profile, feed number, page, and status, so HEAD/GET counts can be
-compared with Instruments without exposing request secrets.
+Every feed endpoint is `http://127.0.0.1:8787/<profile>/<number>`. The server
+also provides `POST /__reset` and `GET /__stats`; stats contain only method,
+profile, feed number, page, status, and server-side duration. Query parameters
+can override `episodes`, `delay`, and (for the changing fixtures) `revision`.
 
-Configure test subscriptions to a mix of profiles and feed numbers. Capture
-Manual Refresh All, one-feed refresh, foreground-quiet refresh, and a background
-refresh separately in Instruments using the Points of Interest instrument.
-Record total duration, each signpost duration, HEAD/GET counts, episode counts,
-save counts, peak resident memory, and CloudKit export activity. Run 10, 50,
-and 100-feed sets, repeat each set at least five times, and report median and
-p95. Do not use a simulator result as an iPhone or iCloud stress result.
+Profiles used by the automated suite are:
 
-The checked-in fixture and signposts provide reproducible measurement inputs;
-no device-specific baseline is claimed by this document.
+| Profile | Behavior covered |
+| --- | --- |
+| `fast`, `slow-head`, `slow-get` | Baseline, delayed HEAD, delayed GET, and cancellation timing |
+| `unchanged` | Stale/unchanged HEAD that should avoid a GET |
+| `head-unsupported` | HEAD 405 followed by GET; later conditional GET 304 |
+| `changed` | A body whose description changes on each GET |
+| `stale-last-modified` | Changing RSS with an intentionally stale HEAD timestamp |
+| `paged` | Two-page RSS with a continuation and `Link` header |
+| `large`, `large-history` | Larger catalogs and retained playback/archive state |
+| `private` | HTTP Basic `fixture` / `password` authentication |
+| `rate-limited` | One 429 with configurable `Retry-After`, then 200 |
+| `malformed`, `server-error` | Parse and HTTP failure paths |
 
-## Current worker and validator behavior
+The fixture server is local and deterministic, but it is still an HTTP server:
+the app's per-origin limit of two requests can affect wall time when four
+workers are selected. Reset it between independent scenarios.
 
-Foreground Manual Refresh All defaults to four bounded feed operations.
-Set the device-local defaults key `PodcastRefreshNetworkConcurrency`
-to 1 for the serial fallback, or 2–3 for a reduced worker pool. Their
-HEAD, GET and XML work can overlap; `PodcastFeedCommitCoordinator` admits one
-SwiftData feed-graph import and cache projection at a time. Automatic background runs retain their existing
-small feed counts and time budgets. General feed refresh and feed processing
-requests use a 30-minute eligibility interval, with a 15-minute minimum delay
-for the app-refresh task. Eligible feeds can be checked again after 30 minutes.
-These values ask iOS for an earlier opportunity; they do not set a launch
-schedule or guarantee that a task will run. HTTP requests are limited to two at
-a time per origin, and a 429 Retry-After pauses that origin's queued requests.
-Tasks canceled while waiting for the writer leave its queue without taking a
-permit. A commit that already started finishes its current feed batch and
-saves before honoring a background stop request.
+## Automated checks
 
-Background candidate selection uses persisted release-prediction windows
-instead of recomputing predictions across every episode relationship. The
-per-feed eligibility store caches its decoded local snapshot, avoiding a full
-JSON decode for every candidate. Selection has a four-second budget. During
-audio playback, feed refresh is serial, limited to one feed and an eight-second
-run with a four-second per-feed deadline; its worker uses background priority.
-Processing-task transcript imports remain paused during playback. iOS can still
-defer or stop background work, and deadlines cannot preempt a synchronous
-parser or an already-started durable feed commit.
+`UpNextTests/PodcastRefreshPerformanceRegressionTests.swift` separates
+correctness from timing:
 
-The worker pool bounds prepared results to four. Parsed results estimated over
-6 MiB spool to an app temporary file while waiting for the writer; the file
-is removed when the prepared result is released. The writer reconstructs the
-legacy import dictionary only after acquiring its gate. This caps retained
-in-memory prepared trees to roughly 24 MiB across waiting workers, apart from
-the active writer and transient download/parse buffers.
-Validated first-page seeds use the same typed, Sendable handoff so the refresh
-can reuse them without a second first-page GET or XML parse; paged feeds still
-commit their durable first page before fetching the continuation.
-`PodcastRefreshNetworkPreparer` accepts value snapshots for endpoint validation
-and page parsing and returns a typed complete or partial prepared feed. The
-model actor revalidates the saved feed identity and materializes the legacy
-import shape only after acquiring the single writer.
-Page cycle detection keeps query parameters, so RFC 5005 continuations such
-as `feed.xml?page=2` are distinct from the first page. Access query parameters
-are carried forward only when the continuation does not supply that name.
-Durable retry checkpoints retain recognized pagination parameters such as
-`page` and `cursor`, while omitting credential parameters from the retry file.
+- `testFixtureCorrectnessMatrixPreservesStateAndHTTPSemantics` covers unchanged
+  HEAD, HEAD 405, GET 304, changed RSS, stale Last-Modified, paginated imports,
+  a larger history-bearing import, 429/Retry-After recovery, and private-feed
+  authentication. It asserts episode identity/counts, no duplicate page rows,
+  playback position/archive state, and successful-parse timestamp behavior.
+- `testFixtureCancellationLeavesNoPartialImport` interrupts a delayed GET and
+  checks that no incomplete feed graph or successful-parse timestamp remains.
+- `testPlaybackActiveBackgroundRefreshPolicyIsSerialAndBounded` covers the
+  headless policy boundary supported by the test target: playback permits one
+  feed and one worker. It does not start real audio.
+- `testFixtureRefreshPerformanceMatrixAndOrderEffect` is opt-in. It runs five
+  sorted and five deterministic shuffled repetitions for 10, 50, and 100 feeds
+  with one and four workers. It prints p50/p95 and sorted-vs-shuffled p50, then
+  applies only a broad order-delta guard to detect a fast-first/slow-last
+  effect. It does not establish a hardware baseline.
 
-A successful GET stages its ETag and Last-Modified headers locally. The
-validator is reusable only after the feed import commits successfully. When
-HEAD is inconclusive, a regular refresh may use that validator for up to six
-hours; a valid 304 leaves the last successful parse time unchanged. Manual
-single and due-release/live requests use unconditional GET. Partial imports
-invalidate the validator so their retry checkpoint cannot be skipped. Validator
-keys also change when a private feed's effective credential changes.
+The correctness suite skips when the fixture server is not running. Run the
+focused correctness checks with build products outside the repository:
 
-The fixture's `dynamic` profile changes the standard RSS description and a
-`podcast:liveItem` from pending to live on consecutive GETs. The simulator
-integration test in `ModelContextExistingModelTests` checks a manual single
-GET followed by a regular HEAD plus GET updates both stored values, even when
-the publisher's HEAD timestamp is stale for a time-sensitive live item. The same suite includes a
-50-feed network fixture comparison at concurrency 1 and 4. Start the server
-with `--feeds 100 --delay 1` before running either fixture test; they skip
-when the server is absent.
+```sh
+DERIVED_DATA="$TMPDIR/PodcastClient/DerivedData"
+xcodebuild test \
+  -project 'Up Next.xcodeproj' \
+  -scheme UpNext \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -derivedDataPath "$DERIVED_DATA" \
+  -only-testing:UpNextTests/PodcastRefreshPerformanceRegressionTests
+```
 
-On 2026-10-08, the iPhone 18 Pro iOS 27 simulator completed the deterministic
-50-feed slow-HEAD fixture (`--delay 1`, one episode per feed) with the two-per-origin
-limit: concurrency 1 took 51.96 s and concurrency 4 took 25.31 s, a 51.3%
-shorter wall time. Every feed returned an unchanged HEAD result, with zero GETs
-or feed-graph commits. Per-feed total p50/p95 were 1.016/1.121 s at
-concurrency 1 and 2.020/2.038 s at concurrency 4; parallel workers spend some
-time queued behind the per-origin limit while total run time falls.
-This is the network-bound fixture result; it does not measure iCloud export,
-large XML parsing or device memory pressure.
+Run the timing matrix separately. Five repetitions per order, feed count, and
+worker count are intentional; expect it to take materially longer than the
+correctness checks:
 
-The HEAD-unsupported fixture also passed an end-to-end check: the first run
-issued HEAD 405 then GET 200; the second issued HEAD 405 then conditional GET
-304. The successful XML parse timestamp remained unchanged on the 304.
+```sh
+PODCAST_REFRESH_PERFORMANCE=1 \
+PODCAST_REFRESH_FIXTURE_DELAY=0.01 \
+xcodebuild test \
+  -project 'Up Next.xcodeproj' \
+  -scheme UpNext \
+  -destination 'platform=iOS Simulator,name=iPhone 18 Pro' \
+  -derivedDataPath "$TMPDIR/PodcastClient/DerivedData" \
+  -only-testing:UpNextTests/PodcastRefreshPerformanceRegressionTests/testFixtureRefreshPerformanceMatrixAndOrderEffect
+```
 
-The iPhone Duo simulator passed 71 focused private-feed, endpoint, pagination,
-retry, and request-policy tests. Five additional end-to-end fixture tests passed
-after the value-snapshot change: query-paged import, live/description updates,
-HEAD 405/GET 304 timestamps, repeat-refresh user state, and HTTP failure
-timestamps. Three preparation-stage tests passed, including four simultaneous
-network/parser preparations without a ModelContext. Debug app builds succeeded for iOS simulator, unsigned iPhone, and
-macOS. These results do not include a signed iPhone or iCloud export run.
+If the named simulator is unavailable, select an installed iOS simulator with
+`xcrun simctl list devices available`. Do not substitute simulator timings for
+physical-device or iCloud measurements. Keep any derived data and test results
+under `$TMPDIR/PodcastClient/` or another directory outside the repository.
 
-A 100-feed unchanged run reported all 100 completions, and a ten-feed GET/import
-run repeated at four workers retained exactly ten episodes. These checks used
-an in-memory simulator store without CloudKit mirroring.
+## How to interpret timing output
 
-Physical iPhone and iCloud-enabled stress checks are required before treating
-the epic's release gate as complete. Simulator timings do not establish that
-gate.
+The timing test prints one line per feed count and worker count, including all
+samples' p50/p95 and the sorted/shuffled p50 values. Preserve the raw test
+output with the simulator model, OS, Xcode/Swift version, commit, fixture
+arguments, and whether the run was cold or warm. Do not turn those numbers
+into a product baseline without repeating them on the target hardware.
+
+An order effect is a regression signal only when the sorted versus shuffled
+difference exceeds the test's broad tolerance and reproduces across the five
+repetitions. Inspect signposts and `/__stats` request sequence before
+attributing it to SwiftData retention: slow fixtures, the two-request
+per-origin limit, parser work, the serialized writer, and trailing invalidation
+work can all change the tail.
+
+The suite does not claim physical-device RSS, CloudKit export/import,
+Instruments SQL/fault counts, scrolling, or real playback-interruption
+behavior. Those require the separate device validation gate. No measurements
+are recorded here until a reproducible command is run on a named environment.
+
+## Current refresh behavior relevant to profiling
+
+Foreground Manual Refresh All defaults to four bounded feed operations. Set the
+device-local `PodcastRefreshNetworkConcurrency` default to `1` for the serial
+fallback or to `2`/`3` for a reduced pool. Network and parser work can overlap;
+`PodcastFeedCommitCoordinator` admits one SwiftData feed-graph import at a
+time. The per-origin HTTP limit is two. A 429 `Retry-After` pauses queued work
+for that origin without stalling other hosts, and canceled writer/network
+waiters are removed.
+
+Feed graph saves release the writer before Inbox, smart-playlist, Spotlight,
+and deferred automatic-download work. Feed invalidations are coalesced. A
+durable first-page seed is published before a paginated continuation is
+fetched, and a partial import invalidates its validator so a retry cannot be
+mistaken for a successful refresh.
+
+Successful GET validators are committed only after the feed import commits.
+HEAD is advisory: a 405, missing header, or stale Last-Modified is allowed to
+fall through to a GET when the request policy requires it. Regular refreshes
+may use a committed ETag/Last-Modified validator for a bounded period; a valid
+304 leaves the last successful parse time unchanged. Manual single and due
+release requests use an unconditional GET.
+
+The refresh changes covered here are internal performance/correctness work;
+they do not change user-facing controls or guide navigation, so no in-app User
+Guide topic is required for this test-only documentation update.
