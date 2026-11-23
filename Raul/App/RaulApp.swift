@@ -107,6 +107,7 @@ struct BackgroundRefreshScheduleSnapshot: Sendable {
     let computedAt: Date
     let feedEarliestBeginDate: Date
     let predictedReleaseTarget: SubscriptionManager.PredictedReleaseRefreshTarget?
+    let predictedReleaseTargetFeed: URL?
     let predictedReleaseEarliestBeginDate: Date?
     let hasPredictedReleaseTarget: Bool
 
@@ -115,11 +116,13 @@ struct BackgroundRefreshScheduleSnapshot: Sendable {
         feedEarliestBeginDate: Date,
         predictedReleaseTarget: SubscriptionManager.PredictedReleaseRefreshTarget?,
         predictedReleaseEarliestBeginDate: Date?,
+        predictedReleaseTargetFeed: URL? = nil,
         hasPredictedReleaseTarget: Bool? = nil
     ) {
         self.computedAt = computedAt
         self.feedEarliestBeginDate = feedEarliestBeginDate
         self.predictedReleaseTarget = predictedReleaseTarget
+        self.predictedReleaseTargetFeed = predictedReleaseTargetFeed ?? predictedReleaseTarget?.feed
         self.predictedReleaseEarliestBeginDate = predictedReleaseEarliestBeginDate
         self.hasPredictedReleaseTarget = hasPredictedReleaseTarget ?? (predictedReleaseTarget != nil)
     }
@@ -129,6 +132,7 @@ private struct PersistedBackgroundRefreshScheduleDates: Codable {
     let computedAt: Date
     let feedEarliestBeginDate: Date
     let predictedReleaseEarliestBeginDate: Date?
+    let predictedReleaseTargetFeed: URL?
     let hasPredictedReleaseTarget: Bool
 }
 
@@ -159,6 +163,7 @@ actor BackgroundRefreshScheduleSnapshotStore {
             feedEarliestBeginDate: restored.feedEarliestBeginDate,
             predictedReleaseTarget: nil,
             predictedReleaseEarliestBeginDate: restored.predictedReleaseEarliestBeginDate,
+            predictedReleaseTargetFeed: restored.predictedReleaseTargetFeed,
             hasPredictedReleaseTarget: restored.hasPredictedReleaseTarget
         )
         snapshot = restoredSnapshot
@@ -260,6 +265,7 @@ actor BackgroundRefreshScheduleSnapshotStore {
             computedAt: updated.computedAt,
             feedEarliestBeginDate: updated.feedEarliestBeginDate,
             predictedReleaseEarliestBeginDate: updated.predictedReleaseEarliestBeginDate,
+            predictedReleaseTargetFeed: updated.predictedReleaseTargetFeed,
             hasPredictedReleaseTarget: updated.hasPredictedReleaseTarget
         )
         if let data = try? encoder.encode(persisted) {
@@ -518,6 +524,73 @@ enum PredictedReleaseRefreshScheduler {
                 details: "pending=\(pending != nil),earliest=\(pending?.earliestBeginDate?.description ?? "unavailable")"
             )
             AppDiagnostics.log("schedule_predicted_release_refresh_failed")
+        }
+#endif
+    }
+
+    /// A feed import can fulfill the release that a pending request was meant
+    /// to check. Recompute only when the foreground snapshot identifies that
+    /// feed as the old target, then submit the replacement before touching the
+    /// existing request. If submission fails, the old request remains intact.
+    static func retargetAfterImport(
+        using container: ModelContainer,
+        fulfilledFeed: URL
+    ) async {
+#if os(iOS)
+        guard let snapshot = await BackgroundRefreshScheduleSnapshotStore.shared.cachedSnapshot(),
+              (snapshot.predictedReleaseTarget?.feed ?? snapshot.predictedReleaseTargetFeed) == fulfilledFeed else {
+            return
+        }
+
+        let pending = await BGTaskScheduler.shared.pendingTaskRequests().first {
+            $0.identifier == BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        }
+        guard pending != nil else { return }
+
+        guard let schedule = await predictedReleaseRefreshSchedule(using: container) else {
+            BGTaskScheduler.shared.cancel(
+                taskRequestWithIdentifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+            )
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.clear()
+#endif
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_retargeted",
+                details: "replacement=none"
+            )
+            return
+        }
+
+        let request = BGAppRefreshTaskRequest(
+            identifier: BackgroundTaskConfiguration.predictedReleaseRefreshIdentifier
+        )
+        request.earliestBeginDate = schedule.earliestBeginDate
+        do {
+            // Submitting the same identifier replaces the old request. This is
+            // deliberately attempted before any cancellation so a scheduling
+            // failure cannot discard the still-pending request.
+            try BGTaskScheduler.shared.submit(request)
+#if DEBUG
+            await PredictedReleaseRefreshScheduleStore.shared.record(
+                PredictedReleaseRefreshSchedule(
+                    scheduledAt: Date(),
+                    title: schedule.target.title,
+                    feedURL: schedule.target.feed.absoluteString,
+                    releaseDate: schedule.target.releaseDate,
+                    earliestBeginDate: schedule.earliestBeginDate
+                )
+            )
+#endif
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_retargeted",
+                details: "replacement=next_target"
+            )
+        } catch {
+            CrashBreadcrumbs.shared.record(
+                "schedule_predicted_release_refresh_retarget_failed",
+                details: "pending_preserved=true"
+            )
+            AppDiagnostics.log("schedule_predicted_release_refresh_retarget_failed")
         }
 #endif
     }
@@ -1485,6 +1558,17 @@ private struct RootWindowView: View {
                     modelContainer: container,
                     settingsRequest: $settingsRequest
                 )
+#if os(iOS)
+                .onReceive(NotificationCenter.default.publisher(for: .podcastFeedImportDidCommit)) { notification in
+                    guard let feed = notification.object as? URL else { return }
+                    Task(priority: .utility) {
+                        await PredictedReleaseRefreshScheduler.retargetAfterImport(
+                            using: container,
+                            fulfilledFeed: feed
+                        )
+                    }
+                }
+#endif
 
                 .onAppear {
                     CrashBreadcrumbs.shared.record("root_view_on_appear")

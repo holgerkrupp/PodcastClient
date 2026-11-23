@@ -199,6 +199,31 @@ final class PodcastReleasePredictorTests: XCTestCase {
         XCTAssertEqual(prediction.releaseDate, date(2026, 6, 29, 8))
     }
 
+    func testImportedEpisodeWithPublisherTimestampDriftAdvancesPastFulfilledSlot() throws {
+        let expectedRelease = date(2026, 6, 19, 19, 35)
+        let dates = try weeklyDates(
+            weekday: 6,
+            through: date(2026, 6, 12, 19, 35),
+            count: 8
+        )
+        let now = date(2026, 6, 20, 16)
+
+        for drift in [-3 * 60 * 60, 3 * 60 * 60] {
+            let importedDate = expectedRelease.addingTimeInterval(TimeInterval(drift))
+            let prediction = try XCTUnwrap(
+                PodcastReleasePredictor.prediction(
+                    from: dates + [importedDate],
+                    after: now,
+                    calendar: calendar
+                )
+            )
+
+            XCTAssertGreaterThan(prediction.releaseDate, now)
+            XCTAssertEqual(calendar.component(.weekday, from: prediction.releaseDate), 6)
+            XCTAssertNotEqual(prediction.releaseDate, expectedRelease)
+        }
+    }
+
     @MainActor
     func testPredictionIsCachedOnPodcastMetadata() async throws {
         let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
@@ -239,6 +264,109 @@ final class PodcastReleasePredictorTests: XCTestCase {
         XCTAssertEqual(metadata.nextPredictedRefreshStartDate, expectedReleaseDate.addingTimeInterval(-30 * 60))
         XCTAssertNotNil(metadata.nextPredictedRefreshEndDate)
         XCTAssertEqual(metadata.releasePredictionUpdatedAt, now)
+    }
+
+    @MainActor
+    func testCommittedEpisodeInvalidatesCachedMissedSlotForFreshManager() async throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let feedURL = URL(string: "https://example.com/friday.xml")!
+        let podcast = Podcast(feed: feedURL)
+        let historicalDates = try weeklyDates(
+            weekday: 6,
+            through: date(2026, 6, 12, 19, 35),
+            count: 8
+        )
+        podcast.episodes = historicalDates.enumerated().map { index, publishDate in
+            Episode(
+                guid: "friday-" + String(index),
+                title: "Friday " + String(index),
+                publishDate: publishDate,
+                url: URL(string: "https://example.com/friday-" + String(index) + ".mp3")!,
+                podcast: podcast
+            )
+        }
+        context.insert(podcast)
+        try context.save()
+
+        let importDate = date(2026, 6, 20, 16)
+        let missedPrediction = await SubscriptionManager(modelContainer: container)
+            .predictedReleaseDate(for: podcast.persistentModelID, after: importDate)
+        XCTAssertEqual(missedPrediction, date(2026, 6, 19, 19, 35))
+
+        let importedEpisodeDate = date(2026, 6, 19, 21, 35)
+        let importedEpisode = Episode(
+            guid: "friday-arrived",
+            title: "Friday arrived late",
+            publishDate: importedEpisodeDate,
+            url: URL(string: "https://example.com/friday-arrived.mp3")!,
+            podcast: podcast
+        )
+        context.insert(importedEpisode)
+        podcast.metaData?.lastRefresh = importDate
+        try context.save()
+
+        let prediction = PodcastReleasePredictor.updateCachedPrediction(
+            for: podcast,
+            after: importDate,
+            newestCommittedPublishDate: importedEpisodeDate,
+            forceRecompute: true
+        )
+        context.saveIfNeeded()
+
+        XCTAssertEqual(prediction?.releaseDate, date(2026, 6, 26, 19, 35))
+
+        let freshCandidates = await SubscriptionManager(modelContainer: container)
+            .predictedReleaseRefreshCandidates(after: importDate, limit: 5)
+        let freshTarget = try XCTUnwrap(
+            freshCandidates.first(where: { $0.feed == feedURL })
+        )
+        XCTAssertEqual(freshTarget.releaseDate, date(2026, 6, 26, 19, 35))
+        XCTAssertGreaterThan(freshTarget.releaseDate, importDate)
+
+        let verificationContext = ModelContext(container)
+        let storedPodcast = try XCTUnwrap(
+            try verificationContext.fetch(
+                FetchDescriptor<Podcast>(predicate: #Predicate { $0.feed == feedURL })
+            ).first
+        )
+        XCTAssertEqual(storedPodcast.metaData?.nextPredictedReleaseDate, date(2026, 6, 26, 19, 35))
+        XCTAssertEqual(storedPodcast.metaData?.releasePredictionUpdatedAt, importDate)
+    }
+
+    @MainActor
+    func testHeadOnlyCheckDoesNotFulfillCachedMissedSlot() async throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let feedURL = URL(string: "https://example.com/friday-head.xml")!
+        let podcast = Podcast(feed: feedURL)
+        let dates = try weeklyDates(
+            weekday: 6,
+            through: date(2026, 6, 12, 19, 35),
+            count: 8
+        )
+        podcast.episodes = dates.enumerated().map { index, publishDate in
+            Episode(
+                guid: "head-" + String(index),
+                title: "Head " + String(index),
+                publishDate: publishDate,
+                url: URL(string: "https://example.com/head-" + String(index) + ".mp3")!,
+                podcast: podcast
+            )
+        }
+        context.insert(podcast)
+        try context.save()
+
+        let now = date(2026, 6, 20, 16)
+        _ = await SubscriptionManager(modelContainer: container)
+            .predictedReleaseDate(for: podcast.persistentModelID, after: now)
+        podcast.metaData?.feedUpdateCheckDate = now
+        try context.save()
+
+        let candidates = await SubscriptionManager(modelContainer: container)
+            .predictedReleaseRefreshCandidates(after: now, limit: 5)
+        let target = try XCTUnwrap(candidates.first(where: { $0.feed == feedURL }))
+        XCTAssertEqual(target.releaseDate, date(2026, 6, 19, 19, 35))
     }
 
     @MainActor

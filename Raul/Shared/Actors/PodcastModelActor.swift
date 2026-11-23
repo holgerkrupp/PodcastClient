@@ -12,6 +12,10 @@ import os
 import OSLog
 import mp3ChapterReader
 
+extension Notification.Name {
+    static let podcastFeedImportDidCommit = Notification.Name("podcastFeedImportDidCommit")
+}
+
 /// Describes the freshness check independently from whether the caller needs
 /// an authoritative feed body. A due release still probes the server but does
 /// not trust an unchanged HEAD response to suppress its GET.
@@ -171,6 +175,7 @@ struct PodcastEpisodeImportResult: Sendable {
     var newEpisodeCount = 0
     var postCreationEpisodeURLs: [URL] = []
     var feedDataChanged = false
+    var newestImportedPublishDate: Date?
 }
 
 enum PodcastEpisodeImportClassification: Sendable, Equatable {
@@ -1230,7 +1235,7 @@ actor PodcastModelActor {
             var partialPodcast = page.parsedFeed
             partialPodcast["episodes"] = page.episodes.map(\.rawEpisodeData)
 
-            _ = try await updateDetails(
+            let importResult = try await updateDetails(
                 finalPodcast,
                 fullPodcast: partialPodcast,
                 silent: true
@@ -1241,7 +1246,13 @@ actor PodcastModelActor {
             finalMeta.isUpdating = false
             finalMeta.feedUpdated = true
             await updateLastRefresh(for: finalMeta.persistentModelID)
-            PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
+            let predictionDate = Date()
+            PodcastReleasePredictor.updateCachedPrediction(
+                for: finalPodcast,
+                after: predictionDate,
+                newestCommittedPublishDate: importResult.newestImportedPublishDate,
+                forceRecompute: true
+            )
             modelContext.saveIfNeeded()
             await reconcileLiveNotifications(for: finalPodcast)
             return true
@@ -1731,6 +1742,7 @@ actor PodcastModelActor {
         do {
             var initialPageNewEpisodeCount = 0
             var initialPageFeedDataChanged = false
+            var newestImportedPublishDate: Date?
             refreshStage = "initial_page_import"
             if endpointChanged == false,
                let resolvedInitialPage, resolvedInitialPage.matches(resolvedEndpoint),
@@ -1767,10 +1779,14 @@ actor PodcastModelActor {
                     )
                     initialPageNewEpisodeCount = seedImportResult.newEpisodeCount
                     initialPageFeedDataChanged = seedImportResult.feedDataChanged
+                    newestImportedPublishDate = seedImportResult.newestImportedPublishDate
                     let seedPostCreationURLs = seedImportResult.postCreationEpisodeURLs
                     modelContext.saveIfNeeded()
                     await commitCoordinator.release()
-                    await publishFeedImportInvalidations(newEpisodeCount: seedImportResult.newEpisodeCount)
+                    await publishFeedImportInvalidations(
+                        newEpisodeCount: seedImportResult.newEpisodeCount,
+                        feed: feedURL
+                    )
                     await processCommittedNewEpisodes(
                         seedPostCreationURLs,
                         sendNotifications: silent != true || processNewEpisodesDuringSilentRefresh
@@ -1895,6 +1911,9 @@ actor PodcastModelActor {
             }
             let newEpisodeCount = importResult.newEpisodeCount
             let totalNewEpisodeCount = initialPageNewEpisodeCount + newEpisodeCount
+            if let importedDate = importResult.newestImportedPublishDate {
+                newestImportedPublishDate = max(newestImportedPublishDate ?? .distantPast, importedDate)
+            }
 
             var enrichmentSources: [String] = []
             if let description = importPodcast["description"] as? String {
@@ -1947,11 +1966,17 @@ actor PodcastModelActor {
                 await updateLastRefresh(for: finalMeta.persistentModelID)
                 await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: feedURL)
             }
-            PodcastReleasePredictor.updateCachedPrediction(for: finalPodcast, after: Date())
+            let predictionDate = Date()
+            PodcastReleasePredictor.updateCachedPrediction(
+                for: finalPodcast,
+                after: predictionDate,
+                newestCommittedPublishDate: newestImportedPublishDate,
+                forceRecompute: true
+            )
             modelContext.saveIfNeeded()
             writerHeld = false
             await commitCoordinator.release()
-            await publishFeedImportInvalidations(newEpisodeCount: newEpisodeCount)
+            await publishFeedImportInvalidations(newEpisodeCount: newEpisodeCount, feed: feedURL)
             if initialPageFeedDataChanged || importResult.feedDataChanged {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: feedURL)
             }
@@ -2075,10 +2100,16 @@ actor PodcastModelActor {
         )
     }
 
-    private func publishFeedImportInvalidations(newEpisodeCount: Int) async {
+    private func publishFeedImportInvalidations(newEpisodeCount: Int, feed: URL) async {
         guard newEpisodeCount > 0 else { return }
         await InboxChangeBroadcaster.notifyInboxDidChange()
         await PodcastFeedImportInvalidationBroadcaster.notify()
+        await MainActor.run {
+            NotificationCenter.default.post(
+                name: .podcastFeedImportDidCommit,
+                object: feed
+            )
+        }
     }
     
     func updateDetails(
@@ -2257,6 +2288,12 @@ actor PodcastModelActor {
                     existingEpisode.update(from: episodeData)
                     existingEpisode.refreshFeedExternalFiles(from: episodeData)
                     existingEpisode.refreshOptionalTags(from: episodeData)
+                    if let publishDate = existingEpisode.publishDate {
+                        importResult.newestImportedPublishDate = max(
+                            importResult.newestImportedPublishDate ?? .distantPast,
+                            publishDate
+                        )
+                    }
                     if let guid = existingEpisode.guid, guid.isEmpty == false {
                         existingEpisodesByGUID[guid] = existingEpisode
                     }
@@ -2298,6 +2335,12 @@ actor PodcastModelActor {
                     }
                     let relinkedEpisode = fetchEpisode(byURL: episodeURL)
                     if let relinkedEpisode {
+                        if let publishDate = relinkedEpisode.publishDate {
+                            importResult.newestImportedPublishDate = max(
+                                importResult.newestImportedPublishDate ?? .distantPast,
+                                publishDate
+                            )
+                        }
                         if let guid = relinkedEpisode.guid, guid.isEmpty == false {
                             existingEpisodesByGUID[guid] = relinkedEpisode
                         }
@@ -2329,6 +2372,12 @@ actor PodcastModelActor {
                 modelContext.insert(episode)
                 feedDataChanged = true
                 importResult.newEpisodeCount += 1
+                if let publishDate = episode.publishDate {
+                    importResult.newestImportedPublishDate = max(
+                        importResult.newestImportedPublishDate ?? .distantPast,
+                        publishDate
+                    )
+                }
                 if let guid = episode.guid, guid.isEmpty == false {
                     existingEpisodesByGUID[guid] = episode
                 }

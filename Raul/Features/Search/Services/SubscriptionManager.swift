@@ -2097,6 +2097,7 @@ struct PodcastReleasePredictor {
     static func prediction(
         for podcast: Podcast,
         after now: Date,
+        newestCommittedPublishDate: Date? = nil,
         allowRelationshipFallback: Bool = false
     ) -> Prediction? {
         let dates = recentPublishDates(
@@ -2105,8 +2106,9 @@ struct PodcastReleasePredictor {
             limit: maximumEpisodes,
             allowRelationshipFallback: allowRelationshipFallback
         )
+        let committedDates = newestCommittedPublishDate.map { dates + [$0] } ?? dates
         return prediction(
-            from: dates,
+            from: committedDates,
             after: now,
             calendar: .autoupdatingCurrent
         )
@@ -2215,11 +2217,14 @@ struct PodcastReleasePredictor {
     static func updateCachedPrediction(
         for podcast: Podcast,
         after now: Date,
+        newestCommittedPublishDate: Date? = nil,
+        forceRecompute: Bool = false,
         allowRelationshipFallback: Bool = false
     ) -> Prediction? {
         let prediction = prediction(
             for: podcast,
             after: now,
+            newestCommittedPublishDate: newestCommittedPublishDate,
             allowRelationshipFallback: allowRelationshipFallback
         )
 
@@ -2231,7 +2236,8 @@ struct PodcastReleasePredictor {
         let refreshStart = prediction?.refreshStart
         let refreshEnd = prediction?.refreshEnd
 
-        guard metaData.nextPredictedReleaseDate != releaseDate
+        guard forceRecompute
+            || metaData.nextPredictedReleaseDate != releaseDate
             || metaData.nextPredictedRefreshStartDate != refreshStart
             || metaData.nextPredictedRefreshEndDate != refreshEnd
         else {
@@ -2321,13 +2327,16 @@ struct PodcastReleasePredictor {
         limit: Int,
         allowRelationshipFallback: Bool
     ) -> [Date] {
-        guard let feed = podcast.feed, let context = podcast.modelContext else {
+        guard podcast.feed != nil, let context = podcast.modelContext else {
             // Fallback for a detached podcast with no backing context.
             return relationshipPublishDates(for: podcast, before: cutoff, limit: limit)
         }
+        let podcastID = podcast.persistentModelID
         var descriptor = FetchDescriptor<Episode>(
             predicate: #Predicate<Episode> { episode in
-                episode.podcast?.feed == feed
+                // Stable podcast identity avoids missing a just-committed episode
+                // when feed metadata is refreshed in the same import transaction.
+                episode.podcast?.persistentModelID == podcastID
                     && episode.publishDate != nil
             },
             sortBy: [SortDescriptor(\Episode.publishDate, order: .reverse)]
