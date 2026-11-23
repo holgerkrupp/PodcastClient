@@ -573,13 +573,28 @@ final class PodcastRefreshCoordinator: @unchecked Sendable {
 
     /// Refreshes every subscribed feed, or joins the run that is already going so
     /// a second screen waits for the same work instead of starting a duplicate pass.
-    func refreshAllPodcasts(modelContainer: ModelContainer) async {
-        await startOrJoinRefresh(modelContainer: modelContainer).value
+    #if DEBUG
+    func refreshAllPodcasts(
+        modelContainer: ModelContainer,
+        trigger: RefreshHistoryTrigger = .userInitiatedBulk
+    ) async {
+        await startOrJoinRefresh(
+            modelContainer: modelContainer,
+            historyTrigger: trigger.rawValue
+        ).value
     }
+    #else
+    func refreshAllPodcasts(modelContainer: ModelContainer) async {
+        await startOrJoinRefresh(modelContainer: modelContainer, historyTrigger: nil).value
+    }
+    #endif
 
     /// Synchronous so the whole decision — join or start, and announce the start —
     /// happens in one critical section. `NSLock` is off limits in an async context.
-    private func startOrJoinRefresh(modelContainer: ModelContainer) -> Task<Void, Never> {
+    private func startOrJoinRefresh(
+        modelContainer: ModelContainer,
+        historyTrigger: String?
+    ) -> Task<Void, Never> {
         lock.lock()
         defer { lock.unlock() }
 
@@ -593,8 +608,21 @@ final class PodcastRefreshCoordinator: @unchecked Sendable {
         started.total = 0
         started.errorMessage = nil
 
+        #if DEBUG
+        let historyID: UUID? = UUID()
+        let trigger = RefreshHistoryTrigger(rawValue: historyTrigger ?? "") ?? .userInitiatedBulk
+        #else
+        let historyID: UUID? = nil
+        #endif
+
         let task = Task {
-            await self.performRefresh(modelContainer: modelContainer)
+            #if DEBUG
+            if let historyID {
+                await RefreshHistoryStore.shared.begin(id: historyID, trigger: trigger)
+                AppDiagnostics.log("[RefreshHistory] started trigger=\(trigger.rawValue)")
+            }
+            #endif
+            await self.performRefresh(modelContainer: modelContainer, historyID: historyID)
         }
         activeRefresh = task
         // Announced inside the lock so the "started" snapshot can never land after
@@ -603,22 +631,55 @@ final class PodcastRefreshCoordinator: @unchecked Sendable {
         return task
     }
 
-    private func performRefresh(modelContainer: ModelContainer) async {
+    private func performRefresh(modelContainer: ModelContainer, historyID: UUID?) async {
         var errorMessage: String?
+        var wasCancelled = false
 
         do {
             let actor = PodcastModelActor(modelContainer: modelContainer)
-            try await actor.refreshAllPodcasts { [weak self] completed, total in
-                self?.report(completed: completed, total: total)
+            #if DEBUG
+            let feedResult: PodcastRefreshFeedResultHandler?
+            if let historyID {
+                feedResult = { title, feed, didUpdate, newEpisodeCount, errorMessage in
+                    let result: RefreshHistoryPodcastResult
+                    if let errorMessage {
+                        result = .failed(errorMessage)
+                    } else if didUpdate {
+                        result = .refreshed(newEpisodeCount: newEpisodeCount)
+                    } else {
+                        result = .feedNotUpdated
+                    }
+                    await RefreshHistoryStore.shared.update(
+                        id: historyID,
+                        podcast: RefreshHistoryPodcastCheck(
+                            title: title,
+                            feedURL: feed,
+                            result: result
+                        )
+                    )
+                }
+            } else {
+                feedResult = nil
             }
+            #else
+            let feedResult: PodcastRefreshFeedResultHandler? = nil
+            #endif
+            try await actor.refreshAllPodcasts(
+                progress: { [weak self] completed, total in
+                    self?.report(completed: completed, total: total, historyID: historyID)
+                },
+                feedResult: feedResult
+            )
+        } catch is CancellationError {
+            wasCancelled = true
         } catch {
             errorMessage = error.localizedDescription
         }
 
-        finish(errorMessage: errorMessage)
+        finish(errorMessage: errorMessage, historyID: historyID, wasCancelled: wasCancelled)
     }
 
-    private func report(completed: Int, total: Int) {
+    private func report(completed: Int, total: Int, historyID: UUID?) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -627,9 +688,21 @@ final class PodcastRefreshCoordinator: @unchecked Sendable {
         snapshot.completed = completed
         snapshot.total = total
         subject.send(snapshot)
+
+        #if DEBUG
+        if let historyID {
+            Task {
+                await RefreshHistoryStore.shared.update(
+                    id: historyID,
+                    completed: completed,
+                    total: total
+                )
+            }
+        }
+        #endif
     }
 
-    private func finish(errorMessage: String?) {
+    private func finish(errorMessage: String?, historyID: UUID?, wasCancelled: Bool) {
         lock.lock()
         defer { lock.unlock() }
 
@@ -642,5 +715,24 @@ final class PodcastRefreshCoordinator: @unchecked Sendable {
             snapshot.lastFetchDate = Date()
         }
         subject.send(snapshot)
+
+        #if DEBUG
+        if let historyID {
+            let status: RefreshHistoryStatus = wasCancelled
+                ? .cancelled
+                : (errorMessage == nil ? .completed : .failed)
+            Task {
+                await RefreshHistoryStore.shared.finish(
+                    id: historyID,
+                    status: status,
+                    completed: snapshot.completed,
+                    total: snapshot.total
+                )
+                AppDiagnostics.log(
+                    "[RefreshHistory] finished status=\(status.rawValue) completed=\(snapshot.completed) total=\(snapshot.total)"
+                )
+            }
+        }
+        #endif
     }
 }

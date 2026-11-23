@@ -234,6 +234,14 @@ private struct PodcastHEADSnapshot: Sendable {
     let accessProfile: PodcastAccessProfile?
 }
 
+typealias PodcastRefreshFeedResultHandler = @Sendable (
+    _ title: String,
+    _ feed: URL,
+    _ didUpdate: Bool,
+    _ newEpisodeCount: Int,
+    _ errorMessage: String?
+) async -> Void
+
 @ModelActor
 actor PodcastModelActor {
     private let maximumTrustedHeaderSkipInterval: TimeInterval = 60 * 60 * 6
@@ -2663,7 +2671,8 @@ actor PodcastModelActor {
     }
     
     func refreshAllPodcasts(
-        progress: (@Sendable (_ completed: Int, _ total: Int) async -> Void)? = nil
+        progress: (@Sendable (_ completed: Int, _ total: Int) async -> Void)? = nil,
+        feedResult: PodcastRefreshFeedResultHandler? = nil
     ) async throws {
         let bulkSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
         os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh all", signpostID: bulkSignpostID)
@@ -2677,19 +2686,17 @@ actor PodcastModelActor {
         )
 
         let podcasts = try modelContext.fetch(descriptor)
-        let feeds = podcasts.compactMap(\.feed)
+        let feeds = podcasts.compactMap { podcast -> (feed: URL, title: String)? in
+            guard let feed = podcast.feed else { return nil }
+            return (feed: feed, title: podcast.title)
+        }
         let maxConcurrent = Self.maximumConcurrentRefreshes
         let refreshStartedAt = ContinuousClock.now
-        let runStartedAt = Date()
         let refreshRunID = UUID()
         let cpuTimeSource = SystemProcessCPUTimeSource()
         let processCPUAtStart = cpuTimeSource.sample().cpuTime
         await progress?(0, feeds.count)
         guard feeds.isEmpty == false else { return }
-
-#if DEBUG
-        var checkedPodcasts: [RefreshHistoryPodcastCheck] = []
-#endif
 
         let failed = await withTaskGroup(
             of: (success: Bool, didUpdate: Bool, title: String, feed: URL, newEpisodeCount: Int, errorMessage: String?, scheduledOrdinal: Int, durationMilliseconds: Int64).self,
@@ -2702,7 +2709,8 @@ actor PodcastModelActor {
             func enqueueNext() {
                 guard nextIndex < feeds.count else { return }
                 let scheduledOrdinal = nextIndex
-                let feed = feeds[nextIndex]
+                let feed = feeds[nextIndex].feed
+                let title = feeds[nextIndex].title
                 nextIndex += 1
                 group.addTask {
                     let worker = PodcastModelActor(modelContainer: self.modelContainer)
@@ -2715,11 +2723,10 @@ actor PodcastModelActor {
                             resolveExistingMissingDurations: false
                         )
                         let durationMilliseconds = Self.milliseconds(feedStartedAt.duration(to: .now))
-                        let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             true,
                             summary.didUpdateFeed,
-                            title ?? feed.absoluteString,
+                            title,
                             feed,
                             summary.newEpisodeCount,
                             nil,
@@ -2728,11 +2735,10 @@ actor PodcastModelActor {
                         )
                     } catch {
                         let durationMilliseconds = Self.milliseconds(feedStartedAt.duration(to: .now))
-                        let title = await worker.fetchPodcastTitle(byFeed: feed)
                         return (
                             false,
                             false,
-                            title ?? feed.absoluteString,
+                            title,
                             feed,
                             0,
                             error.localizedDescription,
@@ -2770,23 +2776,15 @@ actor PodcastModelActor {
                     Int64(max(0, processCPU) * 1_000),
                     memoryFootprint
                 )
-#if DEBUG
-                let podcastResult: RefreshHistoryPodcastResult
-                if let errorMessage = result.errorMessage {
-                    podcastResult = .failed(errorMessage)
-                } else if result.didUpdate {
-                    podcastResult = .refreshed(newEpisodeCount: result.newEpisodeCount)
-                } else {
-                    podcastResult = .feedNotUpdated
-                }
-                checkedPodcasts.append(
-                    RefreshHistoryPodcastCheck(
-                        title: result.title,
-                        feedURL: result.feed,
-                        result: podcastResult
+                if let feedResult {
+                    await feedResult(
+                        result.title,
+                        result.feed,
+                        result.didUpdate,
+                        result.newEpisodeCount,
+                        result.errorMessage
                     )
-                )
-#endif
+                }
                 if result.success == false {
                     failed += 1
                 }
@@ -2805,16 +2803,7 @@ actor PodcastModelActor {
             return failed
         }
 
-#if DEBUG
-        await RefreshHistoryStore.shared.record(
-            RefreshHistoryEntry(
-                startedAt: runStartedAt,
-                finishedAt: Date(),
-                trigger: .userInitiatedBulk,
-                checkedPodcasts: checkedPodcasts
-            )
-        )
-#endif
+        try Task.checkCancellation()
 
         if failed > 0 {
             throw PodcastBulkRefreshError(failedCount: failed, totalCount: feeds.count)

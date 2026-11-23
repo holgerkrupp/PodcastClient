@@ -64,6 +64,7 @@ struct RefreshHistorySettingsView: View {
                                         .font(.caption.monospaced())
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
+                                        .accessibilityHidden(true)
 
                                     if let message = check.result.message, message.isEmpty == false {
                                         Text(message)
@@ -82,9 +83,9 @@ struct RefreshHistorySettingsView: View {
 
                                     Spacer()
 
-                                    Text(entry.finishedAt, format: .dateTime.hour().minute().second())
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(.secondary)
+                                    Text(entry.status.title)
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(statusColor(entry.status))
                                 }
 
                                 Text(entry.trigger.detail)
@@ -95,7 +96,23 @@ struct RefreshHistorySettingsView: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
 
-                                Text("Wall time \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
+                                if entry.isActive, entry.total > 0 {
+                                    ProgressView(
+                                        value: Double(entry.completed),
+                                        total: Double(entry.total)
+                                    )
+                                    .tint(.accentColor)
+                                    .accessibilityLabel("Refresh progress")
+                                    .accessibilityValue("\(entry.completed) of \(entry.total) podcasts checked")
+                                }
+
+                                Text(entryDateText(entry))
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(.tertiary)
+
+                                Text(entry.isActive
+                                    ? "Elapsed \(entry.duration.formatted(.number.precision(.fractionLength(1))))s"
+                                    : "Wall time \(entry.duration.formatted(.number.precision(.fractionLength(1))))s")
                                     .font(.caption2.monospacedDigit())
                                     .foregroundStyle(.tertiary)
                                 if let diagnostics = entry.diagnostics {
@@ -105,6 +122,9 @@ struct RefreshHistorySettingsView: View {
                                 }
                             }
                             .padding(.vertical, 2)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityLabel("\(entry.trigger.title), \(entry.status.title)")
+                            .accessibilityValue(entry.summary)
                         }
                     }
                 }
@@ -157,6 +177,26 @@ struct RefreshHistorySettingsView: View {
         case .cancelled:
             .orange
         }
+    }
+
+    private func statusColor(_ status: RefreshHistoryStatus) -> Color {
+        switch status {
+        case .inProgress:
+            .blue
+        case .completed:
+            .green
+        case .cancelled:
+            .orange
+        case .failed, .interrupted:
+            .red
+        }
+    }
+
+    private func entryDateText(_ entry: RefreshHistoryEntry) -> String {
+        if let finishedAt = entry.finishedAt {
+            return "Finished \(finishedAt.formatted(date: .omitted, time: .standard))"
+        }
+        return "Started \(entry.startedAt.formatted(date: .omitted, time: .standard))"
     }
 }
 
