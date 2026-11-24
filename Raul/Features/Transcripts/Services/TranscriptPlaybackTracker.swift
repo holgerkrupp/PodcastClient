@@ -132,10 +132,10 @@ final class TranscriptPlaybackTracker {
         guard time < end else { return nil }
         let span = segment.activeSpan(at: time)
         // Cue-level timing is enough to identify the current caption, but it is
-        // not enough to claim that the whole caption is the spoken word. Keep
-        // the row/caption active while reserving bold/underline for real word
-        // timing only.
-        let wordSpan = span?.cueLevel == false ? span : nil
+        // not enough to claim that the whole caption is the spoken word. Older
+        // publisher and Speech rows predate the explicit cue-level marker, so
+        // only `true` means cue-level; nil remains valid word timing.
+        let wordSpan = span?.cueLevel == true ? nil : span
         return Active(
             segmentID: segment.id,
             location: wordSpan?.location,

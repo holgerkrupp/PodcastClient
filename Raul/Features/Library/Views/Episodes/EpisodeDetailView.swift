@@ -420,7 +420,8 @@ struct EpisodeDetailView: View {
                     text: line.text,
                     startTime: line.startTime,
                     endTime: line.endTime,
-                    source: .publisher
+                    source: .publisher,
+                    timedSpans: line.timedSpans
                 )
             }
             .sorted {

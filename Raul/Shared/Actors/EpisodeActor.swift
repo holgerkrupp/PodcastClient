@@ -3498,6 +3498,23 @@ actor EpisodeActor {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
             throw TranscriptError.episodeNotFound
         }
+        // Publisher wording is the canonical document. A late local Speech job
+        // may finish after a feed refresh, but it must never replace that text.
+        // Use a bounded fetch instead of materializing the transcript relationship.
+        let episodeID = episode.persistentModelID
+        let generatedRawValue: String? = CachedTranscriptSource.ai.rawValue
+        let liveRawValue: String? = CachedTranscriptSource.localAI.rawValue
+        var publisherDescriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { line in
+                line.episode?.persistentModelID == episodeID
+                    && line.sourceRawValue != generatedRawValue
+                    && line.sourceRawValue != liveRawValue
+            }
+        )
+        publisherDescriptor.fetchLimit = 1
+        if try modelContext.fetch(publisherDescriptor).isEmpty == false {
+            return
+        }
         try await replaceTranscriptLines(for: episode, with: lines, source: .localAI)
         episode.refresh.toggle()
     }

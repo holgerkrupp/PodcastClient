@@ -52,6 +52,10 @@ struct TranscriptSourceMetadata: Equatable, Sendable {
 struct TranscriptPreparedSnapshot: Equatable, Sendable {
     let segments: [TranscriptSegment]
     let sourceMetadata: TranscriptSourceMetadata
+    /// The canonical document and independently resolved timing capability used
+    /// to prepare these rows. Views keep consuming the lightweight segment list,
+    /// while callers that need provenance can inspect the same immutable model.
+    let presentation: TranscriptPresentationSnapshot
 
     static func make(
         from sources: [TranscriptSegmentSource],
@@ -60,9 +64,19 @@ struct TranscriptPreparedSnapshot: Equatable, Sendable {
         let orderedSources = sourcesAreSorted
             ? sources
             : sources.sorted { $0.startTime < $1.startTime }
+        let document = TranscriptDocumentSnapshot.resolve(
+            episodeID: "",
+            storedLines: orderedSources
+        )
+        let presentation = TranscriptPresentationSnapshot.resolve(
+            document: document,
+            livePartial: document == nil ? orderedSources : []
+        )
+        let selectedSources = document?.lines ?? orderedSources
         return Self(
-            segments: TranscriptSegmentBuilder.makeSegments(fromSorted: orderedSources, options: .full),
-            sourceMetadata: TranscriptSourceMetadata.make(from: orderedSources)
+            segments: presentation.segments,
+            sourceMetadata: TranscriptSourceMetadata.make(from: selectedSources),
+            presentation: presentation
         )
     }
 }

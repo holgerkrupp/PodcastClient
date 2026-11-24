@@ -67,7 +67,7 @@ struct PublisherTranscriptTimingEvidence: Sendable {
     let wordsByLine: [UUID: [TranscriptTimedSpan]]
 }
 
-struct TranscriptPresentationSnapshot: Sendable {
+struct TranscriptPresentationSnapshot: Equatable, Sendable {
     enum TimingQuality: Equatable, Sendable {
         case nativeWords, enhancedWords, verifiedCues, rawCues, unavailable
 
