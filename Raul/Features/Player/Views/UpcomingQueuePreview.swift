@@ -111,7 +111,7 @@ struct UpcomingQueuePreview: View {
         .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistMembershipCacheDidInvalidate)) { _ in
             reloadGeneration &+= 1
         }
-        .onReceive(NotificationCenter.default.publisher(for: NSPersistentStoreRemoteChange)) { _ in
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name.NSPersistentStoreRemoteChange)) { _ in
             reloadGeneration &+= 1
         }
         .accessibilityElement(children: .contain)
