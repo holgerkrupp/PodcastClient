@@ -309,7 +309,7 @@ enum AudioClipExporter {
         if let captionTimeline {
             let sourceSize = try await sourceVideoTrack.load(.naturalSize)
             let captions = captionTimeline.clipped(start: startTime, end: endTime, playbackRate: sanitizedPlaybackRate)
-            exporter.videoComposition = makeCaptionVideoComposition(
+            exporter.videoComposition = try await makeCaptionVideoComposition(
                 asset: composition, sourceSize: sourceSize, sourceTransform: sourceTransform, captions: captions
             )
             exporter.timeRange = CMTimeRange(start: .zero, duration: scaledDuration)
@@ -590,7 +590,7 @@ enum AudioClipExporter {
 private extension AudioClipExporter {
     static func makeCaptionVideoComposition(
         asset: AVAsset, sourceSize: CGSize, sourceTransform: CGAffineTransform, captions: ClipCaptionTimeline
-    ) -> AVVideoComposition {
+    ) async throws -> AVVideoComposition {
         let bounds = CGRect(origin: .zero, size: sourceSize).applying(sourceTransform).standardized
         let renderSize = CGSize(width: abs(bounds.width), height: abs(bounds.height))
         // Render caption images once; the frame callback only selects and composites.
@@ -598,20 +598,19 @@ private extension AudioClipExporter {
             guard let image = renderCaptionImage(caption, canvasSize: renderSize), let cgImage = image.cgImage else { return nil }
             return (caption, CIImage(cgImage: cgImage))
         })
-        return AVVideoComposition(asset: asset, applyingCIFiltersWithHandler: { request in
-            let source = request.sourceImage
-            guard let caption = captions.caption(atMediaTime: request.compositionTime.seconds),
+        return try await AVVideoComposition(applyingFiltersTo: asset) { parameters in
+            let source = parameters.sourceImage
+            guard let caption = captions.caption(atMediaTime: parameters.compositionTime.seconds),
                   let image = images.value.first(where: { $0.0 == caption })?.1 else {
-                request.finish(with: source, context: nil)
-                return
+                return AVCIImageFilteringResult(resultImage: source)
             }
             let extent = source.extent
             let translated = image.transformed(by: CGAffineTransform(
                 translationX: extent.midX - image.extent.width / 2,
                 y: extent.midY - image.extent.height / 2
             ))
-            request.finish(with: translated.composited(over: source).cropped(to: extent), context: nil)
-        })
+            return AVCIImageFilteringResult(resultImage: translated.composited(over: source).cropped(to: extent))
+        }
     }
 
     static func renderCaptionImage(_ caption: ClipCaptionTimeline.Caption, canvasSize: CGSize) -> UIImage? {

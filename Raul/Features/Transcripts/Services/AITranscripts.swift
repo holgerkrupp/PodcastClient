@@ -397,7 +397,7 @@ class AITranscripts {
 
         let elapsed = startedAt.duration(to: .now).components
         let elapsedSeconds = Double(elapsed.seconds) + Double(elapsed.attoseconds) / 1e18
-        Self.ioLogger.info("transcription_finished purpose=\(self.diagnosticPurpose, privacy: .public) bytes=\(sourceBytes) audio_seconds=\(audioDuration, format: .fixed(precision: 2)) elapsed_seconds=\(elapsedSeconds, format: .fixed(precision: 2)) result_count=\(transcription.count ?? 0)")
+        Self.ioLogger.info("transcription_finished purpose=\(self.diagnosticPurpose, privacy: .public) bytes=\(sourceBytes) audio_seconds=\(audioDuration, format: .fixed(precision: 2)) elapsed_seconds=\(elapsedSeconds, format: .fixed(precision: 2)) result_count=\(transcription.count)")
 
         return transcription
     }

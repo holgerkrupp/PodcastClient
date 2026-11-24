@@ -153,11 +153,12 @@ private final class URLSessionShownoteResourceLoader: ShownoteResourceLoader, @u
     }
 
     func load(_ url: URL) async throws -> ShownoteHTTPResource {
-        var request = try PodcastNetworkPrivacyPolicy.prepare(URLRequest(url: url), purpose: .shownote)
-        request.httpMethod = "GET"
-        request.timeoutInterval = timeout
-        request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.setValue("text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/xml;q=0.9,*/*;q=0.1", forHTTPHeaderField: "Accept")
+        var preparedRequest = try PodcastNetworkPrivacyPolicy.prepare(URLRequest(url: url), purpose: .shownote)
+        preparedRequest.httpMethod = "GET"
+        preparedRequest.timeoutInterval = timeout
+        preparedRequest.cachePolicy = .reloadIgnoringLocalCacheData
+        preparedRequest.setValue("text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/xml;q=0.9,*/*;q=0.1", forHTTPHeaderField: "Accept")
+        let request = preparedRequest
 
         ShownoteRequestBreadcrumbs.record("started", request: request)
         let cancellationBox = URLSessionTaskCancellationBox()

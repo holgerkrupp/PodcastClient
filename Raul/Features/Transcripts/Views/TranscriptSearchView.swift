@@ -246,10 +246,9 @@ private struct TranscriptSearchPassageRow: View {
         for part in parts {
             let pieces = part.split(separator: "]", maxSplits: 1, omittingEmptySubsequences: false)
             if pieces.count == 2 {
-                result = result + Text(String(pieces[0])).bold().underline()
-                result = result + Text(String(pieces[1]))
+                result = Text("\(result)\(Text(String(pieces[0])).bold().underline())\(Text(String(pieces[1])))")
             } else {
-                result = result + Text(String(part))
+                result = Text("\(result)\(Text(String(part)))")
             }
         }
         return result

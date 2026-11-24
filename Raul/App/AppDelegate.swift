@@ -226,17 +226,13 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     private func launchOptionCategories(_ options: [UIApplication.LaunchOptionsKey: Any]?) -> String {
         guard let options, options.isEmpty == false else { return "none" }
+        // Notification, location, and shortcut launch context is delivered by
+        // scene connection options (or the corresponding delegate callbacks)
+        // after scene-based apps connect. Do not inspect the deprecated launch
+        // option keys here just for diagnostics.
         return options.keys.map { key in
-            switch key.rawValue {
-            case UIApplication.LaunchOptionsKey.remoteNotification.rawValue:
-                return "remote_notification"
-            case UIApplication.LaunchOptionsKey.location.rawValue:
-                return "location"
-            case UIApplication.LaunchOptionsKey.shortcutItem.rawValue:
-                return "shortcut_item"
-            default:
-                return "other"
-            }
+            _ = key
+            return "other"
         }.sorted().joined(separator: "+")
     }
 

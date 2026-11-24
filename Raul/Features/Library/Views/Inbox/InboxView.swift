@@ -389,15 +389,9 @@ struct InboxListView: View {
                 Text(errorMessage)
             }
         }
-        .overlay {
+        .navigationDestination(isPresented: $showLiveNotificationPodcast) {
             if let liveNotificationPodcast {
-                NavigationLink(
-                    destination: PodcastDetailView(podcast: liveNotificationPodcast),
-                    isActive: $showLiveNotificationPodcast
-                ) {
-                    EmptyView()
-                }
-                .hidden()
+                PodcastDetailView(podcast: liveNotificationPodcast)
             }
         }
 #if DEBUG

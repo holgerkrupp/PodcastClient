@@ -12,9 +12,7 @@ extension TranscriptSegment {
               let range = Range(NSRange(location: location, length: length), in: text) else {
             return Text(text)
         }
-        return Text(String(text[..<range.lowerBound]))
-            + Text(String(text[range])).bold().underline()
-            + Text(String(text[range.upperBound...]))
+        return Text("\(Text(String(text[..<range.lowerBound])))\(Text(String(text[range])).bold().underline())\(Text(String(text[range.upperBound...])))")
     }
 }
 

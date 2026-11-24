@@ -7,6 +7,7 @@
 import SwiftUI
 import ESADesignKit
 import Combine
+import SwiftData
 
 enum GroupedListRowPosition: Equatable {
     case single

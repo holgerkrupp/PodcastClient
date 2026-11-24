@@ -567,7 +567,7 @@ struct AudioClipExportView: View {
                         .foregroundStyle(.green)
                 }
 
-                (Text(before) + Text(current).bold().underline() + Text(after))
+                Text("\(Text(before))\(Text(current).bold().underline())\(Text(after))")
                     .font(.system(size: max(12, min(containerWidth * 0.045, 32))))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
