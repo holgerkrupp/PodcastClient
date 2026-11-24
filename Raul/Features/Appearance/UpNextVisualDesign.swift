@@ -108,6 +108,15 @@ enum UpNextVisualDesignPreference {
     }
 }
 
+/// Shared row geometry keeps artwork, episode rows, and grouped list surfaces
+/// aligned without creating a second design system for Inbox.
+enum UpNextVisualDesignMetrics {
+    static let groupedRowCornerRadius: CGFloat = 20
+    static let artworkCornerRadius: CGFloat = 10
+    static let rowHorizontalPadding: CGFloat = 8
+    static let rowVerticalPadding: CGFloat = 8
+}
+
 struct WidgetAppearanceSnapshot: Codable {
     let schemaVersion: Int
     let visualStyle: String

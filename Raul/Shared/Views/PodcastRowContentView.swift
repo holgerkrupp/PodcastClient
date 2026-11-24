@@ -315,7 +315,8 @@ struct PodcastRowContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(8)
+        .padding(.horizontal, UpNextVisualDesignMetrics.rowHorizontalPadding)
+        .padding(.vertical, UpNextVisualDesignMetrics.rowVerticalPadding)
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
         .background {
             if visualStyle == .artwork && colorSchemeContrast == .standard {

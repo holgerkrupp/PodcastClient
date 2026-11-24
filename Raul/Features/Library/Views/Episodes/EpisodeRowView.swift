@@ -45,8 +45,8 @@ enum GroupedListRowPosition: Equatable {
 typealias EpisodeRowGroupPosition = GroupedListRowPosition
 
 enum GroupedListRowStyle {
-    static let outerCornerRadius: CGFloat = 20
-    static let artworkCornerRadius: CGFloat = 10
+    static let outerCornerRadius = UpNextVisualDesignMetrics.groupedRowCornerRadius
+    static let artworkCornerRadius = UpNextVisualDesignMetrics.artworkCornerRadius
 
     static var artworkShape: RoundedRectangle {
         RoundedRectangle(cornerRadius: artworkCornerRadius, style: .continuous)
@@ -225,7 +225,8 @@ struct EpisodeRowView: View {
                         .frame(minHeight: controlsHeight)
                 }
             }
-        .padding(8)
+        .padding(.horizontal, UpNextVisualDesignMetrics.rowHorizontalPadding)
+        .padding(.vertical, UpNextVisualDesignMetrics.rowVerticalPadding)
             }
         }
         .frame(maxWidth: .infinity, minHeight: rowHeight, alignment: .leading)
@@ -404,6 +405,7 @@ struct EpisodeRowView: View {
     private struct EpisodeRowPlaybackProgressView: View {
         @Bindable var episode: Episode
         let usesLivePlaybackProgress: Bool
+        @Environment(\.esaThemePalette) private var themePalette
 
         private var progress: Double {
             let storedProgress = episode.displayProgress
@@ -417,7 +419,7 @@ struct EpisodeRowView: View {
 
         var body: some View {
             Rectangle()
-                .fill(Color.accent)
+                .fill(themePalette.accent ?? themePalette.controlForeground)
                 .scaleEffect(x: progress, y: 1, anchor: .leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .frame(height: 4)
@@ -559,7 +561,8 @@ private struct EpisodeRowSwipeActionModifier: ViewModifier {
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(.regularMaterial, in: Capsule())
-                        .padding(8)
+        .padding(.horizontal, UpNextVisualDesignMetrics.rowHorizontalPadding)
+        .padding(.vertical, UpNextVisualDesignMetrics.rowVerticalPadding)
                         .accessibilityAddTraits(.updatesFrequently)
                 }
             }

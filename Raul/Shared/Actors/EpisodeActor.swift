@@ -364,6 +364,22 @@ actor EpisodeActor {
         }
     }
 
+    private func fetchEpisodes(byURLs urls: [URL]) throws -> [Episode] {
+        let uniqueURLs = Array(Set(urls))
+        guard uniqueURLs.isEmpty == false else { return [] }
+
+        var episodes: [Episode] = []
+        episodes.reserveCapacity(uniqueURLs.count)
+        for start in stride(from: 0, to: uniqueURLs.count, by: 250) {
+            let batch = Array(uniqueURLs[start..<min(start + 250, uniqueURLs.count)])
+            let descriptor = FetchDescriptor<Episode>(predicate: #Predicate<Episode> { episode in
+                episode.url != nil && batch.contains(episode.url!)
+            })
+            episodes.append(contentsOf: try modelContext.fetch(descriptor))
+        }
+        return episodes
+    }
+
     private func ensureMetadata(for episode: Episode) {
         guard episode.metaData == nil else { return }
         let metadata = EpisodeMetaData()
@@ -840,6 +856,152 @@ actor EpisodeActor {
         await MainActor.run {
             NotificationCenter.default.post(name: .inboxDidChange, object: nil)
             NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
+    /// Applies one triage choice to a stable URL snapshot and emits one Inbox
+    /// refresh notification. The view remains responsive while the actor walks
+    /// large selections in bounded fetches.
+    func setTriageFlags(
+        episodeURLs: [URL],
+        savedForLater: Bool? = nil,
+        favorite: Bool? = nil
+    ) async {
+        guard let episodes = try? fetchEpisodes(byURLs: episodeURLs), episodes.isEmpty == false else { return }
+        var changed: [Episode] = []
+        changed.reserveCapacity(episodes.count)
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            guard let metadata = episode.metaData else { continue }
+            var didChange = false
+            if let savedForLater, metadata.isSavedForLater != savedForLater {
+                metadata.isSavedForLater = savedForLater
+                didChange = true
+            }
+            if let favorite, metadata.isFavorite != favorite {
+                metadata.isFavorite = favorite
+                didChange = true
+            }
+            if didChange { changed.append(episode) }
+        }
+
+        guard changed.isEmpty == false else { return }
+        modelContext.saveIfNeeded()
+        for episode in changed { await publishSplitEpisodeState(episode) }
+        WatchSyncCoordinator.refreshSoon(force: true)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
+    /// Restores only changes whose triage flags still match the result written
+    /// by the original action. A later local or synced mutation therefore wins.
+    func undoTriageChanges(_ changes: [InboxTriageChange]) async {
+        let urls = changes.map(\.episodeURL)
+        guard let episodes = try? fetchEpisodes(byURLs: urls), episodes.isEmpty == false else { return }
+        let changesByURL = Dictionary(uniqueKeysWithValues: changes.map { ($0.episodeURL, $0) })
+        var changed: [Episode] = []
+
+        for episode in episodes {
+            guard let url = episode.url,
+                  let change = changesByURL[url] else { continue }
+            ensureMetadata(for: episode)
+            guard let metadata = episode.metaData,
+                  metadata.isInbox == change.resultInbox,
+                  metadata.isSavedForLater == change.resultSavedForLater,
+                  metadata.isFavorite == change.resultFavorite else { continue }
+            metadata.setInboxMembership(change.previousInbox)
+            metadata.isSavedForLater = change.previousSavedForLater
+            metadata.isFavorite = change.previousFavorite
+            changed.append(episode)
+        }
+
+        guard changed.isEmpty == false else { return }
+        modelContext.saveIfNeeded()
+        for episode in changed { await publishSplitEpisodeState(episode) }
+        WatchSyncCoordinator.refreshSoon(force: true)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
+    /// Marks a stable URL snapshot as played in one transaction. This keeps
+    /// explicit completion distinct from dismissing an Inbox item.
+    func markEpisodesAsPlayed(_ episodeURLs: [URL]) async {
+        guard let episodes = try? fetchEpisodes(byURLs: episodeURLs), episodes.isEmpty == false else { return }
+        var changed: [Episode] = []
+        var podcastFeeds: Set<URL> = []
+
+        for episode in episodes {
+            ensureMetadata(for: episode)
+            guard let metadata = episode.metaData else { continue }
+            let wasPlayed = metadata.completionDate != nil || metadata.isHistory == true
+            let wasInInbox = metadata.isInbox == true
+            guard wasPlayed == false || wasInInbox else { continue }
+            metadata.completionDate = metadata.completionDate ?? .now
+            metadata.isHistory = true
+            metadata.setInboxMembership(false)
+            changed.append(episode)
+            if let feed = episode.podcast?.feed { podcastFeeds.insert(feed) }
+        }
+
+        guard changed.isEmpty == false else { return }
+        modelContext.saveIfNeeded()
+        for episode in changed { await publishSplitEpisodeState(episode) }
+        for feed in podcastFeeds {
+            await applyAutomaticDownloadPolicy(for: feed, force: true)
+        }
+        WatchSyncCoordinator.refreshSoon(force: true)
+        await MainActor.run {
+            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+            NotificationCenter.default.post(name: .smartPlaylistEpisodeDataDidChange, object: nil)
+        }
+    }
+
+    /// Computes safe cleanup candidates from one actor-owned snapshot. Queue
+    /// membership is fetched once, not by each rendered row.
+    func inboxCleanupCandidates(
+        episodeURLs: [URL],
+        policy: InboxCleanupPolicy,
+        now: Date = .now
+    ) throws -> [URL] {
+        guard policy.isEnabled else { return [] }
+        let episodes = try fetchEpisodes(byURLs: episodeURLs)
+        guard episodes.isEmpty == false else { return [] }
+        let targetURLs = Set(episodes.compactMap(\.url))
+        let queuedURLs = Set(
+            try modelContext.fetch(FetchDescriptor<PlaylistEntry>())
+                .compactMap { $0.episode?.url }
+                .filter { targetURLs.contains($0) }
+        )
+
+        let projections = episodes.map { episode in
+            let metadata = episode.metaData
+            let playPosition = max(0, metadata?.playPosition ?? 0)
+            let duration = max(0, episode.duration ?? 0)
+            return InboxEpisodeProjection(
+                id: episode.stableEpisodeIdentityKey,
+                title: episode.title,
+                podcastKey: episode.podcast?.stablePodcastIdentityKey ?? "sideloaded",
+                podcastTitle: episode.displayPodcastTitle ?? "Sideloaded",
+                publishedAt: episode.publishDate,
+                remainingDuration: max(0, duration - playPosition),
+                isSavedForLater: metadata?.isSavedForLater == true,
+                isFavorite: metadata?.isFavorite == true,
+                isQueued: episode.url.map(queuedURLs.contains) == true,
+                isDownloaded: episode.source == .sideLoaded
+                    || metadata?.calculatedIsAvailableLocally == true
+                    || episode.localFile.map { FileManager.default.fileExists(atPath: $0.path) } == true,
+                hasPlaybackHistory: metadata?.hasPlaybackHistory == true || playPosition > 0
+            )
+        }
+        let eligibleIDs = policy.eligibleIDs(from: projections, now: now)
+        return episodes.compactMap { episode in
+            guard eligibleIDs.contains(episode.stableEpisodeIdentityKey) else { return nil }
+            return episode.url
         }
     }
 
