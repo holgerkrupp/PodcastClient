@@ -14,6 +14,7 @@ struct BookmarkRowView: View {
     let marker: Bookmark
     var isPlaying: Bool
     var clipDisabled: Bool
+    var groupPosition: GroupedListRowPosition = .single
     var onPlayToggle: () -> Void
     var onClip: () -> Void
     var onLoad: () -> Void
@@ -23,7 +24,7 @@ struct BookmarkRowView: View {
 
     var body: some View {
         let episode = marker.bookmarkEpisode
-        VStack(alignment: .leading, spacing: 6) {
+        let rowContent = VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 14) {
                 CoverImageView(
                     episode: episode,
@@ -76,6 +77,9 @@ struct BookmarkRowView: View {
                 }
             
         }
-        .ESA_RowView(image: episode?.imageURL ?? episode?.podcast?.imageURL, minHeight: rowHeight)
+        return rowContent
+            .ESA_RowView(image: episode?.imageURL ?? episode?.podcast?.imageURL, minHeight: rowHeight)
+            .clipShape(groupPosition.backgroundShape)
+            .contentShape(Rectangle())
     }
 }

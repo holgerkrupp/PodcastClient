@@ -114,43 +114,46 @@ struct BookmarkListView: View {
             if bookmarks.isEmpty {
                 BookmarkEmptyView()
             } else {
-                List(visibleBookmarks, id: \.id) { marker in
-                    BookmarkRowView(
-                        marker: marker,
-                        isPlaying: isPlayingInline(marker),
-                        clipDisabled: marker.bookmarkEpisode.flatMap(resolvedAudioURL) == nil,
-                        onPlayToggle: {
-                            guard let episode = marker.bookmarkEpisode else { return }
-                            toggleInlinePlayback(of: marker, episode: episode)
-                        },
-                        onClip: {
-                            stopInlinePlayback()
-                            exportingBookmark = marker
-                        },
-                        onLoad: {
-                            guard let episode = marker.bookmarkEpisode else { return }
-                            stopInlinePlayback()
-                            Task {
-                                await Player.shared.playEpisode(episode.url, playDirectly: true, startingAt: marker.start)
+                List {
+                    ForEach(Array(visibleBookmarks.enumerated()), id: \.element.id) { index, marker in
+                        BookmarkRowView(
+                            marker: marker,
+                            isPlaying: isPlayingInline(marker),
+                            clipDisabled: marker.bookmarkEpisode.flatMap(resolvedAudioURL) == nil,
+                            groupPosition: GroupedListRowPosition(index: index, count: visibleBookmarks.count),
+                            onPlayToggle: {
+                                guard let episode = marker.bookmarkEpisode else { return }
+                                toggleInlinePlayback(of: marker, episode: episode)
+                            },
+                            onClip: {
+                                stopInlinePlayback()
+                                exportingBookmark = marker
+                            },
+                            onLoad: {
+                                guard let episode = marker.bookmarkEpisode else { return }
+                                stopInlinePlayback()
+                                Task {
+                                    await Player.shared.playEpisode(episode.url, playDirectly: true, startingAt: marker.start)
+                                }
                             }
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0,
+                                             leading: 0,
+                                             bottom: 0,
+                                             trailing: 0))
+                        .onAppear {
+                            loadMoreIfNeeded(currentItem: marker)
                         }
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0,
-                                         leading: 0,
-                                         bottom: 0,
-                                         trailing: 0))
-                    .onAppear {
-                        loadMoreIfNeeded(currentItem: marker)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .none) {
-                            Task { @MainActor in
-                                await deleteMarker(marker)
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .none) {
+                                Task { @MainActor in
+                                    await deleteMarker(marker)
+                                }
+                            } label: {
+                                Label("Delete Bookmark", systemImage: "bookmark.slash.fill")
                             }
-                        } label: {
-                            Label("Delete Bookmark", systemImage: "bookmark.slash.fill")
                         }
                     }
                 }
