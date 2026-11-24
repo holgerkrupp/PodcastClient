@@ -1,7 +1,9 @@
 import Foundation
 import SwiftData
 
-extension PlaySessionSummaryPeriod: Sendable {}
+extension Notification.Name {
+    static let listeningHistoryDidChange = Notification.Name("listeningHistoryDidChange")
+}
 
 /// A Sendable copy of one canonical listening-history row.
 ///

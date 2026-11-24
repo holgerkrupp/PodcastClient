@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
 
-enum PlaySessionSummaryPeriod: String, CaseIterable, Codable, Identifiable, Hashable {
+enum PlaySessionSummaryPeriod: String, CaseIterable, Codable, Identifiable, Hashable, Sendable {
     case day
     case week
     case month

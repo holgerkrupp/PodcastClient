@@ -710,6 +710,12 @@ struct PodcastDetailView: View {
                     }
 
                     Button {
+                        openSettings(.playback(for: podcast))
+                    } label: {
+                        Label("Quick Settings", systemImage: "slider.horizontal.3")
+                    }
+
+                    Button {
                         openSettings(.podcast(podcast))
                     } label: {
                         Label("Podcast Settings", systemImage: "gear")

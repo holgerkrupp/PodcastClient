@@ -334,6 +334,9 @@ actor PlaySessionTrackerActor {
         if let listeningHistorySnapshot {
             await publishListeningHistory(listeningHistorySnapshot)
         }
+        await MainActor.run {
+            NotificationCenter.default.post(name: .listeningHistoryDidChange, object: nil)
+        }
     }
 
     private func publishListeningHistory(_ snapshot: StoreSplitListeningHistorySnapshot) async {

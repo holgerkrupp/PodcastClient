@@ -23,6 +23,7 @@ struct PodcastListView: View {
     }
 
     @StateObject private var viewModel: PodcastListViewModel
+    @Environment(\.openPodcastSettings) private var openSettings
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
     @State private var pendingDeletionIDs = Set<PersistentIdentifier>()
@@ -128,6 +129,19 @@ struct PodcastListView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("Open podcast \(podcast.title)")
                         .accessibilityHint("Opens this podcast details screen")
+                        .contextMenu {
+                            Button {
+                                openSettings(.playback(for: podcast))
+                            } label: {
+                                Label("Quick Settings", systemImage: "slider.horizontal.3")
+                            }
+
+                            Button {
+                                openSettings(.podcast(podcast))
+                            } label: {
+                                Label("All Podcast Settings", systemImage: "gear")
+                            }
+                        }
                         .listRowBackground(Color.clear)
                     }
                     .onDelete { indexSet in

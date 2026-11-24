@@ -47,6 +47,9 @@ actor StoreSplitListeningHistorySyncWriter {
                 try upsertWithoutSaving(snapshot, io: io)
             }
             if modelContext.hasChanges { try io.save(modelContext) }
+            Task { @MainActor in
+                NotificationCenter.default.post(name: .listeningHistoryDidChange, object: nil)
+            }
         } catch {
             modelContext.rollback()
             throw error

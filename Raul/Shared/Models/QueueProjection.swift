@@ -50,7 +50,13 @@ struct QueueEpisodeValue: Identifiable, Equatable, Hashable, Sendable {
         self.maxPlayPosition = episode.metaData?.maxPlayposition ?? 0
         self.hasPlaybackHistory = episode.hasPlaybackHistory
         self.isPlayed = episode.isPlayed
-        self.isDownloaded = episode.metaData?.calculatedIsAvailableLocally == true
+        let localFile = episode.localFile?.standardizedFileURL
+        let fileInventoryContainsEpisode = localFile.map {
+            DownloadedFilesManager.shared.downloadedFiles.contains($0)
+        } ?? false
+        self.isDownloaded = episode.source == .sideLoaded
+            || fileInventoryContainsEpisode
+            || episode.metaData?.calculatedIsAvailableLocally == true
         self.categories = SmartPlaylistEngine.categories(for: episode.podcast?.optionalTags)
         self.occurrence = occurrence
         self.orderIndex = orderIndex

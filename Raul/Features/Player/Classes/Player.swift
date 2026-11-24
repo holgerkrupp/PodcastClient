@@ -587,6 +587,13 @@ class Player {
     /// when the episode is loaded so a later playlist selection change cannot
     /// redirect successor/dequeue logic at completion time.
     private var currentPlaybackPlaylistID: UUID?
+
+    /// The playlist captured when the current episode entered playback. A
+    /// browsed playlist is allowed to change independently, so queue UI must
+    /// use this identity when it needs to describe or mutate Up Next.
+    var playbackQueuePlaylistID: UUID? {
+        currentPlaybackPlaylistID
+    }
     private var isSkippingChapters = false
     private var chapterSkipPlan = ChapterSkipPlan(entries: [])
     private var adSkipPlan = AdSkipPlan(segments: [])
@@ -835,8 +842,8 @@ class Player {
             return
         }
 
-        stopAfterChapterStart = option.start
-        stopAfterChapterTitle = option.title
+        self.stopAfterChapterStart = option.start
+        self.stopAfterChapterTitle = option.title
         if abs(option.stopBoundary - target) > 0.25 {
             stopAfterChapterTarget = option.stopBoundary
         }
@@ -962,6 +969,39 @@ class Player {
             return alternateVideo.url
         }
         return currentEpisode.localFile ?? currentEpisode.url
+    }
+
+    /// A model-shaped snapshot for the compact player settings surface. The
+    /// view can reuse the same controls as podcast settings without moving a
+    /// SwiftData object across actors.
+    func audioSpeedSettingsModel() -> PodcastSettings {
+        let settings = PodcastSettings()
+        settings.playbackSpeed = playbackRate
+        settings.reduceSilenceGapsEnabled = reduceSilenceGapsEnabled
+        settings.silenceGapReductionLevel = silenceGapReductionLevel
+        settings.voiceEnhancementEnabled = voiceEnhancementEnabled
+        settings.equalizerPreset = equalizerPreset
+        return settings
+    }
+
+    /// Applies only to the installed playback item. Saved podcast/app
+    /// preferences remain the source of truth for future episodes.
+    func applyAudioSpeedSettings(_ settings: PodcastSettings) {
+        applyingSavedPlaybackSpeed = true
+        playbackRate = settings.playbackSpeed ?? playbackRate
+        applyingSavedPlaybackSpeed = false
+        applyPlaybackAudioProcessingSettings(
+            PlaybackAudioProcessingSettings(
+                reduceSilenceGapsEnabled: settings.reduceSilenceGapsEnabled,
+                silenceGapReductionLevel: settings.silenceGapReductionLevel,
+                voiceEnhancementEnabled: settings.voiceEnhancementEnabled,
+                equalizerPreset: settings.equalizerPreset
+            )
+        )
+        guard let item = engine.avPlayer.currentItem else { return }
+        Task { [weak self] in
+            await self?.configurePlaybackAudioProcessing(for: item)
+        }
     }
 
     func isPlayingTranscriptMedia(episodeURL: URL, localMediaURL: URL) -> Bool {

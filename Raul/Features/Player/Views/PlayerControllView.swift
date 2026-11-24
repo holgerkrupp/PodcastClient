@@ -24,6 +24,7 @@ struct PlayerControllView: View {
 #if os(iOS)
     @State private var settingsRequest: SettingsWindowRequest?
 #endif
+    @State private var currentAudioSettings: PodcastSettings?
     var showPrimaryTransportControls: Bool = true
     /// The enclosing player derives this from its live scene geometry. A nil
     /// value preserves the cover's natural square presentation for inline use.
@@ -515,7 +516,7 @@ struct PlayerPlaybackUtilitiesRow: View {
         .frame(maxWidth: .infinity, minHeight: 44)
         .zIndex(3)
         .sheet(isPresented: $showPlaybackSpeedSettings) {
-            playbackSpeedSheet
+            audioSpeedSettingsSheet
         }
         .sheet(isPresented: $showSleepTimerSettings) {
             sleepTimerSheet
@@ -535,6 +536,7 @@ struct PlayerPlaybackUtilitiesRow: View {
 
     private var playbackSpeedButton: some View {
         Button {
+            currentAudioSettings = player.audioSpeedSettingsModel()
             showPlaybackSpeedSettings = true
         } label: {
             HStack(spacing: 5) {
@@ -620,6 +622,24 @@ struct PlayerPlaybackUtilitiesRow: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
         .presentationDetents([.fraction(0.25)])
+    }
+
+    private var audioSpeedSettingsSheet: some View {
+        NavigationStack {
+            Form {
+                if let currentAudioSettings {
+                    AudioSpeedSettingsSection(
+                        settings: currentAudioSettings,
+                        scope: .currentPlayback,
+                        onChange: { player.applyAudioSpeedSettings(currentAudioSettings) }
+                    )
+                }
+            }
+            .navigationTitle("Audio & Speed")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .presentationDragIndicator(.visible)
+        .presentationDetents([.medium, .large])
     }
 
     private var sleepTimerSheet: some View {

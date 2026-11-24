@@ -279,7 +279,22 @@ struct UpcomingQueuePreview: View {
         isLoading = true
         loadError = false
         do {
-            let actor = try PlaylistModelActor(activePlaybackPlaylistIn: container)
+            guard let playlistID = player.playbackQueuePlaylistID else {
+                snapshot = UpcomingQueueSnapshot(
+                    playlistID: nil,
+                    playlistTitle: Playlist.defaultQueueDisplayName,
+                    isSmartPlaylist: false,
+                    currentEpisodeURL: currentEpisodeURL,
+                    upcoming: [],
+                    isIndependentPlayback: true
+                )
+                isLoading = false
+                return
+            }
+            let actor = try PlaylistModelActor(
+                modelContainer: container,
+                playlistID: playlistID
+            )
             let projection = try await actor.orderedQueueProjection()
             guard Task.isCancelled == false,
                   player.currentEpisodeURL == currentEpisodeURL else { return }

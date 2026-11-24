@@ -35,12 +35,14 @@ enum AudioSpeedSettingsScope: Equatable, Sendable {
     case appDefaults
     case podcastInherited
     case podcastOverride
+    case currentPlayback
 
     var title: String {
         switch self {
         case .appDefaults: "App Defaults"
         case .podcastInherited: "This Podcast · Inherited"
         case .podcastOverride: "This Podcast · Override"
+        case .currentPlayback: "Current Playback"
         }
     }
 
@@ -52,6 +54,8 @@ enum AudioSpeedSettingsScope: Equatable, Sendable {
             "Following the current App Defaults."
         case .podcastOverride:
             "Applies only to this podcast; App Defaults stay unchanged."
+        case .currentPlayback:
+            "Applies to the episode playing now. Future episodes keep their saved settings."
         }
     }
 

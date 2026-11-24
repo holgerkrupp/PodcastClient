@@ -270,6 +270,20 @@ struct InboxListView: View {
                             .disabled(selectedCount == 0 || isPerformingTriage)
 
                             Button {
+                                Task { await performTriage(.playNext, on: selectedEpisodes) }
+                            } label: {
+                                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+                            }
+                            .disabled(selectedCount == 0 || isPerformingTriage)
+
+                            Button {
+                                Task { await performTriage(.playLast, on: selectedEpisodes) }
+                            } label: {
+                                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+                            }
+                            .disabled(selectedCount == 0 || isPerformingTriage)
+
+                            Button {
                                 Task { await performTriage(.markPlayed, on: selectedEpisodes) }
                             } label: {
                                 Label("Mark Played", systemImage: "checkmark.circle")
@@ -291,6 +305,10 @@ struct InboxListView: View {
                             )
                         }
                         .disabled(selectedCount == 0 || isPerformingTriage)
+                        Button("Select All", systemImage: "checkmark.circle") {
+                            selectedEpisodeKeys = Set(episodes.map(\.stableEpisodeIdentityKey))
+                            editMode = .active
+                        }
                     } else {
                         EditButton()
                             .disabled(isPerformingTriage)
@@ -441,6 +459,17 @@ struct InboxListView: View {
             .tint(.pink)
         }
         .contextMenu {
+            Button {
+                Task { await performTriage(.playNext, on: [episode]) }
+            } label: {
+                Label("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward")
+            }
+            Button {
+                Task { await performTriage(.playLast, on: [episode]) }
+            } label: {
+                Label("Play Last", systemImage: "text.line.last.and.arrowtriangle.forward")
+            }
+            Divider()
             Button {
                 Task { await addToSelectedPlaylist(episode) }
             } label: {
@@ -596,6 +625,35 @@ struct InboxListView: View {
                     errorMessage = "Added \(episodes.count - failures) episode\(episodes.count - failures == 1 ? "" : "s"). \(failures) could not be queued."
                 }
                 undoTriage = nil
+            case .playNext, .playLast:
+                let position: Playlist.Position = action == .playNext ? .front : .end
+                let orderedEpisodes = position == .front ? Array(episodes.reversed()) : episodes
+                let playlistID = try Playlist.resolvedSelectedManualPlaylistID(in: modelContext)
+                let playlistActor = try PlaylistModelActor(
+                    modelContainer: modelContext.container,
+                    playlistID: playlistID
+                )
+                var failures = 0
+                for episode in orderedEpisodes {
+                    guard let url = episode.url else { failures += 1; continue }
+                    do {
+                        if position == .front {
+                            try await playlistActor.insert(
+                                episodeURL: url,
+                                after: Player.shared.currentEpisodeURL
+                            )
+                        } else {
+                            try await playlistActor.add(episodeURL: url, to: .end)
+                        }
+                    } catch {
+                        failures += 1
+                    }
+                }
+                if failures > 0 {
+                    let succeeded = episodes.count - failures
+                    errorMessage = "Queued \(succeeded) episode\(succeeded == 1 ? "" : "s"). \(failures) could not be added."
+                }
+                undoTriage = nil
             }
         } catch {
             errorMessage = "Could not update the selected episodes. Your existing Inbox state was kept where the operation did not finish."
@@ -720,6 +778,8 @@ private enum InboxTriageAction {
     case favorite
     case markPlayed
     case queue
+    case playNext
+    case playLast
 }
 
 private struct InboxTriageUndo {

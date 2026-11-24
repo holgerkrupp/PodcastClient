@@ -2953,6 +2953,9 @@ class ModelContainerManager: ObservableObject {
             await PlaySessionTrackerActor(
                 modelContainer: legacyContainer
             ).rebuildListeningStats()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .listeningHistoryDidChange, object: nil)
+            }
         }
         StoreSplitMigrationDebugLog.record(
             "listening history recovery finished",
@@ -3578,6 +3581,9 @@ class ModelContainerManager: ObservableObject {
             await PlaySessionTrackerActor(
                 modelContainer: legacyContainer
             ).rebuildListeningStats()
+            await MainActor.run {
+                NotificationCenter.default.post(name: .listeningHistoryDidChange, object: nil)
+            }
             guard Task.isCancelled == false else {
                 result.failed += 1
                 return result

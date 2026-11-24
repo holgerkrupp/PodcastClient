@@ -332,7 +332,7 @@ private struct IOSPlayerPresentationHost: ViewModifier {
                         if navigation.isPlayerPresented {
                             PlayerView(
                                 fullSize: true,
-                                usesExpandedLayout: false,
+                                usesExpandedLayout: true,
                                 onDismiss: { navigation.isPlayerPresented = false }
                             )
                             .frame(

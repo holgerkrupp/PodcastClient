@@ -142,6 +142,7 @@ struct StatisticsView: View {
     @State private var showRebuildAnalyticsStatus = false
     @State private var canonicalStatisticsAggregator: ListeningStatisticsAggregationActor?
     @State private var canonicalStatisticsSnapshot: ListeningStatisticsSnapshot?
+    @State private var listeningHistoryRevision = 0
 
     private let presentShareGalleryOnAppear: Bool
 
@@ -239,7 +240,7 @@ struct StatisticsView: View {
 
     private var refreshSignature: String {
         let podcastSignature = podcasts.prefix(3).map(\.title).joined(separator: "|")
-        return "\(selectedPeriod.rawValue)|\(selectedPeriodStart.timeIntervalSinceReferenceDate)|\(selectedPodcastFeedString ?? "all")|\(podcasts.count)|\(podcastSignature)"
+        return "\(selectedPeriod.rawValue)|\(selectedPeriodStart.timeIntervalSinceReferenceDate)|\(selectedPodcastFeedString ?? "all")|\(podcasts.count)|\(podcastSignature)|\(listeningHistoryRevision)"
     }
 
     private var isShowingCurrentSnapshot: Bool {
@@ -701,6 +702,10 @@ struct StatisticsView: View {
         }
         .onChange(of: selectedPeriod) { _, newValue in
             selectedPeriodStart = periodStart(for: Date(), period: newValue)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .listeningHistoryDidChange)) { _ in
+            listeningHistoryRevision &+= 1
+            canonicalStatisticsAggregator = nil
         }
         .simultaneousGesture(
             DragGesture(minimumDistance: 24)
@@ -1228,7 +1233,7 @@ struct StatisticsView: View {
                     id: session.id,
                     episodeTitle: session.episodeTitle ?? "Unknown Episode",
                     podcastName: session.podcastName ?? "Unknown Podcast",
-                    listenedSeconds: session.listenedSeconds,
+                    listenedSeconds: periodContributionSeconds(for: session),
                     startTime: session.startedAt,
                     endedCleanly: session.endedCleanly,
                     startPosition: session.startPosition,
@@ -1287,6 +1292,20 @@ struct StatisticsView: View {
             merged.bestTrackedDay = dayTotals.max { $0.totalSeconds < $1.totalSeconds }
         }
         return merged
+    }
+
+    /// Session rows can cross a calendar boundary. Keep their detail values
+    /// consistent with the period total instead of showing the full raw row
+    /// when only part of it belongs to the selected period.
+    private func periodContributionSeconds(for session: ListeningStatisticsSessionValue) -> Double {
+        guard selectedPeriod != .forever else { return max(0, session.listenedSeconds) }
+        let end = nextPeriodStart(from: selectedPeriodStart, period: selectedPeriod)
+        let overlapStart = max(session.startedAt, selectedPeriodStart)
+        let overlapEnd = min(session.endedAt, end)
+        let wallDuration = session.endedAt.timeIntervalSince(session.startedAt)
+        guard overlapEnd > overlapStart, wallDuration > 0 else { return 0 }
+        let fraction = min(1, max(0, overlapEnd.timeIntervalSince(overlapStart) / wallDuration))
+        return max(0, session.listenedSeconds) * fraction
     }
 
     private func coverURL(for feed: URL?, podcastName: String) -> URL? {
