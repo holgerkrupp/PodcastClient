@@ -57,7 +57,7 @@ struct TranscriptListView: View {
         self.usesPublisherAlignment = preparedSnapshot.sourceMetadata.usesPublisherAlignment
         self.episode = episode
         self.searchNavigation = searchNavigation
-        self.canFollowPlayback = canFollowPlayback
+        self.canFollowPlayback = canFollowPlayback && preparedSnapshot.presentation.timingQuality != .unavailable
         _searchText = State(initialValue: initialSearchText)
         _followPlayback = State(initialValue: startFollowingPlayback)
         _displayRows = State(initialValue: [])
@@ -127,7 +127,7 @@ struct TranscriptListView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
 
-                    TextField("Search captions…", text: $searchText)
+                    TextField("Search transcript…", text: $searchText)
                         .textFieldStyle(.plain)
                 }
                 .padding(.horizontal, 12)
@@ -179,17 +179,6 @@ struct TranscriptListView: View {
             }
             .padding()
 
-            if isShowingCurrentEpisode && usesPublisherAlignment && synchronizationStore.isEnabled
-                && (!synchronizationStore.hasVerifiedTimeline(for: viewedEpisodeURL)
-                    || synchronizationStore.isUnverifiedAudioTime(player.playPosition, episodeURL: viewedEpisodeURL)) {
-                Label("Transcript timing could not be verified for this audio.", systemImage: "info.circle")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-            }
-
             ScrollViewReader { proxy in
                 ScrollView {
                     if passageSelectionMode {
@@ -199,7 +188,7 @@ struct TranscriptListView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
                     } else if isPreparingRows {
-                        ProgressView("Preparing transcript…")
+                        ProgressView("Loading transcript…")
                             .controlSize(.small)
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if displayRows.isEmpty {
@@ -318,7 +307,7 @@ struct TranscriptListView: View {
                 .buttonStyle(.plain)
                 .disabled(!canFollowPlayback || !canSeek)
                 .accessibilityLabel("Play from \(formatTime(row.startTime))")
-                .accessibilityHint(!canFollowPlayback ? "Start live transcription to verify timing for this audio" : (canSeek ? "Starts playback from this caption line" : "Timing is not verified for this passage"))
+                .accessibilityHint(canFollowPlayback && canSeek ? "Starts playback from this passage" : "Playback is unavailable for this passage")
                 .accessibilityInputLabels([Text("Play from \(formatTime(row.startTime))"), Text("Play caption")])
 
                 if row.showsSpeaker, let speaker = row.speaker {
@@ -387,6 +376,7 @@ struct TranscriptListView: View {
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Caption \(formatTime(row.startTime))")
+        .accessibilityAddTraits(isActive ? .isSelected : [])
         .accessibilityValue(row.speaker == nil ? row.text : "\(row.speaker!), \(row.text)")
     }
 
@@ -469,6 +459,11 @@ struct TranscriptListView: View {
             Self.makeDisplayRows(from: segments, matching: query)
         }.value
         guard Task.isCancelled == false else { return }
+        if selectionActive {
+            pendingRowsUpdate = true
+            return
+        }
+        guard query == searchText else { return }
         displayRows = rows
         speakerColorMap = Self.makeSpeakerColorMap(from: rows)
         isPreparingRows = false
@@ -539,16 +534,17 @@ struct TranscriptListView: View {
 /// work completes.
 struct TranscriptPane: View {
     @Environment(\.modelContext) private var modelContext
-    @Bindable private var liveTranscript = LiveTranscriptController.shared
 
     let episode: Episode
     let availability: PlayerContentAvailability?
     let startFollowingPlayback: Bool
 
-    @State private var preparedSnapshot: TranscriptPreparedSnapshot?
-    @State private var isLiveSnapshot = false
-    @State private var isLoading = true
-    @State private var loadFailed = false
+    private enum Content {
+        case loading, failed, missing
+        case document(TranscriptPreparedSnapshot)
+    }
+
+    @State private var content: Content = .loading
     @State private var retryCount = 0
 
     private struct LoadID: Equatable {
@@ -569,26 +565,19 @@ struct TranscriptPane: View {
 
     var body: some View {
         Group {
-            if let preparedSnapshot, preparedSnapshot.segments.isEmpty == false {
-                VStack(spacing: isLiveSnapshot ? 12 : 0) {
-                    if isLiveSnapshot {
-                        TranscriptGenerationActionsView(episode: episode)
-                        LiveTranscriptCoverageView(episode: episode)
-                    }
-
-                    TranscriptListView(
-                        preparedSnapshot: preparedSnapshot,
-                        episode: episode,
-                        startFollowingPlayback: startFollowingPlayback,
-                        canFollowPlayback: !isLiveSnapshot || liveTranscript.isActive(for: episode)
-                    )
-                }
-            } else if isLoading {
+            switch content {
+            case .document(let snapshot):
+                TranscriptListView(
+                    preparedSnapshot: snapshot,
+                    episode: episode,
+                    startFollowingPlayback: startFollowingPlayback
+                )
+            case .loading:
                 ProgressView("Loading transcript…")
                     .controlSize(.small)
                     .frame(maxWidth: .infinity, minHeight: 140)
                     .accessibilityLabel("Loading transcript")
-            } else if loadFailed {
+            case .failed:
                 ContentUnavailableView {
                     Label("Transcript Unavailable", systemImage: "exclamationmark.triangle")
                 } description: {
@@ -596,71 +585,75 @@ struct TranscriptPane: View {
                 } actions: {
                     Button("Retry") { retryCount += 1 }
                 }
-            } else {
-                TranscriptEmptyStateView(episode: episode)
+            case .missing:
+                PartialTranscriptPane(episode: episode, startFollowingPlayback: startFollowingPlayback)
+                    .id(episode.url)
             }
         }
         .task(id: loadID) {
             await loadTranscript()
         }
-        .onChange(of: liveTranscript.cues.count) {
-            guard isLiveSnapshot else { return }
-            Task { await refreshLiveTranscript() }
-        }
     }
 
     @MainActor
     private func loadTranscript() async {
-        preparedSnapshot = nil
-        isLiveSnapshot = false
-        isLoading = true
-        loadFailed = false
-
-        guard episode.url != nil else {
-            isLoading = false
+        content = .loading
+        guard let episodeURL = episode.url else {
+            content = .failed
             return
         }
 
         do {
             let worker = PlayerTranscriptModelActor(modelContainer: modelContext.container)
-            if let snapshot = try await worker.preparedSnapshot(for: episode.url!) {
-                guard Task.isCancelled == false else { return }
-                preparedSnapshot = snapshot
-                isLoading = false
-                return
+            let snapshot = try await worker.preparedSnapshot(for: episodeURL)
+            guard !Task.isCancelled else { return }
+            if let snapshot, !snapshot.segments.isEmpty {
+                content = .document(snapshot)
+            } else {
+                content = .missing
             }
-
-            let liveSources = liveTranscript.displaySources(for: episode)
-            if liveSources.isEmpty == false {
-                let snapshot = await preparedLiveSnapshot(from: liveSources)
-                guard Task.isCancelled == false else { return }
-                preparedSnapshot = snapshot
-                isLiveSnapshot = true
-            }
-            isLoading = false
         } catch is CancellationError {
             return
         } catch {
             guard Task.isCancelled == false else { return }
-            loadFailed = true
-            isLoading = false
+            content = .failed
         }
     }
 
-    @MainActor
-    private func refreshLiveTranscript() async {
-        let liveSources = liveTranscript.displaySources(for: episode)
-        guard liveSources.isEmpty == false else { return }
-        let snapshot = await preparedLiveSnapshot(from: liveSources)
-        guard Task.isCancelled == false else { return }
-        preparedSnapshot = snapshot
-        isLiveSnapshot = true
-    }
+}
 
-    private func preparedLiveSnapshot(from sources: [TranscriptSegmentSource]) async -> TranscriptPreparedSnapshot {
-        await Task.detached(priority: .userInitiated) {
-            TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
-        }.value
+/// Only mounted after the stored transcript lookup confirms there is no document.
+private struct PartialTranscriptPane: View {
+    let episode: Episode
+    let startFollowingPlayback: Bool
+    @Bindable private var liveTranscript = LiveTranscriptController.shared
+    @State private var partial: TranscriptPreparedSnapshot?
+
+    var body: some View {
+        Group {
+            if let partial, !partial.segments.isEmpty {
+                VStack(spacing: 12) {
+                    TranscriptGenerationActionsView(episode: episode)
+                    LiveTranscriptCoverageView(episode: episode)
+                    TranscriptListView(
+                        preparedSnapshot: partial,
+                        episode: episode,
+                        startFollowingPlayback: startFollowingPlayback,
+                        canFollowPlayback: liveTranscript.isActive(for: episode)
+                    )
+                }
+            } else {
+                TranscriptEmptyStateView(episode: episode)
+            }
+        }
+        .task(id: liveTranscript.cues.count) {
+            let sources = liveTranscript.displaySources(for: episode)
+            let snapshot = await Task.detached(priority: .userInitiated) {
+                TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
+            }.value
+            guard !Task.isCancelled else { return }
+            partial = snapshot
+        }
     }
 }
 

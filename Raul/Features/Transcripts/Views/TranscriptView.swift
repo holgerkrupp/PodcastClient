@@ -2,48 +2,46 @@
 //  TranscriptView.swift
 //  PodcastClient
 //
-//  Created by Holger Krupp on 11.02.24.
+//  Drop-in replacement: compact, BBC-inspired playback captions.
 //
 
 import SwiftUI
 import Combine
+import Foundation
+import CryptoKit
+import NaturalLanguage
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
 
-/// Compact, scrollable caption overlay used inside the player.
-///
-/// When following playback and word timing is available, this presents only the
-/// current caption in a stable two-line region, matching live-caption
-/// conventions. Without word timing it keeps the complete current snippet
-/// visible instead of truncating it. Turning following off restores the
-/// scrollable transcript context.
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    #if os(macOS)
+    @ScaledMetric(relativeTo: .body) private var captionFontSize: CGFloat = 13
+    #else
+    @ScaledMetric(relativeTo: .body) private var captionFontSize: CGFloat = 17
+    #endif
 
     let transcriptLines: [TranscriptLineAndTime]
-    /// Captured once with the transcript snapshot; playback ticks must not
-    /// rescan SwiftData models for transcript-global metadata.
     let usesPublisherAlignment: Bool
     @Binding var currentTime: TimeInterval
-    /// Called when the user taps a caption, e.g. to open the full transcript.
     var onOpenFullTranscript: (() -> Void)?
-    /// Leaves the bottom-trailing corner free for controls supplied by the parent.
     var reservesBottomTrailingAccessory = false
     var canFollowPlayback = true
 
-    @State private var segments: [TranscriptSegment] = []
+    @State private var captions: [PlaybackCaption] = []
+    @State private var captionIndex: [UUID: Int] = [:]
     @State private var speakerHeaderIDs: Set<UUID> = []
     @State private var speakerColorMap: [String: Color] = [:]
-    @State private var followPlayback: Bool = true
+    @State private var followPlayback = true
     @State private var tracker = TranscriptPlaybackTracker()
 
-    private let speakerColors: [Color] = [
-        .blue,
-        .green,
-        .orange,
-        .purple,
-        .red,
-        .teal
-    ]
+    private let speakerColors: [Color] = [.blue, .green, .orange, .purple, .red, .teal]
+    private let horizontalPadding: CGFloat = 12
+    private let verticalPadding: CGFloat = 10
 
     init(
         transcriptLines: [TranscriptLineAndTime],
@@ -61,174 +59,513 @@ struct TranscriptView: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 10) {
-                    ForEach(visibleSegments) { segment in
-                        segmentView(segment)
-                            .id(segment.id)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .scrollIndicators(followPlayback ? .hidden : .automatic)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 10)
-                    .onChanged { _ in
-                        guard followPlayback else { return }
-                        followPlayback = false
-                    }
+        GeometryReader { geometry in
+            let layout = CaptionLayout(
+                width: max(1, geometry.size.width - 2 * horizontalPadding),
+                height: max(1, geometry.size.height - 2 * verticalPadding - accessoryInset),
+                fontSize: captionFontSize
             )
-            .overlay(alignment: reservesBottomTrailingAccessory ? .bottomLeading : .bottomTrailing) {
-                if followPlayback == false, activeSegmentID != nil {
-                    Button {
-                        followPlayback = true
-                        scroll(to: activeSegmentID, with: proxy, animated: true)
-                    } label: {
-                        Label("Follow", systemImage: "dot.radiowaves.left.and.right")
-                            .font(.caption2.weight(.semibold))
-                            .labelStyle(.titleAndIcon)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(.thinMaterial, in: Capsule())
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(visibleCaptions) { caption in
+                            captionView(caption)
+                                .id(caption.id)
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .padding(8)
-                    .accessibilityLabel("Follow playback")
-                    .accessibilityHint("Scrolls the transcript back to the line that is playing")
-                    .accessibilityInputLabels([Text("Follow captions"), Text("Follow playback")])
-                    .transition(reduceMotion ? .identity : .opacity)
+                    .padding(.horizontal, horizontalPadding)
+                    .padding(.top, verticalPadding)
+                    .padding(.bottom, verticalPadding + accessoryInset)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
-            .onAppear {
-                rebuildSegments()
-                if canFollowPlayback {
-                    tracker.start(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
+                .scrollIndicators(followPlayback ? .hidden : .automatic)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10)
+                        .onChanged { _ in
+                            if followPlayback && canFollowPlayback { followPlayback = false }
+                        }
+                )
+                .overlay(alignment: reservesBottomTrailingAccessory ? .bottomLeading : .bottomTrailing) {
+                    if !followPlayback && canFollowPlayback && playbackCaption != nil {
+                        Button {
+                            followPlayback = true
+                        } label: {
+                            Label("Follow", systemImage: "dot.radiowaves.left.and.right")
+                                .font(.caption2.weight(.semibold))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.thinMaterial, in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(8)
+                        .accessibilityLabel("Follow playback")
+                        .accessibilityHint("Returns to the currently playing caption")
+                        .transition(reduceMotion ? .identity : .opacity)
+                    }
                 }
-                scroll(to: activeSegmentID, with: proxy, animated: false)
-            }
-            .onDisappear { tracker.stop() }
-            .onChange(of: currentTime) { tracker.refresh() }
-            .onChange(of: Player.shared.currentEpisodeURL) {
-                followPlayback = true
-                tracker.update(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
-            }
-            .onChange(of: canFollowPlayback) {
-                if canFollowPlayback {
-                    tracker.start(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
-                } else { tracker.stop() }
-            }
-            .onChange(of: transcriptLines) {
-                rebuildSegments()
-                tracker.update(segments: segments, episodeURL: transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL, useAlignment: usesPublisherAlignment)
-                scroll(to: activeSegmentID, with: proxy, animated: false)
-            }
-            .onChange(of: activeSegmentID) {
-                scroll(to: activeSegmentID, with: proxy, animated: true)
+                .onChange(of: layout, initial: true) { _, newLayout in
+                    rebuildCaptions(layout: newLayout)
+                }
+                .onChange(of: transcriptLines) {
+                    rebuildCaptions(layout: layout)
+                }
+                .onAppear {
+                    if canFollowPlayback { startTracker() }
+                }
+                .onDisappear { tracker.stop() }
+                .onChange(of: currentTime) { tracker.refresh() }
+                .onChange(of: Player.shared.currentEpisodeURL) {
+                    followPlayback = true
+                    updateTracker()
+                }
+                .onChange(of: canFollowPlayback) {
+                    if canFollowPlayback {
+                        followPlayback = true
+                        startTracker()
+                    } else {
+                        tracker.stop()
+                    }
+                }
+                // A new caption or a new highlighted line changes this key.
+                // A word change within the same line does not scroll the view.
+                .task(id: scrollTarget) {
+                    guard let target = scrollTarget else { return }
+                    // Give the lazy stack an opportunity to lay out the new caption.
+                    await Task.yield()
+                    guard !Task.isCancelled, followPlayback, scrollTarget == target else { return }
+                    // Immediate positioning: an animated scroll could leave the
+                    // highlighted word outside the viewport at fast playback rates.
+                    proxy.scrollTo(target, anchor: .center)
+                }
             }
         }
         .accessibilityLabel("Transcript")
     }
 
-    @ViewBuilder
-    private func segmentView(_ segment: TranscriptSegment) -> some View {
-        let isActive = segment.id == activeSegmentID
-        let hasWordLevelTiming = isActive
-            && tracker.active?.location != nil
-            && tracker.active?.length != nil
+    private var accessoryInset: CGFloat { reservesBottomTrailingAccessory ? 28 : 0 }
 
-        VStack(alignment: .leading, spacing: 2) {
-            if let speaker = segment.speaker, speakerHeaderIDs.contains(segment.id) {
-                Text("\(speaker):")
-                    .font(.headline)
-                    .foregroundColor(differentiateWithoutColor ? .primary : (speakerColorMap[speaker] ?? .accent))
+    private var episodeURL: URL? {
+        transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL
+    }
+
+    private var activeCaption: PlaybackCaption? {
+        guard let id = tracker.active?.segmentID, let index = captionIndex[id],
+              captions.indices.contains(index) else { return nil }
+        return captions[index]
+    }
+
+    /// Live recognition can lag behind audio playback. For transcripts on the
+    /// audio timeline, retain the last caption whose start is not in the future.
+    /// Never use this fallback for publisher alignment: a missing active caption
+    /// may represent an advertisement or an unverified alignment interval.
+    private var fallbackCaption: PlaybackCaption? {
+        guard !usesPublisherAlignment,
+              let episodeURL, episodeURL == Player.shared.currentEpisodeURL,
+              currentTime.isFinite else { return nil }
+
+        // Same chronological lookup as the playback tracker, intentionally
+        // ignoring the end time to tolerate delayed speech recognition.
+        var low = 0
+        var high = captions.count
+        while low < high {
+            let mid = low + (high - low) / 2
+            if captions[mid].segment.startTime <= currentTime {
+                low = mid + 1
+            } else {
+                high = mid
             }
+        }
+        guard low > 0 else { return nil }
+        return captions[low - 1]
+    }
 
-            segment.highlightedText(tracker.active)
-                .font(.body)
-                .foregroundStyle(isActive ? .primary : .secondary)
-                .multilineTextAlignment(.leading)
-              //  .lineLimit(followPlayback && hasWordLevelTiming ? 2 : nil)
-                .lineLimit(nil)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: false)
+    private var playbackCaption: PlaybackCaption? {
+        guard let episodeURL, episodeURL == Player.shared.currentEpisodeURL else { return nil }
+        return activeCaption ?? fallbackCaption
+    }
+
+    private var visibleCaptions: [PlaybackCaption] {
+        guard followPlayback && canFollowPlayback else { return captions }
+        return playbackCaption.map { [$0] } ?? []
+    }
+
+    private var scrollTarget: CaptionLineID? {
+        guard followPlayback, canFollowPlayback, let caption = playbackCaption else { return nil }
+        // Only use a real active word belonging to this caption. A fallback
+        // caption is readable but does not receive speculative highlighting.
+        let location = tracker.active?.segmentID == caption.id ? tracker.active?.location : nil
+        let line = location.flatMap { location in
+            caption.lines.firstIndex { NSLocationInRange(location, $0) }
+        } ?? 0
+        return CaptionLineID(captionID: caption.id, lineIndex: line)
+    }
+
+    private func captionView(_ caption: PlaybackCaption) -> some View {
+        let segment = caption.segment
+        let isActive = tracker.active?.segmentID == caption.id
+        let isFallback = followPlayback && canFollowPlayback && !isActive
+            && playbackCaption?.id == caption.id
+        return VStack(alignment: .leading, spacing: 2) {
+            if let speaker = segment.speaker, speakerHeaderIDs.contains(caption.id) {
+                Text("\(speaker):")
+                    .font(.system(size: captionFontSize, weight: .semibold))
+                    .foregroundStyle(differentiateWithoutColor ? Color.primary : (speakerColorMap[speaker] ?? .accentColor))
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            ForEach(caption.lines.indices, id: \.self) { index in
+                let range = caption.lines[index]
+                highlightedLine(caption, range: range)
+                    .font(.system(size: captionFontSize))
+                    .foregroundStyle(isActive || isFallback ? Color.primary : Color.secondary)
+                    .multilineTextAlignment(.leading)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .id(CaptionLineID(captionID: caption.id, lineIndex: index))
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 2)
         .contentShape(Rectangle())
-        .onTapGesture {
-            onOpenFullTranscript?()
+        .onTapGesture { onOpenFullTranscript?() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isActive ? Text("Current caption") : (isFallback ? Text("Latest available caption") : Text("Caption")))
+        .accessibilityValue(segment.speaker.map { "\($0), \(segment.text)" } ?? segment.text)
+        .accessibilityAddTraits(onOpenFullTranscript == nil ? [] : .isButton)
+    }
+
+    private func highlightedLine(_ caption: PlaybackCaption, range: NSRange) -> Text {
+        let text = caption.segment.text
+        guard let lineRange = Range(range, in: text) else { return Text("") }
+        guard let active = tracker.active, active.segmentID == caption.id,
+              let location = active.location, let length = active.length,
+              location >= 0, length > 0, location <= text.utf16.count,
+              length <= text.utf16.count - location else {
+            return Text(String(text[lineRange]))
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(isActive ? Text("Current caption") : Text("Caption"))
-        .accessibilityValue(segment.speaker == nil ? segment.text : "\(segment.speaker!), \(segment.text)")
-        .accessibilityAddTraits(onOpenFullTranscript == nil ? AccessibilityTraits() : AccessibilityTraits.isButton)
-    }
-
-    private var activeSegmentID: UUID? {
-        tracker.active?.segmentID
-    }
-
-    private var visibleSegments: [TranscriptSegment] {
-        guard followPlayback else { return segments }
-        if let activeSegmentID,
-           let active = segments.first(where: { $0.id == activeSegmentID }) {
-            return [active]
+        let intersection = NSIntersectionRange(range, NSRange(location: location, length: length))
+        guard intersection.length > 0, let word = Range(intersection, in: text) else {
+            return Text(String(text[lineRange]))
         }
-        if let current = segments.last(where: { $0.startTime <= currentTime }) {
-            return [current]
-        }
-        return Array(segments.prefix(1))
+        // Underline + accent preserve the original glyph advances. Changing
+        // font weight on each word could rewrap an otherwise fitting line.
+        let before = Text(String(text[lineRange.lowerBound..<word.lowerBound]))
+        let selected = Text(String(text[word])).underline()
+            .foregroundColor(differentiateWithoutColor ? .primary : .accentColor)
+        let after = Text(String(text[word.upperBound..<lineRange.upperBound]))
+        return Text("\(before)\(selected)\(after)")
     }
 
-    private func scroll(to id: UUID?, with proxy: ScrollViewProxy, animated: Bool) {
-        guard followPlayback, let id else { return }
-
-        if animated && !reduceMotion {
-            withAnimation(.snappy(duration: 0.2, extraBounce: 0.0)) {
-                proxy.scrollTo(id, anchor: .center)
-            }
-        } else {
-            proxy.scrollTo(id, anchor: .center)
-        }
+    private func startTracker() {
+        tracker.start(segments: captions.map(\.segment), episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
     }
 
-    private func rebuildSegments() {
-        let newSegments = TranscriptSegmentBuilder.makeSegments(
-            from: transcriptLines,
-            options: .compact
-        )
-        segments = newSegments
-        speakerHeaderIDs = Self.makeSpeakerHeaderIDs(from: newSegments)
-        speakerColorMap = makeSpeakerColorMap(from: newSegments)
+    private func updateTracker() {
+        guard canFollowPlayback else { return }
+        tracker.update(segments: captions.map(\.segment), episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
     }
 
-    /// Identifiers of the segments that start a new speaker turn and therefore show a name.
-    private static func makeSpeakerHeaderIDs(from segments: [TranscriptSegment]) -> Set<UUID> {
-        var ids: Set<UUID> = []
+    private func rebuildCaptions(layout: CaptionLayout) {
+        let source = TranscriptSegmentBuilder.makeSegments(from: transcriptLines, options: .compact)
+        let newCaptions = InlineCaptionBuilder.makeCaptions(from: source, layout: layout)
+        captions = newCaptions
+        captionIndex = Dictionary(uniqueKeysWithValues: newCaptions.enumerated().map { ($0.element.id, $0.offset) })
+
         var previousSpeaker: String?
+        speakerHeaderIDs = Set(newCaptions.compactMap { caption in
+            defer { previousSpeaker = caption.segment.speaker }
+            return caption.segment.speaker != previousSpeaker ? caption.id : nil
+        })
+        let speakers = Set(newCaptions.compactMap { $0.segment.speaker }).sorted()
+        speakerColorMap = Dictionary(uniqueKeysWithValues: speakers.enumerated().map {
+            ($0.element, speakerColors[$0.offset % speakerColors.count])
+        })
+        updateTracker()
+    }
+}
 
-        for segment in segments {
-            if segment.speaker != previousSpeaker {
-                ids.insert(segment.id)
+// MARK: - Presentation-only captions
+
+private struct CaptionLineID: Hashable {
+    let captionID: UUID
+    let lineIndex: Int
+}
+
+private struct PlaybackCaption: Identifiable {
+    let segment: TranscriptSegment
+    // UTF-16 ranges into segment.text, not the original source segment.
+    let lines: [NSRange]
+    var id: UUID { segment.id }
+}
+
+private struct CaptionLayout: Equatable {
+    let width: CGFloat
+    let height: CGFloat
+    let fontSize: CGFloat
+
+    init(width: CGFloat, height: CGFloat, fontSize: CGFloat) {
+        // Ignore sub-point geometry noise during a live window resize.
+        self.width = width.rounded(.down)
+        self.height = height.rounded(.down)
+        self.fontSize = fontSize
+    }
+
+    var lineHeight: CGFloat {
+        #if canImport(UIKit)
+        UIFont.systemFont(ofSize: fontSize).lineHeight
+        #elseif canImport(AppKit)
+        let font = NSFont.systemFont(ofSize: fontSize)
+        return ceil(font.ascender - font.descender + font.leading)
+        #else
+        return fontSize * 1.3
+        #endif
+    }
+
+    func width(of text: String) -> CGFloat {
+        #if canImport(UIKit)
+        let font = UIFont.systemFont(ofSize: fontSize)
+        return (text as NSString).size(withAttributes: [.font: font]).width
+        #elseif canImport(AppKit)
+        let font = NSFont.systemFont(ofSize: fontSize)
+        return (text as NSString).size(withAttributes: [.font: font]).width
+        #else
+        return CGFloat(text.count) * fontSize * 0.6
+        #endif
+    }
+}
+
+// MARK: - BBC-inspired line and caption segmentation
+
+private enum InlineCaptionBuilder {
+    private static let maxDuration: TimeInterval = 5
+    private static let targetCharactersPerLine = 37
+    private static let maxWords = 14
+
+    private static let weakEndings: Set<String> = [
+        "a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "from",
+        "and", "or", "but", "is", "are", "was", "were", "have", "has", "will",
+        "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem",
+        "einen", "mit", "zu", "zum", "zur", "von", "im", "am", "auf", "für",
+        "und", "oder", "aber", "ist", "sind", "war", "wird", "hat", "haben"
+    ]
+
+    static func makeCaptions(from segments: [TranscriptSegment], layout: CaptionLayout) -> [PlaybackCaption] {
+        var result: [PlaybackCaption] = []
+        for (index, segment) in segments.enumerated() {
+            let nextStart = index + 1 < segments.count ? segments[index + 1].startTime : nil
+            result.append(contentsOf: split(segment, nextStart: nextStart, layout: layout))
+        }
+        return result
+    }
+
+    private static func split(_ source: TranscriptSegment, nextStart: TimeInterval?, layout: CaptionLayout) -> [PlaybackCaption] {
+        let ns = source.text as NSString
+        let tokens = tokenRanges(in: source.text)
+        guard !tokens.isEmpty else { return [] }
+        let validSpans = source.timedSpans.filter {
+            $0.location >= 0 && $0.length > 0 && $0.location <= ns.length &&
+            $0.length <= ns.length - $0.location && $0.startTime.isFinite &&
+            $0.endTime.isFinite && $0.endTime > $0.startTime &&
+            Range(NSRange(location: $0.location, length: $0.length), in: source.text) != nil
+        }
+        let words: [TranscriptTimedSpan] = validSpans.filter { $0.cueLevel == false }.sorted { $0.location < $1.location }
+        // An open-ended final cue has no honest duration estimate. Keep it
+        // whole rather than inventing timing or hiding subsequent words.
+        let knownEnd = source.endTime ?? nextStart ?? validSpans.map { $0.endTime }.max()
+        guard let knownEnd, knownEnd.isFinite, knownEnd > source.startTime else {
+            return [PlaybackCaption(segment: source, lines: [NSRange(location: 0, length: ns.length)])]
+        }
+        let end = max(knownEnd, words.map { $0.endTime }.max() ?? knownEnd)
+        let timing = boundaryTimes(source: source, end: end, spans: validSpans, tokens: tokens)
+        let headerHeight = source.speaker == nil ? 0 : layout.lineHeight + 2
+        let lineCount = layout.height - headerHeight >= 2 * layout.lineHeight + 4 ? 2 : 1
+
+        func range(_ start: Int, _ finish: Int) -> NSRange {
+            NSRange(location: tokens[start].location,
+                    length: NSMaxRange(tokens[finish - 1]) - tokens[start].location)
+        }
+        func fitsLine(_ start: Int, _ finish: Int) -> Bool {
+            let value = ns.substring(with: range(start, finish))
+            // An exceptionally long word stays intact; SwiftUI can wrap it
+            // as a last resort and the line remains scrollable.
+            if finish == start + 1 { return true }
+            return value.count <= targetCharactersPerLine &&
+                layout.width(of: value) <= layout.width * 0.94 &&
+                !value.contains("\n") && !value.contains("\r")
+        }
+        func safeBreak(_ i: Int) -> Bool {
+            guard i > 0 && i < tokens.count else { return true }
+            guard timing[i] < end else { return false }
+            let boundary = tokens[i].location
+            // Never split a real timed span or split between temporally
+            // overlapping real spans, which the tracker cannot display together.
+            if words.contains(where: { $0.location < boundary && $0.location + $0.length > boundary }) { return false }
+            let earlierEnd = words.lazy.filter { $0.location + $0.length <= boundary }.map { $0.endTime }.max()
+            let laterStart = words.lazy.filter { $0.location >= boundary }.map { $0.startTime }.min()
+            if let earlierEnd, let laterStart, earlierEnd > laterStart { return false }
+            // Approximate cue times must never switch away from a real word early.
+            if let earlierEnd, timing[i] < earlierEnd { return false }
+            if let laterStart, timing[i] > laterStart { return false }
+            return timing[i] > timing[i - 1]
+        }
+        func boundaryScore(_ i: Int) -> Int {
+            guard i > 0 else { return 0 }
+            let word = ns.substring(with: tokens[i - 1])
+            let trimmed = word.trimmingCharacters(in: CharacterSet(charactersIn: "\"'”’»)]}"))
+            if let last = trimmed.last {
+                if ".!?…。！？".contains(last) { return 9 }
+                if ",;:，；：—".contains(last) { return 5 }
             }
-            previousSpeaker = segment.speaker
+            if weakEndings.contains(trimmed.lowercased()) { return -6 }
+            return 0
+        }
+        func lineRanges(_ start: Int, _ finish: Int) -> [NSRange]? {
+            if fitsLine(start, finish) { return [range(start, finish)] }
+            guard lineCount == 2, finish > start + 1 else { return nil }
+            var best: (index: Int, score: Double)?
+            for i in (start + 1)..<finish where fitsLine(start, i) && fitsLine(i, finish) {
+                let boundary = tokens[i].location
+                guard !words.contains(where: { $0.location < boundary && $0.location + $0.length > boundary }) else { continue }
+                // Prefer a natural line break and similarly sized lines.
+                let leftRange = range(start, i)
+                let rightRange = range(i, finish)
+                guard layout.width(of: ns.substring(with: leftRange)) <= layout.width * 0.94,
+                      layout.width(of: ns.substring(with: rightRange)) <= layout.width * 0.94 else { continue }
+                let left = leftRange.length
+                let right = rightRange.length
+                let score = Double(boundaryScore(i)) * 5 - Double(abs(left - right)) * 0.25
+                if best == nil || score > best!.score { best = (i, score) }
+            }
+            guard let i = best?.index else { return nil }
+            return [range(start, i), range(i, finish)]
         }
 
-        return ids
-    }
-
-    private func makeSpeakerColorMap(from segments: [TranscriptSegment]) -> [String: Color] {
-        var colorMap: [String: Color] = [:]
-        let speakers = Set(segments.compactMap(\.speaker)).sorted(by: <)
-
-        for (index, speaker) in speakers.enumerated() {
-            colorMap[speaker] = speakerColors[index % speakerColors.count]
+        var result: [PlaybackCaption] = []
+        var start = 0
+        while start < tokens.count {
+            var candidates: [(end: Int, lines: [NSRange])] = []
+            let limit = min(tokens.count, start + maxWords)
+            for finish in (start + 1)...limit {
+                guard let lines = lineRanges(start, finish) else { break }
+                if finish > start + 1 && timing[finish] - timing[start] > maxDuration { break }
+                if safeBreak(finish) { candidates.append((finish, lines)) }
+            }
+            var selected: (end: Int, lines: [NSRange])
+            if let last = candidates.last {
+                // Do not make a tiny caption solely because it has punctuation.
+                let minimum = start + max(1, (last.end - start) / 2)
+                selected = candidates.filter { $0.end >= minimum }.max {
+                    let a = $0.end - start + boundaryScore($0.end)
+                    let b = $1.end - start + boundaryScore($1.end)
+                    return a == b ? $0.end < $1.end : a < b
+                } ?? last
+            } else {
+                // Malformed/overlapping timing or an unsplittable word takes
+                // priority over the two-line guideline. Never lose text.
+                var finish = start + 1
+                while finish < tokens.count && !safeBreak(finish) { finish += 1 }
+                selected = (finish, lineRanges(start, finish) ?? [range(start, finish)])
+            }
+            let finish = selected.end
+            let slice = range(start, finish)
+            let text = ns.substring(with: slice)
+            let startTime = timing[start]
+            let endTime = timing[finish]
+            let spans = validSpans.compactMap { span -> TranscriptTimedSpan? in
+                let intersection = NSIntersectionRange(slice, NSRange(location: span.location, length: span.length))
+                guard intersection.length > 0 else { return nil }
+                // Real word timing is untouched. Cue timing may be clipped
+                // because one original cue can now cover several captions.
+                let spanStart = span.cueLevel != false ? max(startTime, span.startTime) : span.startTime
+                let spanEnd = span.cueLevel != false ? min(endTime, span.endTime) : span.endTime
+                guard spanEnd > spanStart else { return nil }
+                let local = NSRange(location: intersection.location - slice.location, length: intersection.length)
+                guard Range(local, in: text) != nil else { return nil }
+                return TranscriptTimedSpan(location: local.location, length: local.length,
+                                           startTime: spanStart, endTime: spanEnd, cueLevel: span.cueLevel)
+            }
+            let segment = TranscriptSegment(
+                id: stableID(source: source.id, range: slice), speaker: source.speaker,
+                text: text, startTime: startTime, endTime: endTime,
+                lineIDs: source.lineIDs, timedSpans: spans
+            )
+            let localLines = selected.lines.map { NSRange(location: $0.location - slice.location, length: $0.length) }
+            result.append(PlaybackCaption(segment: segment, lines: localLines))
+            start = finish
         }
-
-        return colorMap
+        return result
     }
 
+    // Word/cue timestamps become anchors. Interpolation is used only between
+    // known anchors; it never creates a fake word-level highlight.
+    private static func boundaryTimes(source: TranscriptSegment, end: TimeInterval,
+                                      spans: [TranscriptTimedSpan], tokens: [NSRange]) -> [TimeInterval] {
+        let length = (source.text as NSString).length
+        var anchors: [Int: TimeInterval] = [0: source.startTime, length: end]
+        for span in spans.sorted(by: { $0.cueLevel != false && $1.cueLevel == false }) {
+            anchors[span.location] = span.startTime
+            // A following word start at the same position wins below.
+            if anchors[span.location + span.length] == nil {
+                anchors[span.location + span.length] = span.endTime
+            }
+        }
+        anchors[0] = source.startTime
+        anchors[length] = end
+        let positions = anchors.keys.sorted()
+        var times: [TimeInterval] = []
+        var cursor = 0
+        for token in tokens {
+            let position = token.location
+            while cursor + 1 < positions.count && positions[cursor + 1] <= position { cursor += 1 }
+            let lower = positions[cursor]
+            let upper = positions[min(cursor + 1, positions.count - 1)]
+            let a = anchors[lower] ?? source.startTime
+            let b = anchors[upper] ?? end
+            let fraction = upper > lower ? Double(position - lower) / Double(upper - lower) : 0
+            let estimate = min(end, max(source.startTime, a + (b - a) * fraction))
+            times.append(max(times.last ?? source.startTime, estimate))
+        }
+        times[0] = source.startTime
+        times.append(end)
+        return times
+    }
+
+    private static func tokenRanges(in text: String) -> [NSRange] {
+        // Keep punctuation and Unicode graphemes intact. NaturalLanguage also
+        // provides word boundaries for scripts that do not separate words by spaces.
+        let ns = text as NSString
+        let pattern = try! NSRegularExpression(pattern: #"\S+"#)
+        let matches = pattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        var ranges: [NSRange] = []
+        for match in matches {
+            let raw = ns.substring(with: match.range)
+            let hasUnspacedScript = raw.unicodeScalars.contains {
+                (0x3040...0x30FF).contains($0.value) || (0x3400...0x9FFF).contains($0.value) ||
+                (0x0E00...0x0E7F).contains($0.value)
+            }
+            guard hasUnspacedScript, raw.count > 8 else { ranges.append(match.range); continue }
+            let tokenizer = NLTokenizer(unit: .word)
+            tokenizer.string = raw
+            var starts = [0]
+            tokenizer.enumerateTokens(in: raw.startIndex..<raw.endIndex) { range, _ in
+                let offset = NSRange(range, in: raw).location
+                if offset > 0 { starts.append(offset) }
+                return true
+            }
+            starts = Array(Set(starts)).sorted()
+            starts.append(raw.utf16.count)
+            for i in 0..<(starts.count - 1) {
+                ranges.append(NSRange(location: match.range.location + starts[i], length: starts[i + 1] - starts[i]))
+            }
+        }
+        return ranges
+    }
+
+    private static func stableID(source: UUID, range: NSRange) -> UUID {
+        let digest = Array(SHA256.hash(data: Data("\(source.uuidString):\(range.location):\(range.length)".utf8)))
+        return UUID(uuid: (digest[0], digest[1], digest[2], digest[3],
+                           digest[4], digest[5], digest[6], digest[7],
+                           digest[8], digest[9], digest[10], digest[11],
+                           digest[12], digest[13], digest[14], digest[15]))
+    }
 }
