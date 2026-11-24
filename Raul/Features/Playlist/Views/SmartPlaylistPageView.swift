@@ -17,11 +17,32 @@ struct SmartPlaylistPageView: View {
     @State private var isLoadingMatches = true
     @State private var evaluationFailed = false
     @State private var refreshGeneration = 0
+    @State private var filterState = QueueFilterState.all
 
     let playlist: Playlist
 
     private var displayedEpisodes: [Episode] {
         matchingEpisodes.filter { $0.url != nil }
+    }
+
+    private var projection: QueueProjection {
+        QueueProjection(
+            playlistID: playlist.id,
+            playlistTitle: playlist.displayTitle,
+            isSmartPlaylist: true,
+            episodes: displayedEpisodes
+        )
+    }
+
+    private var filteredEntries: [QueueEpisodeValue] {
+        projection.filtered(using: filterState).entries
+    }
+
+    private var episodesByIdentity: [String: Episode] {
+        Dictionary(
+            displayedEpisodes.map { ($0.stableEpisodeIdentityKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
     }
 
     var body: some View {
@@ -52,30 +73,38 @@ struct SmartPlaylistPageView: View {
                     }
                 }
             } else {
-                List {
-                    if evaluationFailed {
-                        Section {
-                            Label("Couldn't refresh this smart playlist.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
-                                .foregroundStyle(.secondary)
-                            Button("Try Again") { refreshGeneration &+= 1 }
+                VStack(spacing: 0) {
+                    QueueFilterBar(projection: projection, filterState: $filterState)
+
+                    if filteredEntries.isEmpty {
+                        ContentUnavailableView {
+                            Label("No Matching Episodes", systemImage: "line.3.horizontal.decrease.circle")
+                        } description: {
+                            Text("Clear filters to see every matching episode.")
+                        } actions: {
+                            Button("Clear Filters") {
+                                filterState.clear()
+                            }
                         }
-                        .listRowSeparator(.hidden)
-                    }
+                    } else {
+                        List {
+                            if evaluationFailed {
+                                Section {
+                                    Label("Couldn't refresh this smart playlist.", systemImage: "exclamationmark.arrow.triangle.2.circlepath")
+                                        .foregroundStyle(.secondary)
+                                    Button("Try Again") { refreshGeneration &+= 1 }
+                                }
+                                .listRowSeparator(.hidden)
+                            }
 
-                    Section {
-                        Text("\(displayedEpisodes.count) matching episodes")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .listRowSeparator(.hidden)
-
-                    ForEach(Array(displayedEpisodes.enumerated()), id: \.element.persistentModelID) { index, episode in
+                            ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, value in
+                                if let episode = episodesByIdentity[value.stableIdentityKey] {
                             ZStack {
                                 EpisodeRowView(
                                     episode: episode,
                                     showsRemoveFromPlaylistAction: false,
                                     usesLivePlaybackProgress: index == 0,
-                                    groupPosition: EpisodeRowGroupPosition(index: index, count: displayedEpisodes.count)
+                                    groupPosition: EpisodeRowGroupPosition(index: index, count: filteredEntries.count)
                                 )
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
@@ -89,9 +118,12 @@ struct SmartPlaylistPageView: View {
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
                             .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                                }
+                            }
+                        }
+                        .listStyle(.plain)
                     }
                 }
-                .listStyle(.plain)
             }
         }
         .task(id: SmartPlaylistRefreshKey(
@@ -105,6 +137,9 @@ struct SmartPlaylistPageView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistMembershipCacheDidInvalidate)) { _ in
             refreshGeneration &+= 1
+        }
+        .onChange(of: playlist.id) { _, _ in
+            filterState.clear()
         }
         .navigationTitle(playlist.displayTitle)
     }

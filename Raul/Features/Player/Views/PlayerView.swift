@@ -272,6 +272,8 @@ struct PlayerView: View {
                     } else {
                         missingChaptersView(episode: episode)
                     }
+                case .upNext:
+                    UpcomingQueuePreview()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -330,7 +332,7 @@ struct PlayerView: View {
                     .padding(.horizontal)
                     .padding(.bottom, 12)
 
-                compactShownotes(episode: episode)
+                compactPlayerContent(episode: episode)
 
             }
             .fullPageScreenshotSupport()
@@ -381,19 +383,60 @@ struct PlayerView: View {
             }
     }
 
-    private func compactShownotes(episode: Episode) -> some View {
+    private func compactPlayerContent(episode: Episode) -> some View {
         VStack(alignment: .leading) {
-            Divider()
-
-            HStack {
-                Text("Shownotes")
-                    .font(.headline)
-                Spacer()
-                playerMoreActionsMenu(episode: episode)
+            HStack(spacing: 12) {
+                Picker("Player content", selection: contentTabSelection) {
+                    ForEach(PlayerContentTab.allCases) { tab in
+                        Text(tab.title)
+                            .tag(tab)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .accessibilityLabel("Player content")
             }
 
-            PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Divider()
+
+            switch contentTab {
+            case .shownotes:
+                HStack {
+                    Text("Shownotes")
+                        .font(.headline)
+                    Spacer()
+                    playerMoreActionsMenu(episode: episode)
+                }
+                .padding(.bottom, 8)
+
+                PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            case .transcript:
+                let transcriptLines = liveTranscript.displayLines(for: episode)
+                if transcriptLines.isEmpty == false {
+                    TranscriptListView(
+                        transcriptLines: transcriptLines,
+                        episode: episode,
+                        startFollowingPlayback: true,
+                        canFollowPlayback: episode.transcriptLines?.isEmpty == false
+                            || liveTranscript.isActive(for: episode)
+                    )
+                } else {
+                    missingTranscriptView(episode: episode)
+                }
+            case .chapters:
+                let chapterMarkers = episode.chapters ?? []
+                if hasDisplayableChapters(in: chapterMarkers, for: episode) {
+                    ChapterListView(
+                        episode: episode,
+                        showsTitle: false,
+                        markersOverride: chapterMarkers
+                    )
+                } else {
+                    missingChaptersView(episode: episode)
+                }
+            case .upNext:
+                UpcomingQueuePreview()
+            }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -663,6 +706,7 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
     case shownotes
     case transcript
     case chapters
+    case upNext
 
     var id: Self { self }
 
@@ -671,6 +715,7 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
         case .shownotes: "Shownotes"
         case .transcript: "Transcript"
         case .chapters: "Chapters"
+        case .upNext: "Up Next"
         }
     }
 }

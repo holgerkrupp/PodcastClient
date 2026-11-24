@@ -316,6 +316,7 @@ private struct ManualPlaylistPageView: View {
     @Query private var playlistEntries: [PlaylistEntry]
     @State private var isSmartShuffling = false
     @State private var smartShuffleMessage: String?
+    @State private var filterState = QueueFilterState.all
     private let reorderTip = ReorderPlaylistTip()
     init(playlist: Playlist) {
         self.playlist = playlist
@@ -336,33 +337,60 @@ private struct ManualPlaylistPageView: View {
         episodes.filter { $0.url != nil }
     }
 
-    private var hasRenderableEpisodes: Bool { displayedEpisodes.isEmpty == false }
+    private var projection: QueueProjection {
+        QueueProjection(
+            playlistID: playlist.id,
+            playlistTitle: playlist.displayTitle,
+            isSmartPlaylist: false,
+            episodes: displayedEpisodes
+        )
+    }
+
+    private var filteredEntries: [QueueEpisodeValue] {
+        projection.filtered(using: filterState).entries
+    }
+
+    private var episodesByIdentity: [String: Episode] {
+        Dictionary(
+            displayedEpisodes.map { ($0.stableEpisodeIdentityKey, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+    }
 
     var body: some View {
-        Group {
-            if hasRenderableEpisodes == false {
+        VStack(spacing: 0) {
+            QueueFilterBar(projection: projection, filterState: $filterState)
+
+            if projection.entries.isEmpty {
                 PlaylistEmptyView(
                     title: playlist.displayTitle,
                     isSmartPlaylist: false,
                     isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
                     playlistID: playlist.id
                 )
+            } else if filteredEntries.isEmpty {
+                ContentUnavailableView {
+                    Label("No Matching Episodes", systemImage: "line.3.horizontal.decrease.circle")
+                } description: {
+                    Text("Clear filters to see every episode in this playlist.")
+                } actions: {
+                    Button("Clear Filters") {
+                        filterState.clear()
+                    }
+                }
             } else {
                 List {
                     TipView(reorderTip, arrowEdge: .none)
                         .listRowSeparator(.hidden)
 
-                    let displayedEpisodePositions = Dictionary(uniqueKeysWithValues: displayedEpisodes.enumerated().map {
-                        ($0.element.persistentModelID, $0.offset)
-                    })
-                    ForEach(Array(episodes.enumerated()), id: \.element.persistentModelID) { index, episode in
-                        if episode.url != nil, let displayedIndex = displayedEpisodePositions[episode.persistentModelID] {
+                    ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, value in
+                        if let episode = episodesByIdentity[value.stableIdentityKey] {
                             ZStack {
                                 EpisodeRowView(
                                     episode: episode,
                                     showsRemoveFromPlaylistAction: true,
-                                    usesLivePlaybackProgress: displayedIndex == 0,
-                                    groupPosition: EpisodeRowGroupPosition(index: displayedIndex, count: displayedEpisodes.count)
+                                    usesLivePlaybackProgress: index == 0,
+                                    groupPosition: EpisodeRowGroupPosition(index: index, count: filteredEntries.count)
                                 )
                                 NavigationLink(destination: EpisodeDetailView(episode: episode)) {
                                     EmptyView()
@@ -397,18 +425,28 @@ private struct ManualPlaylistPageView: View {
                         }
                     }
                     .onMove { indices, newOffset in
-                        guard let fromIndex = indices.first else { return }
+                        guard filterState.isFiltering == false,
+                              let visibleFromIndex = indices.first,
+                              filteredEntries.indices.contains(visibleFromIndex) else { return }
+                        let fromIndex = filteredEntries[visibleFromIndex].orderIndex
+                        let destinationIndex: Int
+                        if newOffset >= filteredEntries.count {
+                            destinationIndex = (filteredEntries.last?.orderIndex ?? fromIndex) + 1
+                        } else {
+                            destinationIndex = filteredEntries[newOffset].orderIndex
+                        }
                         Task {
                             if let actor = try? PlaylistModelActor(modelContainer: modelContext.container, playlistID: playlist.id) {
-                                try? await actor.moveEntry(from: fromIndex, to: newOffset)
+                                try? await actor.moveEntry(from: fromIndex, to: destinationIndex)
                             }
                         }
                         ReorderPlaylistTip.hasUserReorderedBefore = true
                         reorderTip.invalidate(reason: .actionPerformed)
                     }
+                    .moveDisabled(filterState.isFiltering)
                     // `initial: true` so the rule sees the current count, not just later changes;
                     // otherwise a playlist that never changes size never becomes eligible.
-                    .onChange(of: episodes.count, initial: true) { _, newCount in
+                    .onChange(of: filteredEntries.count, initial: true) { _, newCount in
                         ReorderPlaylistTip.playlistItemCount = newCount
                     }
                 }
@@ -440,6 +478,9 @@ private struct ManualPlaylistPageView: View {
                     Text(smartShuffleMessage ?? "")
                 }
             }
+        }
+        .onChange(of: playlist.id) { _, _ in
+            filterState.clear()
         }
         .onAppear { recordVisibleEntryCount() }
         .onChange(of: episodes.count) { _, _ in recordVisibleEntryCount() }

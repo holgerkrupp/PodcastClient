@@ -591,6 +591,27 @@ actor PlaylistModelActor {
         }
     }
 
+    /// Returns the authoritative ordered queue as immutable values. The
+    /// SwiftData graph never leaves this actor, which lets the playlist UI and
+    /// player preview share one projection without creating a second queue.
+    func orderedQueueProjection() throws -> QueueProjection {
+        guard let playlist = try fetchPlaylist() else {
+            return QueueProjection(
+                playlistID: playlistID,
+                playlistTitle: Playlist.defaultQueueDisplayName,
+                isSmartPlaylist: false,
+                entries: []
+            )
+        }
+
+        return QueueProjection(
+            playlistID: playlist.id,
+            playlistTitle: playlist.displayTitle,
+            isSmartPlaylist: playlist.isSmartPlaylist,
+            episodes: try orderedEpisodes(for: playlist)
+        )
+    }
+
     func containsEpisodeURL(_ episodeURL: URL) throws -> Bool {
         guard let playlist = try fetchPlaylist() else { return false }
         guard playlist.isSmartPlaylist == false else { return false }

@@ -257,7 +257,7 @@ enum SmartPlaylistEngine {
             return actualBase == wantedBase
         }
         if rule.field == .category {
-            return podcastCategories(episode.podcast?.optionalTags).contains { normalize($0) == normalize(queryValue) }
+            return categories(for: episode.podcast?.optionalTags).contains { normalize($0) == normalize(queryValue) }
         }
         let normalizedQuery = normalize(rule.query)
         guard normalizedQuery.isEmpty == false else {
@@ -274,7 +274,10 @@ enum SmartPlaylistEngine {
         return !rule.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private static func podcastCategories(_ tags: PodcastNamespaceOptionalTags?) -> [String] {
+    /// Category values shared by smart playlists and transient queue filters.
+    /// Keeping extraction here prevents the queue projection from drifting
+    /// from smart-playlist category semantics.
+    static func categories(for tags: PodcastNamespaceOptionalTags?) -> [String] {
         guard let tags else { return [] }
         return namespaceNodes(tags).flatMap { categoryValues($0) }
     }
