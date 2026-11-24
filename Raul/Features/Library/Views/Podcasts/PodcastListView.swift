@@ -27,6 +27,7 @@ struct PodcastListView: View {
     private let modelContainer: ModelContainer
     @State private var selectedScope: LibraryScope = .subscribed
     @State private var pendingDeletionIDs = Set<PersistentIdentifier>()
+    @State private var authenticationRepairPodcast: Podcast?
 
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -135,6 +136,18 @@ struct PodcastListView: View {
                         .accessibilityLabel("Open podcast \(podcast.title)")
                         .accessibilityHint("Opens this podcast details screen")
                         .contextMenu {
+                            if let attention = PodcastAuthenticationAttention.resolve(
+                                credentialState: podcast.metaData?.credentialState ?? .available,
+                                accessProfileID: podcast.metaData?.accessProfileID,
+                                accessKindRawValue: podcast.metaData?.accessKindRawValue
+                            ) {
+                                Button {
+                                    authenticationRepairPodcast = podcast
+                                } label: {
+                                    Label(attention.actionTitle, systemImage: "key.fill")
+                                }
+                            }
+
                             Button {
                                 openSettings(.playback(for: podcast))
                             } label: {
@@ -203,6 +216,11 @@ struct PodcastListView: View {
                 .accessibilityLabel("Search library")
                 .accessibilityHint("Search podcasts, episodes, chapters, and transcripts")
                 .accessibilityInputLabels([Text("Search library"), Text("Library search")])
+            }
+        }
+        .sheet(item: $authenticationRepairPodcast) { podcast in
+            PodcastAccessEditorView(podcast: podcast) {
+                authenticationRepairPodcast = nil
             }
         }
     }

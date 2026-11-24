@@ -69,16 +69,12 @@ struct PodcastRowView: View {
     private static func rowDiagnostic(from metadata: PodcastMetaData?) -> (badge: String, message: String)? {
         guard let metadata else { return nil }
 
-        switch metadata.credentialState {
-        case .missing where metadata.accessKindRawValue != nil
-            && metadata.accessKindRawValue != PodcastAccessKind.publicFeed.rawValue:
-            return ("AUTHENTICATION MISSING", "This podcast needs saved authentication before it can refresh.")
-        case .needsLogin, .expired, .revoked:
-            return ("AUTHENTICATION REQUIRED", "This podcast's saved authentication needs attention.")
-        case .storageUnavailable:
-            return ("AUTHENTICATION UNAVAILABLE", "Saved authentication could not be accessed on this device.")
-        case .available, .missing, .unsupported:
-            break
+        if let attention = PodcastAuthenticationAttention.resolve(
+            credentialState: metadata.credentialState,
+            accessProfileID: metadata.accessProfileID,
+            accessKindRawValue: metadata.accessKindRawValue
+        ) {
+            return (attention.badge, attention.message)
         }
 
         let assessment = metadata.feedAbandonmentAssessment
@@ -92,9 +88,6 @@ struct PodcastRowView: View {
 
         guard metadata.lastFeedFailureDate != nil else { return nil }
         let statusCode = metadata.lastFeedFailureStatusCode
-        if statusCode == 401 || statusCode == 403 {
-            return ("AUTHENTICATION REQUIRED", feedIssueDescription(from: metadata) ?? "The feed requires authentication.")
-        }
         if statusCode == 404 || statusCode == 410 || statusCode == 451 {
             return ("FEED UNAVAILABLE", feedIssueDescription(from: metadata) ?? "The podcast feed is unavailable.")
         }

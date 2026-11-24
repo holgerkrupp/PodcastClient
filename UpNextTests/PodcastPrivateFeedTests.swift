@@ -975,6 +975,68 @@ final class PodcastPrivateFeedTests: XCTestCase {
         XCTAssertTrue(basicChallenge.advertisesHTTPBasicAuthentication)
     }
 
+    func testAuthenticationAttentionRequiresKnownProtectedAccessKind() {
+        let missing = PodcastAuthenticationAttention.resolve(
+            credentialState: .missing,
+            accessProfileID: nil,
+            accessKindRawValue: PodcastAccessKind.httpBasic.rawValue
+        )
+        XCTAssertEqual(missing?.actionTitle, "Enter credentials")
+        XCTAssertEqual(missing?.message, "Sign in to this podcast on this device to receive new episodes.")
+
+        let publicFailure = PodcastAuthenticationAttention.resolve(
+            credentialState: .needsLogin,
+            accessProfileID: nil,
+            accessKindRawValue: PodcastAccessKind.publicFeed.rawValue
+        )
+        XCTAssertNil(publicFailure)
+
+        let expired = PodcastAuthenticationAttention.resolve(
+            credentialState: .expired,
+            accessProfileID: "profile",
+            accessKindRawValue: PodcastAccessKind.bearerToken.rawValue
+        )
+        XCTAssertEqual(expired?.actionTitle, "Sign in again")
+
+        let unavailable = PodcastAuthenticationAttention.resolve(
+            credentialState: .storageUnavailable,
+            accessProfileID: "profile",
+            accessKindRawValue: PodcastAccessKind.httpBasic.rawValue
+        )
+        XCTAssertEqual(unavailable?.actionTitle, "Retry credential access")
+    }
+
+    func testRefreshFailureClassifierDoesNotPromptForAmbiguousPublicFailures() {
+        XCTAssertFalse(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 401,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: nil
+            )
+        )
+        XCTAssertFalse(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.publicFeed.rawValue
+            )
+        )
+        XCTAssertTrue(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 403,
+                explicitAuthenticationFailure: false,
+                accessKindRawValue: PodcastAccessKind.httpBasic.rawValue
+            )
+        )
+        XCTAssertTrue(
+            PodcastRefreshFailureClassifier.isAuthenticationFailure(
+                statusCode: 401,
+                explicitAuthenticationFailure: true,
+                accessKindRawValue: nil
+            )
+        )
+    }
+
     func testResolverDoesNotShowAuthenticationPromptFor403WithoutChallenge() async throws {
         let endpoint = URL(string: "https://example.com/no-auth.xml")!
         let client = PodcastHTTPClient(

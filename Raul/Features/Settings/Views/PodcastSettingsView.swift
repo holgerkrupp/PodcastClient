@@ -2741,6 +2741,17 @@ struct PodcastAccessEditorView: View {
                     Text("Credentials stay in the device Keychain. They are not written to SwiftData, iCloud sync, logs, or exports.")
                 }
 
+                if podcast.metaData?.credentialState == .storageUnavailable {
+                    Section {
+                        Label(
+                            "Secure credential storage is unavailable on this device. Unlock the device and try again.",
+                            systemImage: "lock.slash"
+                        )
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                    }
+                }
+
                 if let errorMessage {
                     Section {
                         Text(errorMessage)
@@ -2884,6 +2895,10 @@ struct PodcastAccessEditorView: View {
                     errorMessage = String(localized: "The saved credentials were rejected. Check the username and password.")
                 } else if case PodcastParserError.couldNotLoad(_, let status, _) = error, status == 401 {
                     errorMessage = String(localized: "The saved credentials were rejected. Check the username and password.")
+                } else if case PodcastCredentialStoreError.unavailable = error {
+                    errorMessage = String(localized: "Secure credential storage is unavailable on this device. Unlock the device and try again.")
+                } else if case PodcastCredentialStoreError.keychain = error {
+                    errorMessage = String(localized: "Secure credential storage could not be accessed. Try again when the device is unlocked.")
                 } else {
                     errorMessage = String(localized: "Could not validate this podcast feed. Check your connection and try again.")
                 }

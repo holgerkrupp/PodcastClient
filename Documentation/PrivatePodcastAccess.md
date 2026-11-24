@@ -96,7 +96,8 @@ its original `subscribedAt` date. Profile references remain non-secret; the
 Keychain item is never reconstructed from synchronized metadata.
 
 When access is rejected or unavailable, the podcast remains in the library and
-background refresh backs off. Podcast Detail offers **Fix Authentication**;
+background refresh backs off. Podcast Detail offers an inline authentication
+repair action;
 Podcast Settings also keeps credential management available when authentication
 metadata is incomplete. The editor validates a proposed credential against a
 valid feed before saving it, checks the returned feed title against the

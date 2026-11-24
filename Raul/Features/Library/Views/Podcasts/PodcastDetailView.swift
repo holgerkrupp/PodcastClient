@@ -189,29 +189,35 @@ struct PodcastDetailView: View {
         PodcastAbandonedFeedCard(metadata: podcast.metaData)
     }
 
-    private var needsAuthenticationRepair: Bool {
-        podcast.metaData?.credentialState == .needsLogin
-            || podcast.metaData?.credentialState == .storageUnavailable
-            || (podcast.feed?.isLikelyPrivatePodcastURL == true
-                && podcast.metaData?.credentialState == .missing)
+    private var authenticationAttention: PodcastAuthenticationAttention? {
+        guard let metadata = podcast.metaData else { return nil }
+        return PodcastAuthenticationAttention.resolve(
+            credentialState: metadata.credentialState,
+            accessProfileID: metadata.accessProfileID,
+            accessKindRawValue: metadata.accessKindRawValue
+        )
     }
 
     private var authenticationRepairCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Label("Authentication required", systemImage: "lock.fill")
-                .font(.headline)
-            Text("This podcast needs credentials to download new episodes.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-            Button("Fix Authentication") {
-                showAuthenticationEditor = true
+        Group {
+            if let attention = authenticationAttention {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label(attention.cardTitle, systemImage: "lock.fill")
+                        .font(.headline)
+                    Text(attention.message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button(attention.actionTitle) {
+                        showAuthenticationEditor = true
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("podcast-detail-authentication-repair")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(.borderedProminent)
-            .accessibilityIdentifier("podcast-detail-fix-authentication")
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var currentLiveItem: PodcastLiveItem? {
@@ -335,7 +341,7 @@ struct PodcastDetailView: View {
                         refreshProgressCard
                     }
 
-                    if needsAuthenticationRepair {
+                    if authenticationAttention != nil {
                         authenticationRepairCard
                     }
 
@@ -406,6 +412,14 @@ struct PodcastDetailView: View {
                         ContentUnavailableView.search(text: searchText)
                             .listRowSeparator(.hidden)
                             .listRowBackground(Color.clear)
+                    } else if let attention = authenticationAttention, displayedIsSubscribed {
+                        ContentUnavailableView(
+                            attention.emptyTitle,
+                            systemImage: "lock.fill",
+                            description: Text(attention.message)
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
                     } else {
                         ContentUnavailableView(
                             "No Episodes Yet",
@@ -721,6 +735,14 @@ struct PodcastDetailView: View {
                         Label("Podcast Settings", systemImage: "gear")
                     }
 
+                    if let attention = authenticationAttention {
+                        Button {
+                            showAuthenticationEditor = true
+                        } label: {
+                            Label(attention.actionTitle, systemImage: "key.fill")
+                        }
+                    }
+
                     Button {
                         showFeedRepair = true
                     } label: {
@@ -963,18 +985,18 @@ struct PodcastDetailView: View {
 
     private static func userFacingRefreshError(_ error: Error) -> String {
         if case PodcastFeedResolverError.authenticationRequired = error {
-            return String(localized: "This podcast requires authentication. Choose Fix Authentication to update access.")
+            return String(localized: "This podcast requires authentication. Choose Enter credentials or Sign in again to update access.")
         }
         if case PodcastFeedResolverError.bearerAuthenticationRequired = error {
-            return String(localized: "This podcast requires an updated access token. Choose Fix Authentication to update access.")
+            return String(localized: "This podcast requires an updated access token. Choose Sign in again to update access.")
         }
         if case PodcastParserError.couldNotLoad(_, let statusCode, _) = error,
            statusCode == 401 {
-            return String(localized: "The saved credentials were rejected. Choose Fix Authentication to sign in again.")
+            return String(localized: "The saved credentials were rejected. Choose Sign in again to update access.")
         }
         if case PodcastFeedResolverError.httpStatus(_, let statusCode, _) = error,
            statusCode == 401 {
-            return String(localized: "The saved credentials were rejected. Choose Fix Authentication to sign in again.")
+            return String(localized: "The saved credentials were rejected. Choose Sign in again to update access.")
         }
         if error is URLError {
             return String(localized: "The podcast server is temporarily unavailable. Try again later.")

@@ -250,6 +250,84 @@ enum PodcastCredentialState: String, Codable, Hashable, Sendable {
     case unsupported
 }
 
+/// Value-only presentation policy for a subscribed podcast whose local
+/// credentials need attention. UI callers pass stored, non-secret metadata;
+/// this policy never consults Keychain, SwiftData relationships, or the network.
+struct PodcastAuthenticationAttention: Equatable, Sendable {
+    let state: PodcastCredentialState
+    /// May be absent on older synced records; the repair action remains
+    /// available so the editor can create the missing local profile.
+    let accessProfileID: String?
+    let accessKind: PodcastAccessKind
+
+    var badge: String {
+        switch state {
+        case .missing: "AUTHENTICATION MISSING"
+        case .needsLogin: "AUTHENTICATION REQUIRED"
+        case .expired: "AUTHENTICATION EXPIRED"
+        case .revoked: "AUTHENTICATION REVOKED"
+        case .storageUnavailable: "AUTHENTICATION UNAVAILABLE"
+        case .available, .unsupported: ""
+        }
+    }
+
+    var message: String {
+        switch state {
+        case .missing:
+            "Sign in to this podcast on this device to receive new episodes."
+        case .needsLogin:
+            "This podcast's saved authentication needs attention."
+        case .expired:
+            "This podcast's saved authentication has expired. Sign in again to receive new episodes."
+        case .revoked:
+            "This podcast's saved authentication was revoked. Sign in again to receive new episodes."
+        case .storageUnavailable:
+            "Up Next can't access this device's saved credentials. Retry credential access to receive new episodes."
+        case .available, .unsupported:
+            ""
+        }
+    }
+
+    var cardTitle: String {
+        state == .storageUnavailable ? "Authentication unavailable" : "Authentication required"
+    }
+
+    var actionTitle: String {
+        switch state {
+        case .missing: "Enter credentials"
+        case .storageUnavailable: "Retry credential access"
+        case .needsLogin, .expired, .revoked: "Sign in again"
+        case .available, .unsupported: ""
+        }
+    }
+
+    var emptyTitle: String { "Waiting for authentication" }
+
+    /// A public feed must never turn an ambiguous server failure into a login
+    /// request. Protected kinds are authoritative; URL appearance is not.
+    static func resolve(
+        credentialState: PodcastCredentialState,
+        accessProfileID: String?,
+        accessKindRawValue: String?
+    ) -> PodcastAuthenticationAttention? {
+        guard let accessKind = accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)),
+              accessKind != .publicFeed else {
+            return nil
+        }
+
+        switch credentialState {
+        case .missing, .needsLogin, .expired, .revoked, .storageUnavailable:
+            return PodcastAuthenticationAttention(
+                state: credentialState,
+                accessProfileID: accessProfileID,
+                accessKind: accessKind
+            )
+        case .available, .unsupported:
+            return nil
+        }
+    }
+}
+
 enum PodcastCredential: Codable, Equatable, Sendable {
     case privateURL(URL)
     case httpBasic(username: String, password: String)

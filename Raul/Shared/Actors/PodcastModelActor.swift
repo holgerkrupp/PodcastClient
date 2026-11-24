@@ -67,10 +67,10 @@ enum PodcastRefreshFailureClassifier {
         explicitAuthenticationFailure: Bool,
         accessKindRawValue: String?
     ) -> Bool {
-        if explicitAuthenticationFailure || statusCode == 401 {
+        if explicitAuthenticationFailure {
             return true
         }
-        guard statusCode == 403,
+        guard statusCode == 401 || statusCode == 403,
               let accessKind = accessKindRawValue.flatMap(PodcastAccessKind.init(rawValue:)) else {
             return false
         }
