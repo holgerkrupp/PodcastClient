@@ -538,13 +538,7 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func focusedPlaybackSection(settings: PodcastSettings) -> some View {
-        Section("Playback") {
-            playbackSpeedRow(settings: settings)
-        }
-
-        Section("Audio Enhancements") {
-            playbackEnhancementToggles(settings: settings)
-        }
+        audioSpeedSettingsSection(settings: settings)
 
         Section("Skip Controls") {
             skipDurationPickers(settings: settings)
@@ -639,6 +633,8 @@ struct PodcastSettingsView: View {
         Form {
             contextSection
             scopeSection
+
+            audioSpeedSettingsSection(settings: settings)
 
             if let podcast,
                (podcast.feed?.isLikelyPrivatePodcastURL == true
@@ -1019,13 +1015,7 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func globalPlaybackSections(settings: PodcastSettings) -> some View {
-        Section("Playback") {
-            playbackSpeedRow(settings: settings)
-        }
-
-        Section("Audio Enhancements") {
-            playbackEnhancementToggles(settings: settings)
-        }
+        audioSpeedSettingsSection(settings: settings)
 
         Section("Skip Controls") {
             skipDurationPickers(settings: settings)
@@ -1333,14 +1323,6 @@ struct PodcastSettingsView: View {
 
     @ViewBuilder
     private func podcastCustomizationSection(settings: PodcastSettings) -> some View {
-        Section("Playback") {
-            playbackSpeedRow(settings: settings)
-        }
-
-        Section("Audio Enhancements") {
-            playbackEnhancementToggles(settings: settings)
-        }
-
         Section("Skip Controls") {
             skipDurationPickers(settings: settings)
         }
@@ -1505,6 +1487,33 @@ struct PodcastSettingsView: View {
         }
     }
 
+    private func audioSpeedSettingsSection(settings: PodcastSettings) -> some View {
+        AudioSpeedSettingsSection(
+            settings: settings,
+            inheritedSettings: podcast == nil ? nil : globalSettings,
+            scope: audioSpeedSettingsScope,
+            isEditable: podcast == nil || isPodcastCustomSettingsActive,
+            onChange: saveAndNotify,
+            onResetToDefault: podcast == nil ? nil : {
+                resetAudioSpeedSettings(settings: settings)
+            },
+            onEnableOverride: podcast == nil ? nil : {
+                handleCustomSettingsToggle(true)
+            }
+        )
+    }
+
+    private var audioSpeedSettingsScope: AudioSpeedSettingsScope {
+        guard podcast != nil else { return .appDefaults }
+        return isPodcastCustomSettingsActive ? .podcastOverride : .podcastInherited
+    }
+
+    private func resetAudioSpeedSettings(settings: PodcastSettings) {
+        guard let globalSettings else { return }
+        AudioSpeedSettingsSnapshot(settings: globalSettings).applying(to: settings)
+        saveAndNotify()
+    }
+
     private var sideloadingSection: some View {
         Section("Sideloading") {
             Toggle(isOn: Binding(
@@ -1528,109 +1537,6 @@ struct PodcastSettingsView: View {
             if isApplyingSideloadingChange {
                 ProgressView("Setting up the iCloud folder...")
             }
-        }
-    }
-
-    @ViewBuilder
-    private func playbackEnhancementToggles(settings: PodcastSettings) -> some View {
-        Toggle(
-            isOn: Binding(
-                get: { settings.reduceSilenceGapsEnabled },
-                set: {
-                    settings.reduceSilenceGapsEnabled = $0
-                    saveAndNotify()
-                }
-            )
-        ) {
-            SettingsControlLabel(
-                title: "Shorten Pauses",
-                detail: "Speed through sustained quiet sections during audio playback."
-            )
-        }
-
-        if settings.reduceSilenceGapsEnabled {
-            Picker(
-                selection: Binding(
-                    get: { settings.silenceGapReductionLevel },
-                    set: {
-                        settings.silenceGapReductionLevel = $0
-                        saveAndNotify()
-                    }
-                )
-            ) {
-                ForEach(SilenceGapReductionLevel.allCases, id: \.self) { level in
-                    Text(level.settingsLabel).tag(level)
-                }
-            } label: {
-                SettingsControlLabel(
-                    title: "Reduction level",
-                    detail: "Gentle preserves more pauses; stronger levels shorten more silence."
-                )
-            }
-            .pickerStyle(.segmented)
-        }
-
-        Toggle(
-            isOn: Binding(
-                get: { settings.voiceEnhancementEnabled },
-                set: {
-                    settings.voiceEnhancementEnabled = $0
-                    saveAndNotify()
-                }
-            )
-        ) {
-            SettingsControlLabel(
-                title: "Voice enhancement",
-                detail: "Balance voices, reduce low-frequency rumble, and control loud peaks."
-            )
-        }
-
-        Picker(
-            selection: Binding(
-                get: { settings.equalizerPreset },
-                set: {
-                    settings.equalizerPreset = $0
-                    saveAndNotify()
-                }
-            )
-        ) {
-            ForEach(EqualizerPreset.allCases) { preset in
-                Text(preset.title).tag(preset)
-            }
-        } label: {
-            SettingsControlLabel(
-                title: "Equalizer",
-                detail: "Choose a gentle tone preset. Flat bypasses equalization."
-            )
-        }
-        .pickerStyle(.menu)
-    }
-
-    private func playbackSpeedRow(settings: PodcastSettings) -> some View {
-        LabeledContent {
-            HStack(spacing: 8) {
-                Text(settings.playbackSpeed.formattedPlaybackSpeed)
-                    .monospacedDigit()
-
-                Stepper(
-                    "",
-                    value: Binding(
-                        get: { settings.playbackSpeed ?? 1.0 },
-                        set: {
-                            settings.playbackSpeed = $0
-                            saveAndNotify()
-                        }
-                    ),
-                    in: 0.5...3.0,
-                    step: 0.1
-                )
-                .labelsHidden()
-            }
-        } label: {
-            SettingsControlLabel(
-                title: "Default speed",
-                detail: "Used when playback starts; the player speed control updates this value."
-            )
         }
     }
 

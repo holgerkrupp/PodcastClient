@@ -3,6 +3,78 @@ import XCTest
 @testable import UpNext
 
 final class PlaybackAudioEnhancementTests: XCTestCase {
+    func testAudioSpeedSnapshotAppliesOnlyAudioProcessingFields() {
+        let source = PodcastSettings()
+        source.playbackSpeed = 1.7
+        source.reduceSilenceGapsEnabled = true
+        source.silenceGapReductionLevel = .high
+        source.voiceEnhancementEnabled = true
+        source.equalizerPreset = .speechClarity
+
+        let target = PodcastSettings()
+        target.playnextPosition = .front
+        target.autoDownload = true
+        target.archiveFileRetentionDays = 42
+
+        AudioSpeedSettingsSnapshot(settings: source).applying(to: target)
+
+        XCTAssertEqual(AudioSpeedSettingsSnapshot(settings: target), AudioSpeedSettingsSnapshot(settings: source))
+        XCTAssertEqual(target.playnextPosition, .front)
+        XCTAssertTrue(target.autoDownload)
+        XCTAssertEqual(target.archiveFileRetentionDays, 42)
+    }
+
+    func testPodcastAudioResetRestoresDefaultsWithoutChangingRoutingOrDownloads() {
+        let defaults = PodcastSettings()
+        defaults.playbackSpeed = 1.25
+        defaults.reduceSilenceGapsEnabled = true
+        defaults.silenceGapReductionLevel = .medium
+        defaults.voiceEnhancementEnabled = true
+        defaults.equalizerPreset = .warm
+
+        let podcast = PodcastSettings()
+        podcast.playbackSpeed = 2.0
+        podcast.reduceSilenceGapsEnabled = false
+        podcast.voiceEnhancementEnabled = false
+        podcast.equalizerPreset = .bassCut
+        podcast.playnextPosition = .end
+        podcast.autoDownload = true
+        podcast.autoDownloadEpisodeCount = 6
+
+        AudioSpeedSettingsSnapshot(settings: defaults).applying(to: podcast)
+
+        XCTAssertEqual(AudioSpeedSettingsSnapshot(settings: podcast), AudioSpeedSettingsSnapshot(settings: defaults))
+        XCTAssertEqual(podcast.playnextPosition, .end)
+        XCTAssertTrue(podcast.autoDownload)
+        XCTAssertEqual(podcast.autoDownloadEpisodeCount, 6)
+    }
+
+    func testAudioSpeedProfilePersistsWithPodcastOverrideIdentity() throws {
+        let fixture = try makeSettingsFixture()
+        let global = try XCTUnwrap(try fixture.context.fetch(FetchDescriptor<PodcastSettings>()).first)
+        global.playbackSpeed = 1.4
+        global.equalizerPreset = .speechClarity
+
+        let custom = PodcastSettings.makeCustomSettings(for: fixture.podcast, inheriting: global)
+        custom.playbackSpeed = 1.8
+        custom.voiceEnhancementEnabled = true
+        fixture.context.insert(custom)
+        fixture.podcast.settings = custom
+        try fixture.context.save()
+
+        let reloadedContext = ModelContext(fixture.container)
+        let reloadedPodcast = try XCTUnwrap(
+            reloadedContext.fetch(FetchDescriptor<Podcast>()).first(where: { $0.feed == fixture.podcast.feed })
+        )
+        let reloadedSettings = try XCTUnwrap(reloadedPodcast.settings)
+
+        XCTAssertTrue(reloadedSettings.isEnabled)
+        XCTAssertEqual(reloadedSettings.playbackSpeed, 1.8)
+        XCTAssertTrue(reloadedSettings.voiceEnhancementEnabled)
+        XCTAssertEqual(reloadedSettings.equalizerPreset, .speechClarity)
+        XCTAssertEqual(reloadedSettings.podcast?.feed, fixture.podcast.feed)
+    }
+
     func testSilenceDetectorStartsAfterSustainedQuietAudio() {
         var detector = AudioSilenceGapDetector(level: .high)
 

@@ -18,6 +18,7 @@ Links below are a navigation inventory, not a statement that every document is c
 - [Documentation/NetworkTrackingProtection.md](../Documentation/NetworkTrackingProtection.md)
 - [Documentation/Performance/AddPodcastBrowse.md](../Documentation/Performance/AddPodcastBrowse.md)
 - [Documentation/Performance/AutomaticTranscription.md](../Documentation/Performance/AutomaticTranscription.md)
+- [Documentation/Performance/AudioProcessing468.md](../Documentation/Performance/AudioProcessing468.md)
 - [Documentation/Performance/CarPlayPlayback.md](../Documentation/Performance/CarPlayPlayback.md)
 - [Documentation/Performance/OptionalAudioAnalysis.md](../Documentation/Performance/OptionalAudioAnalysis.md)
 - [Documentation/Performance/PlayerOpening.md](../Documentation/Performance/PlayerOpening.md)
