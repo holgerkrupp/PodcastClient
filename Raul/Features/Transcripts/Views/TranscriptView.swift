@@ -150,9 +150,10 @@ struct TranscriptView: View {
                 .font(.body)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .multilineTextAlignment(.leading)
-                .lineLimit(followPlayback && hasWordLevelTiming ? 2 : nil)
+              //  .lineLimit(followPlayback && hasWordLevelTiming ? 2 : nil)
+                .lineLimit(nil)
                 .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
+                .fixedSize(horizontal: false, vertical: false)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 2)
