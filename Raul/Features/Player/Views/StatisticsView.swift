@@ -91,38 +91,40 @@ private struct ListeningHistorySnapshot {
         weekdayTotals: [],
         heatMap: .empty,
         deviceBreakdown: [],
-        isUsingSummaryTotals: false
+        isUsingSummaryTotals: false,
+        completedEpisodeCount: nil
     )
 
-    let selectedPodcastTitle: String
-    let groupedTotals: [PeriodListeningTotal]
-    let chartPoints: [ListeningOverviewPoint]
-    let selectedPeriodTotalSeconds: Double
-    let totalListeningSeconds: Double
-    let silenceGapTimeSavedSeconds: Double
-    let playbackRateTimeSavedSeconds: Double
-    let averagePeriodSeconds: Double
-    let bestPeriod: PeriodListeningTotal?
-    let trackedDayCount: Int
-    let averageTrackedDaySeconds: Double
-    let bestTrackedDay: PeriodListeningTotal?
-    let trackingStartDate: Date?
-    let trackingEndDate: Date?
-    let podcastBreakdown: [PodcastRollup]
-    let shareTimeline: [TopPodcastShareTimelineRollup]
-    let selectedPeriodSessions: [RecentListeningSession]
-    let selectedPeriodSessionCount: Int
-    let weekdayTotals: [WeekdayListeningTotal]
-    let heatMap: ListeningHeatMapSnapshot
-    let deviceBreakdown: [DeviceListeningRollup]
-    let isUsingSummaryTotals: Bool
+    var selectedPodcastTitle: String
+    var groupedTotals: [PeriodListeningTotal]
+    var chartPoints: [ListeningOverviewPoint]
+    var selectedPeriodTotalSeconds: Double
+    var totalListeningSeconds: Double
+    var silenceGapTimeSavedSeconds: Double
+    var playbackRateTimeSavedSeconds: Double
+    var averagePeriodSeconds: Double
+    var bestPeriod: PeriodListeningTotal?
+    var trackedDayCount: Int
+    var averageTrackedDaySeconds: Double
+    var bestTrackedDay: PeriodListeningTotal?
+    var trackingStartDate: Date?
+    var trackingEndDate: Date?
+    var podcastBreakdown: [PodcastRollup]
+    var shareTimeline: [TopPodcastShareTimelineRollup]
+    var selectedPeriodSessions: [RecentListeningSession]
+    var selectedPeriodSessionCount: Int
+    var weekdayTotals: [WeekdayListeningTotal]
+    var heatMap: ListeningHeatMapSnapshot
+    var deviceBreakdown: [DeviceListeningRollup]
+    var isUsingSummaryTotals: Bool
+    var completedEpisodeCount: Int?
 }
 
 struct StatisticsView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Podcast.title) private var podcasts: [Podcast]
 
-    @State private var selectedPeriod: PlaySessionSummaryPeriod = .day
+    @State private var selectedPeriod: PlaySessionSummaryPeriod = .week
     @State private var selectedPeriodStart = Calendar.current.startOfDay(for: Date())
     @State private var selectedPodcastFeedString: String? = nil
     @State private var snapshot = ListeningHistorySnapshot.empty
@@ -138,17 +140,36 @@ struct StatisticsView: View {
     @State private var isRebuildingAnalytics = false
     @State private var rebuildAnalyticsStatusMessage: String?
     @State private var showRebuildAnalyticsStatus = false
+    @State private var canonicalStatisticsAggregator: ListeningStatisticsAggregationActor?
+    @State private var canonicalStatisticsSnapshot: ListeningStatisticsSnapshot?
 
     private let presentShareGalleryOnAppear: Bool
 
     init(
-        initialPeriod: PlaySessionSummaryPeriod = .day,
+        initialPeriod: PlaySessionSummaryPeriod = .week,
         initialPeriodStart: Date? = nil,
         presentShareGalleryOnAppear: Bool = false
     ) {
         self.presentShareGalleryOnAppear = presentShareGalleryOnAppear
+        let calendar = Calendar.autoupdatingCurrent
+        let defaultStart: Date
+        switch initialPeriod {
+        case .day:
+            defaultStart = calendar.startOfDay(for: Date())
+        case .week:
+            defaultStart = calendar.dateInterval(of: .weekOfYear, for: Date())?.start
+                ?? calendar.startOfDay(for: Date())
+        case .month:
+            defaultStart = calendar.dateInterval(of: .month, for: Date())?.start
+                ?? calendar.startOfDay(for: Date())
+        case .year:
+            defaultStart = calendar.dateInterval(of: .year, for: Date())?.start
+                ?? calendar.startOfDay(for: Date())
+        case .forever:
+            defaultStart = .distantPast
+        }
         _selectedPeriod = State(initialValue: initialPeriod)
-        _selectedPeriodStart = State(initialValue: initialPeriodStart ?? Calendar.current.startOfDay(for: Date()))
+        _selectedPeriodStart = State(initialValue: initialPeriodStart ?? defaultStart)
     }
 
     private let summaryGrid = [
@@ -173,7 +194,7 @@ struct StatisticsView: View {
     }
 
     private var selectedPeriodSingular: String {
-        selectedPeriod.singularTitle
+        selectedPeriod == .forever ? "All Time" : selectedPeriod.singularTitle
     }
 
     private var selectedPeriodLabel: String {
@@ -193,7 +214,9 @@ struct StatisticsView: View {
 
     private var selectedShareStats: TopPodcastShareStats {
         let topPodcast = snapshot.podcastBreakdown.first
-        let totalListeningSeconds = snapshot.podcastBreakdown.reduce(0) { $0 + $1.totalSeconds }
+        // Use the canonical period total, not only the attributed podcast rows.
+        // A pre-split all-podcasts baseline can make the latter incomplete.
+        let totalListeningSeconds = snapshot.selectedPeriodTotalSeconds
         let busiestDay = snapshot.weekdayTotals.max { $0.totalSeconds < $1.totalSeconds }
 
         return TopPodcastShareStats(
@@ -232,10 +255,17 @@ struct StatisticsView: View {
                         .esaForeground(.secondary)
                 }
             }
+            if canonicalStatisticsSnapshot?.hasUnattributedHistoricalData == true {
+                Section {
+                    Text("Some older lifetime listening is available only as an account total, so it cannot be assigned to a podcast or earlier date range.")
+                        .font(.footnote)
+                        .esaForeground(.secondary)
+                }
+            }
             Section {
                 Picker("Period", selection: $selectedPeriod) {
-                    ForEach(PlaySessionSummaryPeriod.allCases) { period in
-                        Text(period.title).tag(period)
+                    ForEach([PlaySessionSummaryPeriod.week, .month, .year, .forever]) { period in
+                        Text(period == .forever ? "All Time" : period.title).tag(period)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -345,6 +375,7 @@ struct StatisticsView: View {
                             value: snapshot.trackingStartDate.map { localizedDateString(for: $0) } ?? "None",
                             detail: snapshot.trackingEndDate.map { "Latest \(localizedDateString(for: $0))" } ?? "No data yet"
                         )
+                        completedEpisodesSummaryCard
                         timeSavedSummaryCards
                     } else {
                         summaryCard(
@@ -367,6 +398,7 @@ struct StatisticsView: View {
                             value: formatDuration(snapshot.selectedPeriodTotalSeconds),
                             detail: "\(selectedPeriodSingular) total"
                         )
+                        completedEpisodesSummaryCard
                         timeSavedSummaryCards
                     }
                 }
@@ -456,6 +488,9 @@ struct StatisticsView: View {
                         }
                     }
                     .frame(height: 220)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Listening trend")
+                    .accessibilityValue(chartAccessibilitySummary)
                 }
             }
 
@@ -728,8 +763,24 @@ struct StatisticsView: View {
         historyLoadingMessage = message
     }
 
+    @MainActor
     private func refreshSnapshot(expectedSignature: String) async {
         let selectedPeriodEnd = nextPeriodStart(from: selectedPeriodStart, period: selectedPeriod)
+        let canonicalSnapshot = await loadCanonicalStatisticsSnapshot(
+            period: selectedPeriod,
+            start: selectedPeriod == .forever ? .distantPast : selectedPeriodStart,
+            end: selectedPeriod == .forever ? .distantFuture : selectedPeriodEnd,
+            podcastFeedURL: selectedPodcastFeedString
+        )
+        canonicalStatisticsSnapshot = canonicalSnapshot
+        if let canonicalSnapshot {
+            var canonicalBase = ListeningHistorySnapshot.empty
+            canonicalBase.selectedPodcastTitle = selectedPodcastFeedString == nil
+                ? "All Podcasts"
+                : (podcasts.first { $0.feed?.absoluteString == selectedPodcastFeedString }?.title ?? "Selected Podcast")
+            snapshot = applyingCanonicalSnapshot(canonicalSnapshot, to: canonicalBase)
+            return
+        }
         let lookbackPeriods = overviewPeriodCount(for: selectedPeriod)
         let overviewStart = periodStartByAdding(-lookbackPeriods, to: selectedPeriodStart, period: selectedPeriod)
         // Year rows can undercount badly: one real device's 2026 row held 230h
@@ -1105,8 +1156,146 @@ struct StatisticsView: View {
             weekdayTotals: weekdayTotals,
             heatMap: heatMap,
             deviceBreakdown: deviceBreakdown,
-            isUsingSummaryTotals: !summaryTotals.isEmpty
+            isUsingSummaryTotals: !summaryTotals.isEmpty,
+            completedEpisodeCount: nil
         )
+
+        if let canonicalSnapshot {
+            snapshot = applyingCanonicalSnapshot(canonicalSnapshot, to: snapshot)
+        }
+    }
+
+    @MainActor
+    private func loadCanonicalStatisticsSnapshot(
+        period: PlaySessionSummaryPeriod,
+        start: Date,
+        end: Date,
+        podcastFeedURL: String?
+    ) async -> ListeningStatisticsSnapshot? {
+        guard let userStateContainer = ModelContainerManager.shared.preparedUserStateContainer else {
+            return nil
+        }
+        if canonicalStatisticsAggregator == nil {
+            canonicalStatisticsAggregator = ListeningStatisticsAggregationActor(
+                modelContainer: userStateContainer
+            )
+        }
+        guard let canonicalStatisticsAggregator else { return nil }
+        let query = ListeningStatisticsQuery(
+            period: period,
+            start: start,
+            end: end,
+            podcastFeedURL: podcastFeedURL,
+            calendar: .autoupdatingCurrent
+        )
+        return try? await canonicalStatisticsAggregator.snapshot(query: query)
+    }
+
+    @MainActor
+    private func applyingCanonicalSnapshot(
+        _ canonical: ListeningStatisticsSnapshot,
+        to legacy: ListeningHistorySnapshot
+    ) -> ListeningHistorySnapshot {
+        var merged = legacy
+        merged.selectedPeriodTotalSeconds = canonical.totalSeconds
+        merged.totalListeningSeconds = canonical.lifetimeTotalSeconds
+        merged.silenceGapTimeSavedSeconds = canonical.silenceGapTimeSavedSeconds
+        merged.playbackRateTimeSavedSeconds = canonical.playbackRateTimeSavedSeconds
+        merged.chartPoints = canonical.buckets.map {
+            ListeningOverviewPoint(date: $0.start, totalSeconds: $0.totalSeconds)
+        }
+        merged.groupedTotals = canonical.buckets.map {
+            PeriodListeningTotal(start: $0.start, totalSeconds: $0.totalSeconds)
+        }
+        merged.averagePeriodSeconds = canonical.buckets.isEmpty
+            ? 0
+            : canonical.buckets.reduce(0) { $0 + $1.totalSeconds } / Double(canonical.buckets.count)
+        merged.bestPeriod = canonical.buckets.max { $0.totalSeconds < $1.totalSeconds }
+            .map { PeriodListeningTotal(start: $0.start, totalSeconds: $0.totalSeconds) }
+        merged.podcastBreakdown = canonical.podcasts.map { rollup in
+            let feed = rollup.feedURL.flatMap(URL.init(string:))
+            return PodcastRollup(
+                podcastName: rollup.podcastName,
+                podcastFeed: feed,
+                coverURL: coverURL(for: feed, podcastName: rollup.podcastName),
+                totalSeconds: rollup.totalSeconds
+            )
+        }
+        merged.selectedPeriodSessions = canonical.sessions
+            .prefix(selectedPeriod == .forever ? 50 : Int.max)
+            .map { session in
+                RecentListeningSession(
+                    id: session.id,
+                    episodeTitle: session.episodeTitle ?? "Unknown Episode",
+                    podcastName: session.podcastName ?? "Unknown Podcast",
+                    listenedSeconds: session.listenedSeconds,
+                    startTime: session.startedAt,
+                    endedCleanly: session.endedCleanly,
+                    startPosition: session.startPosition,
+                    endPosition: session.endPosition,
+                    sourceDeviceName: session.sourceDeviceName ?? session.deviceModel ?? "Unknown device",
+                    deviceModel: session.deviceModel
+                )
+            }
+        merged.selectedPeriodSessionCount = canonical.sessionCount
+        merged.deviceBreakdown = canonical.devices.map { device in
+            DeviceListeningRollup(
+                id: device.deviceID,
+                name: device.displayName,
+                totalSeconds: device.totalSeconds,
+                share: device.share
+            )
+        }
+        merged.completedEpisodeCount = canonical.completedEpisodeCount
+        merged.isUsingSummaryTotals = false
+
+        let calendar = Calendar.autoupdatingCurrent
+        var weekdaySeconds: [Int: Double] = [:]
+        var secondsByWeekday = Dictionary(
+            uniqueKeysWithValues: weekdayOrder.map { ($0, Array(repeating: 0.0, count: 24)) }
+        )
+        for pattern in canonical.patterns {
+            weekdaySeconds[pattern.weekday, default: 0] += pattern.totalSeconds
+            secondsByWeekday[pattern.weekday]?[pattern.hour] += pattern.totalSeconds
+        }
+        merged.weekdayTotals = weekdayOrder.enumerated().map { index, weekday in
+            WeekdayListeningTotal(
+                weekday: weekday,
+                label: weekdayLabels[index],
+                totalSeconds: weekdaySeconds[weekday] ?? 0
+            )
+        }
+        merged.heatMap = ListeningHeatMapSnapshot(
+            secondsByWeekday: secondsByWeekday,
+            maxSeconds: max(secondsByWeekday.values.compactMap { $0.max() }.max() ?? 0, 1)
+        )
+
+        if let first = canonical.sessions.map(\.startedAt).min() {
+            merged.trackingStartDate = first
+            merged.trackingEndDate = canonical.sessions.map(\.startedAt).max()
+            let dayTotals = Dictionary(grouping: canonical.sessions) { calendar.startOfDay(for: $0.startedAt) }
+                .map { key, sessions in
+                    PeriodListeningTotal(
+                        start: key,
+                        totalSeconds: sessions.reduce(0) { $0 + $1.listenedSeconds }
+                    )
+                }
+            merged.trackedDayCount = dayTotals.count
+            merged.averageTrackedDaySeconds = dayTotals.isEmpty
+                ? 0
+                : dayTotals.reduce(0) { $0 + $1.totalSeconds } / Double(dayTotals.count)
+            merged.bestTrackedDay = dayTotals.max { $0.totalSeconds < $1.totalSeconds }
+        }
+        return merged
+    }
+
+    private func coverURL(for feed: URL?, podcastName: String) -> URL? {
+        if let feed,
+           let podcast = podcasts.first(where: { $0.feed == feed }) {
+            return podcast.imageURL
+        }
+        return podcasts.first(where: { $0.title == podcastName })?.imageURL
+            ?? PodcastCoverArchive.coverFiles().byTitle[podcastName]
     }
 
     private func presentInitialShareGalleryIfNeeded() {
@@ -1122,7 +1311,7 @@ struct StatisticsView: View {
             : Array(snapshot.podcastBreakdown.prefix(design.itemLimit))
         guard !rollups.isEmpty else { return }
 
-        let totalListeningSeconds = snapshot.podcastBreakdown.reduce(0) { $0 + $1.totalSeconds }
+        let totalListeningSeconds = snapshot.selectedPeriodTotalSeconds
         isPreparingPodcastShare = true
         Task {
             let items = await topPodcastShareItems(from: rollups)
@@ -1445,6 +1634,17 @@ struct StatisticsView: View {
     }
 
     @ViewBuilder
+    private var completedEpisodesSummaryCard: some View {
+        if let completedEpisodeCount = snapshot.completedEpisodeCount {
+            summaryCard(
+                title: "Episodes Completed",
+                value: "\(completedEpisodeCount)",
+                detail: "Episodes with a recorded completion"
+            )
+        }
+    }
+
+    @ViewBuilder
     private var timeSavedSummaryCards: some View {
         summaryCard(
             title: "Silence Saved",
@@ -1588,6 +1788,14 @@ struct StatisticsView: View {
             return String(format: "%.1fh", seconds / 3600)
         }
         return "\(Int((seconds / 60).rounded()))m"
+    }
+
+    private var chartAccessibilitySummary: String {
+        guard !snapshot.chartPoints.isEmpty else { return "No listening data" }
+        let total = snapshot.chartPoints.reduce(0) { $0 + $1.totalSeconds }
+        let peak = snapshot.chartPoints.max { $0.totalSeconds < $1.totalSeconds }
+        let peakValue = peak.map { " Peak: \(shortDuration($0.totalSeconds))." } ?? ""
+        return "\(snapshot.chartPoints.count) time buckets totaling \(formatDuration(total)).\(peakValue) The list below provides the same period totals as text."
     }
 
     private func busiestHourLabel(for heatMap: ListeningHeatMapSnapshot) -> String {
