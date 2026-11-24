@@ -20,11 +20,15 @@ struct ShownoteContentView: View {
     @AppStorage(UpNextVisualDesignPreference.shownoteLinkPreviewsKey, store: UpNextVisualDesignPreference.appDefaults())
     private var shownoteLinkPreviewsEnabled = true
     private let html: String
+    private let historySource: ShownoteLinkHistorySource?
     @State private var document: ShownoteDocument?
     @State private var enrichmentResults: [URL: ShownoteEnrichmentResult] = [:]
 
-    init(html: String) {
+    init(html: String, episodeURL: URL? = nil, episodeTitle: String? = nil) {
         self.html = html
+        self.historySource = episodeURL.map {
+            ShownoteLinkHistorySource(episodeURL: $0, episodeTitle: episodeTitle ?? "")
+        }
     }
 
     var body: some View {
@@ -49,7 +53,7 @@ struct ShownoteContentView: View {
                         }
                     }
                 } else if document.linkifiedHTML.isEmpty == false {
-                    stableHTML(document.linkifiedHTML)
+                    stableHTML(document.linkifiedHTML, candidates: document.candidates)
                 }
             } else if html.isEmpty == false {
                 Label("Preparing shownotes", systemImage: "text.alignleft")
@@ -92,7 +96,9 @@ struct ShownoteContentView: View {
 
     @ViewBuilder
     private func plainLink(_ candidate: ShownoteLinkCandidate) -> some View {
-        Link(destination: candidate.originalURL) {
+        Button {
+            openShownoteLink(candidate.originalURL, title: candidate.displayText)
+        } label: {
             Text(candidate.displayText.isEmpty
                  ? candidate.originalURL.absoluteString
                  : candidate.displayText)
@@ -118,10 +124,13 @@ struct ShownoteContentView: View {
                 plainLink(candidate)
             }
         case .web, .mastodon:
-            Link(destination: result.finalURL ?? result.preview?.canonicalURL ?? candidate.originalURL) {
+            let destination = result.finalURL ?? result.preview?.canonicalURL ?? candidate.originalURL
+            Button {
+                openShownoteLink(destination, title: result.preview?.title ?? candidate.displayText)
+            } label: {
                 ShownotePreviewCard(
                     metadata: result.preview,
-                    destination: result.finalURL ?? candidate.originalURL,
+                    destination: destination,
                     fallbackTitle: candidate.publisherAnchorText ?? candidate.displayText,
                     isMastodon: result.classification == .mastodon
                 )
@@ -134,12 +143,69 @@ struct ShownoteContentView: View {
     }
 
     @ViewBuilder
-    private func stableHTML(_ value: String) -> some View {
-        StableShownoteHTML(html: value, foreground: htmlForeground, linkColor: htmlLinkColor)
+    private func stableHTML(_ value: String, candidates: [ShownoteLinkCandidate]) -> some View {
+        StableShownoteHTML(
+            html: value,
+            foreground: htmlForeground,
+            linkColor: htmlLinkColor,
+            onLinkOpened: { url in
+                recordOpenedLink(url, title: title(for: url, candidates: candidates))
+            }
+        )
     }
 
     private func nativeHTMLText(_ value: String) -> some View {
-        ShownoteHTMLFragment(html: value, foreground: htmlForeground, linkColor: htmlLinkColor)
+        ShownoteHTMLFragment(
+            html: value,
+            foreground: htmlForeground,
+            linkColor: htmlLinkColor,
+            openURLAction: shownoteOpenURLAction(candidates: document?.candidates ?? [])
+        )
+    }
+
+    private func openShownoteLink(_ url: URL, title: String?) {
+        ShownoteLinkHistorySystemOpener.open(url) {
+            self.recordOpenedLink(url, title: title)
+        }
+    }
+
+    private func shownoteOpenURLAction(candidates: [ShownoteLinkCandidate]) -> OpenURLAction {
+        let source = historySource
+        return OpenURLAction { url in
+            ShownoteLinkHistorySystemOpener.open(url) {
+                guard let source else { return }
+                let title = Self.title(for: url, candidates: candidates)
+                Task {
+                    await ShownoteLinkHistoryStore.shared.record(
+                        destination: url,
+                        title: title,
+                        source: source
+                    )
+                }
+            }
+            return .handled
+        }
+    }
+
+    private func recordOpenedLink(_ url: URL, title: String?) {
+        guard let historySource else { return }
+        Task {
+            await ShownoteLinkHistoryStore.shared.record(
+                destination: url,
+                title: title,
+                source: historySource
+            )
+        }
+    }
+
+    private func title(for url: URL, candidates: [ShownoteLinkCandidate]) -> String? {
+        Self.title(for: url, candidates: candidates)
+    }
+
+    private static func title(for url: URL, candidates: [ShownoteLinkCandidate]) -> String? {
+        candidates.first {
+            $0.originalURL == url || $0.normalizedURL == url
+        }?.displayText
     }
 
     private var htmlForeground: Color {
@@ -164,12 +230,19 @@ private struct ShownoteHTMLFragment: View {
     let html: String
     let foreground: Color
     let linkColor: Color
+    let openURLAction: OpenURLAction
     @State private var elements: [ShownoteNativeHTMLElement]
 
-    init(html: String, foreground: Color, linkColor: Color) {
+    init(
+        html: String,
+        foreground: Color,
+        linkColor: Color,
+        openURLAction: OpenURLAction
+    ) {
         self.html = html
         self.foreground = foreground
         self.linkColor = linkColor
+        self.openURLAction = openURLAction
         _elements = State(initialValue: ShownoteNativeHTMLParser.elements(in: html))
     }
 
@@ -198,6 +271,7 @@ private struct ShownoteHTMLFragment: View {
             }
         }
         .id(html)
+        .environment(\.openURL, openURLAction)
     }
 }
 
@@ -361,6 +435,7 @@ private struct StableShownoteHTML: View {
     let html: String
     let foreground: Color
     let linkColor: Color
+    let onLinkOpened: (URL) -> Void
     @State private var height: CGFloat = 1
 
     var body: some View {
@@ -368,6 +443,7 @@ private struct StableShownoteHTML: View {
             html: html,
             foreground: foreground,
             linkColor: linkColor,
+            onLinkOpened: onLinkOpened,
             height: $height
         )
         .frame(height: max(1, height))
@@ -379,6 +455,7 @@ private struct ShownoteHTMLWebView: UIViewRepresentable {
     let html: String
     let foreground: Color
     let linkColor: Color
+    let onLinkOpened: (URL) -> Void
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -468,7 +545,9 @@ private struct ShownoteHTMLWebView: UIViewRepresentable {
                   let url = navigationAction.request.url else {
                 return .allow
             }
-            await UIApplication.shared.open(url)
+            if await UIApplication.shared.open(url) {
+                parent.onLinkOpened(url)
+            }
             return .cancel
         }
 
@@ -490,6 +569,7 @@ private struct ShownoteHTMLWebView: NSViewRepresentable {
     let html: String
     let foreground: Color
     let linkColor: Color
+    let onLinkOpened: (URL) -> Void
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -570,7 +650,9 @@ private struct ShownoteHTMLWebView: NSViewRepresentable {
                   let url = navigationAction.request.url else {
                 return .allow
             }
-            NSWorkspace.shared.open(url)
+            if NSWorkspace.shared.open(url) {
+                parent.onLinkOpened(url)
+            }
             return .cancel
         }
 

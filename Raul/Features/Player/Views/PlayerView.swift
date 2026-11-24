@@ -238,7 +238,7 @@ struct PlayerView: View {
                 switch contentTab {
                 case .shownotes:
                     ScrollView {
-                        PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
+                        PlayerShownotesView(episode: episode)
                             .padding()
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -403,7 +403,7 @@ struct PlayerView: View {
                 }
                 .padding(.bottom, 8)
 
-                PlayerShownotesView(html: episode.content ?? episode.desc ?? "")
+                PlayerShownotesView(episode: episode)
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .transcript:
                 let transcriptLines = liveTranscript.displayLines(for: episode)
@@ -722,10 +722,14 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
 }
 
 private struct PlayerShownotesView: View {
-    let html: String
+    let episode: Episode
 
     var body: some View {
-        ShownoteContentView(html: html)
+        ShownoteContentView(
+            html: episode.content ?? episode.desc ?? "",
+            episodeURL: episode.url,
+            episodeTitle: episode.title
+        )
     }
 }
 

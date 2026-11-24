@@ -619,7 +619,11 @@ private struct EpisodeDetailShowNotesSection: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("Show Notes")
                     .font(.headline)
-                ShownoteContentView(html: notesHTML)
+                ShownoteContentView(
+                    html: notesHTML,
+                    episodeURL: episode.url,
+                    episodeTitle: episode.title
+                )
                     .padding(.top, 4)
             }
         }

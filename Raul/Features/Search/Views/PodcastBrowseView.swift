@@ -1106,7 +1106,11 @@ private struct PodcastBrowseEpisodeDetailView: View {
                 )
 
                 if let showNotes = episode.content ?? episode.desc, showNotes.isEmpty == false {
-                    ShownoteContentView(html: showNotes)
+                    ShownoteContentView(
+                        html: showNotes,
+                        episodeURL: episode.episodeURL,
+                        episodeTitle: episode.title
+                    )
                 }
 
                 if chapters.isEmpty == false {

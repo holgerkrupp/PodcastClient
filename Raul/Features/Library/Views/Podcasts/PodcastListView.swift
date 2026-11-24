@@ -85,6 +85,11 @@ struct PodcastListView: View {
                     .font(.headline)
             }
 
+            NavigationLink(destination: ShownoteLinkHistoryView()) {
+                Label("Recent Links", systemImage: "link")
+                    .font(.headline)
+            }
+
             PodcastScopeQueryView(scope: selectedScope) { podcasts in
                 let visiblePodcasts = podcasts.filter {
                     pendingDeletionIDs.contains($0.persistentModelID) == false
