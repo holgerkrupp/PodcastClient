@@ -8,13 +8,42 @@ import UIKit
 import AppKit
 #endif
 
+enum PlayerLayoutMode: Equatable {
+    case compact
+    case compactFull
+    case expandedHorizontal
+    case expandedVertical
+}
+
+enum PlayerLayoutPolicy {
+    static let horizontalArrangementMinimumWidth: CGFloat = 640
+
+    static func mode(
+        fullSize: Bool,
+        size: CGSize,
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        requestedExpandedLayout: Bool?
+    ) -> PlayerLayoutMode {
+        guard fullSize else { return .compact }
+
+        let isExpanded = requestedExpandedLayout
+            ?? (horizontalSizeClass == .regular
+                || (horizontalSizeClass == nil && size.width >= horizontalArrangementMinimumWidth))
+        guard isExpanded else { return .compactFull }
+
+        let usesHorizontalArrangement = size.width >= horizontalArrangementMinimumWidth
+            && size.width >= size.height * 0.95
+        return usesHorizontalArrangement ? .expandedHorizontal : .expandedVertical
+    }
+}
+
 struct PlayerView: View {
     @Bindable private var player = Player.shared
     @Bindable private var liveTranscript = LiveTranscriptController.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @State private var contentTab: PlayerContentTab = .shownotes
+    @SceneStorage("player.contentTab") private var contentTabRawValue = PlayerContentTab.shownotes.rawValue
     @State private var contentAvailability: PlayerContentAvailability?
     @State private var isTransportPinned = false
     @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
@@ -25,8 +54,15 @@ struct PlayerView: View {
     var usesExpandedLayout: Bool? = nil
     var onDismiss: (() -> Void)? = nil
 
-    private var shouldUseExpandedLayout: Bool {
-        usesExpandedLayout ?? (horizontalSizeClass == .regular)
+    private var contentTab: PlayerContentTab {
+        PlayerContentTab(rawValue: contentTabRawValue) ?? .shownotes
+    }
+
+    private var contentTabSelection: Binding<PlayerContentTab> {
+        Binding(
+            get: { contentTab },
+            set: { contentTabRawValue = $0.rawValue }
+        )
     }
 
     private var currentArtworkSource: ESAImageSource {
@@ -56,12 +92,28 @@ struct PlayerView: View {
 
             GeometryReader { geometry in
                 Group {
-                    if fullSize && shouldUseExpandedLayout && !PlatformSupport.isPhone {
-                        expandedPlayer(episode: episode, in: geometry.size)
-                    } else if fullSize {
-                        compactFullPlayer(episode: episode, in: geometry.size)
-                    } else {
+                    switch PlayerLayoutPolicy.mode(
+                        fullSize: fullSize,
+                        size: geometry.size,
+                        horizontalSizeClass: horizontalSizeClass,
+                        requestedExpandedLayout: usesExpandedLayout
+                    ) {
+                    case .compact:
                         compactPlayer(episode: episode)
+                    case .compactFull:
+                        compactFullPlayer(episode: episode, in: geometry.size)
+                    case .expandedHorizontal:
+                        expandedPlayer(
+                            episode: episode,
+                            in: geometry.size,
+                            arrangement: .horizontal
+                        )
+                    case .expandedVertical:
+                        expandedPlayer(
+                            episode: episode,
+                            in: geometry.size,
+                            arrangement: .vertical
+                        )
                     }
                 }
             }
@@ -98,42 +150,76 @@ struct PlayerView: View {
         }
     }
 
-    private func expandedPlayer(episode: Episode, in size: CGSize) -> some View {
-        HStack(spacing: 0) {
-            playerContentPane(episode: episode)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+    private enum ExpandedArrangement {
+        case horizontal
+        case vertical
+    }
 
-            Divider()
+    @ViewBuilder
+    private func expandedPlayer(
+        episode: Episode,
+        in size: CGSize,
+        arrangement: ExpandedArrangement
+    ) -> some View {
+        Group {
+            switch arrangement {
+            case .horizontal:
+                HStack(spacing: 0) {
+                    playerContentPane(episode: episode)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            // Keep the panes clear of the Duo's central division without
-            // coupling the layout to a device-specific measurement.
-            Color.clear
-                .frame(width: size.width * 0.06)
-                .accessibilityHidden(true)
+                    Divider()
 
-            Divider()
+                    // Keep the panes clear of a possible Duo division without
+                    // coupling the layout to a device-specific measurement.
+                    Color.clear
+                        .frame(width: size.width * 0.06)
+                        .accessibilityHidden(true)
 
-            PlayerControllView(
-                mediaHeight: min(size.width, size.height) * 0.33,
-                showsInlineTranscript: false,
-                usesCachedContentAvailability: true,
-                contentAvailability: contentAvailability,
-                generationAction: generationAction(for: episode),
-                generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
-                generateAction: { action in startAIGeneration(action, for: episode) },
-                cancelGeneration: { if let url = episode.url { Task { await aiGeneration.cancel(episodeURL: url) } } }
-            )
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Playback controls for \(episode.title)")
+                    Divider()
+
+                    expandedPlayerControls(episode: episode, in: size)
+                }
+            case .vertical:
+                VStack(spacing: 0) {
+                    playerContentPane(episode: episode)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    Divider()
+
+                    ScrollView {
+                        expandedPlayerControls(episode: episode, in: size)
+                            .padding(.top, 8)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: min(max(size.height * 0.44, 280), 480))
+                    .scrollBounceBehavior(.basedOnSize)
+                }
+            }
         }
         .safeAreaPadding()
+    }
+
+    private func expandedPlayerControls(episode: Episode, in size: CGSize) -> some View {
+        PlayerControllView(
+            mediaHeight: min(size.width, size.height) * 0.33,
+            showsInlineTranscript: false,
+            usesCachedContentAvailability: true,
+            contentAvailability: contentAvailability,
+            generationAction: generationAction(for: episode),
+            generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
+            generateAction: { action in startAIGeneration(action, for: episode) },
+            cancelGeneration: { if let url = episode.url { Task { await aiGeneration.cancel(episodeURL: url) } } }
+        )
+        .frame(maxWidth: .infinity, alignment: .top)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Playback controls for \(episode.title)")
     }
 
     private func playerContentPane(episode: Episode) -> some View {
         return VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Picker("Player content", selection: $contentTab) {
+                Picker("Player content", selection: contentTabSelection) {
                     ForEach(PlayerContentTab.allCases) { tab in
                         Text(tab.title)
                             .tag(tab)

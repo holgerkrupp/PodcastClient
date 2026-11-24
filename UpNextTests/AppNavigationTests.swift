@@ -80,4 +80,97 @@ final class AppNavigationTests: XCTestCase {
 
         XCTAssertEqual(invocationCount, 1)
     }
+
+    func testAdaptiveAppLayoutUsesGeometryForShellAndPlayerPresentation() {
+        let compact = AdaptiveAppLayout.resolve(
+            width: 390,
+            horizontalSizeClass: .compact,
+            isDesktop: false
+        )
+        XCTAssertEqual(compact.navigationStyle, .compactTabs)
+        XCTAssertEqual(compact.playerPresentation, .sheet)
+
+        let duoInner = AdaptiveAppLayout.resolve(
+            width: 626,
+            horizontalSizeClass: .regular,
+            isDesktop: false
+        )
+        XCTAssertEqual(duoInner.navigationStyle, .sidebar)
+        XCTAssertEqual(duoInner.playerPresentation, .contextPanel)
+        XCTAssertEqual(duoInner.playerPanelFraction, 0.6)
+
+        let iPad = AdaptiveAppLayout.resolve(
+            width: 1024,
+            horizontalSizeClass: .regular,
+            isDesktop: false
+        )
+        XCTAssertEqual(iPad.navigationStyle, .sidebar)
+        XCTAssertEqual(iPad.playerPresentation, .contextPanel)
+        XCTAssertEqual(iPad.playerPanelFraction, 0.5)
+    }
+
+    func testNarrowRegularWindowFallsBackToFullPlayerSheet() {
+        let layout = AdaptiveAppLayout.resolve(
+            width: 540,
+            horizontalSizeClass: .regular,
+            isDesktop: false
+        )
+
+        XCTAssertEqual(layout.navigationStyle, .sidebar)
+        XCTAssertEqual(layout.playerPresentation, .sheet)
+    }
+
+    func testPlayerLayoutSwitchesArrangementWithoutUsingDeviceType() {
+        XCTAssertEqual(
+            PlayerLayoutPolicy.mode(
+                fullSize: true,
+                size: CGSize(width: 390, height: 844),
+                horizontalSizeClass: .compact,
+                requestedExpandedLayout: nil
+            ),
+            .compactFull
+        )
+        XCTAssertEqual(
+            PlayerLayoutPolicy.mode(
+                fullSize: true,
+                size: CGSize(width: 890, height: 626),
+                horizontalSizeClass: .regular,
+                requestedExpandedLayout: nil
+            ),
+            .expandedHorizontal
+        )
+        XCTAssertEqual(
+            PlayerLayoutPolicy.mode(
+                fullSize: true,
+                size: CGSize(width: 626, height: 890),
+                horizontalSizeClass: .regular,
+                requestedExpandedLayout: nil
+            ),
+            .expandedVertical
+        )
+    }
+
+    @MainActor
+    func testNavigationAndPlayerPresentationStateAreIndependentOfLayout() {
+        let navigation = AppNavigationModel(selectedSection: .library)
+        let episodeURL = URL(string: "https://example.com/episode.mp3")!
+        navigation.pathBinding(for: .library).wrappedValue.append(AppRoute.episode(episodeURL))
+        navigation.isPlayerPresented = true
+
+        let compact = AdaptiveAppLayout.resolve(
+            width: 390,
+            horizontalSizeClass: .compact,
+            isDesktop: false
+        )
+        let wide = AdaptiveAppLayout.resolve(
+            width: 626,
+            horizontalSizeClass: .regular,
+            isDesktop: false
+        )
+
+        XCTAssertNotEqual(compact.playerPresentation, wide.playerPresentation)
+        XCTAssertEqual(navigation.selectedSection, .library)
+        XCTAssertEqual(navigation.pathBinding(for: .library).wrappedValue.count, 1)
+        XCTAssertTrue(navigation.isPlayerPresented)
+    }
 }

@@ -69,22 +69,31 @@ struct ContentView: View {
             EpisodeControlPlaylist(playlist: $0)
         }
 
-        Group {
-            if usesSidebarLayout {
-                SidebarAppShell(
-                    navigation: navigation,
-                    inboxCount: inboxCount,
-                    search: $search
-                )
-            } else {
-                CompactAppShell(
-                    navigation: navigation,
-                    inboxCount: inboxCount,
-                    playlistTitle: currentPlaylistTabMetadata.title,
-                    playlistSymbolName: currentPlaylistTabMetadata.symbolName,
-                    search: $search
-                )
+        GeometryReader { proxy in
+            let layout = AdaptiveAppLayout.resolve(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                isDesktop: PlatformSupport.usesDesktopLayout
+            )
+
+            Group {
+                if layout.usesSidebar {
+                    SidebarAppShell(
+                        navigation: navigation,
+                        inboxCount: inboxCount,
+                        search: $search
+                    )
+                } else {
+                    CompactAppShell(
+                        navigation: navigation,
+                        inboxCount: inboxCount,
+                        playlistTitle: currentPlaylistTabMetadata.title,
+                        playlistSymbolName: currentPlaylistTabMetadata.symbolName,
+                        search: $search
+                    )
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
         }
         .environment(\.episodeControlPlaylists, episodeControlPlaylists)
         .environment(\.userGuideNavigation, navigation)
@@ -290,11 +299,6 @@ struct ContentView: View {
 
     }
 
-    private var usesSidebarLayout: Bool {
-        PlatformSupport.usesDesktopLayout
-            || horizontalSizeClass == .regular
-    }
-    
     func setGoingToBackgroundDate() {
         goingToBackgroundDate = Date()
     }

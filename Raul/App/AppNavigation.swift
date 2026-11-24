@@ -65,6 +65,51 @@ enum AppSectionGroup: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Shared geometry contract for the app shell and the iOS player host.
+/// Keeping this decision value-based lets a live resize move between compact
+/// and regular presentations without recreating navigation or playback state.
+struct AdaptiveAppLayout: Equatable {
+    enum NavigationStyle: Equatable {
+        case compactTabs
+        case sidebar
+    }
+
+    enum PlayerPresentation: Equatable {
+        case sheet
+        case contextPanel
+    }
+
+    static let contextPanelMinimumWidth: CGFloat = 600
+    static let wideContextPanelBreakpoint: CGFloat = 800
+
+    let navigationStyle: NavigationStyle
+    let playerPresentation: PlayerPresentation
+    let playerPanelFraction: CGFloat
+
+    var usesSidebar: Bool {
+        navigationStyle == .sidebar
+    }
+
+    static func resolve(
+        width: CGFloat,
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        isDesktop: Bool
+    ) -> AdaptiveAppLayout {
+        let hasRegularGeometry = horizontalSizeClass == .regular
+            || (horizontalSizeClass == nil && width >= contextPanelMinimumWidth)
+        let usesSidebar = isDesktop || hasRegularGeometry
+        let canShowContextPanel = usesSidebar
+            && isDesktop == false
+            && width >= contextPanelMinimumWidth
+
+        return AdaptiveAppLayout(
+            navigationStyle: usesSidebar ? .sidebar : .compactTabs,
+            playerPresentation: canShowContextPanel ? .contextPanel : .sheet,
+            playerPanelFraction: width < wideContextPanelBreakpoint ? 0.6 : 0.5
+        )
+    }
+}
+
 enum AppRoute: Hashable {
     case episode(URL)
     case podcast(URL)
@@ -274,38 +319,27 @@ private struct IOSPlayerPresentationHost: ViewModifier {
                 }
             )
 
-        Group {
-            if horizontalSizeClass == .regular {
+        GeometryReader { proxy in
+            let layout = AdaptiveAppLayout.resolve(
+                width: proxy.size.width,
+                horizontalSizeClass: horizontalSizeClass,
+                isDesktop: false
+            )
+
+            if layout.playerPresentation == .contextPanel {
                 playerActionContent
-                    .overlay {
-                        GeometryReader { proxy in
-                            if navigation.isPlayerPresented {
-                                HStack(spacing: 0) {
-                                    Spacer(minLength: 0)
-
-                                    // In the open Duo layout, the player is a
-                                    // compact phone presentation within a
-                                    // regular-width scene. Give it more of the
-                                    // available scene width so the clip and
-                                    // bookmark actions clear the transport
-                                    // buttons. Keep the established iPad pane
-                                    // width unchanged.
-                                    let playerWidth = proxy.size.width
-                                        * (PlatformSupport.isPhone ? 0.6 : 0.5)
-
-                                    PlayerView(
-                                        fullSize: true,
-                                        usesExpandedLayout: false,
-                                        onDismiss: { navigation.isPlayerPresented = false }
-                                    )
-                                    .frame(
-                                        width: playerWidth,
-                                        height: proxy.size.height
-                                    )
-                                    .background(.regularMaterial)
-                                    .transition(.move(edge: .trailing))
-                                }
-                            }
+                    .overlay(alignment: .trailing) {
+                        if navigation.isPlayerPresented {
+                            PlayerView(
+                                fullSize: true,
+                                usesExpandedLayout: false,
+                                onDismiss: { navigation.isPlayerPresented = false }
+                            )
+                            .frame(
+                                width: proxy.size.width * layout.playerPanelFraction,
+                                height: proxy.size.height
+                            )
+                            .transition(.move(edge: .trailing))
                         }
                     }
             } else {
