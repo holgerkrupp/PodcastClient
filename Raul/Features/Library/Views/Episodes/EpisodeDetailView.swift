@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 import ESADesignKit
 #if os(macOS)
 import AppKit
@@ -27,6 +28,7 @@ struct EpisodeDetailView: View {
     @State private var showTranscriptSheet: Bool = false
     @State private var resolvedArtwork: (request: ArtworkRequest, source: ESAImageSource)?
     @State private var artworkRetry = 0
+    @State private var contentRefreshToken = 0
 #if DEBUG
     @State private var isDeletingTranscript = false
     @State private var showDeleteTranscriptConfirmation = false
@@ -38,6 +40,7 @@ struct EpisodeDetailView: View {
     }
 
     var body: some View {
+        let _ = contentRefreshToken
         let request = artworkRequest
         let artwork = artworkSource(for: request)
 
@@ -102,8 +105,23 @@ struct EpisodeDetailView: View {
         .task(id: ArtworkTaskID(request: request, retry: artworkRetry)) {
             await loadArtwork(for: request)
         }
+        .task(id: episode.url) {
+            guard let episodeURL = episode.url else { return }
+            // Older episodes and work skipped while the app was backgrounded
+            // need the same pre-playback pass as newly imported episodes.
+            EpisodeActor.scheduleRemoteChapterFetch(
+                episodeURL: episodeURL,
+                modelContainer: context.container
+            )
+        }
         .onReceive(NotificationCenter.default.publisher(for: .artworkConnectivityRecovered)) { _ in
             artworkRetry &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeChapterExtractionFinished)) { notification in
+            refreshChapterContentIfNeeded(for: notification)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange)) { notification in
+            refreshChapterContentIfNeeded(for: notification)
         }
         .alert(
             "Transcript Error",
@@ -413,6 +431,28 @@ struct EpisodeDetailView: View {
                 let rightEnd = $1.endTime ?? .greatestFiniteMagnitude
                 return leftEnd < rightEnd
             }
+    }
+
+    private func refreshChapterContentIfNeeded(for notification: Notification) {
+        guard let episodeURL = notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL,
+              episodeURL == episode.url else { return }
+
+        Task { @MainActor in
+            // Let the actor's post-save notification reach the persistent store
+            // before faulting this context's relationship.
+            await Task.yield()
+            var descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.url == episodeURL }
+            )
+            descriptor.fetchLimit = 1
+            // SwiftData has no per-object refresh API. This detail screen does
+            // not keep an editable draft, so rolling back its context is the
+            // safe way to discard the stale relationship snapshot and fault the
+            // just-committed store state again.
+            context.rollback()
+            _ = try? context.fetch(descriptor).first
+            contentRefreshToken &+= 1
+        }
     }
 
 #if DEBUG

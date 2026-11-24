@@ -155,6 +155,37 @@ final class EpisodeChapterIngestionTests: XCTestCase {
         XCTAssertTrue(chapters.contains { $0.type == .mp3 && $0.title == "Local Chapter" })
     }
 
+    func testChapterExtractionPublishesCompletionAfterMarkersArePersisted() async throws {
+        let fixture = try makeFixture()
+        let fileURL = try makeEmptyFileURL(extension: "mp3")
+        _ = try makeEpisode(
+            in: fixture.context,
+            podcast: fixture.podcast,
+            url: fileURL,
+            source: .sideLoaded
+        )
+
+        let originalLoader = ChapterExtractionHooks.loadLocalMP3Chapters
+        defer { ChapterExtractionHooks.loadLocalMP3Chapters = originalLoader }
+        ChapterExtractionHooks.loadLocalMP3Chapters = { _ in
+            [Marker(start: 12, title: "Persisted chapter", type: .mp3)]
+        }
+
+        let notification = expectation(
+            forNotification: .episodeChapterExtractionFinished,
+            object: nil
+        ) { note in
+            note.userInfo?[EpisodeChapterExtractionNotificationKey.episodeURL] as? URL == fileURL
+                && note.userInfo?[EpisodeChapterExtractionNotificationKey.didChange] as? Bool == true
+        }
+
+        await EpisodeActor(modelContainer: fixture.container).createChapters(fileURL)
+        await fulfillment(of: [notification], timeout: 2)
+
+        let reloaded = try fetchEpisode(in: fixture.container, url: fileURL)
+        XCTAssertTrue(reloaded.chapters?.contains { $0.title == "Persisted chapter" } == true)
+    }
+
     func testLocalM4AChaptersAreAddedWhenTheFileExists() async throws {
         let fixture = try makeFixture()
         let fileURL = try makeEmptyFileURL(extension: "m4a")

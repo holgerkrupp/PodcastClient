@@ -143,37 +143,114 @@ enum ChapterSkipKeywordPolicy {
     }
 }
 
+/// Keeps pre-playback chapter work bounded when episode creation, detail
+/// navigation, foreground recovery, and a player fallback all request the
+/// same episode at once.
+private actor RemoteChapterFetchCoordinator {
+    private var inFlight: [URL: Task<Void, Never>] = [:]
+
+    func schedule(episodeURL: URL, modelContainer: ModelContainer) {
+        guard inFlight[episodeURL] == nil else { return }
+
+        let task = Task.detached(priority: .utility) {
+            await EpisodeActor.runScheduledRemoteChapterFetch(
+                episodeURL: episodeURL,
+                modelContainer: modelContainer
+            )
+        }
+        inFlight[episodeURL] = task
+
+        Task { [weak self] in
+            await task.value
+            await self?.finish(episodeURL: episodeURL)
+        }
+    }
+
+    private func finish(episodeURL: URL) {
+        inFlight[episodeURL] = nil
+    }
+}
+
+enum ChapterLifecycleTrace {
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: "ChapterLifecycle"
+    )
+
+    static func record(
+        stage: String,
+        episode: Episode,
+        chapterCount: Int? = nil
+    ) {
+        record(
+            stage: stage,
+            identity: episode.stableEpisodeIdentityKey,
+            chapterCount: chapterCount
+        )
+    }
+
+    static func record(
+        stage: String,
+        episodeURL: URL,
+        chapterCount: Int? = nil
+    ) {
+        record(stage: stage, identity: episodeURL.absoluteString, chapterCount: chapterCount)
+    }
+
+    private static func record(stage: String, identity: String, chapterCount: Int?) {
+        let identityHash = SHA256.hash(data: Data(identity.utf8))
+            .prefix(8)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let count = chapterCount.map { " chapter_count=\($0)" } ?? ""
+        logger.info("chapter_lifecycle stage=\(stage, privacy: .public) identity=\(identityHash, privacy: .public)\(count, privacy: .public)")
+    }
+}
+
 
 @ModelActor
 actor EpisodeActor {
     private static let legacyBackCatalogSuppressionMigrationKey = "EpisodeMetaData.backCatalogSuppressionMigration.v1"
     private static let legacyBackCatalogSuppressionArchiveWindow: TimeInterval = 24 * 60 * 60
+    private static let remoteChapterFetchCoordinator = RemoteChapterFetchCoordinator()
     private var cachedEpisodeStateWriter: StoreSplitEpisodeStateSyncWriter?
     private var cachedEpisodeStateWriterStoreID: ObjectIdentifier?
 
     static func scheduleRemoteChapterFetch(episodeURL: URL, modelContainer: ModelContainer) {
-        Task.detached(priority: .utility) {
-#if canImport(UIKit)
-            // Chapter extraction parses arbitrary HTML and may fault several
-            // related SwiftData records. Starting that work from a download
-            // callback while the app is backgrounded can keep scene updates
-            // alive long enough for the watchdog to terminate the process.
-            let isBackgrounded = await MainActor.run {
-                UIApplication.shared.applicationState != .active
-            }
-            guard isBackgrounded == false else {
-                skippedRemoteChapterFetches.withLock { urls in
-                    guard urls.contains(episodeURL) == false else { return }
-                    urls.append(episodeURL)
-                    if urls.count > maximumSkippedRemoteChapterFetches { urls.removeFirst() }
-                }
-                await RemoteEmbeddedChapterLoader.record(.skippedInBackground, for: episodeURL)
-                return
-            }
-#endif
-            await EpisodeActor(modelContainer: modelContainer)
-                .getRemoteChapters(episodeURL: episodeURL)
+        Task {
+            await remoteChapterFetchCoordinator.schedule(
+                episodeURL: episodeURL,
+                modelContainer: modelContainer
+            )
         }
+    }
+
+    fileprivate static func runScheduledRemoteChapterFetch(
+        episodeURL: URL,
+        modelContainer: ModelContainer
+    ) async {
+#if canImport(UIKit)
+        // Chapter extraction parses arbitrary HTML and may fault several
+        // related SwiftData records. Starting that work from a download
+        // callback while the app is backgrounded can keep scene updates alive
+        // long enough for the watchdog to terminate the process.
+        let isBackgrounded = await MainActor.run {
+            UIApplication.shared.applicationState != .active
+        }
+        guard isBackgrounded == false else {
+            skippedRemoteChapterFetches.withLock { urls in
+                guard urls.contains(episodeURL) == false else { return }
+                urls.append(episodeURL)
+                if urls.count > maximumSkippedRemoteChapterFetches { urls.removeFirst() }
+            }
+            await RemoteEmbeddedChapterLoader.record(.skippedInBackground, for: episodeURL)
+            ChapterLifecycleTrace.record(stage: "skipped_in_background", episodeURL: episodeURL)
+            return
+        }
+#endif
+        ChapterLifecycleTrace.record(stage: "scheduled", episodeURL: episodeURL)
+        await EpisodeActor(modelContainer: modelContainer)
+            .getRemoteChapters(episodeURL: episodeURL)
     }
 
     private static let maximumSkippedRemoteChapterFetches = 20
@@ -1431,20 +1508,40 @@ actor EpisodeActor {
     
     func getRemoteChapters(episodeURL: URL) async {
         guard let episode = await fetchEpisode(byURL: episodeURL) else {
+            ChapterLifecycleTrace.record(stage: "episode_missing", episodeURL: episodeURL)
             return }
         guard let url = episode.url else { return }
-
-        let hasEmbeddedChapters = (episode.chapters ?? []).contains { $0.type == .mp3 || $0.type == .mp4 }
+        ChapterLifecycleTrace.record(stage: "prefetch_started", episode: episode)
 
         // Remote episodes do not pass through markEpisodeAvailable(), so run the
         // regular chapter creation flow here before attempting remote embedded
         // extraction. This keeps shownotes/external JSON chapters available for
         // streamed episodes published without embedded chapter metadata.
         _ = await createChapters(url)
+
+        // Re-read after the local pass. A completed download may have supplied
+        // embedded chapters, in which case a remote request is unnecessary and
+        // would be especially wasteful for a private feed.
+        let hasEmbeddedChapters = (await fetchEpisode(byURL: url)?.chapters ?? [])
+            .contains { $0.type == .mp3 || $0.type == .mp4 }
         if hasEmbeddedChapters == false {
-            await extractRemoteEmbeddedChapters(url)
+            var attempt = 0
+            repeat {
+                _ = await extractRemoteEmbeddedChapters(url)
+                attempt += 1
+                guard attempt < 2,
+                      await RemoteChapterDiagnostics.shared.latest(for: url)?.isTransient == true else {
+                    break
+                }
+                try? await Task.sleep(for: .seconds(1))
+            } while Task.isCancelled == false
         }
         await applyAutoSkipWords(episodeURL: episodeURL)
+        ChapterLifecycleTrace.record(
+            stage: "prefetch_finished",
+            episodeURL: episodeURL,
+            chapterCount: await fetchEpisode(byURL: url)?.chapters?.count ?? 0
+        )
     }
     
     func createBookmark(for episodeURL: URL, at playPosition: Double) async throws {
@@ -1539,6 +1636,7 @@ actor EpisodeActor {
         }
 
         await updateDuration(fileURL: url)
+        ChapterLifecycleTrace.record(stage: "download_file_finalized", episode: episode)
         await createChapters(url)
 
         if wasAvailableLocally {
@@ -1766,6 +1864,7 @@ actor EpisodeActor {
     @discardableResult
     func createChapters(_ fileURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: fileURL) else { return false }
+        ChapterLifecycleTrace.record(stage: "chapter_pass_started", episode: episode)
         var didChange = false
         
         if episode.chapters == nil {
@@ -1809,7 +1908,53 @@ actor EpisodeActor {
         if removedDuplicateChapters {
             modelContext.saveIfNeeded()
         }
+        await publishChapterExtractionResult(
+            for: episode,
+            didChange: didChange,
+            stage: "chapter_pass_finished"
+        )
         return didChange
+    }
+
+    private func publishChapterExtractionResult(
+        for episode: Episode,
+        didChange: Bool,
+        stage: String
+    ) async {
+        let episodeURL = episode.url
+        let chapterCount = episode.chapters?.count ?? 0
+        ChapterLifecycleTrace.record(
+            stage: stage,
+            episode: episode,
+            chapterCount: chapterCount
+        )
+        guard let episodeURL else { return }
+
+        await MainActor.run {
+            let userInfo: [String: Any] = [
+                EpisodeChapterExtractionNotificationKey.episodeURL: episodeURL,
+                EpisodeChapterExtractionNotificationKey.didChange: didChange,
+                EpisodeChapterExtractionNotificationKey.chapterCount: chapterCount
+            ]
+            NotificationCenter.default.post(
+                name: .episodeChapterExtractionFinished,
+                object: nil,
+                userInfo: userInfo
+            )
+            // This is deliberately posted after the chapter transaction. The
+            // player and episode detail use it to refresh cross-context model
+            // relationships without relying on an actor-local @Transient flag.
+            NotificationCenter.default.post(
+                name: .episodeReferencesDidChange,
+                object: nil,
+                userInfo: [EpisodeReferenceNotificationKey.episodeURL: episodeURL]
+            )
+        }
+        ChapterLifecycleTrace.record(
+            stage: "chapter_notification_delivered",
+            episode: episode,
+            chapterCount: chapterCount
+        )
     }
 
     func maintainChapterImageStorage() async -> ChapterImageMaintenanceResult {
@@ -2258,8 +2403,17 @@ actor EpisodeActor {
         // takes long enough that the episode may be gone by now.
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp3], with: chapters)
-        episode.refresh.toggle()
-        modelContext.saveIfNeeded()
+        do {
+            try modelContext.commitChangesIfNeeded()
+        } catch {
+            ChapterLifecycleTrace.record(stage: "local_mp3_save_failed", episode: episode)
+            return false
+        }
+        ChapterLifecycleTrace.record(
+            stage: "local_mp3_persisted",
+            episode: episode,
+            chapterCount: chapters.count
+        )
         return true
     }
     
@@ -2273,15 +2427,30 @@ actor EpisodeActor {
             remoteURL,
             accessProfile(for: episode)
         )
-        guard chapters.isEmpty == false else { return false }
+        guard chapters.isEmpty == false else {
+            ChapterLifecycleTrace.record(stage: "remote_finished_without_markers", episode: episode)
+            await publishChapterExtractionResult(
+                for: episode,
+                didChange: false,
+                stage: "remote_finished_without_markers"
+            )
+            return false
+        }
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
 
         replaceChapters(on: episode, replacingTypes: Set(chapters.map(\.type)), with: chapters)
-        episode.refresh.toggle()
-        modelContext.saveIfNeeded()
-        await MainActor.run {
-            NotificationCenter.default.post(name: .inboxDidChange, object: nil)
+        do {
+            try modelContext.commitChangesIfNeeded()
+        } catch {
+            ChapterLifecycleTrace.record(stage: "remote_save_failed", episode: episode)
+            return false
         }
+        await publishChapterExtractionResult(
+            for: episode,
+            didChange: true,
+            stage: "remote_persisted"
+        )
+        await MainActor.run { NotificationCenter.default.post(name: .inboxDidChange, object: nil) }
         WatchSyncCoordinator.refreshSoon(force: true)
         return true
     }
@@ -2289,11 +2458,21 @@ actor EpisodeActor {
     @discardableResult
     func rerunLocalAudioChapters(for episodeURL: URL) async -> Bool {
         guard let episode = await fetchEpisode(byURL: episodeURL) else { return false }
-        return await refreshLocalFileChapters(for: episode)
+        let didChange = await refreshLocalFileChapters(for: episode, force: true)
+        await publishChapterExtractionResult(
+            for: episode,
+            didChange: didChange,
+            stage: "local_rerun_finished"
+        )
+        return didChange
     }
 
     @discardableResult
-    private func refreshLocalFileChapters(for episode: Episode) async -> Bool {
+    private func refreshLocalFileChapters(for episode: Episode, force: Bool = false) async -> Bool {
+        if force == false,
+           (episode.chapters ?? []).contains(where: { $0.type == .mp3 || $0.type == .mp4 }) {
+            return false
+        }
         guard let localFile = episode.localFile else { return false }
         guard FileManager.default.fileExists(atPath: localFile.path) else { return false }
 
@@ -2387,8 +2566,17 @@ actor EpisodeActor {
         // takes long enough that the episode may be gone by now.
         guard let episode: Episode = modelContext.existingModel(for: episodeID) else { return false }
         replaceChapters(on: episode, replacingTypes: [.mp4], with: chapters)
-        episode.refresh.toggle()
-        modelContext.saveIfNeeded()
+        do {
+            try modelContext.commitChangesIfNeeded()
+        } catch {
+            ChapterLifecycleTrace.record(stage: "local_m4a_save_failed", episode: episode)
+            return false
+        }
+        ChapterLifecycleTrace.record(
+            stage: "local_m4a_persisted",
+            episode: episode,
+            chapterCount: chapters.count
+        )
         return true
     }
     
@@ -2671,8 +2859,17 @@ actor EpisodeActor {
                 ? [.extracted]
                 : [.extracted, .ai]
             replaceChapters(on: episode, replacingTypes: replacedTypes, with: newchapters)
-            episode.refresh.toggle()
-            modelContext.saveIfNeeded()
+            do {
+                try modelContext.commitChangesIfNeeded()
+            } catch {
+                ChapterLifecycleTrace.record(stage: "shownotes_save_failed", episode: episode)
+                return false
+            }
+            await publishChapterExtractionResult(
+                for: episode,
+                didChange: true,
+                stage: "shownotes_persisted"
+            )
             return true
         }
         return false
