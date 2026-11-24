@@ -24,7 +24,6 @@ struct PlayerControllView: View {
 #if os(iOS)
     @State private var settingsRequest: SettingsWindowRequest?
 #endif
-    @State private var currentAudioSettings: PodcastSettings?
     var showPrimaryTransportControls: Bool = true
     /// The enclosing player derives this from its live scene geometry. A nil
     /// value preserves the cover's natural square presentation for inline use.
@@ -495,6 +494,7 @@ struct PlayerPlaybackUtilitiesRow: View {
     @Bindable private var player = Player.shared
     @State private var showPlaybackSpeedSettings = false
     @State private var showSleepTimerSettings = false
+    @State private var currentAudioSettings: PodcastSettings?
     private let furthestPositionTip = FurthestPositionTip()
 
     var body: some View {

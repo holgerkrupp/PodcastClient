@@ -107,7 +107,7 @@ struct AudioSpeedSettingsSection: View {
 
             LabeledContent {
                 HStack(spacing: 8) {
-                    Text(settings.playbackSpeed.formattedPlaybackSpeed)
+                    Text((settings.playbackSpeed ?? 1.0).formatted(.number.precision(.fractionLength(0...1))) + "x")
                         .monospacedDigit()
 
                     Stepper(
