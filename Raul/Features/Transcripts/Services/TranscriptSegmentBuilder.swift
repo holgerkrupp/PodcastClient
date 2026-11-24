@@ -17,14 +17,16 @@ struct TranscriptSegmentSource: Identifiable, Hashable, Sendable {
     let text: String
     let startTime: TimeInterval
     let endTime: TimeInterval?
+    let sourceRawValue: String?
     let timedSpans: [TranscriptTimedSpan]
 
-    init(id: UUID = UUID(), speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil, timedSpans: [TranscriptTimedSpan] = []) {
+    init(id: UUID = UUID(), speaker: String? = nil, text: String, startTime: TimeInterval, endTime: TimeInterval? = nil, sourceRawValue: String? = nil, timedSpans: [TranscriptTimedSpan] = []) {
         self.id = id
         self.speaker = speaker
         self.text = text
         self.startTime = startTime
         self.endTime = endTime
+        self.sourceRawValue = sourceRawValue
         self.timedSpans = timedSpans
     }
 }
@@ -36,6 +38,32 @@ struct TranscriptSourceMetadata: Equatable, Sendable {
 
     static func make(from lines: [TranscriptLineAndTime]) -> Self {
         Self(usesPublisherAlignment: lines.contains { $0.transcriptSource == .publisher })
+    }
+
+    static func make(from sources: [TranscriptSegmentSource]) -> Self {
+        Self(usesPublisherAlignment: sources.contains {
+            $0.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+        })
+    }
+}
+
+/// The immutable, prepared values needed by transcript views. SwiftUI rows
+/// consume this snapshot instead of live SwiftData transcript models.
+struct TranscriptPreparedSnapshot: Equatable, Sendable {
+    let segments: [TranscriptSegment]
+    let sourceMetadata: TranscriptSourceMetadata
+
+    static func make(
+        from sources: [TranscriptSegmentSource],
+        sourcesAreSorted: Bool = false
+    ) -> Self {
+        let orderedSources = sourcesAreSorted
+            ? sources
+            : sources.sorted { $0.startTime < $1.startTime }
+        return Self(
+            segments: TranscriptSegmentBuilder.makeSegments(fromSorted: orderedSources, options: .full),
+            sourceMetadata: TranscriptSourceMetadata.make(from: orderedSources)
+        )
     }
 }
 
@@ -116,6 +144,7 @@ enum TranscriptSegmentBuilder {
                     text: $0.text,
                     startTime: $0.startTime,
                     endTime: $0.endTime,
+                    sourceRawValue: $0.sourceRawValue,
                     timedSpans: $0.timedSpans
                 )
             },
@@ -124,8 +153,11 @@ enum TranscriptSegmentBuilder {
     }
 
     static func makeSegments(from lines: [TranscriptSegmentSource], options: Options) -> [TranscriptSegment] {
+        makeSegments(fromSorted: lines.sorted { $0.startTime < $1.startTime }, options: options)
+    }
+
+    static func makeSegments(fromSorted lines: [TranscriptSegmentSource], options: Options) -> [TranscriptSegment] {
         let sourceLines = lines
-            .sorted { $0.startTime < $1.startTime }
             .filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
 
         guard sourceLines.isEmpty == false else { return [] }

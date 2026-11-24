@@ -41,7 +41,6 @@ struct PlayerControllView: View {
     
     var body: some View {
         if let episode = player.currentEpisode {
-            let transcriptLines = liveTranscript.displayLines(for: episode)
             VStack(spacing: 8) {
                 if showsMedia, let mediaHeight {
                     VStack(spacing: 0) {
@@ -61,7 +60,7 @@ struct PlayerControllView: View {
                             )
 
                         if showsInlineTranscript, showTranscripts {
-                            transcriptCard(episode: episode, lines: transcriptLines)
+                            transcriptCard(episode: episode)
                             .frame(maxWidth: .infinity, maxHeight: mediaHeight * 0.4, alignment: .topLeading)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -85,7 +84,7 @@ struct PlayerControllView: View {
                 } else if !showsTranscriptOverHero,
                           showsInlineTranscript,
                           showTranscripts {
-                    transcriptCard(episode: episode, lines: transcriptLines)
+                    transcriptCard(episode: episode)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -158,7 +157,7 @@ struct PlayerControllView: View {
                 if showsTranscriptOverHero,
                    showsInlineTranscript,
                    showTranscripts {
-                    transcriptCard(episode: episode, lines: transcriptLines)
+                    transcriptCard(episode: episode)
                     .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 120, alignment: .topLeading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -170,26 +169,17 @@ struct PlayerControllView: View {
             .sheet(isPresented: $showFullTranscripts, onDismiss: {
                 openFullTranscriptFollowingPlayback = false
             }) {
-                if !transcriptLines.isEmpty {
-                    VStack(spacing: 0) {
-                        if episode.transcriptLines?.isEmpty != false {
-                            LiveTranscriptActionView(episode: episode)
-                            LiveTranscriptCoverageView(episode: episode)
-                        }
-                        TranscriptListView(
-                            transcriptLines: transcriptLines,
-                            episode: episode,
-                            startFollowingPlayback: openFullTranscriptFollowingPlayback,
-                            canFollowPlayback: episode.transcriptLines?.isEmpty == false || liveTranscript.isActive(for: episode)
-                        )
-                    }
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                } else {
-                    TranscriptEmptyStateView(episode: episode)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
+                NavigationStack {
+                    TranscriptPane(
+                        episode: episode,
+                        availability: contentAvailability,
+                        startFollowingPlayback: openFullTranscriptFollowingPlayback
+                    )
+                    .navigationTitle("Captions & Transcript")
+                    .platformInlineNavigationTitle()
                 }
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
             }
 #if os(iOS)
             .sheet(item: $settingsRequest) { request in
@@ -336,7 +326,8 @@ struct PlayerControllView: View {
     }
 
     @ViewBuilder
-    private func transcriptCard(episode: Episode, lines: [TranscriptLineAndTime]) -> some View {
+    private func transcriptCard(episode: Episode) -> some View {
+        let lines = liveTranscript.displayLines(for: episode)
         if lines.isEmpty {
             LiveTranscriptActionView(episode: episode)
                 .overlay(alignment: .bottomTrailing) {

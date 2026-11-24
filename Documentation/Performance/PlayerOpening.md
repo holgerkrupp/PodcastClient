@@ -14,6 +14,27 @@ The `PlayerOpening` signpost category records these stable events and interval:
 
 The signpost payloads contain no episode URLs, titles or shownote content. The query interval is emitted from `PlayerContentAvailabilityModelActor`, not from the main actor.
 
+## Transcript tab preparation
+
+The `PlayerOpening` category also records the transcript-tab path:
+
+- `Transcript snapshot load` measures the ordered SwiftData value fetch and immutable segment preparation.
+- `Transcript snapshot cache hit` records a prepared snapshot reused for the same episode.
+- `Transcript snapshot prepared` records only line count, segment count, and whether publisher alignment is present.
+- `Transcript surface visible` and `Transcript first row ready` bracket the user-visible loading surface and first prepared row.
+
+The full-player transcript pane renders `Loading transcript…`, retry, or empty
+states without reading `episode.transcriptLines` in the tab-selection body.
+Persisted transcript fields are fetched in `PlayerTranscriptModelActor`; search
+filters the prepared segment values instead of rebuilding segmentation for each
+keystroke. The prepared cache is bounded to two episode snapshots and is
+invalidated with the existing player content-availability refresh.
+
+Measure transcript switching separately from player opening: record selection
+visibility, first loading/empty surface, first prepared row, main-thread stalls,
+and animation hitches for short, 1,000-line, and 5,000+ line fixtures. Keep
+transcript text, titles, URLs, and private identifiers out of diagnostics.
+
 ## Reproduction and measurement
 
 Use a Release build installed on a physical device. In Instruments, record Points of Interest, Time Profiler, SwiftUI, and Animation Hitches together. For each scenario, collect at least 20 opens and report median and p95 for tap-to-first-meaningful-frame and tap-to-responsive-controls. Record main-thread stalls and animation hitch count over the same opens. Keep Instruments and device power/network state consistent between before and after runs.

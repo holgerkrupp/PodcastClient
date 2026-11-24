@@ -39,7 +39,6 @@ enum PlayerLayoutPolicy {
 
 struct PlayerView: View {
     @Bindable private var player = Player.shared
-    @Bindable private var liveTranscript = LiveTranscriptController.shared
     @Environment(\.modelContext) private var modelContext
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -243,23 +242,11 @@ struct PlayerView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 case .transcript:
-                    let transcriptLines = liveTranscript.displayLines(for: episode)
-                    VStack(spacing: 0) {
-                        if episode.transcriptLines?.isEmpty != false, !transcriptLines.isEmpty {
-                            TranscriptGenerationActionsView(episode: episode)
-                                .padding()
-                            LiveTranscriptCoverageView(episode: episode)
-                        }
-                        if transcriptLines.isEmpty == false {
-                            TranscriptListView(
-                                transcriptLines: transcriptLines, episode: episode,
-                                startFollowingPlayback: true,
-                                canFollowPlayback: episode.transcriptLines?.isEmpty == false || liveTranscript.isActive(for: episode)
-                            )
-                        } else {
-                            missingTranscriptView(episode: episode)
-                        }
-                    }
+                    TranscriptPane(
+                        episode: episode,
+                        availability: contentAvailability,
+                        startFollowingPlayback: true
+                    )
                 case .chapters:
                     let chapterMarkers = episode.chapters ?? []
                     if hasDisplayableChapters(in: chapterMarkers, for: episode) {
@@ -278,10 +265,6 @@ struct PlayerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(.regularMaterial)
-    }
-
-    private func missingTranscriptView(episode: Episode) -> some View {
-        TranscriptEmptyStateView(episode: episode)
     }
 
     private func missingChaptersView(episode: Episode) -> some View {
@@ -406,24 +389,11 @@ struct PlayerView: View {
                 PlayerShownotesView(episode: episode)
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .transcript:
-                let transcriptLines = liveTranscript.displayLines(for: episode)
-                VStack(spacing: 12) {
-                    if episode.transcriptLines?.isEmpty != false, !transcriptLines.isEmpty {
-                        TranscriptGenerationActionsView(episode: episode)
-                        LiveTranscriptCoverageView(episode: episode)
-                    }
-                    if transcriptLines.isEmpty == false {
-                        TranscriptListView(
-                            transcriptLines: transcriptLines,
-                            episode: episode,
-                            startFollowingPlayback: true,
-                            canFollowPlayback: episode.transcriptLines?.isEmpty == false
-                                || liveTranscript.isActive(for: episode)
-                        )
-                    } else {
-                        missingTranscriptView(episode: episode)
-                    }
-                }
+                TranscriptPane(
+                    episode: episode,
+                    availability: contentAvailability,
+                    startFollowingPlayback: true
+                )
             case .chapters:
                 let chapterMarkers = episode.chapters ?? []
                 if hasDisplayableChapters(in: chapterMarkers, for: episode) {
@@ -700,6 +670,80 @@ actor PlayerContentAvailabilityModelActor {
 
     func invalidate(episodeURL: URL) async {
         await PlayerContentAvailabilitySnapshotCache.shared.invalidate(episodeURL: episodeURL)
+        await PlayerTranscriptSnapshotCache.shared.invalidate(episodeURL: episodeURL)
+    }
+}
+
+private actor PlayerTranscriptSnapshotCache {
+    static let shared = PlayerTranscriptSnapshotCache()
+
+    private var snapshots: [URL: TranscriptPreparedSnapshot] = [:]
+    private var order: [URL] = []
+    private let limit = 2
+
+    func snapshot(for episodeURL: URL) -> TranscriptPreparedSnapshot? {
+        snapshots[episodeURL]
+    }
+
+    func store(_ snapshot: TranscriptPreparedSnapshot, for episodeURL: URL) {
+        snapshots[episodeURL] = snapshot
+        order.removeAll { $0 == episodeURL }
+        order.append(episodeURL)
+        if order.count > limit {
+            let evictedURL = order.removeFirst()
+            snapshots.removeValue(forKey: evictedURL)
+        }
+    }
+
+    func invalidate(episodeURL: URL) {
+        snapshots.removeValue(forKey: episodeURL)
+        order.removeAll { $0 == episodeURL }
+    }
+}
+
+@ModelActor
+actor PlayerTranscriptModelActor {
+    func preparedSnapshot(for episodeURL: URL) async throws -> TranscriptPreparedSnapshot? {
+        if let cached = await PlayerTranscriptSnapshotCache.shared.snapshot(for: episodeURL) {
+            os_signpost(.event, log: PlayerOpeningPerformance.log, name: "Transcript snapshot cache hit")
+            return cached
+        }
+
+        let signpostID = OSSignpostID(log: PlayerOpeningPerformance.log)
+        os_signpost(.begin, log: PlayerOpeningPerformance.log, name: "Transcript snapshot load", signpostID: signpostID)
+        defer {
+            os_signpost(.end, log: PlayerOpeningPerformance.log, name: "Transcript snapshot load", signpostID: signpostID)
+        }
+
+        let descriptor = FetchDescriptor<TranscriptLineAndTime>(
+            predicate: #Predicate { $0.episode?.url == episodeURL },
+            sortBy: [SortDescriptor(\.startTime)]
+        )
+        let sources = try modelContext.fetch(descriptor).map { line in
+            TranscriptSegmentSource(
+                id: line.id,
+                speaker: line.speaker,
+                text: line.text,
+                startTime: line.startTime,
+                endTime: line.endTime,
+                sourceRawValue: line.sourceRawValue,
+                timedSpans: line.timedSpans
+            )
+        }
+        guard sources.isEmpty == false else { return nil }
+
+        let snapshot = TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
+        os_signpost(
+            .event,
+            log: PlayerOpeningPerformance.log,
+            name: "Transcript snapshot prepared",
+            "lines=%{public}ld segments=%{public}ld publisher=%{public}s",
+            sources.count,
+            snapshot.segments.count,
+            snapshot.sourceMetadata.usesPublisherAlignment ? "true" : "false"
+        )
+        await PlayerTranscriptSnapshotCache.shared.store(snapshot, for: episodeURL)
+        return snapshot
     }
 }
 

@@ -132,6 +132,37 @@ final class LiveTranscriptController {
 
     func displayLines(for episode: Episode) -> [TranscriptLineAndTime] {
         if let full = episode.transcriptLines, !full.isEmpty { return full }
+        return displayLiveLines(for: episode)
+    }
+
+    /// Returns live or saved partial captions without touching the persisted
+    /// transcript relationship. Player transcript loading uses this path while
+    /// the full transcript is prepared in a model actor.
+    func displaySources(for episode: Episode) -> [TranscriptSegmentSource] {
+        displayLiveCues(for: episode).map { cue in
+            TranscriptSegmentSource(
+                id: cue.id,
+                text: cue.text,
+                startTime: cue.start,
+                endTime: cue.end,
+                sourceRawValue: CachedTranscriptSource.localAI.rawValue,
+                timedSpans: cue.spans
+            )
+        }
+    }
+
+    private func displayLiveLines(for episode: Episode) -> [TranscriptLineAndTime] {
+        displayLiveCues(for: episode).map { cue in
+            if let cached = cachedLines[cue.id], cached.0 == cue { return cached.1 }
+            let line = TranscriptLineAndTime(id: cue.id, text: cue.text, startTime: cue.start, endTime: cue.end,
+                                             source: .localAI, timedSpans: cue.spans,
+                                             generatedMediaFingerprint: cachedState?.mediaFingerprint ?? fingerprint)
+            cachedLines[cue.id] = (cue, line)
+            return line
+        }
+    }
+
+    private func displayLiveCues(for episode: Episode) -> [LiveTranscriptState.Cue] {
         let saved: LiveTranscriptState?
         if isActive(for: episode) {
             saved = nil
@@ -157,14 +188,7 @@ final class LiveTranscriptController {
             let activeIDs = Set(visible.map(\.id))
             cachedLines = cachedLines.filter { activeIDs.contains($0.key) }
         }
-        return visible.map { cue in
-            if let cached = cachedLines[cue.id], cached.0 == cue { return cached.1 }
-            let line = TranscriptLineAndTime(id: cue.id, text: cue.text, startTime: cue.start, endTime: cue.end,
-                                             source: .localAI, timedSpans: cue.spans,
-                                             generatedMediaFingerprint: saved?.mediaFingerprint ?? fingerprint)
-            cachedLines[cue.id] = (cue, line)
-            return line
-        }
+        return visible
     }
 
     func start(episode: Episode, container: ModelContainer) async {

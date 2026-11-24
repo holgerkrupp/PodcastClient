@@ -1,4 +1,5 @@
 import SwiftUI
+import SwiftData
 
 struct TranscriptSearchNavigation: Hashable, Sendable {
     let episodeID: String
@@ -6,7 +7,7 @@ struct TranscriptSearchNavigation: Hashable, Sendable {
     let query: String
 }
 
-private struct TranscriptDisplayRow: Identifiable {
+private struct TranscriptDisplayRow: Identifiable, Sendable {
     let segment: TranscriptSegment
     let id: UUID
     let speaker: String?
@@ -20,7 +21,7 @@ struct TranscriptListView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
-    let transcriptLines: [TranscriptLineAndTime]
+    let preparedSnapshot: TranscriptPreparedSnapshot
     /// Captured once with the transcript snapshot; row rendering must not scan
     /// SwiftData models for transcript-global metadata.
     let usesPublisherAlignment: Bool
@@ -33,12 +34,36 @@ struct TranscriptListView: View {
     @State private var followPlayback: Bool
     @State private var displayRows: [TranscriptDisplayRow]
     @State private var speakerColorMap: [String: Color]
+    @State private var isPreparingRows: Bool
     @State private var selectedSearchRowID: UUID?
     @State private var tracker = TranscriptPlaybackTracker()
     @State private var passageSelectionMode = false
     @State private var selectionActive = false
     @State private var frozenActive: TranscriptPlaybackTracker.Active?
     @State private var pendingRowsUpdate = false
+
+    init(
+        preparedSnapshot: TranscriptPreparedSnapshot,
+        episode: Episode? = nil,
+        searchText: String = "",
+        startFollowingPlayback: Bool = false,
+        searchNavigation: TranscriptSearchNavigation? = nil,
+        canFollowPlayback: Bool = true
+    ) {
+        let initialSearchText = searchNavigation?.query.isEmpty == false
+            ? searchNavigation!.query
+            : searchText
+        self.preparedSnapshot = preparedSnapshot
+        self.usesPublisherAlignment = preparedSnapshot.sourceMetadata.usesPublisherAlignment
+        self.episode = episode
+        self.searchNavigation = searchNavigation
+        self.canFollowPlayback = canFollowPlayback
+        _searchText = State(initialValue: initialSearchText)
+        _followPlayback = State(initialValue: startFollowingPlayback)
+        _displayRows = State(initialValue: [])
+        _speakerColorMap = State(initialValue: [:])
+        _isPreparingRows = State(initialValue: true)
+    }
 
     init(
         transcriptLines: [TranscriptLineAndTime],
@@ -48,21 +73,25 @@ struct TranscriptListView: View {
         searchNavigation: TranscriptSearchNavigation? = nil,
         canFollowPlayback: Bool = true
     ) {
-        let sortedLines = transcriptLines.sorted { $0.startTime < $1.startTime }
-        let initialSearchText = searchNavigation?.query.isEmpty == false
-            ? searchNavigation!.query
-            : searchText
-        let initialRows = Self.makeDisplayRows(from: sortedLines, matching: initialSearchText)
-
-        self.transcriptLines = sortedLines
-        self.usesPublisherAlignment = TranscriptSourceMetadata.make(from: sortedLines).usesPublisherAlignment
-        self.episode = episode
-        self.searchNavigation = searchNavigation
-        self.canFollowPlayback = canFollowPlayback
-        _searchText = State(initialValue: initialSearchText)
-        _followPlayback = State(initialValue: startFollowingPlayback)
-        _displayRows = State(initialValue: initialRows)
-        _speakerColorMap = State(initialValue: Self.makeSpeakerColorMap(from: initialRows))
+        let sources = transcriptLines.map {
+            TranscriptSegmentSource(
+                id: $0.id,
+                speaker: $0.speaker,
+                text: $0.text,
+                startTime: $0.startTime,
+                endTime: $0.endTime,
+                sourceRawValue: $0.sourceRawValue,
+                timedSpans: $0.timedSpans
+            )
+        }
+        self.init(
+            preparedSnapshot: TranscriptPreparedSnapshot.make(from: sources),
+            episode: episode,
+            searchText: searchText,
+            startFollowingPlayback: startFollowingPlayback,
+            searchNavigation: searchNavigation,
+            canFollowPlayback: canFollowPlayback
+        )
     }
 
     private static let speakerColors: [Color] = [
@@ -75,7 +104,7 @@ struct TranscriptListView: View {
     ]
 
     private var viewedEpisode: Episode? {
-        episode ?? transcriptLines.first?.episode
+        episode
     }
 
     private var viewedEpisodeURL: URL? {
@@ -169,6 +198,10 @@ struct TranscriptListView: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding()
+                    } else if isPreparingRows {
+                        ProgressView("Preparing transcript…")
+                            .controlSize(.small)
+                            .frame(maxWidth: .infinity, minHeight: 120)
                     } else if displayRows.isEmpty {
                         ContentUnavailableView("No Matching Transcript", systemImage: "magnifyingglass")
                             .padding(.top, 60)
@@ -196,6 +229,12 @@ struct TranscriptListView: View {
                     }
                     scrollToInitialLocation(with: proxy)
                 }
+                .task(id: preparedSnapshot) {
+                    await prepareDisplayRows()
+                }
+        .onAppear {
+            PlayerOpeningPerformance.event("Transcript surface visible")
+        }
                 .onDisappear { tracker.stop() }
                 .onChange(of: player.playPosition) { tracker.refresh() }
                 .onChange(of: player.currentEpisodeURL) { tracker.refresh() }
@@ -207,8 +246,16 @@ struct TranscriptListView: View {
                 .onChange(of: searchText) {
                     if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
                 }
-                .onChange(of: transcriptLines) {
-                    if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
+                .onChange(of: preparedSnapshot) {
+                    if selectionActive {
+                        pendingRowsUpdate = true
+                    } else {
+                        isPreparingRows = true
+                    }
+                }
+                .onChange(of: isPreparingRows) {
+                    guard isPreparingRows == false else { return }
+                    scrollToInitialLocation(with: proxy)
                 }
                 .onChange(of: activeDisplayRowID) {
                     scrollToActiveRow(with: proxy, animated: false)
@@ -407,11 +454,28 @@ struct TranscriptListView: View {
     }
 
     private func rebuildDisplayRows() {
-        let rows = Self.makeDisplayRows(from: transcriptLines, matching: searchText)
+        let rows = Self.makeDisplayRows(from: preparedSnapshot.segments, matching: searchText)
         displayRows = rows
+        isPreparingRows = false
         tracker.update(segments: rows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
         speakerColorMap = Self.makeSpeakerColorMap(from: rows)
         selectedSearchRowID = nil
+    }
+
+    private func prepareDisplayRows() async {
+        let segments = preparedSnapshot.segments
+        let query = searchText
+        let rows = await Task.detached(priority: .userInitiated) {
+            Self.makeDisplayRows(from: segments, matching: query)
+        }.value
+        guard Task.isCancelled == false else { return }
+        displayRows = rows
+        speakerColorMap = Self.makeSpeakerColorMap(from: rows)
+        isPreparingRows = false
+        if rows.isEmpty == false {
+            PlayerOpeningPerformance.event("Transcript first row ready")
+        }
+        tracker.update(segments: rows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
     }
 
     private func moveSearchMatch(by offset: Int) {
@@ -423,11 +487,7 @@ struct TranscriptListView: View {
         selectedSearchRowID = displayRows[nextIndex].id
     }
 
-    private static func makeDisplayRows(from lines: [TranscriptLineAndTime], matching searchText: String) -> [TranscriptDisplayRow] {
-        // Automatic transcriptions deliver very short lines. Merge them into
-        // paragraphs before displaying, but keep them short enough to stay readable.
-        let segments = TranscriptSegmentBuilder.makeSegments(from: lines, options: .full)
-
+    nonisolated private static func makeDisplayRows(from segments: [TranscriptSegment], matching searchText: String) -> [TranscriptDisplayRow] {
         let filteredSegments: [TranscriptSegment]
         if searchText.isEmpty {
             filteredSegments = segments
@@ -472,6 +532,136 @@ struct TranscriptListView: View {
         return colorMap
     }
 
+}
+
+/// Loads and presents transcript values progressively so switching the player
+/// to Transcript can render a useful state before SwiftData or segmentation
+/// work completes.
+struct TranscriptPane: View {
+    @Environment(\.modelContext) private var modelContext
+    @Bindable private var liveTranscript = LiveTranscriptController.shared
+
+    let episode: Episode
+    let availability: PlayerContentAvailability?
+    let startFollowingPlayback: Bool
+
+    @State private var preparedSnapshot: TranscriptPreparedSnapshot?
+    @State private var isLiveSnapshot = false
+    @State private var isLoading = true
+    @State private var loadFailed = false
+    @State private var retryCount = 0
+
+    private struct LoadID: Equatable {
+        let episodeURL: URL?
+        let refresh: Bool
+        let availability: PlayerContentAvailability?
+        let retryCount: Int
+    }
+
+    private var loadID: LoadID {
+        LoadID(
+            episodeURL: episode.url,
+            refresh: episode.refresh,
+            availability: availability,
+            retryCount: retryCount
+        )
+    }
+
+    var body: some View {
+        Group {
+            if let preparedSnapshot, preparedSnapshot.segments.isEmpty == false {
+                VStack(spacing: isLiveSnapshot ? 12 : 0) {
+                    if isLiveSnapshot {
+                        TranscriptGenerationActionsView(episode: episode)
+                        LiveTranscriptCoverageView(episode: episode)
+                    }
+
+                    TranscriptListView(
+                        preparedSnapshot: preparedSnapshot,
+                        episode: episode,
+                        startFollowingPlayback: startFollowingPlayback,
+                        canFollowPlayback: !isLiveSnapshot || liveTranscript.isActive(for: episode)
+                    )
+                }
+            } else if isLoading {
+                ProgressView("Loading transcript…")
+                    .controlSize(.small)
+                    .frame(maxWidth: .infinity, minHeight: 140)
+                    .accessibilityLabel("Loading transcript")
+            } else if loadFailed {
+                ContentUnavailableView {
+                    Label("Transcript Unavailable", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text("The transcript could not be loaded. Playback remains available.")
+                } actions: {
+                    Button("Retry") { retryCount += 1 }
+                }
+            } else {
+                TranscriptEmptyStateView(episode: episode)
+            }
+        }
+        .task(id: loadID) {
+            await loadTranscript()
+        }
+        .onChange(of: liveTranscript.cues.count) {
+            guard isLiveSnapshot else { return }
+            Task { await refreshLiveTranscript() }
+        }
+    }
+
+    @MainActor
+    private func loadTranscript() async {
+        preparedSnapshot = nil
+        isLiveSnapshot = false
+        isLoading = true
+        loadFailed = false
+
+        guard episode.url != nil else {
+            isLoading = false
+            return
+        }
+
+        do {
+            let worker = PlayerTranscriptModelActor(modelContainer: modelContext.container)
+            if let snapshot = try await worker.preparedSnapshot(for: episode.url!) {
+                guard Task.isCancelled == false else { return }
+                preparedSnapshot = snapshot
+                isLoading = false
+                return
+            }
+
+            let liveSources = liveTranscript.displaySources(for: episode)
+            if liveSources.isEmpty == false {
+                let snapshot = await preparedLiveSnapshot(from: liveSources)
+                guard Task.isCancelled == false else { return }
+                preparedSnapshot = snapshot
+                isLiveSnapshot = true
+            }
+            isLoading = false
+        } catch is CancellationError {
+            return
+        } catch {
+            guard Task.isCancelled == false else { return }
+            loadFailed = true
+            isLoading = false
+        }
+    }
+
+    @MainActor
+    private func refreshLiveTranscript() async {
+        let liveSources = liveTranscript.displaySources(for: episode)
+        guard liveSources.isEmpty == false else { return }
+        let snapshot = await preparedLiveSnapshot(from: liveSources)
+        guard Task.isCancelled == false else { return }
+        preparedSnapshot = snapshot
+        isLiveSnapshot = true
+    }
+
+    private func preparedLiveSnapshot(from sources: [TranscriptSegmentSource]) async -> TranscriptPreparedSnapshot {
+        await Task.detached(priority: .userInitiated) {
+            TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
+        }.value
+    }
 }
 
 #Preview {

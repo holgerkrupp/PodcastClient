@@ -21,6 +21,21 @@ final class TranscriptSegmentBuilderTests: XCTestCase {
         XCTAssertFalse(TranscriptSourceMetadata.make(from: [generated]).usesPublisherAlignment)
     }
 
+    func testPreparedSnapshotUsesValueSourcesAndBuildsOrderedSegments() {
+        let later = TranscriptSegmentSource(
+            text: "later",
+            startTime: 4,
+            endTime: 5,
+            sourceRawValue: CachedTranscriptSource.publisher.rawValue
+        )
+        let first = TranscriptSegmentSource(text: "first", startTime: 0, endTime: 1)
+
+        let snapshot = TranscriptPreparedSnapshot.make(from: [later, first])
+
+        XCTAssertEqual(snapshot.segments.map(\.text), ["first", "later"])
+        XCTAssertTrue(snapshot.sourceMetadata.usesPublisherAlignment)
+    }
+
     @MainActor
     func testMergedLinesRetainUnicodeSafeTimedRangesAndCueFallback() throws {
         let first = TranscriptSegmentSource(
