@@ -10,10 +10,11 @@ import Combine
 
 /// Compact, scrollable caption overlay used inside the player.
 ///
-/// When following playback, this presents only the current caption in a stable
-/// two-line region, matching live-caption conventions. Turning following off
-/// restores the scrollable transcript context. Timed word highlighting remains
-/// attached to the current segment in both modes.
+/// When following playback and word timing is available, this presents only the
+/// current caption in a stable two-line region, matching live-caption
+/// conventions. Without word timing it keeps the complete current snippet
+/// visible instead of truncating it. Turning following off restores the
+/// scrollable transcript context.
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -116,6 +117,9 @@ struct TranscriptView: View {
     @ViewBuilder
     private func segmentView(_ segment: TranscriptSegment) -> some View {
         let isActive = segment.id == activeSegmentID
+        let hasWordLevelTiming = isActive
+            && tracker.active?.location != nil
+            && tracker.active?.length != nil
 
         VStack(alignment: .leading, spacing: 2) {
             if let speaker = segment.speaker, speakerHeaderIDs.contains(segment.id) {
@@ -128,7 +132,7 @@ struct TranscriptView: View {
                 .font(.body)
                 .foregroundStyle(isActive ? .primary : .secondary)
                 .multilineTextAlignment(.leading)
-                .lineLimit(2)
+                .lineLimit(followPlayback && hasWordLevelTiming ? 2 : nil)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
