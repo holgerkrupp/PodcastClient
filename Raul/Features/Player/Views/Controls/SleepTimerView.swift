@@ -9,33 +9,71 @@ import SwiftUI
 
 
 struct SleepTimerView: View {
-    let player = Player.shared
-    
+    @Bindable private var player = Player.shared
+    @State private var customMinutes = 30
+
+    private let durationPresets = [15, 30, 45, 60, 90, 120]
+
     var body: some View {
-        
-        Stepper(
-            value: Binding(
-                get: {
-                    guard let remaining = player.remainingTime else { return 0 }
-                    return Int(ceil(remaining / 300)) // steps of 5 min
-                },
-                set: { newValue in
-                    if newValue > 0 {
-                        player.setSleepTimer(minutes: newValue * 5)
-                    } else {
-                        player.cancelSleepTimer()
+        VStack(alignment: .leading, spacing: 14) {
+            if let remaining = player.remainingTime {
+                Label {
+                    Text("Active: \(Duration.seconds(remaining).formatted(.units(width: .wide))) left")
+                        .monospacedDigit()
+                } icon: {
+                    Image(systemName: "moon.zzz.fill")
+                        .foregroundStyle(.tint)
+                }
+                .font(.subheadline.weight(.semibold))
+                .accessibilityElement(children: .combine)
+            }
+
+            Text("Quick durations")
+                .font(.subheadline.weight(.semibold))
+
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+                spacing: 8
+            ) {
+                ForEach(durationPresets, id: \.self) { minutes in
+                    Button {
+                        player.setSleepTimer(minutes: minutes)
+                    } label: {
+                        Text(Duration.seconds(Double(minutes) * 60).formatted(.units(width: .narrow)))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityLabel("Set sleep timer for \(minutes) minutes")
+                }
+            }
+
+            HStack(alignment: .center, spacing: 12) {
+                Stepper(value: $customMinutes, in: 1...240) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Custom duration")
+                        Text("\(customMinutes) minutes")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
                 }
-            ),
-            in: 0...48,
-            step: 1
-        ) {
+
+                Button("Start") {
+                    player.setSleepTimer(minutes: customMinutes)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+            }
+
+            Text("Up to four hours. Overnight mode is not available because background timers cannot guarantee an exact stop time.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear {
             if let remaining = player.remainingTime {
-                Text(Duration.seconds(remaining).formatted(.units(width: .narrow)))
-            } else {
-                Text("Off")
+                customMinutes = min(max(Int(ceil(remaining / 60)), 1), 240)
             }
         }
-       
     }
 }

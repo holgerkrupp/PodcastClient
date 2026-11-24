@@ -355,6 +355,30 @@ enum ChapterSleepTimerPolicy {
     }
 }
 
+enum SleepTimerPolicy {
+    static let chapterBoundaryTolerance: TimeInterval = 0.25
+
+    static func validDuration(_ duration: TimeInterval) -> TimeInterval? {
+        guard duration.isFinite, duration > 0 else { return nil }
+        return duration
+    }
+
+    static func remaining(until endDate: Date, now: Date) -> TimeInterval? {
+        let remaining = endDate.timeIntervalSince(now)
+        return remaining > 0 ? remaining : nil
+    }
+
+    static func chapterTimerInterval(
+        target: Double,
+        position: Double,
+        playbackRate: Double
+    ) -> TimeInterval {
+        guard target.isFinite, position.isFinite else { return 1 }
+        let rate = playbackRate.isFinite ? max(playbackRate, 0.25) : 0.25
+        return max((target - position) / rate, 1)
+    }
+}
+
 struct ChapterSleepTimerOption: Identifiable, Equatable {
     let id: String
     let chapterID: UUID?
@@ -363,6 +387,35 @@ struct ChapterSleepTimerOption: Identifiable, Equatable {
     let start: Double
     let stopBoundary: Double
     let isCurrent: Bool
+}
+
+struct SleepTimerChapterReference: Equatable {
+    let episodeURL: URL
+    let chapterID: UUID?
+    let title: String
+    let start: Double
+}
+
+enum SleepTimerRestartMode: Equatable {
+    case duration(TimeInterval)
+    case episode
+    case chapter(SleepTimerChapterReference)
+}
+
+extension SleepTimerPolicy {
+    static func matches(
+        _ reference: SleepTimerChapterReference,
+        option: ChapterSleepTimerOption
+    ) -> Bool {
+        guard reference.episodeURL == option.episodeURL else { return false }
+        if let referenceID = reference.chapterID,
+           let optionID = option.chapterID,
+           referenceID == optionID {
+            return true
+        }
+        return abs(reference.start - option.start) <= chapterBoundaryTolerance
+            && reference.title == option.title
+    }
 }
 
 @Observable
@@ -594,18 +647,50 @@ class Player {
                       self.playbackSpeedSelectionRevision == revision else { return }
                 await self.applyPlaybackRate(rate, for: podcastFeed, persist: persist)
             }
+            if stopAfterChapterTarget != nil {
+                startSleepTimer()
+            }
         }
     }
     ///MARK: Sleep timer
+    // Overnight mode is intentionally not modeled: iOS may suspend wall-clock
+    // timers while backgrounded, so a long-running mode could stop at an
+    // unexpected time. Duration timers remain bounded in the presentation.
     private var timer: Timer?
     var endDate: Date? // when playback should pause
     var remainingTime: TimeInterval?
+    private(set) var lastSleepTimerMode: SleepTimerRestartMode?
     private(set) var stopAfterChapterTarget: Double?
     private(set) var stopAfterChapterTitle: String?
     private var stopAfterChapterID: UUID?
     private var stopAfterChapterStart: Double?
     private var stopAfterChapterEpisodeURL: URL?
     var isStopAfterChapterEnabled: Bool { stopAfterChapterTarget != nil }
+    var canRestartLastSleepTimer: Bool {
+        guard let lastSleepTimerMode else { return false }
+        switch lastSleepTimerMode {
+        case .duration, .episode:
+            return true
+        case .chapter(let reference):
+            return currentEpisodeURL == reference.episodeURL
+                && chapterSleepTimerOptions.contains {
+                    SleepTimerPolicy.matches(reference, option: $0)
+                }
+        }
+    }
+
+    var lastSleepTimerSummary: String? {
+        switch lastSleepTimerMode {
+        case .duration(let duration):
+            return Duration.seconds(duration).formatted(.units(width: .wide))
+        case .episode:
+            return "End of episode"
+        case .chapter(let reference):
+            return "End of \(reference.title)"
+        case nil:
+            return nil
+        }
+    }
     var upcomingChapterSleepBoundary: Double? {
         ChapterSleepTimerPolicy.boundary(
             chapterEnd: currentChapter?.end,
@@ -618,6 +703,7 @@ class Player {
     var stopAfterEpisode: Bool = false {
         didSet {
             guard stopAfterEpisode else { return }
+            lastSleepTimerMode = .episode
             timer?.invalidate()
             timer = nil
             endDate = nil
@@ -675,12 +761,17 @@ class Player {
               stopAfterChapterEpisodeURL == option.episodeURL else {
             return false
         }
-        if let stopAfterChapterID {
-            return option.chapterID == stopAfterChapterID
-        }
-        guard let stopAfterChapterStart else { return false }
-        return abs(stopAfterChapterStart - option.start) <= 0.25
-            && stopAfterChapterTitle == option.title
+        guard let stopAfterChapterStart,
+              let stopAfterChapterTitle else { return false }
+        return SleepTimerPolicy.matches(
+            SleepTimerChapterReference(
+                episodeURL: option.episodeURL,
+                chapterID: stopAfterChapterID,
+                title: stopAfterChapterTitle,
+                start: stopAfterChapterStart
+            ),
+            option: option
+        )
     }
 
     @discardableResult
@@ -700,6 +791,14 @@ class Player {
         stopAfterChapterStart = option.start
         stopAfterChapterTarget = option.stopBoundary
         stopAfterChapterTitle = option.title
+        lastSleepTimerMode = .chapter(
+            SleepTimerChapterReference(
+                episodeURL: option.episodeURL,
+                chapterID: option.chapterID,
+                title: option.title,
+                start: option.start
+            )
+        )
         updateRemainingTime()
         startSleepTimer()
         return true
@@ -719,13 +818,19 @@ class Player {
             cancelSleepTimer()
             return
         }
-        guard let option = chapterSleepTimerOptions.first(where: { option in
-            if let stopAfterChapterID {
-                return option.chapterID == stopAfterChapterID
-            }
-            return abs((stopAfterChapterStart ?? .nan) - option.start) <= 0.25
-                && option.title == stopAfterChapterTitle
-        }) else {
+        guard let stopAfterChapterStart,
+              let stopAfterChapterTitle,
+              let option = chapterSleepTimerOptions.first(where: { option in
+                  SleepTimerPolicy.matches(
+                      SleepTimerChapterReference(
+                          episodeURL: stopAfterChapterEpisodeURL ?? option.episodeURL,
+                          chapterID: stopAfterChapterID,
+                          title: stopAfterChapterTitle,
+                          start: stopAfterChapterStart
+                      ),
+                      option: option
+                  )
+              }) else {
             cancelSleepTimer()
             return
         }
@@ -771,6 +876,28 @@ class Player {
             return false
         }
         return stopAfterChapter(option)
+    }
+
+    @discardableResult
+    func restartLastSleepTimer() -> Bool {
+        guard let lastSleepTimerMode else { return false }
+
+        switch lastSleepTimerMode {
+        case .duration(let duration):
+            setSleepTimer(duration: duration)
+            return endDate != nil
+        case .episode:
+            stopAfterEpisode = true
+            return stopAfterEpisode
+        case .chapter(let reference):
+            guard currentEpisodeURL == reference.episodeURL,
+                  let option = chapterSleepTimerOptions.first(where: {
+                      SleepTimerPolicy.matches(reference, option: $0)
+                  }) else {
+                return false
+            }
+            return stopAfterChapter(option)
+        }
     }
 
     /// While listening together over SharePlay, features that seek, change
@@ -1352,14 +1479,20 @@ class Player {
     }
     
     func setSleepTimer(minutes: Int) {
-        if minutes > 0 {
-            stopAfterEpisode = false
-            clearChapterSleepTarget()
-            endDate = Date().addingTimeInterval(Double(minutes * 60))
-            startSleepTimer()
-        } else {
+        setSleepTimer(duration: Double(minutes) * 60)
+    }
+
+    func setSleepTimer(duration: TimeInterval) {
+        guard let duration = SleepTimerPolicy.validDuration(duration) else {
             cancelSleepTimer()
+            return
         }
+
+        stopAfterEpisode = false
+        clearChapterSleepTarget()
+        lastSleepTimerMode = .duration(duration)
+        endDate = Date().addingTimeInterval(duration)
+        startSleepTimer()
     }
 
     private func startSleepTimer() {
@@ -1375,7 +1508,11 @@ class Player {
             interval = 1
             repeats = true
         } else if let target = stopAfterChapterTarget {
-            interval = max((target - engine.currentTime()) / max(Double(playbackRate), 0.25), 1)
+            interval = SleepTimerPolicy.chapterTimerInterval(
+                target: target,
+                position: engine.currentTime(),
+                playbackRate: Double(playbackRate)
+            )
             repeats = false
         } else {
             interval = max(endDate?.timeIntervalSinceNow ?? 1, 1)
@@ -1410,8 +1547,7 @@ class Player {
             return
         }
         if let endDate {
-            let remaining = endDate.timeIntervalSinceNow
-            remainingTime = remaining > 0 ? remaining : nil
+            remainingTime = SleepTimerPolicy.remaining(until: endDate, now: Date())
             if remainingTime == nil {
                 cancelSleepTimer()
                 pause()
@@ -1428,6 +1564,7 @@ class Player {
         remainingTime = nil
         clearChapterSleepTarget()
         stopAfterEpisode = false
+        // Keep the last explicit user choice available for a deliberate restart.
     }
     
     private  func addChangeSettingsObserver() {

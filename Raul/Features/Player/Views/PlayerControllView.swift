@@ -647,6 +647,24 @@ struct PlayerPlaybackUtilitiesRow: View {
                 }
             }
 
+            if player.canRestartLastSleepTimer == true,
+               player.isStopAfterChapterEnabled == false,
+               player.remainingTime == nil,
+               player.stopAfterEpisode == false {
+                Section(header: Label("Recent timer", systemImage: "arrow.clockwise")) {
+                    Button {
+                        _ = player.restartLastSleepTimer()
+                    } label: {
+                        Label(
+                            "Restart Last Timer",
+                            systemImage: "arrow.clockwise.circle"
+                        )
+                    }
+                    .accessibilityValue(player.lastSleepTimerSummary ?? "")
+                    .accessibilityHint("Restores the last sleep timer setting")
+                }
+            }
+
             Section(header: Label("Stop after chapter", systemImage: "bookmark")) {
                 if player.chapterSleepTimerOptions.isEmpty {
                     Text("No current or upcoming chapter has a known end time.")
@@ -723,7 +741,8 @@ struct PlayerPlaybackUtilitiesRow: View {
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
 #if os(iOS)
-        .presentationDetents([.fraction(0.5), .large])
+        .presentationDetents([.medium, .large])
+        .presentationContentInteraction(.scrolls)
 #endif
     }
 }
