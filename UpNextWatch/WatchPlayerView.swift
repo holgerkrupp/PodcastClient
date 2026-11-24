@@ -59,40 +59,37 @@ struct WatchPlayerView: View {
 
             if let episode {
                 ScrollView {
-                    VStack(spacing: 12) {
-                        HStack {
-                            Spacer()
-                            Button {
-                                playback.presentAudioOutputGuidance()
-                            } label: {
-                                Image(systemName: "airplayaudio")
+                    VStack(spacing: 4) {
+                        HStack(spacing: 8) {
+                            WatchArtworkView(
+                                url: playback.artworkURL(for: episode),
+                                title: episode.title
+                            )
+                            .frame(width: 48, height: 48)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(episode.title)
                                     .font(.headline)
+                                    .lineLimit(2)
+                                    .foregroundStyle(.white)
+
+                                if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
+                                    Text(podcastTitle)
+                                        .font(.caption2)
+                                        .foregroundStyle(.white.opacity(0.78))
+                                        .lineLimit(1)
+                                }
+
+                                if let activeChapter {
+                                    Text(activeChapter.title)
+                                        .font(.caption2)
+                                        .foregroundStyle(.white.opacity(0.68))
+                                        .lineLimit(1)
+                                }
                             }
-                            .foregroundStyle(.white)
-                            .accessibilityLabel("Audio Output")
-                            .accessibilityValue(playback.audioOutputName)
-                            .accessibilityHint("Choose an audio destination from the system controls")
-                            .disabled(remotePlaybackUnavailable)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
 
-                        WatchArtworkView(
-                            url: playback.artworkURL(for: episode),
-                            title: episode.title
-                        )
-                        .frame(width: 112, height: 112)
-                        .frame(maxWidth: .infinity, alignment: .center)
-
-                        Text(episode.title)
-                            .font(.headline)
-                            .multilineTextAlignment(.center)
-                            .foregroundStyle(.white)
-
-                        if let podcastTitle = episode.podcastTitle, podcastTitle.isEmpty == false {
-                            Text(podcastTitle)
-                                .font(.footnote)
-                                .foregroundStyle(.white.opacity(0.84))
-                                .multilineTextAlignment(.center)
-                        }
                         if remotePlaybackUnavailable {
                             Label(
                                 "iPhone playback is unavailable or out of date.",
@@ -102,34 +99,25 @@ struct WatchPlayerView: View {
                             .foregroundStyle(.orange)
                             .multilineTextAlignment(.center)
                         }
-                        if let activeChapter {
-                            Text(activeChapter.title)
-                                .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.92))
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 5)
-                                .background(
-                                    Capsule()
-                                        .fill(Color.white.opacity(0.14))
-                                )
-                        }
-                        
-                            VStack(spacing: 8) {
+
+                        VStack(spacing: 3) {
+                            WatchProgressBar(
+                                progress: playback.isCurrentEpisode(episode)
+                                    ? playback.progress
+                                    : (episode.playbackProgress ?? 0)
+                            )
+
+                            HStack {
+                                Text(watchPlaybackTime(activePosition))
                                 Spacer()
-                                WatchProgressBar(progress: playback.isCurrentEpisode(episode) ? playback.progress : (episode.playbackProgress ?? 0))
-
-                                HStack {
-                                    Text(watchPlaybackTime(activePosition))
-                                    Spacer()
-                                    Text(watchPlaybackTime(episode.duration ?? 0))
-                                }
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.white.opacity(0.84))
+                                Text(watchPlaybackTime(episode.duration ?? 0))
                             }
-                        
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.white.opacity(0.72))
+                        }
 
-                        VStack(spacing: 8) {
-                            HStack(spacing: 8) {
+                        VStack(spacing: 4) {
+                            HStack(spacing: 5) {
                                 WatchSmallControlButton(
                                     systemName: skipBackSystemName(for: episode),
                                     accessibilityLabel: skipBackLabel(for: episode),
@@ -145,7 +133,8 @@ struct WatchPlayerView: View {
                                 WatchPrimaryControlButton(
                                     systemName: playback.isActivelyPlaying(episode) ? "pause.fill" : "play.fill",
                                     accessibilityLabel: playback.isActivelyPlaying(episode) ? "Pause playback" : "Start playback",
-                                    accessibilityHint: playback.isActivelyPlaying(episode) ? "Pauses the current episode" : "Starts the current episode"
+                                    accessibilityHint: playback.isActivelyPlaying(episode) ? "Pauses the current episode" : "Starts the current episode",
+                                    progress: playback.isCurrentEpisode(episode) ? playback.progress : (episode.playbackProgress ?? 0)
                                 ) {
                                     playback.togglePlayback(for: episode)
                                 }
@@ -163,7 +152,7 @@ struct WatchPlayerView: View {
                                 }
                             }
 
-                            HStack(spacing: 8) {
+                            HStack(spacing: 7) {
                                 Button(playback.formattedPlaybackRate(for: episode)) {
                                     playback.cyclePlaybackRate(for: episode)
                                 }
@@ -244,8 +233,8 @@ struct WatchPlayerView: View {
                             .disabled(remotePlaybackUnavailable)
                         }
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 5)
                 }
             } else {
                 VStack(spacing: 10) {
@@ -361,34 +350,37 @@ private struct WatchPlayerVolumeRow: View {
     var body: some View {
         Group {
             if canAdjustVolume {
-                HStack(spacing: 8) {
+                HStack(spacing: 5) {
                     Image(systemName: "speaker.wave.2.fill")
                         .accessibilityHidden(true)
-                    Text("Volume")
-                        .font(.footnote.weight(.medium))
-                    Spacer(minLength: 4)
                     NativeWatchVolumeControl(origin: origin)
                         .id(origin)
-                        .frame(width: 48, height: 32)
+                        .frame(width: 48, height: 28)
                         .accessibilityLabel("Volume")
                         .accessibilityHint("Adjust volume with the Digital Crown")
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 30)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                )
             } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Volume", systemImage: "speaker.wave.2.fill")
-                        .font(.footnote.weight(.medium))
-                        .labelStyle(.titleAndIcon)
-                    Text(unavailableMessage)
-                        .font(.caption2)
-                        .foregroundStyle(.white.opacity(0.68))
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                Label("Volume unavailable", systemImage: "speaker.slash.fill")
+                    .font(.caption2.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 30)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .accessibilityLabel("Volume unavailable")
+                    .accessibilityValue(unavailableMessage)
             }
         }
         .foregroundStyle(.white)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(Color.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -568,7 +560,7 @@ struct WatchProgressBar: View {
                     .frame(width: geometry.size.width * min(max(progress, 0), 1))
             }
         }
-        .frame(height: 8)
+        .frame(height: 4)
     }
 }
 
@@ -576,17 +568,20 @@ private struct WatchPrimaryControlButton: View {
     let systemName: String
     let accessibilityLabelText: String
     let accessibilityHintText: String?
+    let progress: Double?
     let action: () -> Void
 
     init(
         systemName: String,
         accessibilityLabel: String,
         accessibilityHint: String? = nil,
+        progress: Double? = nil,
         action: @escaping () -> Void
     ) {
         self.systemName = systemName
         self.accessibilityLabelText = accessibilityLabel
         self.accessibilityHintText = accessibilityHint
+        self.progress = progress
         self.action = action
     }
 
@@ -594,7 +589,7 @@ private struct WatchPrimaryControlButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.headline.weight(.bold))
-                .frame(width: 48, height: 48)
+                .frame(width: 46, height: 46)
                 .background(
                     Circle()
                         .fill(
@@ -605,6 +600,17 @@ private struct WatchPrimaryControlButton: View {
                             )
                         )
                 )
+                .overlay {
+                    Circle()
+                        .stroke(Color.white.opacity(0.28), lineWidth: 1)
+
+                    if let progress {
+                        Circle()
+                            .trim(from: 0, to: min(max(progress, 0), 1))
+                            .stroke(.white, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                }
                 .foregroundStyle(.white)
         }
         .buttonStyle(.plain)
@@ -635,11 +641,14 @@ private struct WatchSmallControlButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.caption.weight(.semibold))
-                .frame(maxWidth: .infinity)
-                .frame(height: 34)
+                .frame(width: 36, height: 36)
                 .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    Circle()
                         .fill(Color.upNextAccent.opacity(0.18))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
                 )
                 .foregroundStyle(.white)
         }
@@ -657,7 +666,7 @@ struct WatchCapsuleButtonStyle: ButtonStyle {
             .font(.caption.weight(.semibold))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .frame(height: 34)
+            .frame(height: 30)
             .background(
                 Capsule()
                     .fill(accent.opacity(configuration.isPressed ? 0.4 : 0.28))

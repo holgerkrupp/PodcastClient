@@ -77,6 +77,20 @@ struct WatchRootView: View {
                         .foregroundStyle(.white)
                         .accessibilityHint("Returns to the playback source cards")
                     }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            playback.presentAudioOutputGuidance()
+                        } label: {
+                            Image(systemName: "airplayaudio")
+                                .font(.caption2.weight(.semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .accessibilityLabel("Audio Output")
+                        .accessibilityValue(playback.audioOutputName)
+                        .accessibilityHint("Choose an audio destination from the system controls")
+                        .disabled(selectedPlayerSource == .remotePhone && !playback.remotePlaybackAvailable)
+                    }
                 }
 
                 if selectedPage == .inbox {

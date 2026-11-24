@@ -283,9 +283,9 @@ struct EpisodeControlView: View {
             .accessibilityHint(playbackActionHint)
 
             Menu {
-                Button("Add to Up Next", systemImage: "text.line.last.and.arrowtriangle.forward") {
-                    Task { await addEpisode(to: defaultQueueID, position: .end) }
-                }
+                
+
+                
                 Button("Play Next", systemImage: "text.line.first.and.arrowtriangle.forward") {
                     Task { await addEpisode(to: resolvedPlaylistID, position: .front) }
                 }

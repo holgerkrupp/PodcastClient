@@ -366,6 +366,9 @@
         }
       }
     },
+    "%@ playback" : {
+
+    },
     "%@ Sessions" : {
       "localizations" : {
         "de" : {
@@ -1200,6 +1203,9 @@
           }
         }
       }
+    },
+    "Active playback and downloads may continue using their current request. Resuming or retrying a download uses this setting." : {
+
     },
     "Add" : {
       "localizations" : {
@@ -2428,6 +2434,15 @@
         }
       }
     },
+    "Analyzed: %@" : {
+
+    },
+    "Analyzed: %@, and more" : {
+
+    },
+    "Analyzes the downloaded episode with on-device speech recognition" : {
+
+    },
     "App %@ (%@) · %@ · %@" : {
       "localizations" : {
         "de" : {
@@ -2831,6 +2846,9 @@
         }
       }
     },
+    "Audio Output" : {
+
+    },
     "Audio Schema Playlist Actions" : {
       "localizations" : {
         "de" : {
@@ -3135,6 +3153,9 @@
         }
       }
     },
+    "Available after full transcription finishes." : {
+
+    },
     "Back" : {
       "localizations" : {
         "de" : {
@@ -3246,6 +3267,12 @@
           }
         }
       }
+    },
+    "Backup Couldn’t Be Created" : {
+
+    },
+    "Backup Couldn’t Be Restored" : {
+
     },
     "Backwards Offset" : {
       "localizations" : {
@@ -3618,7 +3645,7 @@
         }
       }
     },
-    "Cancel chapter timer" : {
+    "Cancel caption generation" : {
 
     },
     "Cancel generation" : {
@@ -3701,6 +3728,9 @@
         }
       }
     },
+    "Captions" : {
+
+    },
     "Captions & Audio Descriptions" : {
       "localizations" : {
         "de" : {
@@ -3732,6 +3762,15 @@
           }
         }
       }
+    },
+    "Captions are available for only part of this clip." : {
+
+    },
+    "Captions are ready" : {
+
+    },
+    "Captions are unavailable for this media." : {
+
     },
     "Captions processing" : {
       "localizations" : {
@@ -4134,6 +4173,12 @@
         }
       }
     },
+    "Checking backup…" : {
+
+    },
+    "Checking captions…" : {
+
+    },
     "Checking Feed Availability" : {
       "localizations" : {
         "de" : {
@@ -4198,7 +4243,16 @@
         }
       }
     },
+    "Choose a duration, chapter, or episode end. Selecting one replaces the active sleep mode." : {
+
+    },
     "Choose a gentle tone preset. Flat bypasses equalization." : {
+
+    },
+    "Choose a playback source" : {
+
+    },
+    "Choose an audio destination from the system controls" : {
 
     },
     "Choose an audio output device" : {
@@ -4233,6 +4287,9 @@
         }
       }
     },
+    "Choose Another Backup" : {
+
+    },
     "Choose how long downloaded files remain after an episode is archived." : {
       "localizations" : {
         "de" : {
@@ -4248,6 +4305,9 @@
           }
         }
       }
+    },
+    "Choose how to create captions from this downloaded episode." : {
+
     },
     "Choose the background color used by the Uniform design and its widgets." : {
       "localizations" : {
@@ -4504,6 +4564,9 @@
           }
         }
       }
+    },
+    "Close clip export" : {
+
     },
     "Close live podcasts" : {
       "localizations" : {
@@ -5194,6 +5257,9 @@
         }
       }
     },
+    "Create Backup…" : {
+
+    },
     "Create playlist" : {
       "localizations" : {
         "de" : {
@@ -5754,6 +5820,9 @@
         }
       }
     },
+    "Delete All Data" : {
+
+    },
     "Delete All Stored Files" : {
       "localizations" : {
         "de" : {
@@ -5801,6 +5870,9 @@
           }
         }
       }
+    },
+    "Delete All Up Next Data?" : {
+
     },
     "Delete Bookmark" : {
       "localizations" : {
@@ -5930,6 +6002,9 @@
         }
       }
     },
+    "Delete Without a Backup" : {
+
+    },
     "Deletes the local file from this device" : {
       "localizations" : {
         "de" : {
@@ -5961,6 +6036,9 @@
           }
         }
       }
+    },
+    "Deleting Up Next data…" : {
+
     },
     "Descriptions" : {
       "localizations" : {
@@ -6121,6 +6199,15 @@
           }
         }
       }
+    },
+    "Done Copying" : {
+
+    },
+    "Done selecting" : {
+
+    },
+    "Done Selecting" : {
+
     },
     "Double tap anywhere on the mini player to open full player controls" : {
       "localizations" : {
@@ -6346,6 +6433,9 @@
         }
       }
     },
+    "Download the episode to create a full transcript or transcribe as you listen." : {
+
+    },
     "Download this episode in Up Next" : {
       "localizations" : {
         "de" : {
@@ -6361,6 +6451,12 @@
           }
         }
       }
+    },
+    "Download this episode to generate clip captions." : {
+
+    },
+    "Download this episode to transcribe as you listen." : {
+
     },
     "Downloaded" : {
       "localizations" : {
@@ -6425,6 +6521,12 @@
           }
         }
       }
+    },
+    "Downloaded files, local transcripts, private-feed credentials, and app preferences are removed. Sources stored outside Up Next, such as files in iCloud Drive, stay where they are. A full backup restores database records; downloaded media, credentials, and app preferences are not included." : {
+
+    },
+    "Downloading episode…" : {
+
     },
     "Downloads" : {
       "localizations" : {
@@ -6582,23 +6684,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Pâques"
-          }
-        }
-      }
-    },
-    "Edit this smart playlist's filters or wait for matching episodes to appear." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filter dieser intelligenten Wiedergabeliste bearbeiten oder warten, bis passende Episoden erscheinen."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Modifiez les filtres de cette playlist intelligente ou attendez que des épisodes correspondants apparaissent."
           }
         }
       }
@@ -7284,22 +7369,6 @@
     "Explore other episodes featuring this credited person" : {
 
     },
-    "Export" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exportieren"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "exportation"
-          }
-        }
-      }
-    },
     "Export a clip from the current local episode." : {
       "localizations" : {
         "de" : {
@@ -7332,6 +7401,9 @@
         }
       }
     },
+    "Export clip" : {
+
+    },
     "Export Podcast Clip" : {
       "localizations" : {
         "de" : {
@@ -7344,22 +7416,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Exporter un clip de podcast"
-          }
-        }
-      }
-    },
-    "Export speed %@" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exportgeschwindigkeit %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vitesse d'exportation %@"
           }
         }
       }
@@ -7454,6 +7510,9 @@
 
     },
     "Favorite episodes from Inbox or episode actions to find them here." : {
+
+    },
+    "Favorites" : {
 
     },
     "Featured" : {
@@ -7872,6 +7931,9 @@
         }
       }
     },
+    "Follows the current playback position and saves analyzed portions." : {
+
+    },
     "For example, Bits und so episode 900, or episode 900 of Bits und so." : {
       "localizations" : {
         "de" : {
@@ -8117,6 +8179,9 @@
           }
         }
       }
+    },
+    "Generate captions for clip" : {
+
     },
     "Generate chapters" : {
       "localizations" : {
@@ -9429,6 +9494,9 @@
           }
         }
       }
+    },
+    "iPhone playback is unavailable or out of date." : {
+
     },
     "iPhone remote" : {
       "localizations" : {
@@ -12098,22 +12166,6 @@
         }
       }
     },
-    "Next predicted release: Unavailable" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nächste erwartete Veröffentlichung: nicht verfügbar"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Prochaine publication prévue : indisponible"
-          }
-        }
-      }
-    },
     "Next transcript match" : {
       "localizations" : {
         "de" : {
@@ -12274,6 +12326,9 @@
           }
         }
       }
+    },
+    "No current or upcoming chapter has a known end time." : {
+
     },
     "No current RSS feed could be verified for this programme. Try another lookup or visit the programme website." : {
       "localizations" : {
@@ -13298,6 +13353,9 @@
         }
       }
     },
+    "Off / Cancel sleep timer" : {
+
+    },
     "Offline" : {
       "localizations" : {
         "de" : {
@@ -13774,6 +13832,9 @@
           }
         }
       }
+    },
+    "Open Now Playing to choose Apple Watch or iPhone. Each source keeps its own playback state and controls." : {
+
     },
     "Open Player" : {
       "localizations" : {
@@ -14354,6 +14415,9 @@
         }
       }
     },
+    "Opens this playback source" : {
+
+    },
     "Opens this podcast details screen" : {
       "localizations" : {
         "de" : {
@@ -14487,6 +14551,9 @@
           }
         }
       }
+    },
+    "Partial transcript: only analyzed portions are available." : {
+
     },
     "Password" : {
       "localizations" : {
@@ -14647,9 +14714,6 @@
           }
         }
       }
-    },
-    "Pauses at the end of the current chapter" : {
-
     },
     "Pauses the active download" : {
       "localizations" : {
@@ -15473,22 +15537,6 @@
         }
       }
     },
-    "Playback controls manage the iPhone app." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Wiedergabesteuerung bedient die iPhone-App."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les commandes de lecture gèrent l’application iPhone."
-          }
-        }
-      }
-    },
     "Playback data is being recovered on this device. Keep Up Next installed while recovery finishes." : {
       "localizations" : {
         "de" : {
@@ -15581,22 +15629,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Position de lecture"
-          }
-        }
-      }
-    },
-    "Playback Rate" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabegeschwindigkeit"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Taux de lecture"
           }
         }
       }
@@ -15725,22 +15757,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Synchronisation de lecture en attente"
-          }
-        }
-      }
-    },
-    "Playback uses files and streams on the watch." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Wiedergabe nutzt Dateien und Streams auf der Watch."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "La lecture utilise des fichiers et des flux sur la montre."
           }
         }
       }
@@ -16899,6 +16915,12 @@
         }
       }
     },
+    "Preparing backup…" : {
+
+    },
+    "Preparing local playback…" : {
+
+    },
     "Preparing shownotes" : {
       "localizations" : {
         "de" : {
@@ -16962,6 +16984,9 @@
           }
         }
       }
+    },
+    "Preparing transcription…" : {
+
     },
     "Preparing your podcast library" : {
       "localizations" : {
@@ -18186,22 +18211,6 @@
         }
       }
     },
-    "Remote Control iPhone" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "iPhone fernsteuern"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Télécommande iPhone"
-          }
-        }
-      }
-    },
     "Remove" : {
       "localizations" : {
         "de" : {
@@ -18559,6 +18568,9 @@
         }
       }
     },
+    "Removes recognized tracking parameters from new feed refresh and audio download requests for this podcast. Some servers can still identify requests. A few podcasts may need the original link." : {
+
+    },
     "Removes the transcript panel below the artwork" : {
       "localizations" : {
         "de" : {
@@ -18847,6 +18859,9 @@
         }
       }
     },
+    "Restore Backup" : {
+
+    },
     "Restore Custom" : {
       "localizations" : {
         "de" : {
@@ -18862,6 +18877,12 @@
           }
         }
       }
+    },
+    "Restore from Backup…" : {
+
+    },
+    "Restore Up Next Backup?" : {
+
     },
     "Restoring saved playlist episodes…" : {
       "localizations" : {
@@ -18959,6 +18980,9 @@
         }
       }
     },
+    "Resumes transcript updates" : {
+
+    },
     "Retries importing episodes for this podcast" : {
       "localizations" : {
         "de" : {
@@ -19023,6 +19047,9 @@
         }
       }
     },
+    "Retry Backup" : {
+
+    },
     "Retry episode import" : {
       "localizations" : {
         "de" : {
@@ -19055,6 +19082,12 @@
         }
       }
     },
+    "Retry full transcription" : {
+
+    },
+    "Retry iCloud Reset" : {
+
+    },
     "Retry import" : {
       "localizations" : {
         "de" : {
@@ -19086,6 +19119,12 @@
           }
         }
       }
+    },
+    "Retry saving" : {
+
+    },
+    "Retrying iCloud reset…" : {
+
     },
     "Return an episode transcript as a text file for use in Shortcuts." : {
       "localizations" : {
@@ -19247,6 +19286,9 @@
         }
       }
     },
+    "Returns to the playback source cards" : {
+
+    },
     "Returns to the previous playback position" : {
       "localizations" : {
         "de" : {
@@ -19259,22 +19301,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Retour à la position de lecture précédente"
-          }
-        }
-      }
-    },
-    "Returns to the watch playlist" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kehrt zur Playlist auf der Watch zurück"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Retour à la playlist de montres"
           }
         }
       }
@@ -19381,10 +19407,10 @@
         }
       }
     },
-    "Save an episode for later without adding it to Up Next, or remove it from Saved for Later." : {
+    "Save an episode for later to keep it here without adding it to Up Next." : {
 
     },
-    "Save an Inbox episode to keep it here without adding it to Up Next." : {
+    "Save an episode for later without adding it to Up Next, or remove it from Saved for Later." : {
 
     },
     "Save Chapter Skip Rule" : {
@@ -19504,6 +19530,9 @@
           }
         }
       }
+    },
+    "Saved for Later" : {
+
     },
     "Saved for later. It was not added to Up Next." : {
 
@@ -20004,21 +20033,14 @@
         }
       }
     },
-    "Select the segment to share" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wähle den Abschnitt zum Teilen aus"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sélectionnez le segment à partager"
-          }
-        }
-      }
+    "Select and copy words across multiple transcript lines without changing playback" : {
+
+    },
+    "Select Passage" : {
+
+    },
+    "Selected" : {
+
     },
     "Selected Uniform color" : {
       "localizations" : {
@@ -20803,6 +20825,9 @@
         }
       }
     },
+    "Shows caption availability and generation options." : {
+
+    },
     "Shows episodes from a selected playlist." : {
       "localizations" : {
         "de" : {
@@ -20818,6 +20843,9 @@
           }
         }
       }
+    },
+    "Shows highlighted captions in preview and export." : {
+
     },
     "Shows how many items remain in the selected playlist." : {
       "localizations" : {
@@ -21827,6 +21855,12 @@
         }
       }
     },
+    "Some captions are waiting to be saved. Keep Up Next open and check available storage." : {
+
+    },
+    "Some captions highlight a whole passage." : {
+
+    },
     "Sort" : {
       "localizations" : {
         "de" : {
@@ -21922,6 +21956,9 @@
           }
         }
       }
+    },
+    "Sources" : {
+
     },
     "Speed" : {
       "localizations" : {
@@ -22050,6 +22087,9 @@
           }
         }
       }
+    },
+    "Start live transcription to verify timing for this audio" : {
+
     },
     "Start new episodes after this many seconds to bypass recurring intros." : {
       "localizations" : {
@@ -22195,6 +22235,9 @@
         }
       }
     },
+    "Starts at %@" : {
+
+    },
     "Starts playback at %@" : {
       "localizations" : {
         "de" : {
@@ -22339,27 +22382,10 @@
         }
       }
     },
-    "Stop after a duration or after the current episode." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nach einer bestimmten Zeit oder nach der aktuellen Episode stoppen."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arrêter après une durée ou après l’épisode actuel."
-          }
-        }
-      }
-    },
     "Stop after a duration, at the end of the current chapter, or after the current episode." : {
 
     },
-    "Stop after current chapter" : {
+    "Stop after chapter" : {
 
     },
     "Stop after this episode" : {
@@ -22429,22 +22455,8 @@
         }
       }
     },
-    "Stop playback after a number of minutes or after the current episode." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wiedergabe nach einer bestimmten Anzahl Minuten oder nach der aktuellen Episode beenden."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Arrêtez la lecture après un certain nombre de minutes ou après l’épisode actuel."
-          }
-        }
-      }
+    "Stop live transcription" : {
+
     },
     "Stop playback after a number of minutes, at the end of the current chapter, or after the current episode." : {
 
@@ -22512,6 +22524,9 @@
           }
         }
       }
+    },
+    "Stops playback at the end of this chapter" : {
+
     },
     "Stops transcript and chapter generation" : {
       "localizations" : {
@@ -23130,6 +23145,9 @@
         }
       }
     },
+    "Tap Captions to turn the overlay on or off." : {
+
+    },
     "Tap to jump ahead to the furthest point you've listened to in this episode." : {
       "localizations" : {
         "de" : {
@@ -23437,6 +23455,12 @@
     "The filters couldn't be checked. Try again, or open Settings to review them." : {
 
     },
+    "The local library is clear. No iCloud account was available to scope the reset; sign into the original account and run Delete All Up Next Data again." : {
+
+    },
+    "The local library is clear. The iCloud reset is still pending and will retry when the original account is available." : {
+
+    },
     "The menu bar player includes play and pause, skipping, chapter navigation, bookmarks, playback speed, and shortcuts to the player and app windows." : {
       "localizations" : {
         "de" : {
@@ -23612,6 +23636,9 @@
           }
         }
       }
+    },
+    "The side-loaded file is unavailable." : {
+
     },
     "The total duration of the generated clip in seconds." : {
       "localizations" : {
@@ -23836,6 +23863,9 @@
           }
         }
       }
+    },
+    "This clears Up Next on this device and requests deletion of its synced data from iCloud. Other devices on this iCloud account will apply the reset when they reconnect. It removes subscriptions, playlists and queue order, playback progress, listening history, bookmarks, downloads, transcripts, chapter edits and app preferences. An exported backup stays at the location you choose. Downloaded media and private-feed credentials are not included in backups." : {
+
     },
     "This episode cannot be downloaded by Up Next." : {
       "localizations" : {
@@ -24320,6 +24350,9 @@
     "Time remaining" : {
 
     },
+    "Timed sleep" : {
+
+    },
     "Timer" : {
       "localizations" : {
         "de" : {
@@ -24351,6 +24384,9 @@
           }
         }
       }
+    },
+    "Timing is not verified for this passage" : {
+
     },
     "Title" : {
       "localizations" : {
@@ -24614,22 +24650,6 @@
         }
       }
     },
-    "Transcribe" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Transkribieren"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "transcrire"
-          }
-        }
-      }
-    },
     "Transcribe & generate chapters" : {
       "localizations" : {
         "de" : {
@@ -24646,6 +24666,12 @@
         }
       }
     },
+    "Transcribe as you listen" : {
+
+    },
+    "Transcribe full episode" : {
+
+    },
     "Transcribing" : {
       "localizations" : {
         "de" : {
@@ -24661,6 +24687,9 @@
           }
         }
       }
+    },
+    "Transcribing as you listen" : {
+
     },
     "Transcribing audio… %@" : {
       "localizations" : {
@@ -24886,6 +24915,9 @@
         }
       }
     },
+    "Transcript timing could not be verified for this audio." : {
+
+    },
     "Transcript Unavailable" : {
       "localizations" : {
         "de" : {
@@ -24918,6 +24950,9 @@
         }
       }
     },
+    "Transcription is catching up…" : {
+
+    },
     "Transcription Records" : {
       "localizations" : {
         "de" : {
@@ -24933,6 +24968,9 @@
           }
         }
       }
+    },
+    "Transcription unavailable" : {
+
     },
     "Transcriptions" : {
       "localizations" : {
@@ -25029,6 +25067,9 @@
           }
         }
       }
+    },
+    "Turns off timed, chapter, and episode-end sleep modes" : {
+
     },
     "Type" : {
       "localizations" : {
@@ -25846,22 +25887,6 @@
         }
       }
     },
-    "Use the chapter row to generate a transcript on this device." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Verwende die Kapitelzeile, um auf diesem Gerät ein Transkript zu erstellen."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Utilisez la ligne du chapitre pour générer un transcript sur cet appareil."
-          }
-        }
-      }
-    },
     "Use the chapter row to generate chapters on this device." : {
       "localizations" : {
         "de" : {
@@ -26236,22 +26261,8 @@
         }
       }
     },
-    "Volume is available while the selected audio source is connected and playing." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Die Lautstärke ist verfügbar, wenn die ausgewählte Audioquelle verbunden ist und wiedergibt."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le volume est disponible lorsque la source audio sélectionnée est connectée et en cours de lecture."
-          }
-        }
-      }
+    "Volume unavailable" : {
+
     },
     "Wait for episode to sync" : {
       "localizations" : {
