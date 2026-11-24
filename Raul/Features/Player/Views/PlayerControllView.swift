@@ -186,10 +186,7 @@ struct PlayerControllView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 } else {
-                    VStack(spacing: 12) {
-                        LiveTranscriptActionView(episode: episode)
-                        ContentUnavailableView("No Transcript", systemImage: "quote.bubble")
-                    }
+                    TranscriptEmptyStateView(episode: episode)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                 }
@@ -209,7 +206,9 @@ struct PlayerControllView: View {
             if hasChapterSelectionUI {
                 PlayerChapterView(hasChapterSelectionUI: hasChapterSelectionUI)
                     .padding(.horizontal, 16)
-            } else if let generateAction, let cancelGeneration {
+            } else if let generateAction,
+                      let cancelGeneration,
+                      shouldShowChapterRowGeneration {
                 EpisodeAIGenerationControl(
                     action: generationAction,
                     state: generationState,
@@ -264,6 +263,12 @@ struct PlayerControllView: View {
     private var hasLocalMedia: Bool {
         guard let localFile = player.currentEpisode?.localFile else { return false }
         return FileManager.default.fileExists(atPath: localFile.path)
+    }
+
+    private var shouldShowChapterRowGeneration: Bool {
+        guard let generationAction else { return false }
+        guard generationAction != .generateChapters else { return true }
+        return !showsInlineTranscript || !showTranscripts
     }
 
     private var hasChapterSelectionUI: Bool {

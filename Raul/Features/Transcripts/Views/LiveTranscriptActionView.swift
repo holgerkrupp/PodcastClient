@@ -2,6 +2,37 @@ import SwiftUI
 import SwiftData
 
 struct LiveTranscriptActionView: View {
+    let episode: Episode
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Transcript", systemImage: "waveform.and.mic")
+                .font(.headline)
+
+            TranscriptGenerationActionsView(episode: episode)
+        }
+        .multilineTextAlignment(.leading)
+        .frame(maxWidth: .infinity)
+        .padding(8)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+}
+
+struct TranscriptEmptyStateView: View {
+    let episode: Episode
+
+    var body: some View {
+        ContentUnavailableView {
+            Label("No Transcript", systemImage: "quote.bubble")
+        } description: {
+            Text("Generate a transcript to read along with this episode.")
+        } actions: {
+            TranscriptGenerationActionsView(episode: episode)
+        }
+    }
+}
+
+struct TranscriptGenerationActionsView: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable private var live = LiveTranscriptController.shared
     @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
@@ -18,9 +49,6 @@ struct LiveTranscriptActionView: View {
                     .font(.caption)
             }
 
-            Label("Transcript", systemImage: "waveform.and.mic")
-                .font(.headline)
-
             if isLocalMediaAvailable {
                 Text("Choose how to create captions from this downloaded episode.")
                     .font(.subheadline)
@@ -30,48 +58,7 @@ struct LiveTranscriptActionView: View {
 
                 Divider()
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Transcribe as you listen")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Follows the current playback position and saves analyzed portions.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                    if isFullTranscriptionRunning {
-                        Text("Available after full transcription finishes.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else if live.isActive(for: episode) {
-                        HStack(spacing: 8) {
-                            Label(status, systemImage: "waveform")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer(minLength: 0)
-                            Button("Stop live transcription") { live.stop() }
-                                .buttonStyle(.bordered)
-                        }
-                    } else {
-                        if live.phase == .preparing, live.episodeURL == episode.url {
-                            Label("Preparing local playback…", systemImage: "hourglass")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        } else if live.episodeURL == episode.url,
-                                  live.phase == .unavailable,
-                                  let reason = live.unavailableReason {
-                            Text(reason.message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Button {
-                            startLiveTranscription()
-                        } label: {
-                            Label("Transcribe as you listen", systemImage: "waveform")
-                                .frame(maxWidth: .infinity, minHeight: 44)
-                        }
-                        .buttonStyle(.bordered)
-                        .disabled(isStartingLive)
-                    }
-                }
+                liveTranscriptionControl
             } else if isDownloadInProgress {
                 Label("Downloading episode…", systemImage: "arrow.down.circle")
                     .font(.subheadline.weight(.semibold))
@@ -93,15 +80,11 @@ struct LiveTranscriptActionView: View {
                     downloadViewModel.startDownload(for: episode)
                 } label: {
                     Label("Download episode", systemImage: "arrow.down.circle")
-                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .frame(minHeight: 44)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glass(.clear))
             }
         }
-        .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .onAppear { live.retryPendingSaves() }
         .task(id: episode.url) {
             await downloadViewModel.observeDownload(for: episode)
@@ -140,48 +123,58 @@ struct LiveTranscriptActionView: View {
 
     @ViewBuilder
     private var fullTranscriptionControl: some View {
-        if case let .running(status, progress) = fullTranscriptionState {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    if let progress {
-                        ProgressView(value: progress)
-                            .frame(width: 32)
-                    } else {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Text(status)
-                        .font(.subheadline.weight(.semibold))
-                    Spacer(minLength: 0)
-                    Button("Cancel") { cancelFullTranscription() }
-                        .buttonStyle(.bordered)
-                }
-                if let progress {
-                    ProgressView(value: progress)
-                        .tint(.accentColor)
-                }
-            }
-        } else if case let .failed(message) = fullTranscriptionState {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(message)
+        EpisodeAIGenerationControl(
+            action: .transcribe,
+            state: fullTranscriptionState,
+            start: { _ in startFullTranscription() },
+            cancel: cancelFullTranscription
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var liveTranscriptionControl: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Transcribe as you listen")
+                .font(.subheadline.weight(.semibold))
+            Text("Follows the current playback position and saves analyzed portions.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if isFullTranscriptionRunning {
+                Text("Available after full transcription finishes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button {
-                    startFullTranscription()
-                } label: {
-                    Label("Retry full transcription", systemImage: "arrow.clockwise")
-                        .frame(maxWidth: .infinity, minHeight: 44)
+            } else if live.isActive(for: episode) {
+                HStack(spacing: 8) {
+                    Label(status, systemImage: "waveform")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Stop live transcription") { live.stop() }
+                        .buttonStyle(.glass(.clear))
                 }
-                .buttonStyle(.borderedProminent)
+            } else {
+                if live.phase == .preparing, live.episodeURL == episode.url {
+                    Label("Preparing local playback…", systemImage: "hourglass")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if live.episodeURL == episode.url,
+                          live.phase == .unavailable,
+                          let reason = live.unavailableReason {
+                    Text(reason.message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Button {
+                    startLiveTranscription()
+                } label: {
+                    Label("Transcribe as you listen", systemImage: "waveform")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.glass(.clear))
+                .disabled(isStartingLive)
             }
-        } else {
-            Button {
-                startFullTranscription()
-            } label: {
-                Label("Transcribe full episode", systemImage: "text.quote")
-                    .frame(maxWidth: .infinity, minHeight: 44)
-            }
-            .buttonStyle(.borderedProminent)
         }
     }
 

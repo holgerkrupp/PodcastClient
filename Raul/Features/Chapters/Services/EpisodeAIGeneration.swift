@@ -237,19 +237,20 @@ struct EpisodeAIGenerationControl: View {
             HStack(spacing: 8) {
                 if let progress {
                     ProgressView(value: progress)
-                        .frame(width: 28)
+                        .frame(width: 80)
+                        .accessibilityValue(Text(percentage(progress)))
                 } else {
                     ProgressView().controlSize(.small)
                 }
-                Text(status).font(.caption).lineLimit(2).minimumScaleFactor(0.8)
-                    .accessibilityLabel(status)
+                Text(status)
+                    .font(.caption)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
                 Button(action: cancel) {
-                    Image(systemName: "xmark")
+                    Text("Cancel")
                         .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Cancel generation")
                 .accessibilityHint("Stops transcript and chapter generation")
             }
             .padding(.horizontal, 10)
@@ -259,12 +260,26 @@ struct EpisodeAIGenerationControl: View {
         } else if case let .failed(message) = state, let action {
             HStack(spacing: 8) {
                 Text(message).font(.caption).lineLimit(2)
-                Button { start(action) } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel(action.title)
+                Button { start(action) } label: {
+                    Label("Retry", systemImage: "arrow.clockwise")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.glass(.clear))
+                .accessibilityLabel("Retry generation")
+            }
+        } else if case .finished = state, let action {
+            if action == .transcribe {
+                Label("Transcript ready", systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("Generation complete", systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         } else if let action {
             Button { start(action) } label: {
-                Label(action.title, systemImage: "sparkles")
+                Label(action.title, systemImage: action.systemImage)
                     .font(.caption.weight(.semibold))
                     .lineLimit(2)
                     .minimumScaleFactor(0.75)
@@ -275,6 +290,21 @@ struct EpisodeAIGenerationControl: View {
             .accessibilityHint(action == .transcribe
                 ? "Analyzes the downloaded episode with on-device speech recognition"
                 : "Uses Apple Intelligence on this device")
+        }
+    }
+
+    private func percentage(_ progress: Double) -> String {
+        "\(Int((progress * 100).rounded())) percent"
+    }
+}
+
+private extension EpisodeAIGenerationAction {
+    var systemImage: String {
+        switch self {
+        case .transcribe, .transcribeAndGenerateChapters:
+            "quote.bubble"
+        case .generateChapters:
+            "sparkles"
         }
     }
 }

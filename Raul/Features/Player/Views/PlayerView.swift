@@ -245,11 +245,10 @@ struct PlayerView: View {
                 case .transcript:
                     let transcriptLines = liveTranscript.displayLines(for: episode)
                     VStack(spacing: 0) {
-                        if episode.transcriptLines?.isEmpty != false {
-                            LiveTranscriptActionView(episode: episode)
-                            if !transcriptLines.isEmpty {
-                                LiveTranscriptCoverageView(episode: episode)
-                            }
+                        if episode.transcriptLines?.isEmpty != false, !transcriptLines.isEmpty {
+                            TranscriptGenerationActionsView(episode: episode)
+                                .padding()
+                            LiveTranscriptCoverageView(episode: episode)
                         }
                         if transcriptLines.isEmpty == false {
                             TranscriptListView(
@@ -282,11 +281,7 @@ struct PlayerView: View {
     }
 
     private func missingTranscriptView(episode: Episode) -> some View {
-        ContentUnavailableView {
-            Label("No Transcript", systemImage: "quote.bubble")
-        } description: {
-            Text("Generate a transcript to read along with this episode.")
-        }
+        TranscriptEmptyStateView(episode: episode)
     }
 
     private func missingChaptersView(episode: Episode) -> some View {
@@ -412,16 +407,22 @@ struct PlayerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             case .transcript:
                 let transcriptLines = liveTranscript.displayLines(for: episode)
-                if transcriptLines.isEmpty == false {
-                    TranscriptListView(
-                        transcriptLines: transcriptLines,
-                        episode: episode,
-                        startFollowingPlayback: true,
-                        canFollowPlayback: episode.transcriptLines?.isEmpty == false
-                            || liveTranscript.isActive(for: episode)
-                    )
-                } else {
-                    missingTranscriptView(episode: episode)
+                VStack(spacing: 12) {
+                    if episode.transcriptLines?.isEmpty != false, !transcriptLines.isEmpty {
+                        TranscriptGenerationActionsView(episode: episode)
+                        LiveTranscriptCoverageView(episode: episode)
+                    }
+                    if transcriptLines.isEmpty == false {
+                        TranscriptListView(
+                            transcriptLines: transcriptLines,
+                            episode: episode,
+                            startFollowingPlayback: true,
+                            canFollowPlayback: episode.transcriptLines?.isEmpty == false
+                                || liveTranscript.isActive(for: episode)
+                        )
+                    } else {
+                        missingTranscriptView(episode: episode)
+                    }
                 }
             case .chapters:
                 let chapterMarkers = episode.chapters ?? []
