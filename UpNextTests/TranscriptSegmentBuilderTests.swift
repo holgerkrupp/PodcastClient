@@ -3,6 +3,24 @@ import XCTest
 
 final class TranscriptSegmentBuilderTests: XCTestCase {
 
+    func testTranscriptSourceMetadataCapturesPublisherAlignmentOnce() {
+        let publisher = TranscriptLineAndTime(
+            text: "Publisher caption",
+            startTime: 0,
+            endTime: 1,
+            source: .publisher
+        )
+        let generated = TranscriptLineAndTime(
+            text: "Generated caption",
+            startTime: 1,
+            endTime: 2,
+            source: .localAI
+        )
+
+        XCTAssertTrue(TranscriptSourceMetadata.make(from: [publisher, generated]).usesPublisherAlignment)
+        XCTAssertFalse(TranscriptSourceMetadata.make(from: [generated]).usesPublisherAlignment)
+    }
+
     @MainActor
     func testMergedLinesRetainUnicodeSafeTimedRangesAndCueFallback() throws {
         let first = TranscriptSegmentSource(

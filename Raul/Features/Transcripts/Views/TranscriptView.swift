@@ -20,6 +20,9 @@ struct TranscriptView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     let transcriptLines: [TranscriptLineAndTime]
+    /// Captured once with the transcript snapshot; playback ticks must not
+    /// rescan SwiftData models for transcript-global metadata.
+    let usesPublisherAlignment: Bool
     @Binding var currentTime: TimeInterval
     /// Called when the user taps a caption, e.g. to open the full transcript.
     var onOpenFullTranscript: (() -> Void)?
@@ -41,6 +44,21 @@ struct TranscriptView: View {
         .red,
         .teal
     ]
+
+    init(
+        transcriptLines: [TranscriptLineAndTime],
+        currentTime: Binding<TimeInterval>,
+        onOpenFullTranscript: (() -> Void)? = nil,
+        reservesBottomTrailingAccessory: Bool = false,
+        canFollowPlayback: Bool = true
+    ) {
+        self.transcriptLines = transcriptLines
+        self.usesPublisherAlignment = TranscriptSourceMetadata.make(from: transcriptLines).usesPublisherAlignment
+        self._currentTime = currentTime
+        self.onOpenFullTranscript = onOpenFullTranscript
+        self.reservesBottomTrailingAccessory = reservesBottomTrailingAccessory
+        self.canFollowPlayback = canFollowPlayback
+    }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -162,10 +180,6 @@ struct TranscriptView: View {
             return [current]
         }
         return Array(segments.prefix(1))
-    }
-
-    private var usesPublisherAlignment: Bool {
-        transcriptLines.contains { $0.transcriptSource == .publisher }
     }
 
     private func scroll(to id: UUID?, with proxy: ScrollViewProxy, animated: Bool) {

@@ -21,6 +21,9 @@ struct TranscriptListView: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Bindable private var synchronizationStore = TranscriptSynchronizationStore.shared
     let transcriptLines: [TranscriptLineAndTime]
+    /// Captured once with the transcript snapshot; row rendering must not scan
+    /// SwiftData models for transcript-global metadata.
+    let usesPublisherAlignment: Bool
     let episode: Episode?
     let searchNavigation: TranscriptSearchNavigation?
     let canFollowPlayback: Bool
@@ -52,6 +55,7 @@ struct TranscriptListView: View {
         let initialRows = Self.makeDisplayRows(from: sortedLines, matching: initialSearchText)
 
         self.transcriptLines = sortedLines
+        self.usesPublisherAlignment = TranscriptSourceMetadata.make(from: sortedLines).usesPublisherAlignment
         self.episode = episode
         self.searchNavigation = searchNavigation
         self.canFollowPlayback = canFollowPlayback
@@ -417,10 +421,6 @@ struct TranscriptListView: View {
         } ?? (offset > 0 ? -1 : displayRows.count)
         let nextIndex = (currentIndex + offset + displayRows.count) % displayRows.count
         selectedSearchRowID = displayRows[nextIndex].id
-    }
-
-    private var usesPublisherAlignment: Bool {
-        transcriptLines.contains { $0.transcriptSource == .publisher }
     }
 
     private static func makeDisplayRows(from lines: [TranscriptLineAndTime], matching searchText: String) -> [TranscriptDisplayRow] {

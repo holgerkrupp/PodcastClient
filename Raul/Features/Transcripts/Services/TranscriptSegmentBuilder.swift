@@ -29,6 +29,16 @@ struct TranscriptSegmentSource: Identifiable, Hashable, Sendable {
     }
 }
 
+/// Transcript-wide source facts that should be captured once per transcript
+/// revision instead of recomputed while SwiftUI renders individual rows.
+struct TranscriptSourceMetadata: Equatable, Sendable {
+    let usesPublisherAlignment: Bool
+
+    static func make(from lines: [TranscriptLineAndTime]) -> Self {
+        Self(usesPublisherAlignment: lines.contains { $0.transcriptSource == .publisher })
+    }
+}
+
 /// Several consecutive transcript lines of the same speaker, merged into one block of text.
 struct TranscriptSegment: Identifiable, Hashable, Sendable {
     /// Identifier of the first line the segment was built from, so segments keep a
