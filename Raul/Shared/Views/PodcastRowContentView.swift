@@ -78,9 +78,23 @@ struct PodcastRowPresentation {
         url.isLikelyPrivatePodcastURL ? url.redactedPodcastURLString : url.absoluteString
     }
 
-    private static func cacheIdentity(for value: String) -> String {
+    /// Rows are rebuilt on every scroll recycle, so memoize the digest
+    /// instead of re-hashing and hex-formatting the same identity each time.
+    nonisolated(unsafe) private static let identityDigests: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 2048
+        return cache
+    }()
+
+    static func cacheIdentity(for value: String) -> String {
+        let key = value as NSString
+        if let cached = identityDigests.object(forKey: key) {
+            return cached as String
+        }
         let digest = SHA256.hash(data: Data(value.utf8))
-        return "podcast-row-" + digest.map { String(format: "%02x", $0) }.joined()
+        let identity = "podcast-row-" + digest.map { String(format: "%02x", $0) }.joined()
+        identityDigests.setObject(identity as NSString, forKey: key)
+        return identity
     }
 
     private static func safeText(_ value: String?, feedURL: URL?) -> String? {

@@ -106,6 +106,27 @@ actor SharedImageRepository {
         )
     }
 
+    /// Decoded sizes commonly requested by visible covers, smallest first.
+    nonisolated static let reusableSourcePixelSizes: [CGFloat] = [256, 384, 512, ImageLoaderAndCache.defaultMaxPixelSize]
+
+    /// Memory-only lookup for an already decoded bitmap of `url` that is at
+    /// least `minimumPixelSize`, so a derived variant can skip a decode.
+    nonisolated static func reusableDecodedImage(
+        for url: URL,
+        atLeast minimumPixelSize: CGFloat,
+        profileID: String? = nil
+    ) -> UIImage? {
+        if let exact = cachedImage(for: url, maxPixelSize: minimumPixelSize, profileID: profileID) {
+            return exact
+        }
+        for size in reusableSourcePixelSizes where size > minimumPixelSize {
+            if let image = cachedImage(for: url, maxPixelSize: size, profileID: profileID) {
+                return image
+            }
+        }
+        return nil
+    }
+
     nonisolated static func cachedBlurredImage(for key: String) -> UIImage? {
         blurredMemoryCache.object(forKey: key as NSString)
     }
@@ -288,12 +309,26 @@ actor SharedImageRepository {
                 return image
             }
 
-            guard let sourceImage = await self.image(
+            // Reuse a bitmap the foreground cover already decoded (for
+            // example the Library row's 384 px cover) instead of decoding the
+            // same source a second time at the blur size.
+            let reusableSource = Self.reusableDecodedImage(
+                for: url,
+                atLeast: maxPixelSize,
+                profileID: profileID
+            )
+            let decodedSource: UIImage?
+            if let reusableSource {
+                decodedSource = reusableSource
+            } else {
+                decodedSource = await self.image(
                     for: url,
                     maxPixelSize: maxPixelSize,
                     saveTo: saveTo,
                     profile: profile
-                  ),
+                )
+            }
+            guard let sourceImage = decodedSource,
                   let blurredImage = Self.makeBlurredImage(
                     from: sourceImage,
                     radius: radius,

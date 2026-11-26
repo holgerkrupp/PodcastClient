@@ -28,6 +28,10 @@ struct PodcastListView: View {
     @State private var selectedScope: LibraryScope = .subscribed
     @State private var pendingDeletionIDs = Set<PersistentIdentifier>()
     @State private var authenticationRepairPodcast: Podcast?
+    /// Release-pattern feed health, evaluated off the main actor once per
+    /// load/refresh. Rows only read this value; they never fetch episodes.
+    @State private var likelyCancelledAssessments = PodcastFeedHealthCache.shared.likelyCancelledAssessments
+    @State private var wasRefreshingAll = false
 
     init(modelContainer: ModelContainer) {
         self.modelContainer = modelContainer
@@ -112,13 +116,19 @@ struct PodcastListView: View {
                         .listRowInsets(.init(top: 16, leading: 0, bottom: 16, trailing: 0))
                     }
                 } else {
-                    ForEach(Array(visiblePodcasts.enumerated()), id: \.element.persistentModelID) { index, podcast in
-                        
-                        
+                    let firstID = visiblePodcasts.first?.persistentModelID
+                    let lastID = visiblePodcasts.last?.persistentModelID
+                    let isSingle = visiblePodcasts.count == 1
+                    ForEach(visiblePodcasts, id: \.persistentModelID) { podcast in
+                        let podcastID = podcast.persistentModelID
                         ZStack {
                             PodcastRowView(
                                 podcast: podcast,
-                                groupPosition: GroupedListRowPosition(index: index, count: visiblePodcasts.count)
+                                groupPosition: isSingle ? .single
+                                    : podcastID == firstID ? .first
+                                    : podcastID == lastID ? .last
+                                    : .middle,
+                                likelyCancelledAssessment: likelyCancelledAssessments[podcastID]
                             )
                             NavigationLink(destination: PodcastDetailDestination(podcast: podcast)) {
                                 EmptyView()
@@ -222,6 +232,30 @@ struct PodcastListView: View {
             PodcastAccessEditorView(podcast: podcast) {
                 authenticationRepairPodcast = nil
             }
+        }
+        .task {
+            await refreshFeedHealth()
+        }
+        .onReceive(PodcastRefreshCoordinator.shared.progressPublisher) { progress in
+            // Re-evaluate once when a Refresh All run finishes, not per feed.
+            let finished = wasRefreshingAll && progress.isRefreshing == false
+            wasRefreshingAll = progress.isRefreshing
+            if finished {
+                Task { await refreshFeedHealth() }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .podcastFeedImportDidCommit)) { _ in
+            // A Refresh All run is re-evaluated once when it finishes.
+            guard wasRefreshingAll == false else { return }
+            Task { await refreshFeedHealth() }
+        }
+    }
+
+    /// Unchanged podcasts are skipped by revision, so repeated triggers are cheap.
+    private func refreshFeedHealth() async {
+        let updated = await PodcastFeedHealthCache.shared.refresh(modelContainer: modelContainer)
+        if updated != likelyCancelledAssessments {
+            likelyCancelledAssessments = updated
         }
     }
 

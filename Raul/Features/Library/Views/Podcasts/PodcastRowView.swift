@@ -10,8 +10,10 @@ import SwiftData
 import ESADesignKit
 
 /// Library adapter that snapshots the podcast's existing row fields into the
-/// shared value-driven presenter. It intentionally does not inspect episodes
-/// or calculate release/abandonment health while SwiftUI renders the row.
+/// shared value-driven presenter. It never inspects episodes or runs release
+/// prediction while SwiftUI builds the row: stored failure fields are scalar
+/// checks, and the release-pattern "possibly cancelled" verdict comes from
+/// `PodcastFeedHealthCache`, which the Library evaluates off the main actor.
 struct PodcastRowView: View {
     let podcast: Podcast
     var density: PodcastRowContentView.Density = .comfortable
@@ -25,14 +27,18 @@ struct PodcastRowView: View {
         density: PodcastRowContentView.Density = .comfortable,
         groupPosition: GroupedListRowPosition = .single,
         previewArtwork: Image? = nil,
-        previewArtworkSource: ESAImageSource? = nil
+        previewArtworkSource: ESAImageSource? = nil,
+        likelyCancelledAssessment: PodcastFeedAbandonmentAssessment? = nil
     ) {
         self.podcast = podcast
         self.density = density
         self.groupPosition = groupPosition
         self.previewArtwork = previewArtwork
         self.previewArtworkSource = previewArtworkSource
-        self.presentation = Self.makePresentation(from: podcast)
+        self.presentation = Self.makePresentation(
+            from: podcast,
+            likelyCancelledAssessment: likelyCancelledAssessment
+        )
     }
 
     var body: some View {
@@ -48,9 +54,16 @@ struct PodcastRowView: View {
     /// Capture SwiftData-backed display values when the row is created. SwiftUI
     /// can keep a row alive while a background context deletes its model; its
     /// body must not call generated model accessors during that interval.
-    private static func makePresentation(from podcast: Podcast) -> PodcastRowPresentation {
+    private static func makePresentation(
+        from podcast: Podcast,
+        likelyCancelledAssessment: PodcastFeedAbandonmentAssessment?
+    ) -> PodcastRowPresentation {
         let metadata = podcast.metaData
-        let diagnostic = rowDiagnostic(from: metadata)
+        let diagnostic = rowDiagnostic(
+            from: metadata,
+            likelyCancelled: likelyCancelledAssessment
+                ?? PodcastFeedHealthCache.shared.likelyCancelledAssessment(for: podcast.persistentModelID)
+        )
         return PodcastRowPresentation(
             identity: podcast.stablePodcastIdentityKey,
             feedURL: podcast.feed,
@@ -66,7 +79,11 @@ struct PodcastRowView: View {
         )
     }
 
-    private static func rowDiagnostic(from metadata: PodcastMetaData?) -> (badge: String, message: String)? {
+    static func rowDiagnostic(
+        from metadata: PodcastMetaData?,
+        likelyCancelled: PodcastFeedAbandonmentAssessment?,
+        now: Date = Date()
+    ) -> (badge: String, message: String)? {
         guard let metadata else { return nil }
 
         if let attention = PodcastAuthenticationAttention.resolve(
@@ -77,13 +94,17 @@ struct PodcastRowView: View {
             return (attention.badge, attention.message)
         }
 
-        let assessment = metadata.feedAbandonmentAssessment
-        if assessment?.kind == .likelyCancelled {
-            let detail = assessment?.detail ?? "The feed checks successfully, but expected episodes have not appeared."
-            return ("POSSIBLY CANCELLED", detail)
+        // Scalar stored-failure check first, matching the full assessment's
+        // precedence. Never call `feedAbandonmentAssessment` here: it fetches
+        // episodes for the release pattern.
+        if let unavailable = PodcastFeedAbandonmentAssessment.unavailableFeedAssessment(
+            metadata: metadata,
+            now: now
+        ) {
+            return ("FEED UNAVAILABLE", unavailable.detail)
         }
-        if assessment?.kind == .unavailableFeed {
-            return ("FEED UNAVAILABLE", assessment?.detail ?? "The podcast feed has been unreachable repeatedly.")
+        if metadata.isSubscribed, let likelyCancelled, likelyCancelled.kind == .likelyCancelled {
+            return ("POSSIBLY CANCELLED", likelyCancelled.detail)
         }
 
         guard metadata.lastFeedFailureDate != nil else { return nil }

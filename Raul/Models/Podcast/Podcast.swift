@@ -311,8 +311,8 @@ final class Podcast: Identifiable {
     }
 }
 
-struct PodcastFeedAbandonmentAssessment: Equatable {
-    enum Kind: Equatable {
+struct PodcastFeedAbandonmentAssessment: Equatable, Sendable {
+    enum Kind: Equatable, Sendable {
         case unavailableFeed
         case likelyCancelled
     }
@@ -324,20 +324,17 @@ struct PodcastFeedAbandonmentAssessment: Equatable {
     let predictedCadenceLabel: String?
     let missedReleaseCount: Int?
 
+    /// Full assessment, including the release-pattern check. The pattern
+    /// check runs a bounded Episode fetch on `podcast.modelContext`, so this
+    /// must never be called while SwiftUI builds a list row. Library rows use
+    /// `unavailableFeedAssessment` plus `PodcastFeedHealthCache` instead.
     static func evaluate(
         metadata: PodcastMetaData,
         podcast: Podcast?,
         now: Date = Date()
     ) -> PodcastFeedAbandonmentAssessment? {
-        if hasSustainedTerminalFailure(metadata: metadata, now: now) {
-            return PodcastFeedAbandonmentAssessment(
-                kind: .unavailableFeed,
-                title: "Podcast feed unavailable",
-                detail: "The feed has been unreachable repeatedly for more than seven days.",
-                evidenceDate: metadata.lastFeedFailureDate,
-                predictedCadenceLabel: nil,
-                missedReleaseCount: nil
-            )
+        if let unavailable = unavailableFeedAssessment(metadata: metadata, now: now) {
+            return unavailable
         }
 
         guard metadata.isSubscribed,
@@ -351,6 +348,32 @@ struct PodcastFeedAbandonmentAssessment: Equatable {
             return nil
         }
 
+        return likelyCancelledAssessment(metadata: metadata, pattern: pattern, now: now)
+    }
+
+    /// Stored-failure-only check. Reads scalar metadata fields and never
+    /// touches episodes, so it is safe from row construction.
+    static func unavailableFeedAssessment(
+        metadata: PodcastMetaData,
+        now: Date
+    ) -> PodcastFeedAbandonmentAssessment? {
+        guard hasSustainedTerminalFailure(metadata: metadata, now: now) else { return nil }
+        return PodcastFeedAbandonmentAssessment(
+            kind: .unavailableFeed,
+            title: "Podcast feed unavailable",
+            detail: "The feed has been unreachable repeatedly for more than seven days.",
+            evidenceDate: metadata.lastFeedFailureDate,
+            predictedCadenceLabel: nil,
+            missedReleaseCount: nil
+        )
+    }
+
+    /// Pure decision from an already computed release pattern.
+    static func likelyCancelledAssessment(
+        metadata: PodcastMetaData,
+        pattern: PodcastReleasePredictor.ReleasePattern,
+        now: Date
+    ) -> PodcastFeedAbandonmentAssessment? {
         let interval = max(pattern.estimatedInterval, 24 * 60 * 60)
         let quietDuration = now.timeIntervalSince(pattern.latestReleaseDate)
         let requiredSilence = requiredSilenceDuration(

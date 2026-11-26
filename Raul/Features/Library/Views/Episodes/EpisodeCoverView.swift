@@ -51,19 +51,26 @@ struct CoverImageView: View {
         // Only run the task when the imageKey changes (i.e., at chapter boundaries
         // or when the underlying image source changes), not on every playback tick.
         .onReceive(NotificationCenter.default.publisher(for: .artworkConnectivityRecovered)) { _ in
+            // Covers that already show their preferred image have nothing to
+            // retry; only unresolved ones restart (bounded by the shared
+            // artwork concurrency limiter).
+            guard ArtworkNotificationScope.needsRetry(lastAppliedKey: lastAppliedKey, imageKey: imageKey) else { return }
             retryRevision &+= 1
         }
         .onReceive(NotificationCenter.default.publisher(for: .podcastSettingsDidChange)) { _ in
+            // The notification carries no podcast identity. Only credentialed
+            // artwork can recover from a settings (credential) change, and
+            // only when it has not loaded yet.
+            guard let profileID = accessProfile?.id,
+                  ArtworkNotificationScope.needsRetry(lastAppliedKey: lastAppliedKey, imageKey: imageKey) else { return }
             Task { @MainActor in
-                await ArtworkRecoveryCoordinator.shared.resetAuthenticationFailures(profileID: accessProfile?.id)
+                await ArtworkRecoveryCoordinator.shared.resetAuthenticationFailures(profileID: profileID)
                 retryRevision &+= 1
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished)) { notification in
-            guard let completedURL = notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL] as? URL,
-                  completedURL == episode?.url else { return }
+        .modifier(EpisodeDownloadArtworkRetry(episodeURL: episode?.url) {
             retryRevision &+= 1
-        }
+        })
         .onChange(of: resolvedEpisodeIdentity) { _, _ in
             loadedImage = nil
             lastAppliedKey = ""
@@ -81,19 +88,11 @@ struct CoverImageView: View {
                 return
             }
 
-            // With no intentional delay, the repository already checks memory,
-            // disk, and network in that order. Calling the disk-only API first
-            // would repeat every cache miss before an inbox cover can download.
-            if loadDelay > .zero {
-                if await loadPersistedImage(for: imageKey) {
-                    return
-                }
-                do {
-                    try await Task.sleep(for: loadDelay)
-                } catch {
-                    return
-                }
-            }
+            // Memory was checked above. A configured row delay must protect
+            // disk reads and decodes too: rows that only flash past during a
+            // fast scroll are cancelled before any I/O. The repository then
+            // checks disk before network.
+            guard await ArtworkLoadDeferral.waitForDeferWindow(loadDelay) else { return }
             while !Task.isCancelled, key == imageKey {
                 await loadImage(for: key)
                 guard key == imageKey, lastAppliedKey != key,
@@ -239,33 +238,6 @@ struct CoverImageView: View {
     }
 
     @MainActor
-    private func loadPersistedImage(for key: String) async -> Bool {
-        guard key == imageKey, accessProfile == nil else { return false }
-
-        let url: URL?
-        if let chapter = activeChapter, chapter.imageData?.isEmpty != false {
-            url = chapter.image
-        } else if activeChapter != nil {
-            return lastAppliedKey == key
-        } else {
-            url = imageURL ?? fallbackEpisodeOrPodcastURL
-        }
-
-        guard let url,
-              let uiImage = await ImageLoaderAndCache.loadPersistedUIImage(
-                from: url,
-                maxPixelSize: maxPixelSize
-              ),
-              key == imageKey else {
-            return false
-        }
-
-        loadedImage = Image(uiImage: uiImage)
-        lastAppliedKey = key
-        return true
-    }
-
-    @MainActor
     private func loadImage(for key: String) async {
         // Resolve and load based on the current key.
         // Keep a local copy to guard against race conditions.
@@ -367,11 +339,14 @@ struct BlurredCoverImageView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .artworkConnectivityRecovered)) { _ in
+            guard ArtworkNotificationScope.needsRetry(lastAppliedKey: lastAppliedKey, imageKey: imageKey) else { return }
             retryRevision &+= 1
         }
         .onReceive(NotificationCenter.default.publisher(for: .podcastSettingsDidChange)) { _ in
+            guard let profileID = accessProfile?.id,
+                  ArtworkNotificationScope.needsRetry(lastAppliedKey: lastAppliedKey, imageKey: imageKey) else { return }
             Task { @MainActor in
-                await ArtworkRecoveryCoordinator.shared.resetAuthenticationFailures(profileID: accessProfile?.id)
+                await ArtworkRecoveryCoordinator.shared.resetAuthenticationFailures(profileID: profileID)
                 retryRevision &+= 1
             }
         }
@@ -391,16 +366,9 @@ struct BlurredCoverImageView: View {
                 return
             }
 
-            if loadDelay > .zero {
-                if await loadPersistedImage(for: imageKey) {
-                    return
-                }
-                do {
-                    try await Task.sleep(for: loadDelay)
-                } catch {
-                    return
-                }
-            }
+            // Defer disk reads and blur generation until the row survives
+            // its delay window; memory was checked above.
+            guard await ArtworkLoadDeferral.waitForDeferWindow(loadDelay) else { return }
             while !Task.isCancelled {
                 await loadImage(for: imageKey)
                 guard lastAppliedKey != imageKey,
@@ -479,25 +447,6 @@ struct BlurredCoverImageView: View {
     }
 
     @MainActor
-    private func loadPersistedImage(for key: String) async -> Bool {
-        guard key == imageKey,
-              accessProfile == nil,
-              let resolvedURL,
-              let uiImage = await ImageLoaderAndCache.loadPersistedBlurredUIImage(
-                from: resolvedURL,
-                radius: radius,
-                maxPixelSize: maxPixelSize
-              ),
-              key == imageKey else {
-            return false
-        }
-
-        loadedImage = Image(uiImage: uiImage)
-        lastAppliedKey = key
-        return true
-    }
-
-    @MainActor
     private func loadImage(for key: String) async {
         guard key != lastAppliedKey else { return }
         guard let resolvedURL else {
@@ -515,6 +464,49 @@ struct BlurredCoverImageView: View {
            key == imageKey {
             loadedImage = Image(uiImage: uiImage)
             lastAppliedKey = key
+        }
+    }
+}
+
+/// Ordering helper for deferred artwork loads: callers check the in-memory
+/// cache first, then wait here, and only start disk/network/blur work when
+/// this returns `true`.
+enum ArtworkLoadDeferral {
+    static func waitForDeferWindow(_ delay: Duration) async -> Bool {
+        if delay > .zero {
+            do {
+                try await Task.sleep(for: delay)
+            } catch {
+                return false
+            }
+        }
+        return Task.isCancelled == false
+    }
+}
+
+enum ArtworkNotificationScope {
+    /// A broadcast recovery/settings notification is only relevant to a view
+    /// whose preferred image has not been applied yet.
+    static func needsRetry(lastAppliedKey: String, imageKey: String) -> Bool {
+        lastAppliedKey != imageKey
+    }
+}
+
+/// Podcast-only artwork has no episode file, so it installs no
+/// download-finished observer at all.
+private struct EpisodeDownloadArtworkRetry: ViewModifier {
+    let episodeURL: URL?
+    let retry: () -> Void
+
+    func body(content: Content) -> some View {
+        if let episodeURL {
+            content.onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished)) { notification in
+                guard let completedURL = notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL] as? URL,
+                      completedURL == episodeURL else { return }
+                retry()
+            }
+        } else {
+            content
         }
     }
 }
