@@ -1,6 +1,15 @@
 import Foundation
 import SwiftData
 
+/// What one import pass did to one synchronized stream. A no-op pass reports
+/// rows fetched but zero changed rows and zero saves.
+struct StoreSplitUserStateStreamMetrics: Equatable, Sendable {
+    var rowsFetched = 0
+    var rowsChanged = 0
+    var saves = 0
+    var fullPass = false
+}
+
 struct StoreSplitUserStateImportResult: Sendable {
     var subscriptionsApplied = 0
     var episodeStatesApplied = 0
@@ -21,6 +30,11 @@ struct StoreSplitUserStateImportResult: Sendable {
     var unresolvedStreams: Set<StoreSplitUserStateStream> = []
     var failed = 0
     var interruptedByPlayback = false
+    var streamMetrics: [StoreSplitUserStateStream: StoreSplitUserStateStreamMetrics] = [:]
+    /// Library saves made by this pass, across all streams.
+    var librarySaves: Int {
+        streamMetrics.values.reduce(0) { $0 + $1.saves }
+    }
 }
 
 actor StoreSplitUserStateImporter {
@@ -41,6 +55,18 @@ actor StoreSplitUserStateImporter {
     private let subscriptionCreationCutoff: Date?
     private let credentialStore: any PodcastCredentialStore
     private let previousImportCursors: [StoreSplitUserStateStream: StoreSplitImportCursor]
+    /// Where per-batch cursor progress is persisted; nil reads and writes no
+    /// cursor, so every stream is walked in full.
+    private let cursorDefaults: UserDefaults?
+    /// A user-requested reconcile walks the small streams in full instead of
+    /// trusting the cursors.
+    private let forcesFullPass: Bool
+    private var streamMetrics: [StoreSplitUserStateStream: StoreSplitUserStateStreamMetrics] = [:]
+    /// Normalized feed keys of podcasts this pass created from subscriptions;
+    /// their preferences may have been imported before the podcast existed.
+    private var createdPodcastFeedKeys: Set<String> = []
+    private var podcastIndexBuilt = false
+    private var completedDeltaBatches = 0
     private var legacyContext: ModelContext
     private var userStateContext: ModelContext
     private var podcastsByComparisonKey: [String: PersistentIdentifier] = [:]
@@ -67,6 +93,10 @@ actor StoreSplitUserStateImporter {
     /// regression in it shows up here and nowhere else — the import's output is
     /// identical either way, just orders of magnitude more expensive.
     nonisolated(unsafe) static var debugFeedScanCount = 0
+    /// Test hook: smaller source pages so batch boundaries can be exercised.
+    nonisolated(unsafe) static var debugSourcePageSizeOverride: Int?
+    /// Test hook: behave as if interrupted after this many saved delta batches.
+    nonisolated(unsafe) static var debugStopAfterDeltaBatches: Int?
 #endif
 
     private init(
@@ -76,8 +106,13 @@ actor StoreSplitUserStateImporter {
         cacheContainer: ModelContainer? = nil,
         isInitialRuntimeHydration: Bool = false,
         continuesDuringPlayback: Bool = false,
-        episodeStatesUpdatedSince: Date? = nil
+        episodeStatesUpdatedSince: Date? = nil,
+        cursorSuiteName: String? = nil,
+        forcesFullPass: Bool = false
     ) {
+        let cursorDefaults = cursorSuiteName.flatMap { UserDefaults(suiteName: $0) }
+        self.cursorDefaults = cursorDefaults
+        self.forcesFullPass = forcesFullPass
         self.continuesDuringPlayback = continuesDuringPlayback
         self.episodeStatesUpdatedSince = episodeStatesUpdatedSince
         self.legacyContainer = legacyContainer
@@ -86,7 +121,9 @@ actor StoreSplitUserStateImporter {
         self.isInitialRuntimeHydration = isInitialRuntimeHydration
         self.subscriptionCreationCutoff = StoreCutoverState.localLibraryStartedAt
         self.credentialStore = credentialStore
-        previousImportCursors = StoreSplitImportCursorStore.load()
+        previousImportCursors = cursorDefaults.map {
+            StoreSplitImportCursorStore.load(defaults: $0)
+        } ?? [:]
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
         legacyContext.autosaveEnabled = false
@@ -106,7 +143,8 @@ actor StoreSplitUserStateImporter {
         episodeStatesUpdatedSince: Date? = nil,
         changedStreams: Set<StoreSplitUserStateStream> = Set(
             StoreSplitUserStateStream.allCases
-        )
+        ),
+        cursorSuiteName: String? = StoreSplitImportCursorStore.importerSuiteName
     ) async -> StoreSplitUserStateImportResult {
         // Run inline (not detached) so cancellation from the caller's task
         // propagates into the importer. A detached task would keep scanning the
@@ -119,7 +157,9 @@ actor StoreSplitUserStateImporter {
             cacheContainer: cacheContainer,
             isInitialRuntimeHydration: isInitialRuntimeHydration,
             continuesDuringPlayback: continuesDuringPlayback,
-            episodeStatesUpdatedSince: episodeStatesUpdatedSince
+            episodeStatesUpdatedSince: episodeStatesUpdatedSince,
+            cursorSuiteName: cursorSuiteName,
+            forcesFullPass: authoritativePlaylists
         )
         var result = await importer.run(
             authoritativePlaylists: authoritativePlaylists,
@@ -128,6 +168,10 @@ actor StoreSplitUserStateImporter {
             changedStreams: changedStreams
         )
         if await importer.sourceReadFailed { result.failed += 1 }
+        // Collected here rather than in `run` so an interrupted or failed pass
+        // still reports what it read and wrote.
+        result.streamMetrics = await importer.streamMetrics
+        await importer.logStreamMetrics(result: result)
         return result
     }
 
@@ -189,9 +233,12 @@ actor StoreSplitUserStateImporter {
             return result
         }
         await awaitIdleWindow()
+        // Episode state resolves its rows by GUID/URL first and only needs the
+        // podcast index for the last-resort feed scan, which builds it lazily.
+        // A playback-position-only change therefore never reads the library's
+        // podcast list.
         let needsPodcastIndex = changedStreams.intersection([
             .subscriptions,
-            .episodeState,
             .playlists,
             .playlistEntries,
             .queueEntries,
@@ -205,16 +252,21 @@ actor StoreSplitUserStateImporter {
         guard sourceReadFailed == false else { return result }
 
         let subscriptions: [String: SubscriptionSync]
+        var subscriptionReader = makeDeltaReader(for: .subscriptions, periodicFullPass: true)
+        let subscriptionsFailedBefore = result.failed
         if changedStreams.contains(.subscriptions) {
-            do {
-                subscriptions = deduplicatedSubscriptions(
-                    try userStateContext.fetch(FetchDescriptor<SubscriptionSync>())
-                )
-            } catch {
-                sourceReadFailed = true
+            // Subscriptions are bounded by the library size, so the changed
+            // rows are collected first and deduplicated across pages before
+            // anything is applied.
+            var records: [SubscriptionSync] = []
+            while let page = nextDeltaPage(Self.subscriptionDelta, reader: &subscriptionReader) {
+                records.append(contentsOf: page)
+            }
+            guard sourceReadFailed == false else {
                 CrashBreadcrumbs.shared.record("store_split_import_subscriptions_fetch_failed")
                 return result
             }
+            subscriptions = deduplicatedSubscriptions(records)
         } else {
             subscriptions = [:]
         }
@@ -263,6 +315,12 @@ actor StoreSplitUserStateImporter {
                 let podcast = Podcast(feed: resolvedFeedURL)
                 legacyContext.insert(podcast)
                 createdPodcast = true
+                self.createdPodcastFeedKeys.insert(
+                    PodcastFeedIdentity.normalizedFeedURLString(resolvedFeedURL)
+                )
+                self.createdPodcastFeedKeys.insert(
+                    PodcastFeedIdentity.normalizedFeedURLString(manifestFeedURL)
+                )
                 for key in resolvedFeedURL.podcastFeedComparisonKeys {
                     self.podcastsByComparisonKey[key] = podcast.persistentModelID
                 }
@@ -304,14 +362,17 @@ actor StoreSplitUserStateImporter {
                     setIfChanged(podcast, \.title, titleOverride)
                 }
             } else {
-                metadata.subscriptionDate = nil
+                setIfChanged(metadata, \.subscriptionDate, Optional<Date>.none)
             }
             result.subscriptionsApplied += 1
         }
             if StoreDevelopmentConfiguration.modeAllowsDuplicateCleanupDuringProjection {
                 result.duplicatePodcastsHidden = hideDuplicatePodcasts(podcasts)
             }
-            saveLegacyChanges(phase: "subscriptions", result: &result)
+            if saveLegacyChanges(phase: "subscriptions", stream: .subscriptions, result: &result) {
+                finishDeltaBatch(subscriptionReader, failedBefore: subscriptionsFailedBefore, result: result)
+                finishDeltaStream(subscriptionReader, failedBefore: subscriptionsFailedBefore, result: result)
+            }
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
@@ -343,7 +404,7 @@ actor StoreSplitUserStateImporter {
            changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
             let migratedLocalSettingsIDs = applyLocalSettings(result: &result)
             guard result.failed == 0 else { return result }
-            guard saveLegacyChanges(phase: "local_settings_recovery", result: &result) else {
+            guard saveLegacyChanges(phase: "local_settings_recovery", stream: .preferences, result: &result) else {
                 return result
             }
             retireLocalSettingsRows(migratedLocalSettingsIDs)
@@ -351,11 +412,17 @@ actor StoreSplitUserStateImporter {
         }
         // Preferences store playlist sync identities. Project playlists first
         // so newly received targets can be resolved to this device's local UUID.
-        if changedStreams.contains(.preferences) || changedStreams.contains(.playlists) {
+        if changedStreams.contains(.preferences)
+            || changedStreams.contains(.playlists)
+            || createdPodcastFeedKeys.isEmpty == false {
             await awaitIdleWindow()
-            await applyPreferences(result: &result)
+            await applyPreferences(
+                includeChangedRecords: changedStreams.contains(.preferences),
+                result: &result
+            )
             guard result.failed == 0, sourceReadFailed == false else { return result }
-            guard saveLegacyChanges(phase: "preferences", result: &result) else { return result }
+            guard result.interruptedByPlayback == false else { return result }
+            guard saveLegacyChanges(phase: "preferences", stream: .preferences, result: &result) else { return result }
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
@@ -367,7 +434,7 @@ actor StoreSplitUserStateImporter {
             await applyBookmarks(result: &result)
             guard result.failed == 0, result.interruptedByPlayback == false else { return result }
         }
-        saveLegacyChanges(phase: "user_state", result: &result)
+        saveLegacyChanges(phase: "user_state", stream: .bookmarks, result: &result)
         if await shouldStop() {
             result.interruptedByPlayback = true
             return result
@@ -382,7 +449,7 @@ actor StoreSplitUserStateImporter {
                 result: &result
             )
             guard result.failed == 0, result.interruptedByPlayback == false else { return result }
-            saveLegacyChanges(phase: "listening_history_final", result: &result)
+            saveLegacyChanges(phase: "listening_history_final", stream: .listeningHistory, result: &result)
         }
         // Disabling projection does not prove the synchronized source is
         // complete. Preserve all previously projected local sessions.
@@ -437,6 +504,7 @@ actor StoreSplitUserStateImporter {
 #if DEBUG
         Self.debugPodcastIndexBuildCount += 1
 #endif
+        podcastIndexBuilt = true
         let startedAt = Date()
         let cpuStartedAt = SystemProcessCPUTimeSource().sample().cpuTime
         let podcasts: [Podcast]
@@ -489,10 +557,9 @@ actor StoreSplitUserStateImporter {
     }
 
     private func applyPreferences(
+        includeChangedRecords: Bool,
         result: inout StoreSplitUserStateImportResult
     ) async {
-        var offset = 0
-        var seenIDs = Set<String>()
         let decoder = JSONDecoder()
         let playlists: [Playlist]
         do { playlists = try legacyContext.fetch(FetchDescriptor<Playlist>()) }
@@ -501,131 +568,218 @@ actor StoreSplitUserStateImporter {
             CrashBreadcrumbs.shared.record("store_split_preferences_destination_fetch_failed")
             return
         }
-        let playlistsBySyncID = Dictionary(
-            playlists.map { ($0.storeSplitSyncID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
 
-        while true {
-            let page = fetchPage(
-                PodcastPreferenceSync.self,
-                offset: offset,
-                limit: sourcePageSize,
-                sortBy: [SortDescriptor(\PodcastPreferenceSync.updatedAt, order: .reverse)]
-            )
-            guard page.isEmpty == false else { break }
-
-            for record in page where seenIDs.insert(record.id).inserted {
-                let settings: PodcastSettings
-                if let feedKey = record.feedURL {
-                    guard let feedURL = URL(string: feedKey) else {
-                        result.failed += 1
-                        continue
-                    }
-                    guard let podcast = feedURL.podcastFeedComparisonKeys.compactMap({
-                        podcastsByComparisonKey[$0].flatMap(indexedPodcast)
-                    }).first else {
-                        appendMissingFeed(feedKey, to: &result)
-                        continue
-                    }
-                    settings = ensureSettings(for: podcast)
-                } else {
-                    let globalTitle = "de.holgerkrupp.podbay.queue"
-                    var descriptor = FetchDescriptor<PodcastSettings>(
-                        predicate: #Predicate { $0.title == globalTitle }
-                    )
-                    descriptor.fetchLimit = 1
-                    do {
-                        if let existing = try legacyContext.fetch(descriptor).first {
-                            settings = existing
-                        } else {
-                            settings = PodcastSettings(defaultSettings: true)
-                            legacyContext.insert(settings)
-                        }
-                    } catch {
-                        legacyContext.rollback()
-                        result.failed += 1
-                        CrashBreadcrumbs.shared.record("store_split_preferences_destination_fetch_failed")
+        if includeChangedRecords {
+            var reader = makeDeltaReader(for: .preferences, periodicFullPass: true)
+            let failedBefore = result.failed
+            while let page = nextDeltaPage(Self.preferenceDelta, reader: &reader) {
+                for record in page {
+                    guard applyPreference(record, playlists: playlists, decoder: decoder, result: &result) else {
                         return
                     }
                 }
-
-                setIfChanged(settings, \.isEnabled, record.isEnabled)
-                if let data = record.playNextPositionRawValue.data(using: .utf8),
-                   let position = try? decoder.decode(Playlist.Position.self, from: data) {
-                    setIfChanged(settings, \.playnextPosition, position)
+                guard saveLegacyChanges(
+                    phase: "preferences_batch",
+                    stream: .preferences,
+                    result: &result
+                ) else { return }
+                finishDeltaBatch(reader, failedBefore: failedBefore, result: result)
+                if await shouldStop() {
+                    result.interruptedByPlayback = true
+                    return
                 }
-                if let storedPlaylistID = record.defaultPlaylistID {
-                    let localPlaylistID = playlistsBySyncID[storedPlaylistID]?.id
-                        ?? UUID(uuidString: storedPlaylistID)
-                    if let localPlaylistID {
-                        setIfChanged(settings, \.defaultPlaylistID, localPlaylistID)
-                    }
-                }
-                if let value = record.autoDownload {
-                    setIfChanged(settings, \.autoDownload, value)
-                }
-                if let value = record.autoDownloadEpisodeCount {
-                    setIfChanged(settings, \.autoDownloadEpisodeCount, value)
-                }
-                if let value = record.autoDownloadSelectionRawValue {
-                    setIfChanged(settings, \.autoDownloadSelectionRawValue, value)
-                }
-                if let value = record.autoDownloadNetworkModeRawValue {
-                    setIfChanged(settings, \.autoDownloadNetworkModeRawValue, value)
-                }
-                if let value = record.autoDownloadIncludesArchivedEpisodes {
-                    setIfChanged(settings, \.autoDownloadIncludesArchivedEpisodes, value)
-                }
-                if let value = record.archiveFileRetentionDays {
-                    setIfChanged(settings, \.archiveFileRetentionDays, value)
-                }
-                setIfChanged(settings, \.playbackSpeed, record.playbackSpeed.map(Float.init))
-                setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
-                setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)
-                setIfChanged(settings, \.voiceEnhancementEnabled, record.voiceEnhancementEnabled)
-                if let preset = record.equalizerPresetRawValue,
-                   EqualizerPreset(rawValue: preset) != nil {
-                    setIfChanged(settings, \.equalizerPresetRawValue, preset)
-                }
-                setIfChanged(settings, \.autoDownloadFilterJSON, record.autoDownloadFilterJSON)
-                if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
-                   let keywords = try? decoder.decode([skipKey].self, from: data) {
-                    if let existingData = try? JSONEncoder().encode(settings.autoSkipKeywords),
-                       existingData != data {
-                        settings.autoSkipKeywords = keywords
-                    }
-                }
-                setIfChanged(settings, \.cutFront, record.cutFront.map(Float.init))
-                setIfChanged(settings, \.cutEnd, record.cutEnd.map(Float.init))
-                setIfChanged(settings, \.skipForward, SkipSteps(rawValue: record.skipForwardSeconds) ?? .thirty)
-                setIfChanged(settings, \.skipBack, SkipSteps(rawValue: record.skipBackSeconds) ?? .fifteen)
-                setIfChanged(settings, \.skipForwardBehaviorRawValue, record.skipForwardBehaviorRawValue)
-                setIfChanged(settings, \.skipBackBehaviorRawValue, record.skipBackBehaviorRawValue)
-                setIfChanged(settings, \.markAsPlayedAfterSubscribe, record.markAsPlayedAfterSubscribe)
-                setIfChanged(settings, \.playSumAdjustedbyPlayspeed, record.playSumAdjustedByPlaySpeed)
-                setIfChanged(settings, \.enableLockscreenSlider, record.enableLockscreenSlider)
-                setIfChanged(settings, \.enableInAppSlider, record.enableInAppSlider)
-                setIfChanged(settings, \.getContinuousPlay, record.continuousPlayEnabled)
-                setIfChanged(settings, \.showLivePodcasts, record.showLivePodcasts)
-                setIfChanged(settings, \.enableLiveItemNotifications, record.liveItemNotificationsEnabled)
-                if let value = record.networkTrackingProtectionEnabled {
-                    setIfChanged(settings, \.networkTrackingProtectionEnabled, value)
-                }
-                setIfChanged(settings, \.sleepTimerAddMinutes, record.sleepTimerAddMinutes)
-                setIfChanged(settings, \.sleepTimerDurationToReactivate, record.sleepTimerDurationToReactivate)
-                setIfChanged(settings, \.sleepTimerVoiceFeedbackEnabled, record.sleepTimerVoiceFeedbackEnabled)
-                setIfChanged(settings, \.sleepTimerText, record.sleepTimerText)
-                result.preferencesApplied += 1
             }
+            guard sourceReadFailed == false else { return }
+            finishDeltaStream(reader, failedBefore: failedBefore, result: result)
+        }
 
-            saveLegacyChanges(phase: "preferences_batch_\(offset)", result: &result)
-            refreshContexts()
-            if await shouldStop() {
-                result.interruptedByPlayback = true
+        // A preference can reach this device before the subscription that
+        // creates its podcast. Those records sit behind the cursor, so the
+        // podcasts created in this pass look their preferences up directly.
+        if createdPodcastFeedKeys.isEmpty == false {
+            let feedKeys = Array(createdPodcastFeedKeys)
+            let descriptor = FetchDescriptor<PodcastPreferenceSync>(
+                predicate: #Predicate { record in
+                    record.feedURL != nil && feedKeys.contains(record.feedURL!)
+                },
+                sortBy: [SortDescriptor(\PodcastPreferenceSync.updatedAt)]
+            )
+            let records: [PodcastPreferenceSync]
+            do { records = try userStateContext.fetch(descriptor) }
+            catch {
+                sourceReadFailed = true
+                CrashBreadcrumbs.shared.record("store_split_import_fetch_failed")
                 return
             }
-            offset += page.count
+            streamMetrics[.preferences, default: StoreSplitUserStateStreamMetrics()].rowsFetched += records.count
+            for record in records {
+                guard applyPreference(record, playlists: playlists, decoder: decoder, result: &result) else {
+                    return
+                }
+            }
+        }
+
+        reconcilePlaylistTargets(playlists: playlists)
+    }
+
+    /// Applies one synchronized preference. Returns false when the pass must
+    /// stop because the destination could not be read.
+    private func applyPreference(
+        _ record: PodcastPreferenceSync,
+        playlists: [Playlist],
+        decoder: JSONDecoder,
+        result: inout StoreSplitUserStateImportResult
+    ) -> Bool {
+        let settings: PodcastSettings
+        if let feedKey = record.feedURL {
+            guard let feedURL = URL(string: feedKey) else {
+                result.failed += 1
+                return true
+            }
+            guard let podcast = feedURL.podcastFeedComparisonKeys.compactMap({
+                podcastsByComparisonKey[$0].flatMap(indexedPodcast)
+            }).first else {
+                appendMissingFeed(feedKey, to: &result)
+                return true
+            }
+            settings = ensureSettings(for: podcast)
+        } else {
+            let globalTitle = "de.holgerkrupp.podbay.queue"
+            var descriptor = FetchDescriptor<PodcastSettings>(
+                predicate: #Predicate { $0.title == globalTitle }
+            )
+            descriptor.fetchLimit = 1
+            do {
+                if let existing = try legacyContext.fetch(descriptor).first {
+                    settings = existing
+                } else {
+                    settings = PodcastSettings(defaultSettings: true)
+                    legacyContext.insert(settings)
+                }
+            } catch {
+                legacyContext.rollback()
+                result.failed += 1
+                CrashBreadcrumbs.shared.record("store_split_preferences_destination_fetch_failed")
+                return false
+            }
+        }
+
+        setIfChanged(settings, \.isEnabled, record.isEnabled)
+        if let data = record.playNextPositionRawValue.data(using: .utf8),
+           let position = try? decoder.decode(Playlist.Position.self, from: data) {
+            setIfChanged(settings, \.playnextPosition, position)
+        }
+        if let storedPlaylistID = record.defaultPlaylistID {
+            // Keep the synchronized choice itself, resolved or not. Only a
+            // playlist that exists on this device may become the local
+            // UUID; a foreign UUID never does (#359).
+            let match = PodcastPlaylistTargetResolver.matchingPlaylist(
+                syncID: storedPlaylistID,
+                in: playlists
+            )
+            setIfChanged(
+                settings,
+                \.defaultPlaylistSyncID,
+                Optional(match?.storeSplitSyncID ?? storedPlaylistID)
+            )
+            resolveLocalPlaylistTarget(of: settings, match: match, playlists: playlists)
+        }
+        if let value = record.autoDownload {
+            setIfChanged(settings, \.autoDownload, value)
+        }
+        if let value = record.autoDownloadEpisodeCount {
+            setIfChanged(settings, \.autoDownloadEpisodeCount, value)
+        }
+        if let value = record.autoDownloadSelectionRawValue {
+            setIfChanged(settings, \.autoDownloadSelectionRawValue, value)
+        }
+        if let value = record.autoDownloadNetworkModeRawValue {
+            setIfChanged(settings, \.autoDownloadNetworkModeRawValue, value)
+        }
+        if let value = record.autoDownloadIncludesArchivedEpisodes {
+            setIfChanged(settings, \.autoDownloadIncludesArchivedEpisodes, value)
+        }
+        if let value = record.archiveFileRetentionDays {
+            setIfChanged(settings, \.archiveFileRetentionDays, value)
+        }
+        setIfChanged(settings, \.playbackSpeed, record.playbackSpeed.map(Float.init))
+        setIfChanged(settings, \.reduceSilenceGapsEnabled, record.reduceSilenceGapsEnabled)
+        setIfChanged(settings, \.silenceGapReductionLevelRawValue, record.silenceGapReductionLevelRawValue)
+        setIfChanged(settings, \.voiceEnhancementEnabled, record.voiceEnhancementEnabled)
+        if let preset = record.equalizerPresetRawValue,
+           EqualizerPreset(rawValue: preset) != nil {
+            setIfChanged(settings, \.equalizerPresetRawValue, preset)
+        }
+        setIfChanged(settings, \.autoDownloadFilterJSON, record.autoDownloadFilterJSON)
+        if let data = record.autoSkipKeywordsJSON.data(using: .utf8),
+           let keywords = try? decoder.decode([skipKey].self, from: data) {
+            if let existingData = try? JSONEncoder().encode(settings.autoSkipKeywords),
+               existingData != data {
+                settings.autoSkipKeywords = keywords
+            }
+        }
+        setIfChanged(settings, \.cutFront, record.cutFront.map(Float.init))
+        setIfChanged(settings, \.cutEnd, record.cutEnd.map(Float.init))
+        setIfChanged(settings, \.skipForward, SkipSteps(rawValue: record.skipForwardSeconds) ?? .thirty)
+        setIfChanged(settings, \.skipBack, SkipSteps(rawValue: record.skipBackSeconds) ?? .fifteen)
+        setIfChanged(settings, \.skipForwardBehaviorRawValue, record.skipForwardBehaviorRawValue)
+        setIfChanged(settings, \.skipBackBehaviorRawValue, record.skipBackBehaviorRawValue)
+        setIfChanged(settings, \.markAsPlayedAfterSubscribe, record.markAsPlayedAfterSubscribe)
+        setIfChanged(settings, \.playSumAdjustedbyPlayspeed, record.playSumAdjustedByPlaySpeed)
+        setIfChanged(settings, \.enableLockscreenSlider, record.enableLockscreenSlider)
+        setIfChanged(settings, \.enableInAppSlider, record.enableInAppSlider)
+        setIfChanged(settings, \.getContinuousPlay, record.continuousPlayEnabled)
+        setIfChanged(settings, \.showLivePodcasts, record.showLivePodcasts)
+        setIfChanged(settings, \.enableLiveItemNotifications, record.liveItemNotificationsEnabled)
+        if let value = record.networkTrackingProtectionEnabled {
+            setIfChanged(settings, \.networkTrackingProtectionEnabled, value)
+        }
+        setIfChanged(settings, \.sleepTimerAddMinutes, record.sleepTimerAddMinutes)
+        setIfChanged(settings, \.sleepTimerDurationToReactivate, record.sleepTimerDurationToReactivate)
+        setIfChanged(settings, \.sleepTimerVoiceFeedbackEnabled, record.sleepTimerVoiceFeedbackEnabled)
+        setIfChanged(settings, \.sleepTimerText, record.sleepTimerText)
+        result.preferencesApplied += 1
+        return true
+    }
+
+    /// Points each stored playlist choice at this device's copy of the
+    /// playlist once it exists. Runs whenever playlists or preferences
+    /// change, so a preference imported before its playlist resolves when the
+    /// playlist arrives without re-reading the preference stream.
+    private func reconcilePlaylistTargets(playlists: [Playlist]) {
+        let descriptor = FetchDescriptor<PodcastSettings>(
+            predicate: #Predicate { $0.defaultPlaylistSyncID != nil }
+        )
+        guard let settingsRows = try? legacyContext.fetch(descriptor) else {
+            // The stored choice is untouched and routing resolves it on read;
+            // a later pass retries the local UUID.
+            CrashBreadcrumbs.shared.record("store_split_playlist_target_reconcile_failed")
+            return
+        }
+        for settings in settingsRows {
+            guard let syncID = settings.defaultPlaylistSyncID else { continue }
+            resolveLocalPlaylistTarget(
+                of: settings,
+                match: PodcastPlaylistTargetResolver.matchingPlaylist(syncID: syncID, in: playlists),
+                playlists: playlists
+            )
+        }
+    }
+
+    /// Sets the local UUID for a stored choice. An unresolved choice keeps
+    /// whatever local playlist the row already names (for example the
+    /// built-in queue repair of the global row) but drops a UUID that names
+    /// no playlist here, which only an older importer could have written.
+    private func resolveLocalPlaylistTarget(
+        of settings: PodcastSettings,
+        match: Playlist?,
+        playlists: [Playlist]
+    ) {
+        if let match {
+            setIfChanged(settings, \.defaultPlaylistID, Optional(match.id))
+        } else if let localID = settings.defaultPlaylistID,
+                  playlists.contains(where: { $0.id == localID }) == false {
+            settings.defaultPlaylistID = nil
         }
     }
 
@@ -710,17 +864,26 @@ actor StoreSplitUserStateImporter {
         recencyCutoff: Date?,
         result: inout StoreSplitUserStateImportResult
     ) async {
-        var offset = 0
-        var seenStateIDs = Set<String>()
+        // Episode state is the largest stream, so a manual reconcile does not
+        // force a full walk. It still gets the weekly full pass: progress from
+        // a device that was offline arrives with an `updatedAt` older than the
+        // cursor and would otherwise never be projected. Unchanged rows cost
+        // no writes. A narrow import (`episodeStatesUpdatedSince`) starts later
+        // than the cursor and therefore never advances it.
+        var reader = makeDeltaReader(
+            for: .episodeState,
+            periodicFullPass: true,
+            honorsForcedFullPass: false,
+            notBefore: episodeStatesUpdatedSince
+        )
+        let failedBefore = result.failed
 
         while true {
             await awaitIdleWindow()
-            let page = fetchEpisodeStatePage(offset: offset, limit: sourcePageSize)
-            guard page.isEmpty == false else { break }
+            guard let page = nextDeltaPage(Self.episodeStateDelta, reader: &reader) else { break }
 
             let freshStates = page.filter {
-                seenStateIDs.insert($0.id).inserted
-                && shouldProjectEpisodeState($0, recencyCutoff: recencyCutoff)
+                shouldProjectEpisodeState($0, recencyCutoff: recencyCutoff)
             }
             let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshStates.map {
@@ -805,17 +968,19 @@ actor StoreSplitUserStateImporter {
             guard persistMissingReferences(missing, result: &result) else { return }
 
             guard saveLegacyChanges(
-                phase: "episode_states_batch_\(offset)",
+                phase: "episode_states_batch",
+                stream: .episodeState,
                 result: &result
             ) else { return }
+            finishDeltaBatch(reader, failedBefore: failedBefore, result: result)
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
-
-            offset += page.count
         }
+        guard sourceReadFailed == false else { return }
+        finishDeltaStream(reader, failedBefore: failedBefore, result: result)
     }
 
     private func applyPlaylists(
@@ -927,6 +1092,7 @@ actor StoreSplitUserStateImporter {
 
             saveLegacyChanges(
                 phase: "playlists_batch_\(playlistOffset)",
+                stream: .playlists,
                 result: &result
             )
             if await shouldStop() {
@@ -1060,10 +1226,8 @@ actor StoreSplitUserStateImporter {
                     localEntriesByPlaylistID[localPlaylistID]?[identityKey] = newEntry
                     entry = newEntry
                 }
-                entry.episode = episode
-                entry.playlist = playlist
-                entry.order = record.sortIndex
-                entry.dateAdded = record.addedAt
+                assignIfChanged(entry, episode: episode, playlist: playlist,
+                                order: record.sortIndex, dateAdded: record.addedAt)
                 result.playlistEntriesApplied += 1
             }
 
@@ -1071,6 +1235,7 @@ actor StoreSplitUserStateImporter {
 
             guard saveLegacyChanges(
                 phase: "playlist_entries_batch_\(entryOffset)",
+                stream: .playlistEntries,
                 result: &result
             ) else { return }
             if await shouldStop() {
@@ -1205,10 +1370,8 @@ actor StoreSplitUserStateImporter {
                     entriesByIdentity[identityKey] = newEntry
                     entry = newEntry
                 }
-                entry.episode = episode
-                entry.playlist = playlist
-                entry.order = record.sortIndex
-                entry.dateAdded = record.addedAt
+                assignIfChanged(entry, episode: episode, playlist: playlist,
+                                order: record.sortIndex, dateAdded: record.addedAt)
                 result.playlistEntriesApplied += 1
             }
 
@@ -1216,6 +1379,7 @@ actor StoreSplitUserStateImporter {
 
             guard saveLegacyChanges(
                 phase: "queue_entries_batch_\(offset)",
+                stream: .queueEntries,
                 result: &result
             ) else { return }
             if await shouldStop() {
@@ -1253,19 +1417,14 @@ actor StoreSplitUserStateImporter {
             guard let uuid = $1.uuid else { return }
             $0[uuid.uuidString] = $1
         }
-        var seenBookmarkIDs = Set<String>()
-        var offset = 0
+        var reader = makeDeltaReader(for: .bookmarks, periodicFullPass: true)
+        let failedBefore = result.failed
 
         while true {
-            let page = fetchPage(
-                BookmarkSync.self,
-                offset: offset,
-                limit: sourcePageSize,
-                sortBy: [SortDescriptor(\BookmarkSync.updatedAt, order: .reverse)]
-            )
-            guard page.isEmpty == false else { break }
-
-            let freshRecords = page.filter { seenBookmarkIDs.insert($0.id).inserted }
+            // Oldest first, so a later page (newer rows) wins for any bookmark
+            // that appears more than once.
+            guard let page = nextDeltaPage(Self.bookmarkDelta, reader: &reader) else { break }
+            let freshRecords = page
             let episodesByIdentity = await resolveEpisodesByIdentity(
                 identityKeys: freshRecords.map {
                     stableIdentityKey(feedURL: $0.feedURL, episodeID: $0.episodeID)
@@ -1336,17 +1495,19 @@ actor StoreSplitUserStateImporter {
             guard persistMissingReferences(missing, result: &result) else { return }
 
             guard saveLegacyChanges(
-                phase: "bookmarks_batch_\(offset)",
+                phase: "bookmarks_batch",
+                stream: .bookmarks,
                 result: &result
             ) else { return }
+            finishDeltaBatch(reader, failedBefore: failedBefore, result: result)
             retireBookmarkDetailRows(reconciledDetailIDs)
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
-
-            offset += page.count
         }
+        guard sourceReadFailed == false else { return }
+        finishDeltaStream(reader, failedBefore: failedBefore, result: result)
     }
 
     private func applyLocalBookmarkDetail(
@@ -1400,26 +1561,30 @@ actor StoreSplitUserStateImporter {
     private func applyListeningHistory(
         result: inout StoreSplitUserStateImportResult
     ) async {
-        var seenHistoryKeys = Set<String>()
-        var offset = 0
         let activeSubscriptionKeys = activeSubscriptionComparisonKeys()
+        var reader = makeDeltaReader(for: .listeningHistory, periodicFullPass: true)
+        let failedBefore = result.failed
 
         while true {
-            let page = fetchPage(
-                ListeningHistorySync.self,
-                offset: offset,
-                limit: historyPageSize,
-                sortBy: [
-                    SortDescriptor(\ListeningHistorySync.updatedAt, order: .reverse),
-                    SortDescriptor(\ListeningHistorySync.endedAt, order: .reverse),
-                    SortDescriptor(\ListeningHistorySync.listenedSeconds, order: .reverse),
-                    SortDescriptor(\ListeningHistorySync.sourceDeviceID, order: .forward)
-                ]
-            )
+            guard let page = nextDeltaPage(
+                Self.listeningHistoryDelta,
+                reader: &reader,
+                pageSize: historyPageSize
+            ) else { break }
             guard sourceReadFailed == false else { return }
-            guard page.isEmpty == false else { break }
 
-            let freshRecords = page.filter {
+            // Pages run oldest first, so a later page always overrides an
+            // earlier one. Within a page, the preferred copy of a logical
+            // session is the one the full newest-first order put first.
+            var seenHistoryKeys = Set<String>()
+            let freshRecords = page.sorted { lhs, rhs in
+                if lhs.updatedAt != rhs.updatedAt { return lhs.updatedAt > rhs.updatedAt }
+                if lhs.endedAt != rhs.endedAt { return lhs.endedAt > rhs.endedAt }
+                if lhs.listenedSeconds != rhs.listenedSeconds {
+                    return lhs.listenedSeconds > rhs.listenedSeconds
+                }
+                return lhs.sourceDeviceID < rhs.sourceDeviceID
+            }.filter {
                 seenHistoryKeys.insert(
                     ListeningHistoryIdentity.canonicalAggregationKey(for: $0)
                 ).inserted
@@ -1537,17 +1702,19 @@ actor StoreSplitUserStateImporter {
             guard persistMissingReferences(missing, result: &result) else { return }
 
             guard saveLegacyChanges(
-                phase: "listening_history_batch_\(offset)",
+                phase: "listening_history_batch",
+                stream: .listeningHistory,
                 result: &result
             ) else { return }
+            finishDeltaBatch(reader, failedBefore: failedBefore, result: result)
             refreshContexts()
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return
             }
-
-            offset += page.count
         }
+        guard sourceReadFailed == false else { return }
+        finishDeltaStream(reader, failedBefore: failedBefore, result: result)
 
         // A local absence from a partial or delayed CloudKit delivery is not
         // evidence of deletion. Never prune destination-only history here.
@@ -1600,11 +1767,19 @@ actor StoreSplitUserStateImporter {
     @discardableResult
     private func saveLegacyChanges(
         phase: String,
+        stream: StoreSplitUserStateStream? = nil,
         result: inout StoreSplitUserStateImportResult
     ) -> Bool {
         guard legacyContext.hasChanges else { return true }
+        let changedRows = legacyContext.insertedModelsArray.count
+            + legacyContext.changedModelsArray.count
+            + legacyContext.deletedModelsArray.count
         do {
             try legacyContext.save()
+            if let stream {
+                streamMetrics[stream, default: StoreSplitUserStateStreamMetrics()].saves += 1
+                streamMetrics[stream, default: StoreSplitUserStateStreamMetrics()].rowsChanged += changedRows
+            }
             return true
         } catch {
             result.failed += 1
@@ -1901,6 +2076,11 @@ actor StoreSplitUserStateImporter {
     /// promptly releases the shared-container SQLite lock before suspension.
     private func shouldStop() async -> Bool {
         if Task.isCancelled { return true }
+#if DEBUG
+        if let limit = Self.debugStopAfterDeltaBatches, completedDeltaBatches >= limit {
+            return true
+        }
+#endif
         if isInitialRuntimeHydration || continuesDuringPlayback { return false }
         return await shouldPauseForPlayback()
     }
@@ -2133,6 +2313,7 @@ actor StoreSplitUserStateImporter {
         _ normalizedFeedURL: String,
         expectedKeys: Set<String>
     ) async {
+        if podcastIndexBuilt == false { await buildPodcastIndex() }
         guard let podcastID = podcastsByComparisonKey[normalizedFeedURL],
               let podcast = indexedPodcast(podcastID),
               let feed = podcast.feed else {
@@ -2308,30 +2489,283 @@ actor StoreSplitUserStateImporter {
         }
     }
 
-    private func fetchEpisodeStatePage(offset: Int, limit: Int) -> [EpisodeStateSync] {
-        let cursorDate = [
-            previousImportCursors[.episodeState]?.importedThrough,
-            episodeStatesUpdatedSince
-        ].compactMap { $0 }.max()
-        let predicate: Predicate<EpisodeStateSync>? = cursorDate.map { date in
-            #Predicate<EpisodeStateSync> { $0.updatedAt >= date }
-        }
-        var descriptor = FetchDescriptor<EpisodeStateSync>(
-            predicate: predicate,
-            sortBy: [
-                SortDescriptor(\EpisodeStateSync.updatedAt, order: .reverse),
-                SortDescriptor(\EpisodeStateSync.id, order: .forward)
-            ]
+    // MARK: - Record-level incremental reads (#104)
+
+    /// Describes how to page one synchronized model by `updatedAt`.
+    /// `#Predicate` needs concrete key paths, so each stream supplies its own.
+    private struct DeltaQuery<Model: PersistentModel> {
+        let stream: StoreSplitUserStateStream
+        let atOrAfter: (Date) -> Predicate<Model>
+        let after: (Date) -> Predicate<Model>
+        let at: (Date) -> Predicate<Model>
+        let ascending: [SortDescriptor<Model>]
+        let updatedAt: (Model) -> Date
+        let id: (Model) -> String
+    }
+
+    /// Read position in one stream for one pass.
+    ///
+    /// Pages are keyed on `updatedAt` rather than an offset, and every page
+    /// ends on a complete timestamp group, so the next page can start strictly
+    /// after it. Rows that change while the pass runs move to the end instead
+    /// of shifting unread rows into already-read offsets, so nothing is
+    /// skipped, and the boundary is exactly the persisted cursor format.
+    private struct DeltaReader {
+        let stream: StoreSplitUserStateStream
+        /// Reads from the beginning of the stream.
+        let isFullPass: Bool
+        /// Finishing this pass completes a full walk: it started from the
+        /// beginning, or resumes an interrupted pass that did.
+        let completesFullPass: Bool
+        let commitsProgress: Bool
+        var lowerBound: Date?
+        var lowerBoundInclusive: Bool
+        /// Records at `lowerBound` the stored cursor already covers.
+        var excludedIDsAtLowerBound: Set<String>
+        var finished = false
+        var boundaryDate: Date?
+        var boundaryIDs: Set<String> = []
+    }
+
+    private var effectivePageSize: Int {
+#if DEBUG
+        if let override = Self.debugSourcePageSizeOverride { return max(1, override) }
+#endif
+        return sourcePageSize
+    }
+
+    /// - Parameters:
+    ///   - periodicFullPass: Walk the whole stream when the last full pass
+    ///     is older than `StoreSplitImportCursorStore.fullPassInterval`, to
+    ///     pick up records CloudKit delivered with an older timestamp.
+    ///   - notBefore: A narrower lower bound requested by the caller. When it
+    ///     is later than the cursor the pass skips rows the cursor has not
+    ///     covered, so it must not advance the cursor.
+    private func makeDeltaReader(
+        for stream: StoreSplitUserStateStream,
+        periodicFullPass: Bool,
+        honorsForcedFullPass: Bool = true,
+        notBefore: Date? = nil
+    ) -> DeltaReader {
+        let cursor = previousImportCursors[stream]
+        let isFullPass = (honorsForcedFullPass && forcesFullPass)
+            || StoreSplitImportCursorStore.needsFullPass(cursor, periodic: periodicFullPass)
+        let resumesFullPass = isFullPass == false && cursor?.fullPassInProgress == true
+        // The very first runtime hydration deliberately skips rows whose
+        // episodes the partial library build has not created yet, so it must
+        // not record those rows as imported.
+        let commitsProgress = cursorDefaults != nil && isInitialRuntimeHydration == false
+        var reader = DeltaReader(
+            stream: stream,
+            isFullPass: isFullPass,
+            completesFullPass: isFullPass || resumesFullPass,
+            commitsProgress: commitsProgress,
+            lowerBound: isFullPass ? nil : cursor?.importedThrough,
+            lowerBoundInclusive: true,
+            excludedIDsAtLowerBound: isFullPass ? [] : Set(cursor?.recordIDsAtTimestamp ?? [])
         )
-        descriptor.fetchOffset = offset
+        if let notBefore, (reader.lowerBound ?? .distantPast) < notBefore {
+            reader = DeltaReader(
+                stream: stream,
+                isFullPass: false,
+                completesFullPass: false,
+                commitsProgress: false,
+                lowerBound: notBefore,
+                lowerBoundInclusive: true,
+                excludedIDsAtLowerBound: []
+            )
+        }
+        streamMetrics[stream, default: StoreSplitUserStateStreamMetrics()].fullPass = reader.isFullPass
+        return reader
+    }
+
+    /// The next page of changed rows, oldest first, or nil once the stream is
+    /// exhausted. A page can be empty when every row in it was already
+    /// covered by the cursor's boundary group.
+    private func nextDeltaPage<Model: PersistentModel>(
+        _ query: DeltaQuery<Model>,
+        reader: inout DeltaReader,
+        pageSize: Int? = nil
+    ) -> [Model]? {
+        guard reader.finished == false else { return nil }
+        guard Task.isCancelled == false, sourceReadFailed == false else {
+            reader.finished = true
+            return nil
+        }
+        let limit = pageSize.map { min($0, effectivePageSize) } ?? effectivePageSize
+        var descriptor = FetchDescriptor<Model>(
+            predicate: reader.lowerBound.map {
+                reader.lowerBoundInclusive ? query.atOrAfter($0) : query.after($0)
+            },
+            sortBy: query.ascending
+        )
         descriptor.fetchLimit = limit
         do {
-            return try userStateContext.fetch(descriptor)
+            var rows = try userStateContext.fetch(descriptor)
+            guard let last = rows.last else {
+                reader.finished = true
+                return nil
+            }
+            let boundary = query.updatedAt(last)
+            if rows.count >= limit {
+                // The page may have cut a timestamp group in half. Load the
+                // whole group so the next page can start strictly after it.
+                rows.removeAll { query.updatedAt($0) == boundary }
+                rows.append(contentsOf: try userStateContext.fetch(
+                    FetchDescriptor<Model>(predicate: query.at(boundary), sortBy: query.ascending)
+                ))
+            } else {
+                reader.finished = true
+            }
+            var boundaryIDs = Set(rows.lazy.filter { query.updatedAt($0) == boundary }.map(query.id))
+            if let lowerBound = reader.lowerBound, reader.excludedIDsAtLowerBound.isEmpty == false {
+                let excluded = reader.excludedIDsAtLowerBound
+                rows.removeAll { query.updatedAt($0) == lowerBound && excluded.contains(query.id($0)) }
+                if boundary == lowerBound { boundaryIDs.formUnion(excluded) }
+            }
+            reader.boundaryDate = boundary
+            reader.boundaryIDs = boundaryIDs
+            reader.lowerBound = boundary
+            reader.lowerBoundInclusive = false
+            reader.excludedIDsAtLowerBound = []
+            streamMetrics[query.stream, default: StoreSplitUserStateStreamMetrics()].rowsFetched += rows.count
+            return rows
         } catch {
             sourceReadFailed = true
-            CrashBreadcrumbs.shared.record("store_split_import_episode_state_fetch_failed")
-            return []
+            reader.finished = true
+            CrashBreadcrumbs.shared.record(
+                "store_split_import_fetch_failed",
+                details: "stream=\(query.stream.rawValue)"
+            )
+            return nil
         }
+    }
+
+    /// Advances the stream's cursor past a batch the library has durably
+    /// saved. A batch that left unresolved or failed records holds the cursor
+    /// where it is, so they are read again on the next pass.
+    private func finishDeltaBatch(
+        _ reader: DeltaReader,
+        failedBefore: Int,
+        result: StoreSplitUserStateImportResult
+    ) {
+        completedDeltaBatches += 1
+        guard reader.commitsProgress,
+              let cursorDefaults,
+              let boundaryDate = reader.boundaryDate,
+              sourceReadFailed == false,
+              result.failed == failedBefore,
+              result.unresolvedStreams.contains(reader.stream) == false else { return }
+        StoreSplitImportCursorStore.advance(
+            reader.stream,
+            through: boundaryDate,
+            recordIDsAtTimestamp: reader.boundaryIDs,
+            duringFullPass: reader.completesFullPass,
+            defaults: cursorDefaults
+        )
+    }
+
+    private func finishDeltaStream(
+        _ reader: DeltaReader,
+        failedBefore: Int,
+        result: StoreSplitUserStateImportResult
+    ) {
+        guard reader.completesFullPass,
+              reader.commitsProgress,
+              reader.finished,
+              let cursorDefaults,
+              sourceReadFailed == false,
+              result.failed == failedBefore,
+              Task.isCancelled == false else { return }
+        StoreSplitImportCursorStore.markFullPassCompleted(reader.stream, defaults: cursorDefaults)
+    }
+
+    fileprivate func logStreamMetrics(result: StoreSplitUserStateImportResult) {
+        for (stream, metrics) in streamMetrics.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+            AppDiagnostics.log(
+                "database_work operation=user_state_import_stream source=user_state_reconcile stores=shared_database stream=\(stream.rawValue) full_pass=\(metrics.fullPass) rows_fetched=\(metrics.rowsFetched) rows_changed=\(metrics.rowsChanged) saves=\(metrics.saves) noop=\(metrics.saves == 0) failed=\(result.failed) interrupted=\(result.interruptedByPlayback)"
+            )
+        }
+    }
+
+    private func assignIfChanged(
+        _ entry: PlaylistEntry,
+        episode: Episode,
+        playlist: Playlist,
+        order: Int,
+        dateAdded: Date
+    ) {
+        if entry.episode?.persistentModelID != episode.persistentModelID {
+            entry.episode = episode
+        }
+        if entry.playlist?.persistentModelID != playlist.persistentModelID {
+            entry.playlist = playlist
+        }
+        setIfChanged(entry, \.order, order)
+        setIfChanged(entry, \.dateAdded, Optional(dateAdded))
+    }
+
+    private static var subscriptionDelta: DeltaQuery<SubscriptionSync> {
+        DeltaQuery(
+            stream: .subscriptions,
+            atOrAfter: { date in #Predicate<SubscriptionSync> { $0.updatedAt >= date } },
+            after: { date in #Predicate<SubscriptionSync> { $0.updatedAt > date } },
+            at: { date in #Predicate<SubscriptionSync> { $0.updatedAt == date } },
+            ascending: [SortDescriptor(\SubscriptionSync.updatedAt), SortDescriptor(\SubscriptionSync.id)],
+            updatedAt: { $0.updatedAt },
+            id: { $0.id }
+        )
+    }
+
+    private static var episodeStateDelta: DeltaQuery<EpisodeStateSync> {
+        DeltaQuery(
+            stream: .episodeState,
+            atOrAfter: { date in #Predicate<EpisodeStateSync> { $0.updatedAt >= date } },
+            after: { date in #Predicate<EpisodeStateSync> { $0.updatedAt > date } },
+            at: { date in #Predicate<EpisodeStateSync> { $0.updatedAt == date } },
+            ascending: [SortDescriptor(\EpisodeStateSync.updatedAt), SortDescriptor(\EpisodeStateSync.id)],
+            updatedAt: { $0.updatedAt },
+            id: { $0.id }
+        )
+    }
+
+    private static var preferenceDelta: DeltaQuery<PodcastPreferenceSync> {
+        DeltaQuery(
+            stream: .preferences,
+            atOrAfter: { date in #Predicate<PodcastPreferenceSync> { $0.updatedAt >= date } },
+            after: { date in #Predicate<PodcastPreferenceSync> { $0.updatedAt > date } },
+            at: { date in #Predicate<PodcastPreferenceSync> { $0.updatedAt == date } },
+            ascending: [SortDescriptor(\PodcastPreferenceSync.updatedAt), SortDescriptor(\PodcastPreferenceSync.id)],
+            updatedAt: { $0.updatedAt },
+            id: { $0.id }
+        )
+    }
+
+    private static var bookmarkDelta: DeltaQuery<BookmarkSync> {
+        DeltaQuery(
+            stream: .bookmarks,
+            atOrAfter: { date in #Predicate<BookmarkSync> { $0.updatedAt >= date } },
+            after: { date in #Predicate<BookmarkSync> { $0.updatedAt > date } },
+            at: { date in #Predicate<BookmarkSync> { $0.updatedAt == date } },
+            ascending: [SortDescriptor(\BookmarkSync.updatedAt), SortDescriptor(\BookmarkSync.id)],
+            updatedAt: { $0.updatedAt },
+            id: { $0.id }
+        )
+    }
+
+    private static var listeningHistoryDelta: DeltaQuery<ListeningHistorySync> {
+        DeltaQuery(
+            stream: .listeningHistory,
+            atOrAfter: { date in #Predicate<ListeningHistorySync> { $0.updatedAt >= date } },
+            after: { date in #Predicate<ListeningHistorySync> { $0.updatedAt > date } },
+            at: { date in #Predicate<ListeningHistorySync> { $0.updatedAt == date } },
+            ascending: [
+                SortDescriptor(\ListeningHistorySync.updatedAt),
+                SortDescriptor(\ListeningHistorySync.id)
+            ],
+            updatedAt: { $0.updatedAt },
+            id: { $0.id }
+        )
     }
 
     private func context<Model: PersistentModel>(

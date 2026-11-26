@@ -124,6 +124,51 @@ final class PlaylistRoutedPodcastsTests: XCTestCase {
         XCTAssertEqual(dailyNews.position, .end)
     }
 
+    /// #359: a chosen playlist that is hidden or a smart playlist routes new
+    /// episodes to the built-in queue, but the stored choice is kept so it
+    /// takes effect again once the playlist is usable.
+    func testUnavailableChosenPlaylistRoutesToTheQueueAndKeepsTheChoice() async throws {
+        let fixture = try makeFixture()
+        fixture.globalSettings.chooseDefaultPlaylist(fixture.defaultQueue)
+        fixture.globalSettings.playnextPosition = .end
+        let custom = PodcastSettings(podcast: fixture.deepDive)
+        custom.isEnabled = true
+        custom.playnextPosition = .end
+        custom.chooseDefaultPlaylist(fixture.commute)
+        fixture.context.insert(custom)
+        fixture.commute.hidden = true
+        try fixture.context.save()
+        let commuteSyncID = fixture.commute.storeSplitSyncID
+
+        let actor = PodcastSettingsModelActor(modelContainer: fixture.container)
+        var routing = await actor.automaticEpisodeRouting(for: fixture.deepDive.feed)
+        XCTAssertEqual(routing.playlistID, fixture.defaultQueue.id)
+        let playlists = try fixture.context.fetch(FetchDescriptor<Playlist>())
+        XCTAssertEqual(
+            PodcastPlaylistTargetResolver.status(for: custom, playlists: playlists),
+            .unavailable(fixture.commute.id, title: "Commute")
+        )
+
+        fixture.commute.kind = .smart
+        fixture.commute.hidden = false
+        try fixture.context.save()
+        routing = await actor.automaticEpisodeRouting(for: fixture.deepDive.feed)
+        XCTAssertEqual(routing.playlistID, fixture.defaultQueue.id)
+
+        fixture.commute.kind = .manual
+        try fixture.context.save()
+        routing = await actor.automaticEpisodeRouting(for: fixture.deepDive.feed)
+        XCTAssertEqual(routing.playlistID, fixture.commute.id)
+
+        let readContext = ModelContext(fixture.container)
+        let refreshed = try XCTUnwrap(
+            readContext.fetch(FetchDescriptor<PodcastSettings>())
+                .first { $0.podcast?.feed == fixture.deepDive.feed }
+        )
+        XCTAssertEqual(refreshed.defaultPlaylistSyncID, commuteSyncID)
+        XCTAssertEqual(refreshed.defaultPlaylistID, fixture.commute.id)
+    }
+
     // MARK: - Helpers
 
     private struct Fixture {

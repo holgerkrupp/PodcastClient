@@ -1149,4 +1149,170 @@ extension StoreSplitPlaylistProjectionTests {
         XCTAssertEqual(playlists.count, 1)
         XCTAssertEqual(playlists.first?.title, Playlist.defaultQueueTitle)
     }
+
+
+    // MARK: - #359 stable playlist identity in podcast preferences
+
+    /// Device A chose "Commute" (its sync identity `remoteSyncID`). This device
+    /// has its own "Commute" under a different local UUID, and the preference
+    /// arrives before A's playlist record. The foreign identity must never
+    /// become the local target; once the playlist record arrives the choice
+    /// resolves to this device's playlist.
+    @MainActor
+    func testPreferenceImportedBeforeItsPlaylistResolvesWhenThePlaylistArrives() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let feed = URL(string: "https://example.com/late-playlist.xml")!
+        let context = runtime.mainContext
+        context.insert(Podcast(feed: feed))
+        let queue = Playlist.ensureDefaultQueue(in: context)
+        let commute = Playlist()
+        commute.title = "Commute"
+        commute.deleteable = true
+        commute.sortIndex = 1
+        context.insert(commute)
+        try context.save()
+        let queueID = queue.id
+        let localCommuteID = commute.id
+
+        let remoteSyncID = UUID().uuidString
+        XCTAssertNotEqual(remoteSyncID, localCommuteID.uuidString)
+        let endPosition = String(decoding: try JSONEncoder().encode(Playlist.Position.end), as: UTF8.self)
+        userState.mainContext.insert(PodcastPreferenceSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(feed),
+            isEnabled: true,
+            playNextPositionRawValue: endPosition,
+            defaultPlaylistID: remoteSyncID
+        ))
+        try userState.mainContext.save()
+
+        var result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: userState,
+            projectListeningHistoryToLegacy: false,
+            changedStreams: [.preferences]
+        )
+        XCTAssertEqual(result.failed, 0)
+
+        var readContext = ModelContext(runtime)
+        var settings = try XCTUnwrap(try podcastSettings(for: feed, in: readContext))
+        var playlists = try readContext.fetch(FetchDescriptor<Playlist>())
+        XCTAssertNil(settings.defaultPlaylistID, "a foreign UUID must not become the local target")
+        XCTAssertEqual(settings.defaultPlaylistSyncID, remoteSyncID)
+        XCTAssertEqual(
+            PodcastPlaylistTargetResolver.status(for: settings, playlists: playlists),
+            .pending(syncID: remoteSyncID)
+        )
+        var routing = await PodcastSettingsModelActor(modelContainer: runtime)
+            .automaticEpisodeRouting(for: feed)
+        XCTAssertEqual(routing.position, .end)
+        XCTAssertEqual(routing.playlistID, queueID, "a pending choice routes to the built-in queue")
+
+        // Editing an unrelated setting here republishes the pending choice
+        // unchanged rather than the built-in queue or a local UUID.
+        let pendingSnapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: feed,
+            defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                for: settings.defaultPlaylistID,
+                in: readContext
+            )
+        )
+        XCTAssertEqual(pendingSnapshot.defaultPlaylistID, remoteSyncID)
+
+        userState.mainContext.insert(PlaylistSync(
+            id: remoteSyncID,
+            title: "Commute",
+            symbolName: Playlist.defaultManualSymbolName,
+            sortIndex: 1,
+            kindRawValue: Playlist.Kind.manual.rawValue
+        ))
+        try userState.mainContext.save()
+
+        // Only the playlist stream changed; the preference is not re-read.
+        result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: userState,
+            projectListeningHistoryToLegacy: false,
+            changedStreams: [.playlists]
+        )
+        XCTAssertEqual(result.failed, 0)
+
+        readContext = ModelContext(runtime)
+        settings = try XCTUnwrap(try podcastSettings(for: feed, in: readContext))
+        playlists = try readContext.fetch(FetchDescriptor<Playlist>())
+        XCTAssertEqual(playlists.filter { $0.title == "Commute" }.count, 1, "matched, not duplicated")
+        XCTAssertEqual(settings.defaultPlaylistID, localCommuteID)
+        XCTAssertEqual(settings.defaultPlaylistSyncID, remoteSyncID)
+        XCTAssertEqual(
+            PodcastPlaylistTargetResolver.status(for: settings, playlists: playlists),
+            .available(localCommuteID)
+        )
+        routing = await PodcastSettingsModelActor(modelContainer: runtime)
+            .automaticEpisodeRouting(for: feed)
+        XCTAssertEqual(routing.playlistID, localCommuteID)
+
+        // Republishing from this device uses the shared identity, not its UUID.
+        let resolvedSnapshot = PortablePodcastPreferenceSnapshot.make(
+            settings: settings,
+            feedURL: feed,
+            defaultPlaylistSyncID: StoreSplitPlaylistSnapshotBuilder.syncID(
+                for: settings.defaultPlaylistID,
+                in: readContext
+            )
+        )
+        XCTAssertEqual(resolvedSnapshot.defaultPlaylistID, remoteSyncID)
+    }
+
+    /// Preferences written by older builds carry a bare local UUID. It maps
+    /// only to a playlist with exactly that UUID and is kept pending otherwise.
+    @MainActor
+    func testLegacyUUIDPreferenceMapsOnlyToAnExactlyMatchingPlaylist() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let matchedFeed = URL(string: "https://example.com/legacy-match.xml")!
+        let unknownFeed = URL(string: "https://example.com/legacy-unknown.xml")!
+        let context = runtime.mainContext
+        context.insert(Podcast(feed: matchedFeed))
+        context.insert(Podcast(feed: unknownFeed))
+        _ = Playlist.ensureDefaultQueue(in: context)
+        let commute = Playlist()
+        commute.title = "Commute"
+        commute.deleteable = true
+        commute.syncID = nil
+        context.insert(commute)
+        try context.save()
+
+        let unknownUUID = UUID().uuidString
+        userState.mainContext.insert(PodcastPreferenceSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(matchedFeed),
+            defaultPlaylistID: commute.id.uuidString
+        ))
+        userState.mainContext.insert(PodcastPreferenceSync(
+            feedURL: PodcastFeedIdentity.normalizedFeedURLString(unknownFeed),
+            defaultPlaylistID: unknownUUID
+        ))
+        try userState.mainContext.save()
+
+        let result = await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: userState,
+            projectListeningHistoryToLegacy: false,
+            changedStreams: [.preferences]
+        )
+        XCTAssertEqual(result.failed, 0)
+        let readContext = ModelContext(runtime)
+        let matched = try XCTUnwrap(try podcastSettings(for: matchedFeed, in: readContext))
+        XCTAssertEqual(matched.defaultPlaylistID, commute.id)
+        let unknown = try XCTUnwrap(try podcastSettings(for: unknownFeed, in: readContext))
+        XCTAssertNil(unknown.defaultPlaylistID)
+        XCTAssertEqual(unknown.defaultPlaylistSyncID, unknownUUID)
+    }
+
+    @MainActor
+    private func podcastSettings(for feed: URL, in context: ModelContext) throws -> PodcastSettings? {
+        try context.fetch(FetchDescriptor<Podcast>())
+            .first { $0.feed == feed }?
+            .settings
+    }
 }

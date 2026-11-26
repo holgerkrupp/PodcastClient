@@ -54,9 +54,11 @@ struct PortablePodcastPreferenceSnapshot: Sendable {
             feedURL: feedURL,
             isEnabled: settings.isEnabled,
             playNextPositionRawValue: position,
-            defaultPlaylistID: settings.defaultPlaylistID.map {
-                defaultPlaylistSyncID ?? $0.uuidString
-            },
+            // A stored cross-device choice is published as-is, including while
+            // it is still pending on this device, so editing an unrelated
+            // setting here never replaces another device's playlist choice.
+            defaultPlaylistID: settings.defaultPlaylistSyncID
+                ?? settings.defaultPlaylistID.map { defaultPlaylistSyncID ?? $0.uuidString },
             autoDownload: settings.autoDownload,
             autoDownloadEpisodeCount: settings.autoDownloadEpisodeCount,
             autoDownloadSelectionRawValue: settings.autoDownloadSelectionRawValue,

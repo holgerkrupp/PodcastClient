@@ -1054,8 +1054,10 @@ struct PodcastSettingsView: View {
                 ForEach(manualPlaylists) { playlist in
                     Text(playlist.displayTitle).tag(playlist.id.uuidString)
                 }
+                unresolvedPlaylistTargetOption(for: settings)
             }
             .disabled(settings.playnextPosition == .none)
+            unresolvedPlaylistTargetFootnote(for: settings)
         }
 
         Section("Episode Handling") {
@@ -1365,8 +1367,10 @@ struct PodcastSettingsView: View {
                 ForEach(manualPlaylists) { playlist in
                     Text(playlist.displayTitle).tag(playlist.id.uuidString)
                 }
+                unresolvedPlaylistTargetOption(for: settings)
             }
             .disabled(settings.playnextPosition == .none)
+            unresolvedPlaylistTargetFootnote(for: settings)
         }
 
         Section("Automatic Downloads") {
@@ -1386,8 +1390,12 @@ struct PodcastSettingsView: View {
                             if settings.playnextPosition == .none {
                                 settings.playnextPosition = .end
                             }
-                            if settings.defaultPlaylistID == nil {
-                                settings.defaultPlaylistID = resolvedPlaylistID(for: settings)
+                            if PodcastPlaylistTargetResolver.hasOwnTarget(settings) == false {
+                                settings.chooseDefaultPlaylist(
+                                    resolvedPlaylistID(for: settings).flatMap { id in
+                                        manualPlaylists.first { $0.id == id }
+                                    }
+                                )
                             }
                         }
                         saveAndNotify(autoDownloadPolicyChanged: true)
@@ -2297,9 +2305,20 @@ struct PodcastSettingsView: View {
         }
     }
 
+    /// Picker tag for a stored choice that cannot be used on this device
+    /// right now. Selecting it changes nothing.
+    private static let unresolvedPlaylistTargetTag = "unresolved-playlist-target"
+
+    private func playlistTargetStatus(for settings: PodcastSettings) -> PodcastPlaylistTargetStatus {
+        PodcastPlaylistTargetResolver.status(for: settings, playlists: playlists)
+    }
+
     private func playlistSelectionBinding(for settings: PodcastSettings) -> Binding<String> {
         Binding(
             get: {
+                if playlistTargetStatus(for: settings).isUnresolvedChoice {
+                    return Self.unresolvedPlaylistTargetTag
+                }
                 if let playlistID = resolvedPlaylistID(for: settings) {
                     return playlistID.uuidString
                 }
@@ -2307,14 +2326,28 @@ struct PodcastSettingsView: View {
                 return manualPlaylists.first?.id.uuidString ?? ""
             },
             set: { newValue in
-                settings.defaultPlaylistID = newValue.isEmpty ? nil : UUID(uuidString: newValue)
+                guard newValue != Self.unresolvedPlaylistTargetTag else { return }
+                let chosen = UUID(uuidString: newValue).flatMap { id in
+                    manualPlaylists.first { $0.id == id }
+                }
+                settings.chooseDefaultPlaylist(chosen)
                 saveAndNotify(autoDownloadPolicyChanged: true)
             }
         )
     }
 
+    /// The playlist the picker shows when the row has a usable choice or
+    /// inherits one; mirrors where new episodes are actually routed.
     private func resolvedPlaylistID(for settings: PodcastSettings) -> UUID? {
-        if let playlistID = settings.defaultPlaylistID,
+        if case .available(let playlistID) = playlistTargetStatus(for: settings),
+           manualPlaylists.contains(where: { $0.id == playlistID }) {
+            return playlistID
+        }
+
+        if settings !== globalSettings,
+           PodcastPlaylistTargetResolver.hasOwnTarget(settings) == false,
+           let globalSettings,
+           case .available(let playlistID) = playlistTargetStatus(for: globalSettings),
            manualPlaylists.contains(where: { $0.id == playlistID }) {
             return playlistID
         }
@@ -2324,6 +2357,41 @@ struct PodcastSettingsView: View {
         }
 
         return manualPlaylists.first?.id
+    }
+
+    /// An honest entry for a chosen playlist this device cannot use yet, so
+    /// the picker never silently looks like Up Next.
+    @ViewBuilder
+    private func unresolvedPlaylistTargetOption(for settings: PodcastSettings) -> some View {
+        switch playlistTargetStatus(for: settings) {
+        case .pending:
+            Text("Playlist not on this device yet")
+                .tag(Self.unresolvedPlaylistTargetTag)
+        case .unavailable(_, let title?):
+            Text("\(title) (unavailable)")
+                .tag(Self.unresolvedPlaylistTargetTag)
+        case .unavailable(_, nil):
+            Text("Unavailable playlist")
+                .tag(Self.unresolvedPlaylistTargetTag)
+        case .notSet, .available:
+            EmptyView()
+        }
+    }
+
+    @ViewBuilder
+    private func unresolvedPlaylistTargetFootnote(for settings: PodcastSettings) -> some View {
+        switch playlistTargetStatus(for: settings) {
+        case .pending:
+            Text("This playlist was chosen on another device and hasn’t synced here yet. New episodes go to Up Next until it arrives.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .unavailable:
+            Text("The chosen playlist is hidden, deleted or a smart playlist. New episodes go to Up Next until you choose another playlist.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        case .notSet, .available:
+            EmptyView()
+        }
     }
 
     private func handleSideloadingToggleChange(_ newValue: Bool) {

@@ -45,6 +45,22 @@ actor PodcastSettingsModelActor {
         }
     }
 
+    /// Where automatically added episodes for these settings go. See
+    /// `PodcastPlaylistTargetResolver`: an unavailable or pending choice
+    /// routes to the built-in queue without being rewritten.
+    private func routingPlaylistID(
+        settings: PodcastSettings?,
+        global: PodcastSettings,
+        defaultQueueID: UUID
+    ) throws -> UUID {
+        PodcastPlaylistTargetResolver.routingPlaylistID(
+            settings: settings,
+            global: global,
+            playlists: try modelContext.fetch(FetchDescriptor<Playlist>()),
+            defaultQueueID: defaultQueueID
+        )
+    }
+
     private func manualPlaylistExists(id: UUID) throws -> Bool {
         let descriptor = FetchDescriptor<Playlist>(
             predicate: #Predicate<Playlist> { $0.id == id }
@@ -190,7 +206,10 @@ actor PodcastSettingsModelActor {
             return []
         }
         let globalPosition = globalSettings.playnextPosition
-        let globalPlaylistID = globalSettings.defaultPlaylistID ?? resolvedDefaultQueueID
+        guard let allPlaylists = try? modelContext.fetch(FetchDescriptor<Playlist>()) else {
+            AppDiagnostics.log("Could not read playlists for playlist routing")
+            return []
+        }
 
         // One fetch for every podcast's settings instead of one per podcast.
         guard let customSettings = try? modelContext.fetch(
@@ -215,10 +234,12 @@ actor PodcastSettingsModelActor {
             let position = customSettings?.playnextPosition ?? globalPosition
             guard position != .none else { continue }
 
-            var resolvedPlaylistID = customSettings?.defaultPlaylistID ?? globalPlaylistID
-            if (try? manualPlaylistExists(id: resolvedPlaylistID)) == false {
-                resolvedPlaylistID = resolvedDefaultQueueID
-            }
+            let resolvedPlaylistID = PodcastPlaylistTargetResolver.routingPlaylistID(
+                settings: customSettings,
+                global: globalSettings,
+                playlists: allPlaylists,
+                defaultQueueID: resolvedDefaultQueueID
+            )
             guard resolvedPlaylistID == playlistID else { continue }
 
             routed.append(
@@ -227,7 +248,7 @@ actor PodcastSettingsModelActor {
                     title: podcast.title,
                     imageURL: podcast.imageURL,
                     position: position,
-                    usesCustomSettings: customSettings?.defaultPlaylistID != nil
+                    usesCustomSettings: PodcastPlaylistTargetResolver.hasOwnTarget(customSettings)
                 )
             )
         }
@@ -572,12 +593,11 @@ actor PodcastSettingsModelActor {
                 return AutomaticEpisodeRoutingSnapshot(position: .none, playlistID: nil)
             }
 
-            var targetID = customSettings?.defaultPlaylistID
-                ?? globalSettings.defaultPlaylistID
-                ?? defaultQueueID
-            if (try? manualPlaylistExists(id: targetID)) != true {
-                targetID = defaultQueueID
-            }
+            let targetID = try routingPlaylistID(
+                settings: customSettings,
+                global: globalSettings,
+                defaultQueueID: defaultQueueID
+            )
             return AutomaticEpisodeRoutingSnapshot(position: position, playlistID: targetID)
         } catch {
             CrashBreadcrumbs.shared.record(
@@ -835,21 +855,6 @@ actor PodcastSettingsModelActor {
             await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=queue-read-failed")
             return nil
         }
-        var resolvedGlobalPlaylistID = globalSettings.defaultPlaylistID ?? ensuredDefaultQueueID
-        guard let globalPlaylistExists = try? manualPlaylistExists(id: resolvedGlobalPlaylistID) else {
-            await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=global-playlist-read-failed")
-            return nil
-        }
-        if globalPlaylistExists == false {
-            resolvedGlobalPlaylistID = ensuredDefaultQueueID
-            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.redactedPodcastURLString) action=fallback-default-queue")
-        }
-        if globalSettings.defaultPlaylistID != resolvedGlobalPlaylistID {
-            globalSettings.defaultPlaylistID = resolvedGlobalPlaylistID
-            didMutateSettings = true
-            await logAutoDownload("policy-resolution/repair-global-playlist feed=\(podcastFeed.redactedPodcastURLString) action=persist-default-playlist id=\(resolvedGlobalPlaylistID.uuidString)")
-        }
-
         var resolvedQueuePosition = settings.playnextPosition
         if resolvedQueuePosition == .none {
             resolvedQueuePosition = .end
@@ -858,16 +863,19 @@ actor PodcastSettingsModelActor {
             await logAutoDownload("policy-resolution/repair-queue-position feed=\(podcastFeed.redactedPodcastURLString) action=none-to-end")
         }
 
-        var resolvedPlaylistID = settings.defaultPlaylistID ?? resolvedGlobalPlaylistID
-        guard let targetPlaylistExists = try? manualPlaylistExists(id: resolvedPlaylistID) else {
+        // Resolve without rewriting the stored choice: a playlist that is not
+        // on this device yet (or is hidden) routes to the built-in queue until
+        // it is available again.
+        let resolvedPlaylistID: UUID
+        do {
+            resolvedPlaylistID = try routingPlaylistID(
+                settings: customSettings?.isEnabled == true ? customSettings : nil,
+                global: globalSettings,
+                defaultQueueID: ensuredDefaultQueueID
+            )
+        } catch {
             await logAutoDownload("policy-resolution/failed feed=\(podcastFeed.redactedPodcastURLString) reason=target-playlist-read-failed")
             return nil
-        }
-        if targetPlaylistExists == false {
-            resolvedPlaylistID = resolvedGlobalPlaylistID
-            settings.defaultPlaylistID = resolvedPlaylistID
-            didMutateSettings = true
-            await logAutoDownload("policy-resolution/repair-target-playlist feed=\(podcastFeed.redactedPodcastURLString) action=fallback-to-global id=\(resolvedPlaylistID.uuidString)")
         }
 
         if didMutateSettings {

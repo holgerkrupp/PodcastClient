@@ -56,6 +56,13 @@ class PodcastSettings {
     var autoDownloadFilterJSON: String?
     var playnextPosition:Playlist.Position = Playlist.Position.none
     var defaultPlaylistID: UUID?
+    /// Cross-device identity (`Playlist.storeSplitSyncID`) of the playlist the
+    /// user chose for automatic routing. When set it is authoritative:
+    /// `defaultPlaylistID` is only this device's resolved local UUID and is nil
+    /// while the chosen playlist has not reached this device. Local-only
+    /// (SharedDatabase); never a CloudKit field. Resolve targets through
+    /// `PodcastPlaylistTargetResolver` rather than reading either field alone.
+    var defaultPlaylistSyncID: String?
     var playbackSpeed:Float? = 1.0
     var reduceSilenceGapsEnabled: Bool = false
     var silenceGapReductionLevelRawValue: String? = SilenceGapReductionLevel.low.rawValue
@@ -167,6 +174,7 @@ class PodcastSettings {
         settings.autoDownloadIncludesArchivedEpisodes = global.autoDownloadIncludesArchivedEpisodes
         settings.autoDownloadFilterJSON = global.autoDownloadFilterJSON
         settings.defaultPlaylistID = global.defaultPlaylistID
+        settings.defaultPlaylistSyncID = global.defaultPlaylistSyncID
         settings.archiveFileRetentionDays = global.archiveFileRetentionDays
         settings.enableLiveItemNotifications = global.enableLiveItemNotifications
         settings.networkTrackingProtectionEnabled = PodcastNetworkPrivacyPolicy.isEnabled
