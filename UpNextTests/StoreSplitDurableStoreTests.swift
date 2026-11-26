@@ -70,9 +70,6 @@ final class StoreSplitDurableStoreTests: XCTestCase {
             ),
             .legacyUpgrade
         )
-        XCTAssertTrue(StoreBootstrapMode.freshSplitInstall.usesInMemoryRuntimeProjection)
-        XCTAssertFalse(StoreBootstrapMode.legacyUpgrade.usesInMemoryRuntimeProjection)
-        XCTAssertFalse(StoreBootstrapMode.builtLibrary.usesInMemoryRuntimeProjection)
     }
 
     func testMigrationSliceBudgetBoundsMutationsAndWallTime() {
@@ -698,5 +695,78 @@ final class StoreSplitPendingImportLedgerTests: XCTestCase {
         StoreSplitPendingImportLedger.request(in: defaults)
         XCTAssertFalse(StoreSplitPendingImportLedger.acknowledge(first.generation, in: defaults))
         XCTAssertTrue(StoreSplitPendingImportLedger.snapshot(in: defaults).pending)
+    }
+
+    /// Portable reconciliation must not need the historical cache container.
+    @MainActor
+    func testPlaylistReconciliationRunsWithoutHistoricalCacheContainer() async throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: URL(string: "https://example.com/no-cache.xml")!)
+        podcast.metaData = PodcastMetaData()
+        let episode = Episode(
+            guid: "no-cache-episode",
+            title: "No Cache",
+            url: URL(string: "https://example.com/no-cache.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        runtime.mainContext.insert(podcast)
+        try runtime.mainContext.save()
+        let playlistID = UUID()
+        let identity = episode.stableEpisodeIdentity
+        userState.mainContext.insert(PlaylistSync(
+            id: playlistID.uuidString,
+            title: "Without Cache",
+            symbolName: "music.note.list",
+            sortIndex: 1,
+            kindRawValue: Playlist.Kind.manual.rawValue
+        ))
+        userState.mainContext.insert(PlaylistEntrySync(
+            playlistID: playlistID.uuidString,
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0
+        ))
+        try userState.mainContext.save()
+
+        let manager = ModelContainerManager(
+            runtimeContainer: runtime,
+            userStateContainer: userState,
+            cacheContainer: nil,
+            bootstrapMode: .legacyUpgrade,
+            readiness: .ready
+        )
+        XCTAssertNil(manager.preparedCacheContainer)
+        XCTAssertFalse(manager.isFirstLibraryBuildRuntime)
+        await manager.reconcileSplitRuntimePlaylists()
+
+        let playlist = try XCTUnwrap(
+            try ModelContext(runtime).fetch(FetchDescriptor<Playlist>()).first { $0.id == playlistID }
+        )
+        XCTAssertEqual(playlist.title, "Without Cache")
+        XCTAssertEqual(playlist.ordered.first?.episode?.guid, "no-cache-episode")
+        XCTAssertNil(manager.preparedCacheContainer, "Reconciliation must not open the cache")
+    }
+
+    /// The first-build flag no longer depends on whether a cache opened.
+    @MainActor
+    func testFirstBuildRuntimeDoesNotRequireCacheContainer() throws {
+        let runtime = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let fresh = ModelContainerManager(
+            runtimeContainer: runtime,
+            userStateContainer: userState,
+            cacheContainer: nil,
+            bootstrapMode: .freshSplitInstall
+        )
+        XCTAssertTrue(fresh.isFirstLibraryBuildRuntime)
+        let upgraded = ModelContainerManager(
+            runtimeContainer: runtime,
+            userStateContainer: userState,
+            cacheContainer: try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true),
+            bootstrapMode: .legacyUpgrade
+        )
+        XCTAssertFalse(upgraded.isFirstLibraryBuildRuntime)
     }
 }

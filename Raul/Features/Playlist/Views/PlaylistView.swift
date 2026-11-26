@@ -325,6 +325,7 @@ private struct ManualPlaylistPageView: View {
     @State private var isSmartShuffling = false
     @State private var smartShuffleMessage: String?
     @State private var filterState = QueueFilterState.all
+    @State private var restoreStatus = PlaylistRestoreStatusModel()
     private let reorderTip = ReorderPlaylistTip()
     init(playlist: Playlist) {
         self.playlist = playlist
@@ -394,8 +395,9 @@ private struct ManualPlaylistPageView: View {
                 PlaylistEmptyView(
                     title: playlist.displayTitle,
                     isSmartPlaylist: false,
-                    isDefaultQueue: playlist.title == Playlist.defaultQueueTitle,
-                    playlistID: playlist.id
+                    isDefaultQueue: isDefaultQueue,
+                    playlistID: playlist.id,
+                    playlistSyncID: playlist.storeSplitSyncID
                 )
             } else if filteredEntries.isEmpty {
                 ContentUnavailableView {
@@ -411,6 +413,22 @@ private struct ManualPlaylistPageView: View {
                 List {
                     TipView(reorderTip, arrowEdge: .none)
                         .listRowSeparator(.hidden)
+
+                    // Already restored entries stay playable while the rest
+                    // of the synced queue is still on its way (#483).
+                    if restoreStatus.readiness.isVisible {
+                        PlaylistRestoreStatusView(
+                            readiness: restoreStatus.readiness,
+                            loginFeed: restoreStatus.facts.loginFeed,
+                            isDefaultQueue: isDefaultQueue,
+                            isRetrying: restoreStatus.isRetrying,
+                            style: .row,
+                            onRetry: retryRestore
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                    }
 
                     ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, value in
                         if let episode = episodesByIdentity[value.stableIdentityKey] {
@@ -480,6 +498,12 @@ private struct ManualPlaylistPageView: View {
                     }
                 }
                 .listStyle(.plain)
+                .refreshesPlaylistRestoreStatus(
+                    restoreStatus,
+                    playlistSyncID: playlist.storeSplitSyncID,
+                    isDefaultQueue: isDefaultQueue,
+                    resolvedCount: projection.count
+                )
                 .toolbar {
                     if projection.count > 1 {
                         ToolbarItem(placement: .primaryAction) {
@@ -513,6 +537,19 @@ private struct ManualPlaylistPageView: View {
         }
         .onChange(of: projectionRebuildKey, initial: true) { _, _ in
             rebuildProjection()
+        }
+    }
+
+    private var isDefaultQueue: Bool {
+        playlist.title == Playlist.defaultQueueTitle
+    }
+
+    private func retryRestore() {
+        let syncID = playlist.storeSplitSyncID
+        let resolved = projection.count
+        let isQueue = isDefaultQueue
+        Task {
+            await restoreStatus.retry(playlistSyncID: syncID, isDefaultQueue: isQueue, resolvedCount: resolved)
         }
     }
 

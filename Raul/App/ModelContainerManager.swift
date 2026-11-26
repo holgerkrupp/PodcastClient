@@ -16,13 +16,6 @@ enum StoreBootstrapMode: String, Sendable, Equatable {
     case builtLibrary
     case existingLibraryUnavailable
 
-    var usesInMemoryRuntimeProjection: Bool {
-        switch self {
-        case .freshSplitInstall: true
-        case .legacyUpgrade, .builtLibrary, .existingLibraryUnavailable: false
-        }
-    }
-
     static func resolve(
         legacyStoreExists: Bool,
         libraryOrigin: StoreLibraryOrigin? = nil,
@@ -133,6 +126,32 @@ enum StoreBootstrapEvidence {
                 || $0 == "SharedDatabase.sqlite-shm" || $0 == "UserState.sqlite"
                 || $0 == "PodcastCache.sqlite"
         }
+    }
+}
+
+/// Whether launch opens the historical PodcastCache.sqlite. It is only a
+/// migration input now: it is never created for a new install, and a missing
+/// or unreadable file never blocks a usable library.
+enum StoreCacheOpenDecision: Equatable {
+    case inMemoryAfterReset
+    case skipMigrationsComplete
+    case skipFileAbsent
+    case open
+
+    static func resolve(
+        hasEverReset: Bool,
+        migrationsComplete: Bool,
+        cacheFileExists: Bool,
+        legacyCopyNeedsCheckpointStore: Bool
+    ) -> StoreCacheOpenDecision {
+        if hasEverReset { return .inMemoryAfterReset }
+        if migrationsComplete { return .skipMigrationsComplete }
+        // The legacy UserState copy keeps its resumable checkpoints in this
+        // store, so it is the one caller allowed to (re)create the file.
+        if cacheFileExists == false, legacyCopyNeedsCheckpointStore == false {
+            return .skipFileAbsent
+        }
+        return .open
     }
 }
 
@@ -846,6 +865,7 @@ class ModelContainerManager: ObservableObject {
     private static let maximumQueueForPlaybackWriteRebuild = 256
     private var playbackWriteRebuildTask: Task<Bool, Never>?
     private var openedExistingProjection = false
+    private var didAttemptCacheOpen = false
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
     private(set) var lastHydrationSummary: String?
@@ -863,7 +883,29 @@ class ModelContainerManager: ObservableObject {
     private let isRuntimeGraphFixture = false
 #endif
     private var userStateImportTask: Task<StoreSplitUserStateImportResult, Never>?
-    private var missingFeedRefreshAttempts: [String: Date] = [:]
+    /// Per-process backoff for explicitly requested feeds only. Never-fetched
+    /// subscription stubs are selected from durable library rows instead.
+    private var requestedFeedBackoff: [String: SubscriptionHydrationScheduler.RequestBackoff] = [:]
+    private var subscriptionHydrationTask: Task<Bool, Never>?
+    private var subscriptionHydrationRunID: UUID?
+    /// A subscription change or new trigger arrived mid-run: select stubs again.
+    private var subscriptionHydrationRerunRequested = false
+    /// Requests are pulled live by the running worker pool, so a request that
+    /// arrives mid-run is fetched in priority order rather than waiting.
+    private var pendingHydrationRequests: [String: URL] = [:]
+    private var hydrationIgnoresFailureBackoff = false
+    /// Referenced feeds committed since the last incremental publication.
+    private var hydrationPublishPendingFeeds: Set<String> = []
+    private var hydrationPublishTask: Task<Void, Never>?
+    private var hydrationPublishApplyTask: Task<StoreSplitUserStateImportResult, Never>?
+    /// The import task's importer pass has finished and it is waiting for
+    /// hydration before re-running; an incremental publish may use the gap.
+    private var userStateImportAwaitingHydration = false
+    private var lastConnectivityHydrationAt: Date?
+    private static let subscriptionHydrationStubBatch = 5
+    private static let maximumSubscriptionHydrationStubsPerRun = 60
+    private static let maximumRequestedHydrationFeedsPerRun = 60
+    private static let hydrationPublishDebounce: Duration = .milliseconds(750)
     private var lastUserStateImportAt: Date?
     private var exportWasInProgress = false
     private var exporterPressureEvents = 0
@@ -1010,14 +1052,18 @@ class ModelContainerManager: ObservableObject {
     init(
         runtimeContainer: ModelContainer,
         userStateContainer: ModelContainer,
-        cacheContainer: ModelContainer
+        cacheContainer: ModelContainer?,
+        bootstrapMode: StoreBootstrapMode = .freshSplitInstall,
+        readiness: RuntimeStoreReadiness = .settling
     ) {
         preparedContainer = runtimeContainer
         preparedUserStateContainer = userStateContainer
         preparedCacheContainer = cacheContainer
-        bootstrapMode = .freshSplitInstall
-        runtimeStoreReadiness = .settling
+        self.bootstrapMode = bootstrapMode
+        runtimeStoreReadiness = readiness
         isRuntimeGraphFixture = true
+        // A fixture's stores are given; never open the shared on-disk cache.
+        didAttemptCacheOpen = true
     }
 #endif
 
@@ -1050,15 +1096,26 @@ class ModelContainerManager: ObservableObject {
         sharedContainerURL?.appendingPathComponent("PodcastCache.sqlite")
     }
 
-    /// True only in the experimental cache-projection mode. Every shipping mode
-    /// keeps the durable on-disk library store, so the runtime graph is never
-    /// rebuilt from scratch and the UI is never empty at launch.
+    /// Whether the historical cache file is on disk. Opening a missing cache
+    /// would create an empty one, so callers check this first.
+    nonisolated static var cacheStoreFileExists: Bool {
+        cacheStoreURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+    }
 
-    var runtimeProjectsFromCache: Bool {
-        preparedCacheContainer != nil
-            && (bootstrapMode.usesInMemoryRuntimeProjection
-                || (bootstrapMode == .builtLibrary
-                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending))
+    /// True while this install is on the split-install library path: a fresh
+    /// or older split-only install whose durable library (SharedDatabase.sqlite,
+    /// or a not-yet-promoted LibraryRuntime.sqlite) is built on this device
+    /// from UserState and feeds, until its first build is marked ready.
+    ///
+    /// Every install now reads and writes a durable on-disk library; this flag
+    /// only gates the one-time first-build hydration and the checks that must
+    /// not trust a library that is still incomplete. It does not depend on
+    /// PodcastCache.sqlite: when the historical cache is present its rows seed
+    /// the build, and without it the build comes from UserState and RSS alone.
+    var isFirstLibraryBuildRuntime: Bool {
+        bootstrapMode == .freshSplitInstall
+            || (bootstrapMode == .builtLibrary
+                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending)
     }
 
 #if DEBUG
@@ -1346,22 +1403,39 @@ class ModelContainerManager: ObservableObject {
                 && StoreCutoverState.isDeferredMigrationPending == false
                 && StoreRuntimeProjection.isLibraryBackfillPending == false
                 && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false)
+            let cacheDecision = StoreCacheOpenDecision.resolve(
+                hasEverReset: DeleteAllDataService.hasEverReset,
+                migrationsComplete: mayRetireCache,
+                cacheFileExists: files.contains("PodcastCache.sqlite"),
+                legacyCopyNeedsCheckpointStore: bootstrapMode == .legacyUpgrade
+                    && StoreCutoverState.isDeferredMigrationPending
+            )
             let cache: ModelContainer?
-            if DeleteAllDataService.hasEverReset {
+            switch cacheDecision {
+            case .inMemoryAfterReset:
                 // Keep production APIs that still accept a cache container
                 // available, but never reopen historical rows after a wipe.
                 cache = try Self.makeCacheContainer(isStoredInMemoryOnly: true)
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "full_reset")
-            } else if mayRetireCache {
+            case .skipMigrationsComplete:
                 cache = nil
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "migrations_complete")
-            } else {
+            case .skipFileAbsent:
+                // Nothing to migrate, and opening would create an empty file.
+                // The first build and reconciliation work from UserState and
+                // RSS alone.
+                cache = nil
+                StoreSplitCacheLocalDataMigration.markCompleteBecauseSourceIsAbsent()
+                StoreSplitCacheAIContentMigration.markCompleteBecauseSourceIsAbsent()
+                UserDefaults.standard.set(Self.cacheRecoveryVersion, forKey: Self.cacheRecoveryVersionKey)
+                CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "file_absent")
+            case .open:
                 await MainActor.run {
                     SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
                 }
                 // Cache opening is a resumable migration/recovery path only.
                 // A durable library remains available if the historical file
-                // is missing or cannot be opened.
+                // cannot be opened.
                 cache = try? Self.makeCacheContainerWithRetry()
             }
             timer.mark("cache")
@@ -1569,6 +1643,9 @@ class ModelContainerManager: ObservableObject {
             bootstrapMode = preparation.bootstrapMode
             if let userState = preparation.userStateContainer { preparedUserStateContainer = userState }
             if let cache = preparation.cacheContainer { preparedCacheContainer = cache }
+            // Launch preparation already decided whether the historical cache
+            // was needed and tried it once; don't reopen it per caller.
+            didAttemptCacheOpen = true
             if self.preparedContainer == nil, pendingRuntimeContainer == nil {
                 if preparation.projectionReady {
                     // Already built on an earlier launch: open straight away.
@@ -1613,7 +1690,7 @@ class ModelContainerManager: ObservableObject {
         }
         guard let runtime = preparedContainer else { return }
         let userState = preparedUserStateContainer
-        let isLocalLibrary = runtimeProjectsFromCache == false
+        let isLocalLibrary = isFirstLibraryBuildRuntime == false
         let task = Task.detached(priority: .utility) {
             let tracker = PlaySessionTrackerActor(modelContainer: runtime)
             await tracker.rebuildListeningStats()
@@ -1648,23 +1725,35 @@ class ModelContainerManager: ObservableObject {
               runtimeStoreReadiness == .ready,
               heavyStoreWorkMayRunInCurrentAppState,
               let runtime = preparedContainer,
-              let userState = preparedUserStateContainer,
-              let cache = preparedCacheContainer else { return }
+              let userState = preparedUserStateContainer else { return }
+        // The feed fill needs only the library and UserState. Transcripts and
+        // local analytics are copied from the historical cache only when this
+        // device still has one open; without it there is nothing to copy.
+        let cache = preparedCacheContainer
+        // A cache file that exists but did not open this launch may still hold
+        // local transcripts; keep the backfill pending so a later launch copies them.
+        let cacheSourceUnavailable = cache == nil && Self.cacheStoreFileExists
         StoreRuntimeProjection.fillUserStateContainer = userState
         let task = Task.detached(priority: .utility) { () -> Bool in
             guard await StoreRuntimeProjection.fillFromFeeds(runtime: runtime) else { return false }
-            let finished = await StoreSplitCompatibilityProjectionService.backfillTranscripts(
-                cacheContainer: cache,
-                runtimeContainer: runtime,
-                resumeAfter: StoreRuntimeProjection.libraryBackfillCursor,
-                shouldContinue: { Task.isCancelled == false },
-                checkpoint: { StoreRuntimeProjection.libraryBackfillCursor = $0 }
-            )
-            if finished {
-                StoreSplitCompatibilityProjectionService.rebuildLocalAnalytics(
+            guard cacheSourceUnavailable == false else { return false }
+            var finished = true
+            if let cache {
+                finished = await StoreSplitCompatibilityProjectionService.backfillTranscripts(
                     cacheContainer: cache,
-                    runtimeContainer: runtime
+                    runtimeContainer: runtime,
+                    resumeAfter: StoreRuntimeProjection.libraryBackfillCursor,
+                    shouldContinue: { Task.isCancelled == false },
+                    checkpoint: { StoreRuntimeProjection.libraryBackfillCursor = $0 }
                 )
+                if finished {
+                    StoreSplitCompatibilityProjectionService.rebuildLocalAnalytics(
+                        cacheContainer: cache,
+                        runtimeContainer: runtime
+                    )
+                }
+            }
+            if finished {
                 await PlaySessionTrackerActor(modelContainer: runtime).rebuildListeningStats()
             }
             return finished
@@ -1675,13 +1764,15 @@ class ModelContainerManager: ObservableObject {
         if finished {
             StoreRuntimeProjection.isLibraryBackfillPending = false
             StoreRuntimeProjection.libraryBackfillCursor = nil
-            _ = await Task.detached(priority: .utility) {
-                StoreSplitCacheAIContentMigration.migrate(
-                    cache: cache,
-                    library: runtime,
-                    dropUnmatchedRows: true
-                )
-            }.value
+            if let cache {
+                _ = await Task.detached(priority: .utility) {
+                    StoreSplitCacheAIContentMigration.migrate(
+                        cache: cache,
+                        library: runtime,
+                        dropUnmatchedRows: true
+                    )
+                }.value
+            }
             SupportDiagnosticsRecorder.shared.record("Library fill finished")
             _ = await performSplitStoreReconcile(
                 force: true,
@@ -1787,6 +1878,7 @@ class ModelContainerManager: ObservableObject {
 
             let needsUserStateContainer = preparedUserStateContainer == nil
             let needsCacheContainer = preparedCacheContainer == nil && cacheStoreIsStillNeeded
+            if needsCacheContainer { didAttemptCacheOpen = true }
             let newTask = Task.detached(priority: .utility) {
                 SplitStoreContainers(
                     userState: needsUserStateContainer
@@ -1831,8 +1923,10 @@ class ModelContainerManager: ObservableObject {
         splitStorePreparationTask = nil
         isPreparingSplitStores = false
 
-        if runtimeProjectsFromCache {
-            guard preparedUserStateContainer != nil, preparedCacheContainer != nil else {
+        if isFirstLibraryBuildRuntime {
+            // The first build needs UserState only; a historical cache is an
+            // optional seed and its absence must not block a usable library.
+            guard preparedUserStateContainer != nil else {
                 markRuntimeStoreInitializationFailed(
                     "Persistent storage is unavailable. Please try again."
                 )
@@ -1848,8 +1942,14 @@ class ModelContainerManager: ObservableObject {
         )
     }
 
+    /// Whether `prepareSplitStores` should (re)try opening PodcastCache.sqlite.
+    /// It is a historical migration input: launch preparation already made one
+    /// attempt when it was needed, a missing file is never created here, and a
+    /// file that failed to open is retried on the next launch rather than on
+    /// every caller of `prepareSplitStores`.
     private var cacheStoreIsStillNeeded: Bool {
-        if runtimeProjectsFromCache { return true }
+        guard didAttemptCacheOpen == false, Self.cacheStoreFileExists else { return false }
+        if isFirstLibraryBuildRuntime { return true }
         if Self.deviceUsedInMemoryProjection,
            UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)
             < Self.cacheRecoveryVersion {
@@ -1862,7 +1962,7 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func recordOpenedSplitStoreEvidenceIfNeeded() {
-        guard runtimeProjectsFromCache, isRuntimeGraphFixture == false else { return }
+        guard isFirstLibraryBuildRuntime, isRuntimeGraphFixture == false else { return }
         if bootstrapMode == .freshSplitInstall {
             // Write only after both durable split stores opened. A process
             // interrupted before then must repeat fresh-install validation.
@@ -1872,7 +1972,12 @@ class ModelContainerManager: ObservableObject {
             )
         }
         var expected = UserDefaults.standard.stringArray(forKey: StoreLineage.key) ?? []
-        for name in ["UserState.sqlite", "PodcastCache.sqlite"] where !expected.contains(name) {
+        // PodcastCache is recorded only when it actually opened. Lineage never
+        // requires it (`StoreLineage.requiredStores`), so its later absence is
+        // not a lost library.
+        var opened = ["UserState.sqlite"]
+        if preparedCacheContainer != nil { opened.append("PodcastCache.sqlite") }
+        for name in opened where !expected.contains(name) {
             expected.append(name)
         }
         if StoreLibraryOrigin.current(libraryFileExists: true) == .built,
@@ -1885,16 +1990,10 @@ class ModelContainerManager: ObservableObject {
     private func markRuntimeStoreReady() {
         guard runtimeStoreReadiness != .ready else { return }
         if let pendingRuntimeContainer {
-            if runtimeProjectsFromCache
-                || (preparedCacheContainer == nil
-                    && (bootstrapMode == .freshSplitInstall
-                        || (bootstrapMode == .builtLibrary
-                            && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending)))
-                || (bootstrapMode != .freshSplitInstall
-                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false) {
-                if runtimeProjectsFromCache {
-                    StoreRuntimeProjection.markReady()
-                }
+            // Reached only after `.ready`: the first build finished, with or
+            // without a historical cache seed.
+            if isFirstLibraryBuildRuntime {
+                StoreRuntimeProjection.markReady()
             }
             preparedContainer = pendingRuntimeContainer
             self.pendingRuntimeContainer = nil
@@ -1955,7 +2054,7 @@ class ModelContainerManager: ObservableObject {
                     )
                 }.value
             }
-            if runtimeProjectsFromCache {
+            if isFirstLibraryBuildRuntime {
                 StoreRuntimeProjection.markReady()
             }
             markRuntimeStoreReady()
@@ -1989,7 +2088,7 @@ class ModelContainerManager: ObservableObject {
               playbackWriteRebuildTask == nil,
               let since = StoreCutoverState.localLibraryStartedAt,
               runtimeStoreReadiness == .ready,
-              runtimeProjectsFromCache == false,
+              isFirstLibraryBuildRuntime == false,
               heavyStoreWorkMayRunInCurrentAppState,
               StoreSplitPlaybackGate.shared.isActive == false,
               let library = preparedContainer,
@@ -2123,7 +2222,7 @@ class ModelContainerManager: ObservableObject {
     /// cache holds but the durable store does not; in the experimental
     /// projection mode it means rebuilding the whole in-memory graph.
     private func buildRuntimeGraphIfNeeded() async -> RuntimeGraphPreparationResult {
-        if runtimeProjectsFromCache {
+        if isFirstLibraryBuildRuntime {
             return await buildCompatibilityProjectionIfNeeded()
         } else {
             // The durable library is already the queryable runtime source.
@@ -2293,16 +2392,18 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func buildCompatibilityProjectionIfNeeded() async -> RuntimeGraphPreparationResult {
-        guard runtimeProjectsFromCache else { return .ready }
+        guard isFirstLibraryBuildRuntime else { return .ready }
         if didBuildCompatibilityProjection { return .ready }
         if let compatibilityProjectionTask {
             return await compatibilityProjectionTask.value
         }
         guard let runtimeContainer = preparedContainer ?? pendingRuntimeContainer,
-              let userStateContainer = preparedUserStateContainer,
-              let cacheContainer = preparedCacheContainer else {
+              let userStateContainer = preparedUserStateContainer else {
             return .failed
         }
+        // Optional seed: an older split-only install's cache holds its feed
+        // data; a fresh install has none and builds from UserState and RSS.
+        let cacheContainer = preparedCacheContainer
 
         SupportDiagnosticsRecorder.shared.record("Runtime compatibility hydration started")
         CrashBreadcrumbs.shared.record("runtime_compatibility_hydration_started")
@@ -2341,12 +2442,13 @@ class ModelContainerManager: ObservableObject {
     private func performCompatibilityProjection(
         runtimeContainer: ModelContainer,
         userStateContainer: ModelContainer,
-        cacheContainer: ModelContainer
+        cacheContainer: ModelContainer?
     ) async -> RuntimeGraphPreparationResult {
         // Record that this install has rendered from the in-memory projection, so
         // a later durable-store launch knows the cache may hold feed data the
         // durable store never saw.
         if isRuntimeGraphFixture == false,
+           cacheContainer != nil,
            StoreLibraryOrigin.current(libraryFileExists: true) == nil {
             UserDefaults.standard.set(true, forKey: Self.usedInMemoryProjectionKey)
         }
@@ -2354,10 +2456,12 @@ class ModelContainerManager: ObservableObject {
         guard Task.isCancelled == false else { return .interrupted }
         let hydrationStartedAt = Date()
         let isFixture = isRuntimeGraphFixture
-        let priority = isFixture ? [] : StoreSplitCompatibilityProjectionService.priorityEpisodeKeys(
-            userState: userStateContainer,
-            cache: cacheContainer
-        )
+        let priority = isFixture || cacheContainer == nil
+            ? []
+            : StoreSplitCompatibilityProjectionService.priorityEpisodeKeys(
+                userState: userStateContainer,
+                cache: cacheContainer!
+            )
         let resumeAfter = isFixture ? nil : StoreRuntimeProjection.cursor
         let showsProgress = pendingRuntimeContainer != nil
         let cancellation = StoreRuntimeBuildCancellation()
@@ -2366,7 +2470,10 @@ class ModelContainerManager: ObservableObject {
             StoreRuntimeProjection.libraryBackfillCursor = nil
         }
         let worker = Task.detached(priority: .userInitiated) { () -> StoreSplitCompatibilityProjectionResult in
-            StoreSplitCompatibilityProjectionService.rebuild(
+            // Without a cache there are no cached rows to copy; the feed fill
+            // (`runLibraryBackfillIfNeeded`) fetches every subscription instead.
+            guard let cacheContainer else { return StoreSplitCompatibilityProjectionResult() }
+            return StoreSplitCompatibilityProjectionService.rebuild(
                 cacheContainer: cacheContainer,
                 runtimeContainer: runtimeContainer,
                 resumeAfter: resumeAfter,
@@ -2543,7 +2650,7 @@ class ModelContainerManager: ObservableObject {
         await prunePlayedPlaylistEntries()
         await splitStoreCoordinator.scheduleLaunchWork()
         if let userState = preparedUserStateContainer {
-            let library = runtimeProjectsFromCache ? nil : preparedContainer
+            let library = isFirstLibraryBuildRuntime ? nil : preparedContainer
             let mayTombstoneLegacySubscriptions = bootstrapMode == .legacyUpgrade
                 && DeleteAllDataService.hasEverReset == false
             // Baseline repair and stale-subscription cleanup are one-time, small
@@ -2569,6 +2676,10 @@ class ModelContainerManager: ObservableObject {
             await self?.runDeferredMigrationIfNeeded()
             _ = await transcripts
             _ = await writes
+            LibraryConnectivityMonitor.shared.startIfNeeded { [weak self] in
+                self?.resumeHydrationAfterConnectivityRecovery()
+            }
+            await self?.hydratePendingSubscriptionsWhenReady(reason: "launch")
         }
 #if canImport(UIKit)
         // Arm the background pass now rather than waiting for a clean
@@ -2721,6 +2832,7 @@ class ModelContainerManager: ObservableObject {
         launchStoreCleanupTask?.cancel()
         userStateImportTask?.cancel()
         compatibilityProjectionTask?.cancel()
+        subscriptionHydrationTask?.cancel()
         Task {
             await splitStoreCoordinator.pauseForBackground()
         }
@@ -2806,8 +2918,10 @@ class ModelContainerManager: ObservableObject {
               runtimeStoreReadiness == .ready,
               heavyStoreWorkMayRunInCurrentAppState,
               let runtime = preparedContainer,
-              let userState = preparedUserStateContainer,
-              let cache = preparedCacheContainer else { return }
+              let userState = preparedUserStateContainer else { return }
+        // The historical cache is an optional migration source, never a
+        // prerequisite for portable reconciliation.
+        let cache = preparedCacheContainer
         if let userStateImportTask {
             _ = await userStateImportTask.value
         }
@@ -2882,6 +2996,7 @@ class ModelContainerManager: ObservableObject {
             await self?.runDeferredMigrationIfNeeded()
             _ = await transcripts
             _ = await writes
+            await self?.hydratePendingSubscriptionsWhenReady(reason: "foreground")
         }
     }
 
@@ -3324,8 +3439,7 @@ class ModelContainerManager: ObservableObject {
     func reconcileSplitRuntimePlaylists() async {
         guard runtimeStoreReadiness == .ready,
               let runtime = preparedContainer,
-              let userState = preparedUserStateContainer,
-              let cache = preparedCacheContainer else {
+              let userState = preparedUserStateContainer else {
             if StoreCutoverState.isDeferredMigrationPending == false {
                 pendingSplitRuntimePlaylistReconciliation = true
             }
@@ -3348,6 +3462,7 @@ class ModelContainerManager: ObservableObject {
             return
         }
         pendingSplitRuntimePlaylistReconciliation = false
+        let cache = preparedCacheContainer
         let task = Task {
             await StoreSplitUserStateImporter.apply(
                 legacyContainer: runtime,
@@ -3399,22 +3514,502 @@ class ModelContainerManager: ObservableObject {
         _ feeds: [URL],
         in container: ModelContainer
     ) async -> Bool {
-        let now = Date()
-        let due = feeds.filter { feed in
+        // Playlist hydration is not a subscription change: fetch only the
+        // feeds it is missing.
+        guard feeds.isEmpty == false else { return false }
+        return await hydratePendingSubscriptions(
+            requestedFeeds: feeds,
+            in: container,
+            reason: "playlist_episode_miss"
+        )
+    }
+
+    /// Fetches subscribed podcasts that have never been fetched on this device,
+    /// plus any feeds a caller explicitly requests (a queued episode the library
+    /// does not know yet, a newly usable credential).
+    ///
+    /// - Order (#483): the resume target and head of Up Next first, then the
+    ///   rest of Up Next, manual playlists, other references, then general
+    ///   subscription fill. See `SubscriptionHydrationScheduler.Priority`.
+    /// - Up to `SubscriptionHydrationScheduler.foregroundConcurrency()` fetches
+    ///   overlap (one inside a background-processing grant). SwiftData writes
+    ///   stay serialized by `PodcastFeedCommitCoordinator`; same-feed work is
+    ///   single-flight through `FeedRefreshCoordinator`.
+    /// - Never-fetched stubs are chosen by `SubscriptionHydrationScheduler.dueFeeds`
+    ///   from the durable library rows, so they stay eligible across
+    ///   cancellation, offline and relaunch; backoff uses the failure fields the
+    ///   fetch itself records on `PodcastMetaData`.
+    /// - Explicit requests use an in-process exponential backoff that also
+    ///   grows when a fetch succeeds but the referenced episode is still missing.
+    /// - Concurrent triggers join the one in-flight run; their requests are
+    ///   pulled by the running pool. Drains in fair stub batches until nothing
+    ///   is due or the per-run cap is reached; no new trigger is needed.
+    /// - Each commit of a feed the queue or a playlist references publishes
+    ///   membership incrementally (coalesced), instead of waiting for the run.
+    ///
+    /// Returns whether any feed was fetched, so a caller can re-run the import
+    /// that projects queue/state onto the new episodes.
+    @discardableResult
+    func hydratePendingSubscriptions(
+        requestedFeeds: [URL] = [],
+        in container: ModelContainer? = nil,
+        reason: String,
+        ignoresFailureBackoff: Bool = false
+    ) async -> Bool {
+        guard DeleteAllDataService.hasPendingLocalReset == false,
+              heavyStoreWorkMayRunInCurrentAppState,
+              let container = container ?? preparedContainer else { return false }
+        for feed in requestedFeeds {
             let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
-            guard let lastAttempt = missingFeedRefreshAttempts[key] else { return true }
-            return now.timeIntervalSince(lastAttempt) >= 60 * 15
+            if pendingHydrationRequests[key] == nil { pendingHydrationRequests[key] = feed }
         }
-        var didRefreshAny = false
-        for feed in due.prefix(15) {
-            guard Task.isCancelled == false else { break }
-            missingFeedRefreshAttempts[PodcastFeedIdentity.normalizedFeedURLString(feed)] = now
-            if (try? await PodcastModelActor(modelContainer: container)
-                .updatePodcast(feed, policy: .validatedImport, silent: true)) == true {
-                didRefreshAny = true
+        if ignoresFailureBackoff { hydrationIgnoresFailureBackoff = true }
+        if let subscriptionHydrationTask {
+            subscriptionHydrationRerunRequested = true
+            return await Self.awaitHydration(subscriptionHydrationTask)
+        }
+        let runID = UUID()
+        subscriptionHydrationRunID = runID
+        let task = Task { [weak self] () -> Bool in
+            guard let self else { return false }
+            var refreshed = false
+            var rounds = 0
+            // A request that arrived while the finished run handed the importer
+            // back is served by one more round instead of being stranded.
+            repeat {
+                rounds += 1
+                self.subscriptionHydrationRerunRequested = false
+                if await self.runSubscriptionHydration(in: container, reason: reason) {
+                    refreshed = true
+                }
+            } while (self.pendingHydrationRequests.isEmpty == false || self.subscriptionHydrationRerunRequested)
+                && rounds < 4
+                && Task.isCancelled == false
+                && self.heavyStoreWorkMayRunInCurrentAppState
+            // Cleared in the same main-actor job as the pool's last check, so a
+            // request arriving afterwards starts a fresh run instead of joining
+            // a finished one.
+            if self.subscriptionHydrationRunID == runID {
+                self.subscriptionHydrationTask = nil
+                self.subscriptionHydrationRunID = nil
             }
+            return refreshed
+        }
+        subscriptionHydrationTask = task
+        return await Self.awaitHydration(task)
+    }
+
+    /// Backgrounding cancels the import or maintenance task that is waiting
+    /// here; the network pass must stop with it rather than keep fetching.
+    private static func awaitHydration(_ task: Task<Bool, Never>) async -> Bool {
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
+        }
+    }
+
+    /// Launch, foreground and connectivity trigger. Cheap when nothing is due:
+    /// the selection reads only library podcast metadata.
+    private func hydratePendingSubscriptionsWhenReady(
+        reason: String,
+        ignoresFailureBackoff: Bool = false
+    ) async {
+        guard runtimeStoreReadiness == .ready,
+              isRuntimeGraphFixture == false,
+              StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else { return }
+        guard await hydratePendingSubscriptions(
+            reason: reason,
+            ignoresFailureBackoff: ignoresFailureBackoff
+        ), Task.isCancelled == false else { return }
+        // New episodes may resolve synced state and queue references that the
+        // last import left unresolved (their cursors stayed uncommitted).
+        _ = await performSplitStoreReconcile(
+            force: true,
+            refreshMissingFeeds: false,
+            reason: "subscription_hydration"
+        )
+    }
+
+    /// Connectivity came back: resume feeds that failed while offline without
+    /// waiting out their backoff. At most once every two minutes.
+    private func resumeHydrationAfterConnectivityRecovery() {
+        let now = Date()
+        if let last = lastConnectivityHydrationAt, now.timeIntervalSince(last) < 120 { return }
+        lastConnectivityHydrationAt = now
+        Task(priority: .utility) { [weak self] in
+            await self?.hydratePendingSubscriptionsWhenReady(
+                reason: "connectivity_restored",
+                ignoresFailureBackoff: true
+            )
+        }
+    }
+
+    /// Targeted Retry from a Queue/playlist restore status. Re-fetches the
+    /// referenced feeds now (skipping their backoff), then re-projects the
+    /// playlist streams, which requests any feed still missing an episode.
+    func retryPlaylistRestore(feeds: [URL]) async {
+        guard runtimeStoreReadiness == .ready else {
+            await StoreSplitWorkCoordinator.shared.runManualReconcile(authoritativePlaylists: false)
+            return
+        }
+        // A user's explicit Retry clears the in-process request backoff.
+        requestedFeedBackoff.removeAll()
+        CrashBreadcrumbs.shared.record("restore_user_retry", details: "feeds=\(feeds.count)")
+        _ = await hydratePendingSubscriptions(
+            requestedFeeds: feeds,
+            reason: "user_retry",
+            ignoresFailureBackoff: true
+        )
+        guard Task.isCancelled == false else { return }
+        await reconcileSplitRuntimePlaylists()
+        LibraryRestoreMonitor.shared.membershipPublished()
+    }
+
+    /// Retry from Settings → iCloud Sync: fetch every due never-fetched
+    /// subscription now, skipping failure backoff (credential gates remain).
+    func retryLibraryFill() async {
+        requestedFeedBackoff.removeAll()
+        CrashBreadcrumbs.shared.record("library_fill_user_retry")
+        await hydratePendingSubscriptionsWhenReady(reason: "user_retry_library", ignoresFailureBackoff: true)
+    }
+
+    private struct HydrationItem: Sendable {
+        let key: String
+        let feed: URL
+        let explicit: Bool
+        let priority: SubscriptionHydrationScheduler.Priority
+    }
+
+    private enum HydrationOutcome: Sendable {
+        case fetched(updated: Bool, milliseconds: Int64)
+        case failed(milliseconds: Int64)
+        case cancelled
+    }
+
+    /// One run of the bounded worker pool. Returns whether any feed was fetched.
+    private func runSubscriptionHydration(in container: ModelContainer, reason: String) async -> Bool {
+        let startedAt = ContinuousClock.now
+        let userState = preparedUserStateContainer
+        let priorities: SubscriptionHydrationScheduler.ReferencePriorities = await Task.detached(
+            priority: .utility
+        ) {
+            userState.map { SubscriptionHydrationScheduler.referencePriorities(userState: $0) }
+                ?? SubscriptionHydrationScheduler.ReferencePriorities()
+        }.value
+        let concurrency = isRunningBackgroundProcessingTask
+            ? 1
+            : SubscriptionHydrationScheduler.foregroundConcurrency()
+        var attempted = Set<String>()
+        var explicitQueue: [HydrationItem] = []
+        var stubBuffer: [HydrationItem] = []
+        var stubsExhausted = false
+        var stubsSelected = 0
+        var requestsTaken = 0
+        var succeeded = 0
+        var failed = 0
+        var didRefreshAny = false
+        var announcedStart = false
+        let monitor = LibraryRestoreMonitor.shared
+
+        func drainRequests(now: Date) {
+            let requests = pendingHydrationRequests
+            pendingHydrationRequests.removeAll()
+            let ignoresBackoff = hydrationIgnoresFailureBackoff
+            let due = requests.compactMap { key, feed -> (key: String, feed: URL)? in
+                guard attempted.contains(key) == false,
+                      explicitQueue.contains(where: { $0.key == key }) == false else { return nil }
+                if ignoresBackoff == false,
+                   let backoff = requestedFeedBackoff[key], now < backoff.retryAfter {
+                    return nil
+                }
+                return (key, feed)
+            }
+            guard due.isEmpty == false else { return }
+            explicitQueue += SubscriptionHydrationScheduler.orderedRequests(due, priorities: priorities)
+                .map { HydrationItem(key: $0.key, feed: $0.feed, explicit: true, priority: $0.priority) }
+            explicitQueue.sort { $0.priority == $1.priority ? $0.key < $1.key : $0.priority < $1.priority }
+        }
+
+        func next() async -> HydrationItem? {
+            let now = Date()
+            drainRequests(now: now)
+            if subscriptionHydrationRerunRequested {
+                subscriptionHydrationRerunRequested = false
+                stubsExhausted = false
+            }
+            // Explicit requests outrank buffered stubs unless a stub is more
+            // urgent (a queue feed that is also a never-fetched subscription).
+            if let head = explicitQueue.first, requestsTaken < Self.maximumRequestedHydrationFeedsPerRun,
+               head.priority <= (stubBuffer.first?.priority ?? .subscriptionStub) {
+                explicitQueue.removeFirst()
+                requestsTaken += 1
+                attempted.insert(head.key)
+                requestedFeedBackoff[head.key] = .attempt(previous: requestedFeedBackoff[head.key], now: now)
+                return head
+            }
+            if stubBuffer.isEmpty, stubsExhausted == false,
+               stubsSelected < Self.maximumSubscriptionHydrationStubsPerRun,
+               // The first library build fetches every subscription itself.
+               StoreRuntimeProjection.isLibraryBackfillPending == false {
+                let excluded = attempted.union(explicitQueue.map(\.key))
+                let limit = min(
+                    Self.subscriptionHydrationStubBatch,
+                    Self.maximumSubscriptionHydrationStubsPerRun - stubsSelected
+                )
+                let ignoresBackoff = hydrationIgnoresFailureBackoff
+                let stubs = await Task.detached(priority: .utility) {
+                    SubscriptionHydrationScheduler.dueFeeds(
+                        in: container,
+                        excluding: excluded,
+                        limit: limit,
+                        now: now,
+                        priorities: priorities,
+                        ignoresFailureBackoff: ignoresBackoff
+                    )
+                }.value
+                if stubs.count < limit { stubsExhausted = true }
+                stubsSelected += stubs.count
+                stubBuffer = stubs.map {
+                    HydrationItem(
+                        key: PodcastFeedIdentity.normalizedFeedURLString($0),
+                        feed: $0,
+                        explicit: false,
+                        priority: priorities.priority(for: $0) ?? .subscriptionStub
+                    )
+                }.filter { attempted.contains($0.key) == false }
+                // A request may have arrived during the selection.
+                drainRequests(now: Date())
+                if let head = explicitQueue.first, requestsTaken < Self.maximumRequestedHydrationFeedsPerRun,
+                   head.priority <= (stubBuffer.first?.priority ?? .subscriptionStub) {
+                    explicitQueue.removeFirst()
+                    requestsTaken += 1
+                    attempted.insert(head.key)
+                    requestedFeedBackoff[head.key] = .attempt(previous: requestedFeedBackoff[head.key], now: now)
+                    return head
+                }
+            }
+            guard stubBuffer.isEmpty == false else { return nil }
+            let stub = stubBuffer.removeFirst()
+            attempted.insert(stub.key)
+            return stub
+        }
+
+        func announceIfNeeded(_ item: HydrationItem) {
+            guard announcedStart == false else { return }
+            announcedStart = true
+            monitor.hydrationStarted()
+            let backlog = explicitQueue.filter { $0.priority.unblocksPlaylistMembership }.count
+                + (item.priority.unblocksPlaylistMembership ? 1 : 0)
+            LibraryRestoreSignposts.runStarted(
+                requested: explicitQueue.count + (item.explicit ? 1 : 0),
+                priorityBacklog: backlog,
+                concurrency: concurrency
+            )
+            CrashBreadcrumbs.shared.record(
+                "subscription_hydration_run_started",
+                details: "reason=\(reason),priority_backlog=\(backlog),concurrency=\(concurrency)"
+            )
+        }
+
+        await SubscriptionHydrationScheduler.runBounded(
+            maxConcurrent: concurrency,
+            next: { () async -> HydrationItem? in
+                guard let item = await next() else { return nil }
+                announceIfNeeded(item)
+                monitor.feedStarted()
+                return item
+            },
+            shouldContinue: { [weak self] in
+                Task.isCancelled == false && (self?.heavyStoreWorkMayRunInCurrentAppState ?? false)
+            },
+            operation: { @Sendable (item: HydrationItem) async -> HydrationOutcome in
+                let feedStartedAt = ContinuousClock.now
+                do {
+                    let updated = try await PodcastModelActor(modelContainer: container)
+                        .updatePodcast(item.feed, policy: .validatedImport, silent: true)
+                    return .fetched(
+                        updated: updated,
+                        milliseconds: LibraryRestoreSignposts.milliseconds(feedStartedAt.duration(to: .now))
+                    )
+                } catch is CancellationError {
+                    return .cancelled
+                } catch {
+                    // The fetch recorded its failure on the podcast's metadata,
+                    // which is the durable backoff for the next stub selection.
+                    return .failed(
+                        milliseconds: LibraryRestoreSignposts.milliseconds(feedStartedAt.duration(to: .now))
+                    )
+                }
+            },
+            completed: { (item: HydrationItem, outcome: HydrationOutcome) in
+                monitor.feedFinished()
+                switch outcome {
+                case .fetched(_, let milliseconds):
+                    didRefreshAny = true
+                    succeeded += 1
+                    LibraryRestoreSignposts.feedFinished(
+                        priority: item.priority.rawValue, succeeded: true, milliseconds: milliseconds
+                    )
+                    if item.explicit || item.priority.unblocksPlaylistMembership {
+                        scheduleHydrationPublish(feedKey: item.key, runStartedAt: startedAt)
+                    }
+                case .failed(let milliseconds):
+                    failed += 1
+                    if item.explicit {
+                        requestedFeedBackoff[item.key] = .next(
+                            after: requestedFeedBackoff[item.key], now: Date()
+                        )
+                    }
+                    LibraryRestoreSignposts.feedFinished(
+                        priority: item.priority.rawValue, succeeded: false, milliseconds: milliseconds
+                    )
+                case .cancelled:
+                    // Not an outcome of the feed; the next trigger retries it.
+                    if item.explicit { requestedFeedBackoff.removeValue(forKey: item.key) }
+                }
+            }
+        )
+
+        hydrationIgnoresFailureBackoff = false
+        // Requests beyond the per-run cap (or left by cancellation) wait for
+        // the next trigger rather than being dropped.
+        for item in explicitQueue where pendingHydrationRequests[item.key] == nil {
+            pendingHydrationRequests[item.key] = item.feed
+            requestedFeedBackoff.removeValue(forKey: item.key)
+        }
+        if announcedStart {
+            // Hand the importer back to its owner without overlap: the caller
+            // re-runs the import (or a reconcile) right after this returns.
+            hydrationPublishTask?.cancel()
+            hydrationPublishTask = nil
+            _ = await hydrationPublishApplyTask?.value
+            monitor.hydrationFinished()
+            let elapsed = LibraryRestoreSignposts.milliseconds(startedAt.duration(to: .now))
+            LibraryRestoreSignposts.runFinished(
+                attempted: attempted.count, succeeded: succeeded, failed: failed, milliseconds: elapsed
+            )
+            CrashBreadcrumbs.shared.record(
+                "subscription_hydration_run_finished",
+                details: "reason=\(reason),attempted=\(attempted.count),succeeded=\(succeeded),failed=\(failed),duration_ms=\(elapsed)"
+            )
         }
         return didRefreshAny
+    }
+
+    // MARK: Incremental publication (#483)
+
+    /// The playlist-only projection an incremental publish runs: the same
+    /// non-authoritative pass `reconcileSplitRuntimePlaylists` uses. It keeps
+    /// UserState order and existing entries, never deletes for a missing
+    /// episode, and leaves unresolved references in UserState and the ledger.
+    nonisolated static func applyHydratedPlaylistMembership(
+        runtime: ModelContainer,
+        userState: ModelContainer,
+        cache: ModelContainer?
+    ) async -> StoreSplitUserStateImportResult {
+        await StoreSplitUserStateImporter.apply(
+            legacyContainer: runtime,
+            userStateContainer: userState,
+            cacheContainer: cache,
+            authoritativePlaylists: false,
+            projectListeningHistoryToLegacy: false,
+            changedStreams: [.playlists, .playlistEntries, .queueEntries]
+        )
+    }
+
+    private var hydrationFirstPlayableRecorded = false
+
+    /// Coalesces referenced-feed commits into one playlist projection about
+    /// every `hydrationPublishDebounce`. Pending feeds are kept across a
+    /// skipped or cancelled publish; the import that follows hydration (or the
+    /// post-hydration reconcile) projects anything still pending.
+    private func scheduleHydrationPublish(feedKey: String, runStartedAt: ContinuousClock.Instant) {
+        hydrationPublishPendingFeeds.insert(feedKey)
+        guard hydrationPublishTask == nil else { return }
+        hydrationPublishTask = Task { [weak self] in
+            while true {
+                do {
+                    try await Task.sleep(for: Self.hydrationPublishDebounce)
+                } catch {
+                    return
+                }
+                guard let self else { return }
+                guard self.hydrationPublishPendingFeeds.isEmpty == false,
+                      Task.isCancelled == false,
+                      self.heavyStoreWorkMayRunInCurrentAppState else {
+                    self.hydrationPublishTask = nil
+                    return
+                }
+                await self.publishHydratedPlaylistMembership(runStartedAt: runStartedAt)
+            }
+        }
+    }
+
+    /// Projects playlist and queue references onto episodes that just arrived.
+    /// Runs only when no other importer pass is writing: either nothing holds
+    /// `userStateImportTask`, or its holder is parked waiting for hydration.
+    private func publishHydratedPlaylistMembership(runStartedAt: ContinuousClock.Instant) async {
+        guard runtimeStoreReadiness == .ready,
+              compatibilityProjectionTask == nil,
+              StoreCutoverState.isDeferredMigrationPending == false,
+              DeleteAllDataService.hasPendingLocalReset == false,
+              let runtime = preparedContainer,
+              let userState = preparedUserStateContainer else { return }
+        let ownsImportSlot: Bool
+        if userStateImportTask == nil {
+            ownsImportSlot = true
+        } else if userStateImportAwaitingHydration {
+            ownsImportSlot = false
+        } else {
+            // Another importer pass is writing; it or the import that follows
+            // hydration projects these feeds. Keep them pending.
+            return
+        }
+        let publishedFeeds = hydrationPublishPendingFeeds
+        hydrationPublishPendingFeeds.removeAll()
+        let cache = preparedCacheContainer
+        let publishStartedAt = ContinuousClock.now
+        let task = Task {
+            await Self.applyHydratedPlaylistMembership(runtime: runtime, userState: userState, cache: cache)
+        }
+        hydrationPublishApplyTask = task
+        if ownsImportSlot { userStateImportTask = task }
+        let result = await StoreSplitTaskCancellation.awaitValue(of: task)
+        if ownsImportSlot, userStateImportTask == task { userStateImportTask = nil }
+        if hydrationPublishApplyTask == task { hydrationPublishApplyTask = nil }
+        guard result.failed == 0, result.interruptedByPlayback == false else {
+            // Nothing was lost: the references remain unresolved in UserState
+            // and the follow-up import retries them.
+            hydrationPublishPendingFeeds.formUnion(publishedFeeds)
+            return
+        }
+        // A feed that was fetched yet still misses its referenced episode backs
+        // off instead of being fetched again on the next trigger.
+        let stillMissing = Set(result.playlistFeedsToBootstrap.map(PodcastFeedIdentity.normalizedFeedURLString))
+        let now = Date()
+        for key in publishedFeeds {
+            if stillMissing.contains(key) {
+                requestedFeedBackoff[key] = .next(after: requestedFeedBackoff[key], now: now)
+            } else {
+                requestedFeedBackoff.removeValue(forKey: key)
+            }
+        }
+        LibraryRestoreSignposts.membershipPublished(
+            applied: result.playlistEntriesApplied,
+            unresolvedFeeds: stillMissing.count,
+            milliseconds: LibraryRestoreSignposts.milliseconds(publishStartedAt.duration(to: .now))
+        )
+        if hydrationFirstPlayableRecorded == false,
+           result.playlistEntriesApplied > 0,
+           localDefaultQueueIsEmpty(in: runtime) == false {
+            hydrationFirstPlayableRecorded = true
+            LibraryRestoreSignposts.firstPlayable(
+                millisecondsSinceRunStart: LibraryRestoreSignposts.milliseconds(runStartedAt.duration(to: .now))
+            )
+        }
+        NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
+        LibraryRestoreMonitor.shared.membershipPublished()
     }
 
     private func applySyncedUserStateIfPossible(
@@ -3444,10 +4039,12 @@ class ModelContainerManager: ObservableObject {
         guard Task.isCancelled == false,
               cloudKitExportInProgress() == false else { return deferredResult() }
         guard let legacyContainer = preparedContainer,
-              let userStateContainer = preparedUserStateContainer,
-              let cacheContainer = preparedCacheContainer else {
+              let userStateContainer = preparedUserStateContainer else {
             return deferredResult()
         }
+        // Optional: while a historical cache is still open for migration, the
+        // importer may read its retired local-settings/bookmark-detail rows.
+        let cacheContainer = preparedCacheContainer
 
         // Each synchronized stream has its own cursor. Playback progress must
         // not unlock subscription, playlist, bookmark, preference, or history
@@ -3510,57 +4107,43 @@ class ModelContainerManager: ObservableObject {
 
             let result = await runImport()
 
-            // Only bootstrap missing feeds over the network while foreground and
-            // not cancelled; otherwise defer to the next foreground reconcile.
-            // An unresolved playlist/queue reference is stronger evidence than
-            // the general missing-feed bootstrap preference: fetch that exact
-            // feed so the referenced episode can be projected before the user
-            // sees the membership as hydrated.
+            // Only fetch feeds over the network while foreground and not
+            // cancelled; otherwise the next trigger picks them up. Never-fetched
+            // subscription stubs are selected from durable library rows, so a
+            // committed subscription cursor cannot strand them. A subscription
+            // change is what makes new stubs; other streams only fetch exact
+            // feeds the import asked for.
             let hasPlaylistEpisodeMisses = result.playlistFeedsToBootstrap.isEmpty == false
+            let fetchesRequestedFeeds = refreshMissingFeeds || hasPlaylistEpisodeMisses
             guard result.failed == 0, result.interruptedByPlayback == false,
-                  (refreshMissingFeeds || hasPlaylistEpisodeMisses),
-                  result.feedsToBootstrap.isEmpty == false,
+                  fetchesRequestedFeeds || changedStreams.contains(.subscriptions),
                   Task.isCancelled == false else {
                 return result
             }
 
             // Playlist entries are not renderable until their episode feed is
-            // present in the legacy UI graph. Prioritize those feeds over the
-            // much larger episode-state backlog, while retaining a strict cap.
-            let priorityFeeds = result.playlistFeedsToBootstrap
-            let maxFeedsPerPass = priorityFeeds.isEmpty
-                ? 5
-                : min(15, max(5, priorityFeeds.count))
-            let retryInterval: TimeInterval = 60 * 15
-            let now = Date()
-            var seenFeedKeys = Set<String>()
-            let dueFeeds = (priorityFeeds + result.feedsToBootstrap).filter { feed in
-                let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
-                guard seenFeedKeys.insert(key).inserted else { return false }
-                guard let lastAttempt = self.missingFeedRefreshAttempts[key] else {
-                    return true
-                }
-                return now.timeIntervalSince(lastAttempt) >= retryInterval
+            // present in the library. Prioritize those feeds over the much
+            // larger episode-state backlog, while retaining a strict cap.
+            var requestedFeeds: [URL] = []
+            if fetchesRequestedFeeds {
+                let priorityFeeds = result.playlistFeedsToBootstrap
+                let maxFeedsPerPass = priorityFeeds.isEmpty
+                    ? 5
+                    : min(15, max(5, priorityFeeds.count))
+                var seenFeedKeys = Set<String>()
+                requestedFeeds = Array((priorityFeeds + result.feedsToBootstrap).filter {
+                    seenFeedKeys.insert(PodcastFeedIdentity.normalizedFeedURLString($0)).inserted
+                }.prefix(maxFeedsPerPass))
             }
-            let feedsToRefresh = Array(dueFeeds.prefix(maxFeedsPerPass))
-
-            var didRefreshAny = false
-            for feed in feedsToRefresh {
-                if Task.isCancelled { break }
-                let key = PodcastFeedIdentity.normalizedFeedURLString(feed)
-                self.missingFeedRefreshAttempts[key] = now
-                do {
-                    let refreshed = try await PodcastModelActor(
-                        modelContainer: legacyContainer
-                    ).updatePodcast(feed, policy: .validatedImport, silent: true)
-                    didRefreshAny = true
-                    if refreshed == false {
-                        self.missingFeedRefreshAttempts.removeValue(forKey: key)
-                    }
-                } catch {
-                    self.missingFeedRefreshAttempts.removeValue(forKey: key)
-                }
-            }
+            // The importer pass above has finished; incremental publication
+            // may project membership while this task waits for hydration.
+            self.userStateImportAwaitingHydration = true
+            let didRefreshAny = await self.hydratePendingSubscriptions(
+                requestedFeeds: requestedFeeds,
+                in: legacyContainer,
+                reason: "user_state_import"
+            )
+            self.userStateImportAwaitingHydration = false
             if didRefreshAny, Task.isCancelled == false {
                 return await runImport()
             }

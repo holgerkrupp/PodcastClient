@@ -196,6 +196,98 @@ final class StoreBootstrapRecoverySafetyTests: XCTestCase {
         ))
     }
 
+    /// A historical cache file that is gone is never recreated at launch and
+    /// never blocks the library; only the resumable legacy copy may need it as
+    /// its checkpoint store.
+    func testLaunchWithMissingObsoleteCacheFileSkipsItWithoutBlocking() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try Data().write(to: directory.appendingPathComponent("SharedDatabase.sqlite"))
+        try Data().write(to: directory.appendingPathComponent("UserState.sqlite"))
+        let files = Set(try FileManager.default.contentsOfDirectory(atPath: directory.path))
+        // An earlier build recorded the cache in lineage; its absence is not loss.
+        XCTAssertNoThrow(try StoreLineage.validate(
+            directory: directory,
+            expected: StoreLineage.requiredStores(
+                ["SharedDatabase.sqlite", "UserState.sqlite", "PodcastCache.sqlite"]
+            )
+        ))
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: false,
+                migrationsComplete: false,
+                cacheFileExists: files.contains("PodcastCache.sqlite"),
+                legacyCopyNeedsCheckpointStore: false
+            ),
+            .skipFileAbsent
+        )
+        // The resumable legacy UserState copy keeps its checkpoints there.
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: false,
+                migrationsComplete: false,
+                cacheFileExists: false,
+                legacyCopyNeedsCheckpointStore: true
+            ),
+            .open
+        )
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: false,
+                migrationsComplete: false,
+                cacheFileExists: true,
+                legacyCopyNeedsCheckpointStore: false
+            ),
+            .open
+        )
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: false,
+                migrationsComplete: true,
+                cacheFileExists: true,
+                legacyCopyNeedsCheckpointStore: false
+            ),
+            .skipMigrationsComplete
+        )
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: true,
+                migrationsComplete: false,
+                cacheFileExists: true,
+                legacyCopyNeedsCheckpointStore: true
+            ),
+            .inMemoryAfterReset
+        )
+        XCTAssertFalse(files.contains("PodcastCache.sqlite"), "Deciding must not create the file")
+    }
+
+    /// UserState-only and cache-only split installs take the built-library path.
+    func testUserStateOnlyAndCacheOnlySplitInstallsTakeTheBuiltLibraryPath() throws {
+        let suiteName = "SplitOnlyStates-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        for files: Set<String> in [["UserState.sqlite"], ["PodcastCache.sqlite"],
+                                   ["UserState.sqlite", "PodcastCache.sqlite"]] {
+            let splitOnly = StoreBootstrapEvidence.hasSplitOnlyLibrary(
+                standardDefaults: defaults,
+                appGroupDefaults: nil,
+                files: files
+            )
+            XCTAssertTrue(splitOnly, "\(files)")
+            let mode = StoreBootstrapMode.resolve(
+                legacyStoreExists: false,
+                installationWasPreviouslyInitialized: StoreBootstrapEvidence.mayHaveExistingLibrary(
+                    standardDefaults: defaults,
+                    appGroupDefaults: nil,
+                    files: files
+                ) && splitOnly == false
+            )
+            // Builds a durable built library from UserState (and the cache when
+            // present); the historical cache is a seed, not a requirement.
+            XCTAssertEqual(mode, .freshSplitInstall, "\(files)")
+        }
+    }
+
     /// The feed cache may be empty: everything the user made comes from UserState.
     @MainActor
     func testSubscriptionsAndPlaylistsSurviveARebuildWithAnEmptyCache() async throws {

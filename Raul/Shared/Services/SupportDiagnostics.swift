@@ -214,7 +214,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         // intentionally kept out of launch maintenance because it reads every
         // history row and several whole-library tables.
         if let userState = manager.preparedUserStateContainer {
-            let library = manager.runtimeProjectsFromCache ? nil : manager.preparedContainer
+            let library = manager.isFirstLibraryBuildRuntime ? nil : manager.preparedContainer
             ListeningTotalsDiagnostics.capture(
                 userState: userState,
                 library: library,
@@ -245,7 +245,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             storeFiles: Self.storeFiles(),
             legacyCloudAttachmentConfigured: StoreDevelopmentConfiguration.legacyCloudSyncEnabled,
             readAuthority: "User State",
-            runtimeKind: manager.runtimeProjectsFromCache ? "in-memory projection" : "durable library store",
+            runtimeKind: manager.isFirstLibraryBuildRuntime ? "durable library store (first build)" : "durable library store",
             runtimeStoreStatus: "open (primary app container available)",
             legacyStoreStatus: "not used (local library is the runtime)",
             userStateStoreStatus: manager.preparedUserStateContainer == nil ? "not open" : "open",

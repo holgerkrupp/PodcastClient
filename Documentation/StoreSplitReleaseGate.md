@@ -29,6 +29,12 @@ runtime has not fully converged yet:
   cache only while first-build compatibility hydration/migrations are pending. Older
   `LibraryRuntime` installs may need it until their build is ready and promoted. This is not yet
   the two-store release state.
+- Startup never creates a missing `PodcastCache.sqlite`; a missing or unopenable cache never
+  blocks the library. Portable reconciliation and the first build no longer require a cache
+  container. The cache is still opened for an unfinished legacy UserState copy (checkpoint
+  store), for unfinished cache-local migrations, and to seed an older split-only build.
+- Never-fetched subscription stubs are retried from durable library state across
+  cancellation, offline periods and relaunch (#441).
 - Long startup waits now say the app is opening/updating its local library and explain that the
   user can reopen it; they no longer imply the app must stay foreground. Recovery diagnostics
   include the opening local-store filename and initial SQLite/WAL sizes.

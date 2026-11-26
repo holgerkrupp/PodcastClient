@@ -489,7 +489,6 @@ final class StoreCutoverTests: XCTestCase {
             StoreBootstrapMode.resolve(legacyStoreExists: false, installationWasPreviouslyInitialized: true),
             .existingLibraryUnavailable
         )
-        XCTAssertFalse(StoreBootstrapMode.legacyUpgrade.usesInMemoryRuntimeProjection)
     }
 
     func testLibraryContainerIsNeverCloudKitAttached() throws {

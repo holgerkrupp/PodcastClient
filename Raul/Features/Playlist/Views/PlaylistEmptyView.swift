@@ -35,37 +35,40 @@ struct PlaylistEmptyView: View {
     var isSmartPlaylist: Bool = false
     var isDefaultQueue: Bool = false
     var playlistID: UUID?
-    
+    /// Portable playlist identity (`Playlist.storeSplitSyncID`) used to read
+    /// restore readiness; nil for smart playlists, which evaluate rules locally.
+    var playlistSyncID: String?
+
     @Query private var allPodcasts: [Podcast]
     @StateObject private var modelContainerManager = ModelContainerManager.shared
-    @State private var cloudReferenceCount: Int?
-    @State private var localSplitRecordCount = 0
+    @State private var restoreStatus = PlaylistRestoreStatusModel()
     @State private var didRequestAutomaticReconcile = false
 
-    private var shouldShowRecoveringState: Bool {
-        PlaylistSilentRecoveryDecision.shouldShowRecoveringState(
-            initializationError: modelContainerManager.userStateInitializationError,
-            localRecordCount: localSplitRecordCount,
-            cloudReferenceCount: cloudReferenceCount
-        )
+    private var syncID: String? {
+        guard isSmartPlaylist == false else { return nil }
+        if let playlistSyncID { return playlistSyncID }
+        if isDefaultQueue { return Playlist.defaultQueueSyncID }
+        return playlistID?.uuidString
     }
-    
+
+    private var showsRestoreStatus: Bool {
+        syncID != nil
+            && modelContainerManager.userStateInitializationError == nil
+            && restoreStatus.readiness.isVisible
+    }
+
     var body: some View {
         Group {
-            if shouldShowRecoveringState {
-                VStack(spacing: 10) {
-                    ProgressView()
-                        .controlSize(.regular)
-                    Text(isDefaultQueue
-                         ? "Restoring your saved Up Next episodes…"
-                         : "Restoring saved playlist episodes…")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .padding()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .accessibilityElement(children: .combine)
+            if showsRestoreStatus {
+                PlaylistRestoreStatusView(
+                    readiness: restoreStatus.readiness,
+                    loginFeed: restoreStatus.facts.loginFeed,
+                    isDefaultQueue: isDefaultQueue,
+                    isRetrying: restoreStatus.isRetrying,
+                    style: .page,
+                    onRetry: retry
+                )
+                .accessibilityElement(children: .contain)
             } else if allPodcasts.isEmpty {
                 PodcastsEmptyView()
             } else {
@@ -78,16 +81,24 @@ struct PlaylistEmptyView: View {
                 .padding()
             }
         }
+        .modifier(OptionalRestoreRefresh(
+            model: restoreStatus,
+            syncID: syncID,
+            isDefaultQueue: isDefaultQueue
+        ))
         .task {
             // A bounded probe, not a poll. The split stores can still be
-            // preparing when this view first appears, so the counts are
-            // re-read a few times; once the silent recovery has been requested
-            // (or the window lapses) there is nothing left to watch. The old
-            // `while` loop kept re-running these main-actor SwiftData counts
-            // for as long as the playlist tab existed.
+            // preparing when this view first appears, so readiness is re-read
+            // a few times; once the silent recovery has been requested (or the
+            // window lapses) hydration progress drives further updates.
+            guard let syncID else { return }
             for attempt in 0..<Self.recoveryProbeLimit {
-                await refreshCloudStatus()
-                if await reconcilePendingPlaylistOnceIfNeeded() { return }
+                await restoreStatus.refresh(
+                    playlistSyncID: syncID,
+                    isDefaultQueue: isDefaultQueue,
+                    resolvedCount: 0
+                )
+                if await reconcilePendingPlaylistOnceIfNeeded(syncID: syncID) { return }
                 guard attempt + 1 < Self.recoveryProbeLimit else { return }
                 do {
                     try await Task.sleep(for: Self.recoveryProbeInterval)
@@ -103,27 +114,14 @@ struct PlaylistEmptyView: View {
     private static let recoveryProbeLimit = 15
     private static let recoveryProbeInterval: Duration = .seconds(2)
 
-    @MainActor
-    private func refreshCloudStatus() async {
-        cloudReferenceCount = StoreSplitPlaylistPresenceStore
-            .cloudReferenceCount(forDefaultQueue: isDefaultQueue)
-        guard let container = modelContainerManager.preparedUserStateContainer else {
-            localSplitRecordCount = 0
-            return
-        }
-        if isDefaultQueue {
-            let counts = await StoreSplitPlaylistPresenceStore.localRecordCounts(
-                modelContainer: container
+    private func retry() {
+        guard let syncID else { return }
+        Task {
+            await restoreStatus.retry(
+                playlistSyncID: syncID,
+                isDefaultQueue: isDefaultQueue,
+                resolvedCount: 0
             )
-            localSplitRecordCount = counts.queueEntries
-        } else if let playlistID {
-            localSplitRecordCount = await StoreSplitPlaylistPresenceStore
-                .localPlaylistEntryCount(
-                    playlistID: playlistID,
-                    modelContainer: container
-                )
-        } else {
-            localSplitRecordCount = 0
         }
     }
 
@@ -131,11 +129,12 @@ struct PlaylistEmptyView: View {
     /// caller can stop probing.
     @MainActor
     @discardableResult
-    private func reconcilePendingPlaylistOnceIfNeeded() async -> Bool {
+    private func reconcilePendingPlaylistOnceIfNeeded(syncID: String) async -> Bool {
         guard PlaylistSilentRecoveryDecision.shouldReconcile(
             initializationError: modelContainerManager.userStateInitializationError,
-            localRecordCount: localSplitRecordCount,
-            cloudReferenceCount: cloudReferenceCount,
+            localRecordCount: restoreStatus.facts.referenceCount,
+            cloudReferenceCount: StoreSplitPlaylistPresenceStore
+                .cloudReferenceCount(forDefaultQueue: isDefaultQueue),
             didRequestAutomaticReconcile: didRequestAutomaticReconcile
         ) else {
             return didRequestAutomaticReconcile
@@ -145,7 +144,11 @@ struct PlaylistEmptyView: View {
         await StoreSplitWorkCoordinator.shared.runManualReconcile(
             authoritativePlaylists: false
         )
-        await refreshCloudStatus()
+        await restoreStatus.refresh(
+            playlistSyncID: syncID,
+            isDefaultQueue: isDefaultQueue,
+            resolvedCount: 0
+        )
         return true
     }
 
@@ -162,6 +165,25 @@ struct PlaylistEmptyView: View {
         }
 
         return "Add episodes from your subscribed podcasts to listen to. The episodes will be played in the order they were added to your playlist. You can rearrange them by dragging them in the list."
+    }
+}
+
+private struct OptionalRestoreRefresh: ViewModifier {
+    let model: PlaylistRestoreStatusModel
+    let syncID: String?
+    let isDefaultQueue: Bool
+
+    func body(content: Content) -> some View {
+        if let syncID {
+            content.refreshesPlaylistRestoreStatus(
+                model,
+                playlistSyncID: syncID,
+                isDefaultQueue: isDefaultQueue,
+                resolvedCount: 0
+            )
+        } else {
+            content
+        }
     }
 }
 

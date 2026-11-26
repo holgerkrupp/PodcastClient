@@ -15,6 +15,8 @@ struct CloudSyncStatusView: View {
     @State private var localRecordCount = 0
     @State private var reference: CloudSyncProgressReference?
     @State private var isRefreshing = false
+    @State private var libraryFill: LibraryFillSnapshot?
+    @State private var isRetryingLibraryFill = false
 
     private var estimatedProgress: Double? {
         guard let reference, reference.recordCount > 0 else { return nil }
@@ -198,6 +200,10 @@ struct CloudSyncStatusView: View {
                 StoreCloudKitDiagnosticRow(diagnostic: diagnostic)
             }
 
+            if let libraryFill {
+                localLibraryStatus(libraryFill)
+            }
+
             if let reference {
                 Text("Reference updated \(reference.updatedAt, format: .relative(presentation: .named))")
                     .font(.caption2)
@@ -215,6 +221,77 @@ struct CloudSyncStatusView: View {
                 try? await Task.sleep(for: .seconds(1))
             }
         }
+        // Library fill is re-read when hydration reports progress, not every
+        // second like the CloudKit counters above.
+        .task(id: LibraryRestoreMonitor.shared.revision) {
+            await refreshLibraryFill()
+        }
+    }
+
+    /// Local feed library filling (#443). Distinct from CloudKit import and
+    /// upload: feeds are fetched independently on each device.
+    @ViewBuilder
+    private func localLibraryStatus(_ fill: LibraryFillSnapshot) -> some View {
+        let monitor = LibraryRestoreMonitor.shared
+        VStack(alignment: .leading, spacing: 4) {
+            Label("Local Podcast Library", systemImage: "books.vertical")
+                .font(.subheadline.weight(.semibold))
+            if fill.subscribed == 0 {
+                Text("No subscriptions on this device yet.")
+            } else if fill.isComplete, monitor.isHydrating == false {
+                Text("All \(fill.subscribed) subscribed podcasts are loaded on this device.")
+            } else {
+                Text("\(fill.filled) of \(fill.subscribed) subscribed podcasts loaded on this device")
+                    .monospacedDigit()
+                if monitor.isHydrating {
+                    Text("Loading podcast feeds…")
+                } else if monitor.isOffline, fill.waitingForFirstFetch + fill.failed > 0 {
+                    Text("Waiting for a network connection.")
+                }
+                if fill.needsLogin > 0 {
+                    Text("\(fill.needsLogin) private podcasts need you to sign in on this device.")
+                }
+                if fill.failed > 0 {
+                    Text("\(fill.failed) podcasts couldn’t be loaded yet. Up Next retries automatically.")
+                }
+                if fill.failed + fill.waitingForFirstFetch > 0, monitor.isHydrating == false {
+                    Button {
+                        Task { await retryLibraryFill() }
+                    } label: {
+                        if isRetryingLibraryFill {
+                            Text("Retrying…")
+                        } else {
+                            Text("Retry Loading Feeds")
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isRetryingLibraryFill)
+                }
+            }
+            Text("Podcast feeds are loaded separately on each device. This is not part of iCloud sync.")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+
+    @MainActor
+    private func refreshLibraryFill() async {
+        let library = ModelContainerManager.shared.preparedContainer ?? modelContainer
+        let snapshot = await Task.detached(priority: .utility) {
+            LibraryFillSnapshot.read(library: library)
+        }.value
+        guard Task.isCancelled == false else { return }
+        libraryFill = snapshot
+    }
+
+    @MainActor
+    private func retryLibraryFill() async {
+        isRetryingLibraryFill = true
+        await ModelContainerManager.shared.retryLibraryFill()
+        isRetryingLibraryFill = false
+        await refreshLibraryFill()
     }
 
     private func phaseLabel(

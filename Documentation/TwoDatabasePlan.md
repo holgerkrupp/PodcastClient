@@ -43,9 +43,23 @@ with cache data.
   library. Older AI rows without revision manifests are included, with chapter progress and
   play state retained. Cache rows remain intact as historical recovery data.
 - Once cache-local migrations, AI recovery, library backfill and any legacy UserState copy
-  complete, direct-library startup skips opening `PodcastCache.sqlite`. A fresh direct build
-  uses the cache only while its compatibility hydration/migrations are pending. An older
-  `LibraryRuntime` install may need it until the build is ready and promoted.
+  complete, direct-library startup skips opening `PodcastCache.sqlite`
+  (`StoreCacheOpenDecision`). Startup never creates a missing cache file: when it is absent,
+  the cache-only migrations are recorded complete (nothing to copy) and the first build,
+  feed fill and reconciliation run from UserState and RSS alone. The only exception is an
+  upgraded legacy library whose UserState copy is still pending, because that copy keeps its
+  resumable checkpoints in the cache store. A cache that exists but fails to open is tried
+  once per launch, never blocks the library, and leaves its migrations pending for a later
+  launch.
+- Portable reconciliation (`applySyncedUserStateIfPossible`, `reconcileSplitRuntimePlaylists`,
+  `importRemotePlaybackState`) no longer requires a cache container; the importer receives it
+  only as an optional migration fallback while it is still open.
+- `runtimeProjectsFromCache` / `usesInMemoryRuntimeProjection` are replaced by
+  `isFirstLibraryBuildRuntime`, which depends only on the bootstrap mode and the
+  direct-build pending marker. Every install uses a durable on-disk library; this flag gates
+  only the one-time first build of a split-install library. The first build seeds from the
+  cache when one is present (older split-only installs) and otherwise from UserState plus the
+  checkpointed feed fill.
 - A prolonged startup wait is an opening/update status, not a progress estimate. Launch
   diagnostics now record the local store filename and its initial SQLite/WAL sizes so a slow
   `SharedDatabase.sqlite` or older `LibraryRuntime.sqlite` open can be distinguished.
@@ -73,7 +87,9 @@ file may be discarded as a shortcut.
   `tombstoneSubscriptionsMissingFromLibrary` based on incomplete feed data.
 - [ ] Validate every starting state: populated legacy library; older split-only runtime;
   UserState plus cache; UserState only; cache only; clean install; and missing/inaccessible
-  known library.
+  known library. Code paths: UserState-only, cache-only and UserState+cache classify as a
+  split install and build a `built` library (cache optional since Nov 2026); covered by unit
+  tests, not yet run on a device.
   Preserve the existing fail-closed recovery choice when prior library evidence exists.
 - [ ] Confirm a completed promotion resumes any unfinished feed-fill cursor and preserves
   queue, playlist, bookmark, playback and history references through interruption/relaunch.
@@ -120,9 +136,26 @@ stall. Tests should use anonymized fixtures, never a user's database or private 
 - [ ] Stop opening `PodcastCache.sqlite` and `LibraryRuntime.sqlite` in ordinary app or
   extension startup after their first-build, migration and old-install recovery roles are
   retired. Missing or corrupt obsolete files must not block a usable library.
+  Partial: a missing cache is never opened or created, and a completed install skips it; a
+  corrupt cache is retried once per launch. Still open: the readers for unfinished legacy
+  copies and older split-only builds, and `LibraryRuntime.sqlite` until it is promoted.
+  An unreadable cache on a UserState+cache install with no other evidence still classifies as
+  possible legacy loss and shows the existing fail-closed recovery choice.
 - [x] Update `AGENTS.md`, user help, diagnostics and architecture/release documentation to
   describe the shipped two-store behavior. Mark older `PodcastCache`/`LibraryRuntime`
   end-state proposals as superseded history.
+
+### Subscription bootstrap (#441)
+
+- [x] A subscribed library podcast with no episodes stays eligible for its first fetch until a
+  fetch succeeds. `SubscriptionHydrationScheduler.dueFeeds` derives this from the durable
+  local Podcast/metadata rows, with backoff taken from the failure fields the fetch records.
+  No new store and no in-memory timestamps.
+- [x] Hydration runs at launch, on foreground and after an import that changed the
+  subscriptions stream, not on every CloudKit event. Concurrent triggers join one in-flight
+  pass; same-feed refreshes are deduplicated by `FeedRefreshCoordinator`. The scheduler
+  never tombstones or deletes.
+- [ ] Bounded concurrency, queue-priority latency and readiness UI belong to #483 and #443.
 
 ## Validation before calling #394 complete
 

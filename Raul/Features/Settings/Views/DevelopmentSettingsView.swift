@@ -98,8 +98,8 @@ struct DevelopmentSettingsView: View {
             Section("Active Runtime") {
                 LabeledContent(
                     "Data architecture",
-                    value: modelContainerManager.runtimeProjectsFromCache
-                        ? "UserState + PodcastCache"
+                    value: modelContainerManager.isFirstLibraryBuildRuntime
+                        ? "UserState + local library (first build)"
                         : "UserState + local SharedDatabase"
                 )
                 LabeledContent(

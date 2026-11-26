@@ -12,6 +12,16 @@ enum StoreSplitCacheAIContentMigration {
         return defaults.bool(forKey: completedKey)
     }
 
+    /// Records completion when this install has no PodcastCache.sqlite at all
+    /// (a fresh install, or one whose historical file is gone): there is no
+    /// source row to copy, and a missing obsolete file must not keep startup
+    /// trying to open, and thereby create, an empty cache.
+    static func markCompleteBecauseSourceIsAbsent(
+        defaults: UserDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    ) {
+        defaults.set(true, forKey: completedKey)
+    }
+
     /// Copies validated AI content into the library. A missing target episode
     /// or an unreadable/incomplete staging revision leaves the completion flag
     /// unset so startup can retry after promotion has restored the episode.

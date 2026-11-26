@@ -2060,7 +2060,7 @@ struct StatisticsView: View {
 
         // An upgraded device's summaries already hold its whole history and keep
         // updating, so the total agrees with the other figures on this screen.
-        if ModelContainerManager.shared.runtimeProjectsFromCache == false,
+        if ModelContainerManager.shared.isFirstLibraryBuildRuntime == false,
            let legacySummaryTotal {
             return legacySummaryTotal
         }

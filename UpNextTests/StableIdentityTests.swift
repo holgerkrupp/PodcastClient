@@ -1609,4 +1609,123 @@ final class StableIdentityTests: XCTestCase {
         XCTAssertEqual(repeated.aiTranscripts.updated, 0)
         XCTAssertEqual(repeated.aiChapters.updated, 0)
     }
+
+    /// #441: a stub created from a synced subscription but never fetched stays
+    /// eligible after the import cursor moved on and the process relaunched.
+    @MainActor
+    func testUnfetchedSubscriptionStubStaysEligibleAfterRelaunch() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StubHydration-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let libraryURL = directory.appendingPathComponent("SharedDatabase.sqlite")
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let feed = URL(string: "https://example.com/unfetched-stub.xml")!
+        userState.mainContext.insert(SubscriptionSync(feedURL: feed.absoluteString))
+        try userState.mainContext.save()
+
+        do {
+            let library = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
+            let first = await StoreSplitUserStateImporter.apply(
+                legacyContainer: library,
+                userStateContainer: userState,
+                changedStreams: [.subscriptions]
+            )
+            XCTAssertEqual(first.feedsToBootstrap, [feed])
+            // The fetch never happens (offline, cancelled, app closed). The
+            // importer itself does not ask again for a stub it already made.
+            let second = await StoreSplitUserStateImporter.apply(
+                legacyContainer: library,
+                userStateContainer: userState,
+                changedStreams: [.subscriptions]
+            )
+            XCTAssertTrue(second.feedsToBootstrap.isEmpty)
+        }
+
+        // Relaunch: a new container over the same durable library file.
+        let reopened = try ModelContainerManager.makeLegacyContainer(storageURL: libraryURL)
+        let now = Date()
+        XCTAssertEqual(SubscriptionHydrationScheduler.dueFeeds(in: reopened, limit: 5, now: now), [feed])
+        XCTAssertEqual(
+            SubscriptionHydrationScheduler.dueFeeds(
+                in: reopened,
+                excluding: [PodcastFeedIdentity.normalizedFeedURLString(feed)],
+                limit: 5,
+                now: now
+            ),
+            []
+        )
+
+        // A recorded offline failure backs off durably, then becomes due again.
+        let context = ModelContext(reopened)
+        let stub = try XCTUnwrap(try context.fetch(FetchDescriptor<Podcast>()).first)
+        let metadata = try XCTUnwrap(stub.metaData)
+        metadata.lastFeedFailureDate = now
+        metadata.feedUpdateCheckDate = now
+        metadata.consecutiveFeedFailureCount = 1
+        try context.save()
+        XCTAssertEqual(SubscriptionHydrationScheduler.dueFeeds(in: reopened, limit: 5, now: now), [])
+        XCTAssertEqual(
+            SubscriptionHydrationScheduler.dueFeeds(
+                in: reopened,
+                limit: 5,
+                now: now.addingTimeInterval(SubscriptionHydrationScheduler.baseFailureBackoff + 1)
+            ),
+            [feed]
+        )
+
+        // A successful fetch that produced episodes ends eligibility.
+        let episode = Episode(
+            guid: "fetched",
+            title: "Fetched",
+            url: URL(string: "https://example.com/fetched.mp3")!,
+            podcast: stub
+        )
+        context.insert(episode)
+        metadata.lastFeedFailureDate = nil
+        metadata.consecutiveFeedFailureCount = 0
+        try context.save()
+        XCTAssertEqual(
+            SubscriptionHydrationScheduler.dueFeeds(in: reopened, limit: 5, now: now.addingTimeInterval(86_400 * 2)),
+            []
+        )
+    }
+
+    func testSubscriptionHydrationRespectsCredentialsAndSubscriptionState() {
+        let now = Date()
+        var candidate = SubscriptionHydrationScheduler.Candidate(
+            feed: URL(string: "https://example.com/feed.xml")!,
+            isSubscribed: true,
+            credentialState: .available,
+            authenticationRetryAfter: nil,
+            lastLocalCheck: nil,
+            lastFailure: nil,
+            consecutiveFailures: 0
+        )
+        XCTAssertTrue(SubscriptionHydrationScheduler.isAwaitingFirstFetch(candidate, episodeCount: 0, now: now))
+        XCTAssertFalse(SubscriptionHydrationScheduler.isAwaitingFirstFetch(candidate, episodeCount: 1, now: now))
+        candidate.credentialState = .missing
+        XCTAssertFalse(SubscriptionHydrationScheduler.mayAttempt(candidate, now: now))
+        candidate.credentialState = .needsLogin
+        candidate.authenticationRetryAfter = now.addingTimeInterval(60)
+        XCTAssertFalse(SubscriptionHydrationScheduler.mayAttempt(candidate, now: now))
+        XCTAssertTrue(SubscriptionHydrationScheduler.mayAttempt(candidate, now: now.addingTimeInterval(61)))
+        candidate.credentialState = .available
+        candidate.isSubscribed = false
+        XCTAssertFalse(SubscriptionHydrationScheduler.mayAttempt(candidate, now: now))
+        candidate.isSubscribed = true
+        // A successful but empty feed is re-checked only daily.
+        candidate.lastLocalCheck = now
+        XCTAssertFalse(SubscriptionHydrationScheduler.mayAttempt(candidate, now: now.addingTimeInterval(3_600)))
+        XCTAssertTrue(SubscriptionHydrationScheduler.mayAttempt(
+            candidate,
+            now: now.addingTimeInterval(SubscriptionHydrationScheduler.emptyFeedRecheckInterval)
+        ))
+        XCTAssertEqual(SubscriptionHydrationScheduler.failureBackoff(consecutiveFailures: 1), 15 * 60)
+        XCTAssertEqual(SubscriptionHydrationScheduler.failureBackoff(consecutiveFailures: 3), 60 * 60)
+        XCTAssertEqual(
+            SubscriptionHydrationScheduler.failureBackoff(consecutiveFailures: 50),
+            SubscriptionHydrationScheduler.maximumFailureBackoff
+        )
+    }
 }
