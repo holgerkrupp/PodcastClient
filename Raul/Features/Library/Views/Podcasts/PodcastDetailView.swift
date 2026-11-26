@@ -82,6 +82,8 @@ struct PodcastDetailView: View {
     @State private var filteredEpisodeURLs: [URL?] = []
     @State private var filteredEpisodeDisplayLimit = Self.episodePageSize
     @State private var episodeFilterTask: Task<Void, Never>?
+    /// Incremented for every filter pass; only the newest pass may publish.
+    @State private var episodeFilterGeneration = 0
     @AppStorage("HidePlayedAndArchived") private var hidePlayedAndArchived: Bool = false
 
     private var availableAlternativeFeeds: [PodcastAlternativeFeed] {
@@ -587,10 +589,10 @@ struct PodcastDetailView: View {
         .task {
             SystemPressureGate.shared.noteUserInteraction()
             applyEpisodeFilters()
-            let filterActor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
-            podcastHasEpisodes = (try? await filterActor.hasEpisodes(
-                podcastID: podcast.persistentModelID
-            )) ?? true
+            // The filter pass reports episode existence from the same
+            // relationship read; wait for it before deciding on an initial
+            // feed import. On failure `podcastHasEpisodes` stays true.
+            await episodeFilterTask?.value
             await updatePredictedReleaseInfo()
             await refreshEpisodesIfNeeded()
             await updatePredictedReleaseInfo()
@@ -602,8 +604,15 @@ struct PodcastDetailView: View {
         }
         .task(id: podcast.stablePodcastIdentityKey) {
             let service = TranscriptSearchActor(modelContainer: modelContext.container)
-            hasSearchableTranscripts = (try? await service
-                .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))) == true
+            do {
+                let available = try await service
+                    .hasSearchableTranscripts(in: .podcast(podcast.stablePodcastIdentityKey))
+                guard Task.isCancelled == false else { return }
+                hasSearchableTranscripts = available
+            } catch {
+                // Keep the last known availability; a failed read is not
+                // proof that the podcast has no transcripts.
+            }
         }
         .onChange(of: searchText) { _, _ in
             filteredEpisodeDisplayLimit = Self.episodePageSize
@@ -865,10 +874,15 @@ struct PodcastDetailView: View {
         let actor = PodcastEpisodeFilterActor(modelContainer: modelContext.container)
 
         episodeFilterTask?.cancel()
+        episodeFilterGeneration &+= 1
+        let generation = episodeFilterGeneration
         isFilteringEpisodes = true
         episodeFilterTask = Task {
+            var isCurrent: Bool {
+                Task.isCancelled == false && generation == episodeFilterGeneration
+            }
             defer {
-                if Task.isCancelled == false {
+                if isCurrent {
                     isFilteringEpisodes = false
                 }
             }
@@ -877,19 +891,20 @@ struct PodcastDetailView: View {
                     podcastID: podcastID,
                     request: request
                 )
-                guard Task.isCancelled == false else { return }
+                guard isCurrent else { return }
                 let visibleEpisodes = try resolveVisiblePage(
                     from: 0..<min(result.episodeIDs.count, Self.episodePageSize),
                     ids: result.episodeIDs,
                     urls: result.episodeURLs
                 )
-                guard Task.isCancelled == false else { return }
+                guard isCurrent else { return }
+                podcastHasEpisodes = result.podcastHasEpisodes
                 filteredEpisodeIDs = result.episodeIDs
                 filteredEpisodeURLs = result.episodeURLs
                 filteredEpisodes = visibleEpisodes
                 filteredEpisodeDisplayLimit = Self.episodePageSize
             } catch {
-                guard Task.isCancelled == false else { return }
+                guard isCurrent else { return }
                 errorMessage = "Failed to load episodes: \(error.localizedDescription)"
             }
         }

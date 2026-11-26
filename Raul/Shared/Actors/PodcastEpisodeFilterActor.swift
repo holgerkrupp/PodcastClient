@@ -41,6 +41,10 @@ struct PodcastEpisodeFilterResult: Sendable {
     /// Kept in the same order as `episodeIDs` so the UI can resolve a visible
     /// page with one URL membership fetch and restore the actor's sort order.
     let episodeURLs: [URL?]
+    /// Whether the podcast has any episode before filtering. Comes from the
+    /// same relationship read as `episodeIDs`, so Podcast Detail needs no
+    /// separate existence query.
+    let podcastHasEpisodes: Bool
 }
 
 @ModelActor
@@ -67,7 +71,9 @@ actor PodcastEpisodeFilterActor {
         }
         let podcast = try modelContext.fetch(podcastDescriptor).first
         parentCount = podcast == nil ? 0 : 1
-        guard let podcast else { return PodcastEpisodeFilterResult(episodeIDs: [], episodeURLs: []) }
+        guard let podcast else {
+            return PodcastEpisodeFilterResult(episodeIDs: [], episodeURLs: [], podcastHasEpisodes: false)
+        }
         let episodesForPodcast: [Episode]
         let episodeFetchID = PodcastDetailFetchSignposts.begin("Podcast detail episode relationship fetch")
         var episodeCount = -1
@@ -93,7 +99,7 @@ actor PodcastEpisodeFilterActor {
         }
 
         if request.query.isEmpty == false {
-            episodes.removeAll { episode in
+            try episodes.removeAll { episode in
                 if request.searchInTitle,
                    episode.title.localizedStandardContains(request.query) {
                     return false
@@ -107,7 +113,7 @@ actor PodcastEpisodeFilterActor {
                     return false
                 }
                 if request.searchInTranscript,
-                   transcriptContains(
+                   try transcriptContains(
                     request.query,
                     forEpisodeID: episode.persistentModelID
                    ) {
@@ -138,35 +144,26 @@ actor PodcastEpisodeFilterActor {
 
         return PodcastEpisodeFilterResult(
             episodeIDs: episodes.map(\.persistentModelID),
-            episodeURLs: episodes.map(\.url)
+            episodeURLs: episodes.map(\.url),
+            podcastHasEpisodes: episodesForPodcast.isEmpty == false
         )
-    }
-
-    func hasEpisodes(podcastID: PersistentIdentifier) throws -> Bool {
-        var podcastDescriptor = FetchDescriptor<Podcast>(
-            predicate: #Predicate<Podcast> { $0.persistentModelID == podcastID }
-        )
-        podcastDescriptor.fetchLimit = 1
-        guard let podcast = try modelContext.fetch(podcastDescriptor).first else {
-            return false
-        }
-        return podcast.episodes?.isEmpty == false
     }
 
     /// Queries transcript rows directly rather than faulting
     /// `episode.transcriptLines`, which can be replaced while transcription or
-    /// an import is running in another model context.
+    /// an import is running in another model context. Fetch errors propagate
+    /// so a failed read is not reported as "no transcript match".
     private func transcriptContains(
         _ query: String,
         forEpisodeID episodeID: PersistentIdentifier
-    ) -> Bool {
+    ) throws -> Bool {
         var descriptor = FetchDescriptor<TranscriptLineAndTime>(
             predicate: #Predicate { line in
-                line.episode?.persistentModelID == episodeID
+                line.episode != nil && line.episode!.persistentModelID == episodeID
                     && line.text.localizedStandardContains(query)
             }
         )
         descriptor.fetchLimit = 1
-        return (try? modelContext.fetch(descriptor).isEmpty == false) ?? false
+        return try modelContext.fetch(descriptor).isEmpty == false
     }
 }

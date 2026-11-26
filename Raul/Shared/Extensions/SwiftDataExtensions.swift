@@ -106,16 +106,54 @@ extension ModelContext{
         return resolved
     }
 
-    /// Resolve a visible episode page with one bounded SwiftData URL-membership
-    /// fetch, avoiding per-ID lookups for rows with a URL.
+    /// Resolve episodes whose enclosure URL is one of `urls`, in this context.
+    ///
+    /// Each unique URL is resolved with its own scalar-equality predicate
+    /// (`episode.url == url`) instead of the former optional-array membership
+    /// predicate (`optionalURLs.contains(episode.url)`), which remained a
+    /// candidate in the build-560 SwiftData assertion (#348). Duplicate input
+    /// URLs are queried once; every episode sharing a URL is returned. Fetch
+    /// failures propagate so callers cannot mistake a failed read for
+    /// "no episodes". Intended for bounded inputs such as one UI page.
     func episodes(forURLs urls: [URL]) throws -> [Episode] {
-        let uniqueURLs = Array(Set(urls))
+        var seen = Set<URL>()
+        let uniqueURLs = urls.filter { seen.insert($0).inserted }
         guard uniqueURLs.isEmpty == false else { return [] }
+        var result: [Episode] = []
+        var resultIDs = Set<PersistentIdentifier>()
+        for url in uniqueURLs {
+            let descriptor = FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { episode in
+                    episode.url == url
+                }
+            )
+            for episode in try fetch(descriptor)
+            where resultIDs.insert(episode.persistentModelID).inserted {
+                result.append(episode)
+            }
+        }
+        return result
+    }
+
+    /// Resolve one UI page in the filter actor's original order.
+    ///
+    /// The page's persistent IDs are already in hand, so every row is resolved
+    /// by its own primary-key predicate (at most one page, 80 rows) instead of
+    /// a URL or ID membership list. This keeps duplicate-URL siblings from
+    /// substituting for one another, skips rows deleted between filtering and
+    /// resolution, and propagates fetch errors. `urls` is kept for source
+    /// compatibility and breadcrumb counts; it no longer drives the query.
+    func episodes(
+        forPageIDs ids: [PersistentIdentifier],
+        urls: [URL?]
+    ) throws -> [Episode] {
+        precondition(ids.count == urls.count)
+        guard ids.isEmpty == false else { return [] }
         let operationID = UUID().uuidString
         let startedAt = ContinuousClock.now
         CrashBreadcrumbs.shared.record(
             "podcast_detail_visible_page_started",
-            details: "operation=\(operationID) predicate=episode_optional_url_membership requested=\(urls.count) unique=\(uniqueURLs.count)"
+            details: "operation=\(operationID) predicate=episode_page_primary_key requested=\(ids.count) nil_urls=\(urls.count { $0 == nil })"
         )
         defer {
             let elapsed = startedAt.duration(to: .now).components
@@ -123,35 +161,12 @@ extension ModelContext{
                 + elapsed.attoseconds / 1_000_000_000_000_000
             CrashBreadcrumbs.shared.record(
                 "podcast_detail_visible_page_finished",
-                details: "operation=\(operationID) predicate=episode_optional_url_membership elapsed_ms=\(elapsedMilliseconds)"
+                details: "operation=\(operationID) predicate=episode_page_primary_key elapsed_ms=\(elapsedMilliseconds)"
             )
         }
-        let optionalURLs = uniqueURLs.map(Optional.some)
-        let descriptor = FetchDescriptor<Episode>(
-            predicate: #Predicate<Episode> { episode in
-                optionalURLs.contains(episode.url)
-            }
-        )
-        return try fetch(descriptor)
-    }
 
-    /// Resolve one UI page in the filter actor's original order. The URL query
-    /// is a bounded batch; model identity is used to discard duplicate-URL
-    /// siblings and preserve the right row. Nil-URL rows use their stable ID
-    /// and are capped by the caller's page size (80), rather than expanding a
-    /// library-wide ID predicate.
-    func episodes(
-        forPageIDs ids: [PersistentIdentifier],
-        urls: [URL?]
-    ) throws -> [Episode] {
-        precondition(ids.count == urls.count)
-        let fetched = try episodes(forURLs: urls.compactMap { $0 })
-        var byID = Dictionary(
-            fetched.map { ($0.persistentModelID, $0) },
-            uniquingKeysWith: { first, _ in first }
-        )
-
-        for (id, url) in zip(ids, urls) where url == nil {
+        var byID: [PersistentIdentifier: Episode] = [:]
+        for id in ids where byID[id] == nil {
             var descriptor = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.persistentModelID == id }
             )
@@ -160,7 +175,6 @@ extension ModelContext{
                 byID[id] = episode
             }
         }
-
         return ids.compactMap { byID[$0] }
     }
 }

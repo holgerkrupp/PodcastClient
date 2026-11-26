@@ -85,7 +85,7 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
         )
         XCTAssertEqual(Set(ids.episodeIDs), expectedIDs)
         // Exercise the destination's second-stage visible-model resolution
-        // against a reopened SQLite store with one safe URL-membership query.
+        // against a reopened SQLite store with per-row primary-key lookups.
         let resolvedEpisodes = try reader.episodes(
             forPageIDs: ids.episodeIDs,
             urls: ids.episodeURLs
@@ -177,8 +177,8 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
 
     /// Run this regression on a physical iPhone as well as in CI. It covers
     /// empty and large podcast histories, verifies that one visible page is
-    /// resolved in a single batched fetch, and exercises the no-transcript
-    /// availability path without walking episodes one at a time.
+    /// resolved by bounded per-row lookups, and exercises the no-transcript
+    /// availability path for podcast scope.
     func testPodcastDetailLargeLibrariesUseOneVisiblePageFetchWithoutTranscripts() async throws {
         let container = try ModelContainer(
             for: Podcast.self,
@@ -237,8 +237,7 @@ final class SwiftDataRelationshipSafetyTests: XCTestCase {
             )
             XCTAssertEqual(result.episodeIDs.count, expectedCount, "count=\(expectedCount)")
             XCTAssertEqual(result.episodeURLs.count, expectedCount, "count=\(expectedCount)")
-            let hasEpisodes = try await actor.hasEpisodes(podcastID: podcastID)
-            XCTAssertEqual(hasEpisodes, expectedCount > 0)
+            XCTAssertEqual(result.podcastHasEpisodes, expectedCount > 0)
             let hasTranscripts = try await transcriptSearch.hasSearchableTranscripts(
                 in: .podcast(podcastIdentity)
             )
