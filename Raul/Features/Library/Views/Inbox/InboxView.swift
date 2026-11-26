@@ -51,6 +51,9 @@ struct InboxView: View {
 struct InboxListView: View {
 
     @State private var episodes: [Episode] = []
+    @State private var inboxProjections: [InboxEpisodeProjection] = []
+    @State private var groupedEpisodes: [InboxEpisodeGroup] = []
+    @State private var episodeByStableIdentity: [String: Episode] = [:]
     @State private var isClearingInbox = false
     @State private var showClearInboxConfirmation = false
     @State private var grouping: InboxGrouping = .none
@@ -87,14 +90,18 @@ struct InboxListView: View {
         return podcasts.first { $0.feed == feed }
     }
 
-    private var episodeByStableIdentity: [String: Episode] {
-        Dictionary(uniqueKeysWithValues: episodes.map { ($0.stableEpisodeIdentityKey, $0) })
-    }
-
-    private var projections: [InboxEpisodeProjection] {
-        episodes.map { episode in
-            InboxEpisodeProjection(
-                id: episode.stableEpisodeIdentityKey,
+    /// Rebuilds the value projection from the loaded models. Called after a
+    /// load, never from `body`, so selection, toolbar, refresh-progress or
+    /// undo UI changes do not remap every live model (#498).
+    private func rebuildProjections() {
+        var byIdentity: [String: Episode] = [:]
+        var projections: [InboxEpisodeProjection] = []
+        projections.reserveCapacity(episodes.count)
+        for episode in episodes {
+            let key = episode.stableEpisodeIdentityKey
+            if byIdentity[key] == nil { byIdentity[key] = episode }
+            projections.append(InboxEpisodeProjection(
+                id: key,
                 title: episode.title,
                 podcastKey: episode.podcast?.stablePodcastIdentityKey ?? "sideloaded",
                 podcastTitle: episode.displayPodcastTitle ?? "Sideloaded",
@@ -107,12 +114,16 @@ struct InboxListView: View {
                 isQueued: false,
                 isDownloaded: false,
                 hasPlaybackHistory: false
-            )
+            ))
         }
+        episodeByStableIdentity = byIdentity
+        inboxProjections = projections
+        selectedEpisodeKeys.formIntersection(byIdentity.keys)
+        regroup()
     }
 
-    private var groupedEpisodes: [InboxEpisodeGroup] {
-        InboxEpisodeProjection.groups(from: projections, grouping: grouping)
+    private func regroup() {
+        groupedEpisodes = InboxEpisodeProjection.groups(from: inboxProjections, grouping: grouping)
     }
 
     private var selectedEpisodes: [Episode] {
@@ -196,8 +207,8 @@ struct InboxListView: View {
         .onReceive(NotificationCenter.default.publisher(for: .inboxDidChange)) { _ in
             Task { await loadEpisodes() }
         }
-        .onChange(of: episodes.map(\.stableEpisodeIdentityKey)) { _, keys in
-            selectedEpisodeKeys.formIntersection(keys)
+        .onChange(of: grouping) { _, _ in
+            regroup()
         }
         .onReceive(NotificationCenter.default.publisher(for: .livePodcastNotificationTapped)) { notification in
             guard let feedString = notification.userInfo?["podcastFeed"] as? String,
@@ -306,7 +317,7 @@ struct InboxListView: View {
                         }
                         .disabled(selectedCount == 0 || isPerformingTriage)
                         Button("Select All", systemImage: "checkmark.circle") {
-                            selectedEpisodeKeys = Set(episodes.map(\.stableEpisodeIdentityKey))
+                            selectedEpisodeKeys = Set(episodeByStableIdentity.keys)
                             editMode = .active
                         }
                     } else {
@@ -522,6 +533,9 @@ struct InboxListView: View {
                 )
                 episodes = episodeIDs.compactMap { episodesByID[$0] }
             }
+            // Loads follow Inbox changes and triage actions, which can change
+            // grouping fields even when the membership is unchanged.
+            rebuildProjections()
             hasLoaded = true
         } catch {
             guard generation == loadGeneration else { return }

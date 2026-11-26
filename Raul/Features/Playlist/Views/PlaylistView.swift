@@ -313,7 +313,15 @@ private struct ManualPlaylistPageView: View {
     let playlist: Playlist
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(DownloadedFilesManager.self) private var fileManager
     @Query private var playlistEntries: [PlaylistEntry]
+    /// Cached value snapshot. Rebuilt only when membership/order, the file
+    /// inventory, the playing episode or play state changes — not on every
+    /// body pass caused by toolbar, filter or playback-tick invalidation.
+    @State private var projection = QueueProjection(entries: [])
+    @State private var episodesByIdentity: [String: Episode] = [:]
+    @State private var hasBuiltProjection = false
+    @State private var recordedEntryCount = 0
     @State private var isSmartShuffling = false
     @State private var smartShuffleMessage: String?
     @State private var filterState = QueueFilterState.all
@@ -329,39 +337,60 @@ private struct ManualPlaylistPageView: View {
         )
     }
 
-    private var episodes: [Episode] {
-        playlistEntries.compactMap(\.episode)
-    }
-
-    private var displayedEpisodes: [Episode] {
-        episodes.filter { $0.url != nil }
-    }
-
-    private var projection: QueueProjection {
-        QueueProjection(
-            playlistID: playlist.id,
-            playlistTitle: playlist.displayTitle,
-            isSmartPlaylist: false,
-            episodes: displayedEpisodes
-        )
-    }
-
     private var filteredEntries: [QueueEpisodeValue] {
         projection.filtered(using: filterState).entries
     }
 
-    private var episodesByIdentity: [String: Episode] {
-        Dictionary(
+    private struct ProjectionRebuildKey: Equatable {
+        let playlistID: UUID
+        let entryIDs: [PersistentIdentifier]
+        let downloadedFiles: Set<URL>
+        let currentEpisodeURL: URL?
+        let isPlaying: Bool
+        let filterState: QueueFilterState
+    }
+
+    private var projectionRebuildKey: ProjectionRebuildKey {
+        ProjectionRebuildKey(
+            playlistID: playlist.id,
+            entryIDs: playlistEntries.map(\.persistentModelID),
+            downloadedFiles: fileManager.downloadedFiles,
+            currentEpisodeURL: Player.shared.currentEpisodeURL,
+            isPlaying: Player.shared.isPlaying,
+            // Re-snapshot when filters change so in-progress/downloaded
+            // filters see current values.
+            filterState: filterState
+        )
+    }
+
+    private func rebuildProjection() {
+        let displayedEpisodes = playlistEntries.compactMap(\.episode).filter { $0.url != nil }
+        projection = QueueProjection(
+            playlistID: playlist.id,
+            playlistTitle: playlist.displayTitle,
+            isSmartPlaylist: false,
+            episodes: displayedEpisodes,
+            downloadedFiles: fileManager.downloadedFiles
+        )
+        episodesByIdentity = Dictionary(
             displayedEpisodes.map { ($0.stableEpisodeIdentityKey, $0) },
             uniquingKeysWith: { first, _ in first }
         )
+        let previousCount = hasBuiltProjection ? recordedEntryCount : nil
+        hasBuiltProjection = true
+        if previousCount != projection.count {
+            recordedEntryCount = projection.count
+            recordVisibleEntryCount()
+        }
     }
 
     var body: some View {
         VStack(spacing: 0) {
             QueueFilterBar(projection: projection, filterState: $filterState)
 
-            if projection.entries.isEmpty {
+            if hasBuiltProjection == false {
+                Color.clear
+            } else if projection.entries.isEmpty {
                 PlaylistEmptyView(
                     title: playlist.displayTitle,
                     isSmartPlaylist: false,
@@ -452,7 +481,7 @@ private struct ManualPlaylistPageView: View {
                 }
                 .listStyle(.plain)
                 .toolbar {
-                    if episodes.count > 1 {
+                    if projection.count > 1 {
                         ToolbarItem(placement: .primaryAction) {
                             Button(action: smartShuffle) {
                                 if isSmartShuffling {
@@ -482,13 +511,14 @@ private struct ManualPlaylistPageView: View {
         .onChange(of: playlist.id) { _, _ in
             filterState.clear()
         }
-        .onAppear { recordVisibleEntryCount() }
-        .onChange(of: episodes.count) { _, _ in recordVisibleEntryCount() }
+        .onChange(of: projectionRebuildKey, initial: true) { _, _ in
+            rebuildProjection()
+        }
     }
 
     private func recordVisibleEntryCount() {
         SupportDiagnosticsRecorder.shared.recordPlaylistVisibleCount(
-            episodes.filter { $0.url != nil }.count,
+            projection.count,
             isDefaultQueue: playlist.title == Playlist.defaultQueueTitle
         )
     }

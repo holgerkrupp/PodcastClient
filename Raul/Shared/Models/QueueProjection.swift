@@ -38,7 +38,16 @@ struct QueueEpisodeValue: Identifiable, Equatable, Hashable, Sendable {
         return min(max(position / duration, 0), 1)
     }
 
-    init(episode: Episode, occurrence: Int = 0, orderIndex: Int = 0) {
+    /// `downloadedFiles` and `categories` are supplied by `QueueProjection`
+    /// so a whole queue reads the file inventory once and decodes each
+    /// podcast's namespace tags once, not once per entry (#498).
+    init(
+        episode: Episode,
+        occurrence: Int = 0,
+        orderIndex: Int = 0,
+        downloadedFiles: Set<URL>? = nil,
+        categories: [String]? = nil
+    ) {
         self.stableIdentityKey = episode.stableEpisodeIdentityKey
         self.episodeURL = episode.url ?? URL(string: "about:blank")!
         self.title = episode.title
@@ -52,12 +61,12 @@ struct QueueEpisodeValue: Identifiable, Equatable, Hashable, Sendable {
         self.isPlayed = episode.isPlayed
         let localFile = episode.localFile?.standardizedFileURL
         let fileInventoryContainsEpisode = localFile.map {
-            DownloadedFilesManager.shared.downloadedFiles.contains($0)
+            (downloadedFiles ?? DownloadedFilesManager.shared.downloadedFiles).contains($0)
         } ?? false
         self.isDownloaded = episode.source == .sideLoaded
             || fileInventoryContainsEpisode
             || episode.metaData?.calculatedIsAvailableLocally == true
-        self.categories = SmartPlaylistEngine.categories(for: episode.podcast?.optionalTags)
+        self.categories = categories ?? SmartPlaylistEngine.categories(for: episode.podcast?.optionalTags)
         self.occurrence = occurrence
         self.orderIndex = orderIndex
     }
@@ -107,19 +116,40 @@ struct QueueProjection: Equatable, Sendable {
         playlistID: UUID? = nil,
         playlistTitle: String = Playlist.defaultQueueDisplayName,
         isSmartPlaylist: Bool = false,
-        episodes: [Episode]
+        episodes: [Episode],
+        downloadedFiles: Set<URL>? = nil
     ) {
         self.playlistID = playlistID
         self.playlistTitle = playlistTitle
         self.isSmartPlaylist = isSmartPlaylist
 
+        let inventory = downloadedFiles ?? DownloadedFilesManager.shared.downloadedFiles
         var occurrenceByIdentity: [String: Int] = [:]
+        var categoriesByPodcast: [ObjectIdentifier: [String]] = [:]
         self.entries = episodes.enumerated().compactMap { index, episode in
             guard episode.url != nil else { return nil }
             let identity = episode.stableEpisodeIdentityKey
             let occurrence = occurrenceByIdentity[identity, default: 0]
             occurrenceByIdentity[identity] = occurrence + 1
-            return QueueEpisodeValue(episode: episode, occurrence: occurrence, orderIndex: index)
+            let categories: [String]
+            if let podcast = episode.podcast {
+                let key = ObjectIdentifier(podcast)
+                if let cached = categoriesByPodcast[key] {
+                    categories = cached
+                } else {
+                    categories = SmartPlaylistEngine.categories(for: podcast.optionalTags)
+                    categoriesByPodcast[key] = categories
+                }
+            } else {
+                categories = []
+            }
+            return QueueEpisodeValue(
+                episode: episode,
+                occurrence: occurrence,
+                orderIndex: index,
+                downloadedFiles: inventory,
+                categories: categories
+            )
         }
     }
 

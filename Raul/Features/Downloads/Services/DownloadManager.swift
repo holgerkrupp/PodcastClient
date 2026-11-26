@@ -732,6 +732,8 @@ actor DownloadManager: NSObject, URLSessionDownloadDelegate {
         taskIdentity.episodeURL(for: taskIdentifier)
     }
     func getItem(for url: URL) -> DownloadItem? { downloads[url] }
+    /// One snapshot for the shared row presentation store (#498).
+    func currentItems() -> [DownloadItem] { Array(downloads.values) }
     private func getItem(for url: URL, taskIdentifier: Int) -> DownloadItem? {
         guard activeTaskIdentifiers[url] == taskIdentifier else { return nil }
         return downloads[url]

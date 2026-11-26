@@ -6,7 +6,6 @@
 //
 import SwiftUI
 import ESADesignKit
-import Combine
 import SwiftData
 
 enum GroupedListRowPosition: Equatable {
@@ -58,8 +57,6 @@ struct EpisodeRowView: View {
     @Environment(\.deviceUIStyle) var style
     @Environment(DownloadedFilesManager.self) var fileManager
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.esaVisualStyle) private var visualStyle
     @Environment(\.esaArtworkBlurLevel) private var artworkBlurLevel
     @AppStorage("SimplifiedRows") private var simplifiedRowsEnabled = false
@@ -69,7 +66,8 @@ struct EpisodeRowView: View {
     let showsRemoveFromPlaylistAction: Bool
     let usesLivePlaybackProgress: Bool
     let groupPosition: EpisodeRowGroupPosition
-    @State private var referenceAvailability = EpisodeReferenceAvailability()
+    /// Keyed badge state; never derived from relationships on the row path.
+    private let referenceEntry: EpisodeReferenceAvailabilityEntry?
     @ScaledMetric(relativeTo: .body) private var standardRowHeight: CGFloat = 210
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 120
     @ScaledMetric(relativeTo: .body) private var controlsHeight: CGFloat = 50
@@ -86,9 +84,9 @@ struct EpisodeRowView: View {
         groupPosition: EpisodeRowGroupPosition = .single
     ) {
         self._episode = Bindable(wrappedValue: episode)
-        self._referenceAvailability = State(
-            initialValue: EpisodeReferenceAvailability.seeded(from: episode)
-        )
+        self.referenceEntry = episode.url.map {
+            EpisodeReferenceAvailabilityStore.shared.entry(for: $0)
+        }
         self.showsRemoveFromInboxAction = showsRemoveFromInboxAction
         self.showsRemoveFromPlaylistAction = showsRemoveFromPlaylistAction
         self.usesLivePlaybackProgress = usesLivePlaybackProgress
@@ -108,6 +106,7 @@ struct EpisodeRowView: View {
         let completionDate = episode.metaData?.completionDate
         let isDownloaded = isDownloaded(downloadedFiles: downloadedFiles)
             || episode.metaData?.calculatedIsAvailableLocally == true
+        let referenceAvailability = referenceEntry?.availability ?? EpisodeReferenceAvailability()
         let hasChapters = referenceAvailability.hasChapters
         let hasTranscript = referenceAvailability.hasTranscript
         let hasBookmarks = referenceAvailability.hasBookmarks
@@ -133,6 +132,7 @@ struct EpisodeRowView: View {
                         CoverImageView(
                             episode: episode,
                             maxPixelSize: CoverImageView.episodeRowMaxPixelSize,
+                            loadDelay: EpisodeRowArtworkPolicy.foregroundLoadDelay,
                             cornerRadius: GroupedListRowStyle.artworkCornerRadius
                         )
                             .frame(width: artworkSize, height: artworkSize)
@@ -217,14 +217,12 @@ struct EpisodeRowView: View {
                     }
                     .frame(maxWidth: .infinity, minHeight: artworkSize, alignment: .topLeading)
                 }
-                if Player.shared.currentEpisodeURL != episode.url {
-                    EpisodeControlView(
-                        episode: episode,
-                        showsRemoveFromInboxAction: showsRemoveFromInboxAction,
-                        showsRemoveFromPlaylistAction: showsRemoveFromPlaylistAction
-                    )
-                        .frame(minHeight: controlsHeight)
-                }
+                EpisodeRowControlsSlot(
+                    episode: episode,
+                    showsRemoveFromInboxAction: showsRemoveFromInboxAction,
+                    showsRemoveFromPlaylistAction: showsRemoveFromPlaylistAction,
+                    controlsHeight: controlsHeight
+                )
             }
         .padding(.horizontal, UpNextVisualDesignMetrics.rowHorizontalPadding)
         .padding(.vertical, UpNextVisualDesignMetrics.rowVerticalPadding)
@@ -241,7 +239,8 @@ struct EpisodeRowView: View {
             BlurredCoverImageView(
                 imageURL: episode.imageURL ?? episode.podcast?.imageURL,
                 radius: artworkBlurLevel.rowBlurRadius,
-                maxPixelSize: 512
+                maxPixelSize: 512,
+                loadDelay: EpisodeRowArtworkPolicy.decorativeLoadDelay
             )
             .frame(maxWidth: .infinity, minHeight: rowHeight, maxHeight: rowHeight)
             .clipShape(groupPosition.backgroundShape)
@@ -254,53 +253,21 @@ struct EpisodeRowView: View {
                 usesLivePlaybackProgress: usesLivePlaybackProgress
             )
         }
-            .overlay{
-
-
-                if episode.url == Player.shared.currentEpisode?.url {
-                        Group {
-                            if Player.shared.isPlaying {
-                                Label("Now Playing", systemImage: "waveform")
-                                    .symbolEffect(
-                                        .bounce.up.byLayer,
-                                        options: reduceMotion ? .nonRepeating : .repeat(.continuous)
-                                    )
-                                    .esaForeground(.primary)
-                                    .font(.title.bold())
-                            } else {
-                                Label("Now Playing", systemImage: "waveform.low")
-                                    .esaForeground(.primary)
-                                    .font(.title.bold())
-                            }
-                        }
-                        .frame(width: nowPlayingBadgeWidth, height: nowPlayingBadgeHeight)
-              
-                        
-                    
-             .background{
-                 RoundedRectangle(cornerRadius:  20.0)
-                     .fill(Color.black.opacity(differentiateWithoutColor ? 0.5 : 0.3))
-             }
-          
-             
-             .glassEffect(.clear, in: RoundedRectangle(cornerRadius:  20.0))
-             .frame(maxWidth: nowPlayingBadgeWidth, maxHeight: nowPlayingBadgeHeight, alignment: .center)
-            }
-                
+            .overlay {
+                EpisodeRowNowPlayingBadge(
+                    episodeURL: episode.url,
+                    width: nowPlayingBadgeWidth,
+                    height: nowPlayingBadgeHeight
+                )
             }
             .task(id: episode.url) {
-                await Task.yield()
-                guard Task.isCancelled == false else { return }
-                refreshReferenceAvailability()
-            }
-            .onChange(of: fileManager.downloadedFiles) { _, _ in
-                refreshReferenceAvailability()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange).receive(on: DispatchQueue.main)) { notification in
-                handleEpisodeReferencesDidChange(notification)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
-                handleEpisodeDownloadFinished(notification)
+                guard let referenceEntry,
+                      let container = episode.modelContext?.container else { return }
+                EpisodeReferenceAvailabilityStore.shared.loadIfNeeded(
+                    referenceEntry,
+                    episodeID: episode.persistentModelID,
+                    container: container
+                )
             }
 
         if visualStyle == .artwork {
@@ -335,6 +302,7 @@ struct EpisodeRowView: View {
                 CoverImageView(
                     episode: episode,
                     maxPixelSize: 384,
+                    loadDelay: EpisodeRowArtworkPolicy.foregroundLoadDelay,
                     cornerRadius: GroupedListRowStyle.artworkCornerRadius
                 )
                     .frame(width: 84, height: 84)
@@ -392,14 +360,7 @@ struct EpisodeRowView: View {
             EpisodeRowPlaybackProgressView(episode: episode, usesLivePlaybackProgress: usesLivePlaybackProgress)
         }
         .overlay(alignment: .topTrailing) {
-            if episode.url == Player.shared.currentEpisode?.url {
-                Label(Player.shared.isPlaying ? "Now Playing" : "Paused", systemImage: Player.shared.isPlaying ? "waveform" : "waveform.low")
-                    .font(.caption.weight(.semibold))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(8)
-            }
+            EpisodeRowCompactNowPlayingBadge(episodeURL: episode.url)
         }
     }
 
@@ -451,63 +412,87 @@ struct EpisodeRowView: View {
         return downloadedFiles.contains(localFile)
     }
 
-    private func refreshReferenceAvailability(invalidate: Bool = false) {
-        guard let episodeURL = episode.url else {
-            updateReferenceAvailability(EpisodeReferenceAvailability.seeded(from: episode))
-            return
-        }
+}
 
-        if invalidate {
-            EpisodeReferenceAvailabilityCache.shared.invalidate(episodeURL)
-        } else if let cachedAvailability = EpisodeReferenceAvailabilityCache.shared.availability(for: episodeURL) {
-            updateReferenceAvailability(cachedAvailability)
-            return
-        }
+/// Scroll deferral for list artwork (#497/#498): a memory hit renders
+/// immediately; a miss waits briefly so fast-flung rows cancel before disk or
+/// network work. The decorative blur waits longer than the foreground cover.
+enum EpisodeRowArtworkPolicy {
+    static let foregroundLoadDelay: Duration = .milliseconds(150)
+    static let decorativeLoadDelay: Duration = .milliseconds(350)
+}
 
-        let availability = EpisodeReferenceAvailability.seeded(from: episode)
-        EpisodeReferenceAvailabilityCache.shared.store(availability, for: episodeURL)
-        updateReferenceAvailability(availability)
+/// Observes only the player's current episode, so playback changes do not
+/// recompute the whole row.
+private struct EpisodeRowControlsSlot: View {
+    let episode: Episode
+    let showsRemoveFromInboxAction: Bool
+    let showsRemoveFromPlaylistAction: Bool
+    let controlsHeight: CGFloat
+
+    var body: some View {
+        if Player.shared.currentEpisodeURL != episode.url {
+            EpisodeControlView(
+                episode: episode,
+                showsRemoveFromInboxAction: showsRemoveFromInboxAction,
+                showsRemoveFromPlaylistAction: showsRemoveFromPlaylistAction
+            )
+            .frame(minHeight: controlsHeight)
+        }
     }
+}
 
-    private func updateReferenceAvailability(_ availability: EpisodeReferenceAvailability) {
-        if referenceAvailability != availability {
-            referenceAvailability = availability
+private struct EpisodeRowNowPlayingBadge: View {
+    let episodeURL: URL?
+    let width: CGFloat
+    let height: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+
+    var body: some View {
+        if let episodeURL, episodeURL == Player.shared.currentEpisode?.url {
+            Group {
+                if Player.shared.isPlaying {
+                    Label("Now Playing", systemImage: "waveform")
+                        .symbolEffect(
+                            .bounce.up.byLayer,
+                            options: reduceMotion ? .nonRepeating : .repeat(.continuous)
+                        )
+                        .esaForeground(.primary)
+                        .font(.title.bold())
+                } else {
+                    Label("Now Playing", systemImage: "waveform.low")
+                        .esaForeground(.primary)
+                        .font(.title.bold())
+                }
+            }
+            .frame(width: width, height: height)
+            .background {
+                RoundedRectangle(cornerRadius: 20.0)
+                    .fill(Color.black.opacity(differentiateWithoutColor ? 0.5 : 0.3))
+            }
+            .glassEffect(.clear, in: RoundedRectangle(cornerRadius: 20.0))
+            .frame(maxWidth: width, maxHeight: height, alignment: .center)
         }
     }
+}
 
-    private func handleEpisodeReferencesDidChange(_ notification: Notification) {
-        guard notificationMatchesEpisode(notification, urlKey: EpisodeReferenceNotificationKey.episodeURL) else { return }
-        fileManager.refreshDownloadedFiles()
-        refreshReferenceAvailability(invalidate: true)
-    }
+private struct EpisodeRowCompactNowPlayingBadge: View {
+    let episodeURL: URL?
 
-    private func handleEpisodeDownloadFinished(_ notification: Notification) {
-        guard notificationMatchesEpisode(notification, urlKey: EpisodeDownloadNotificationKey.episodeURL) else { return }
-        fileManager.refreshDownloadedFiles()
-        refreshReferenceAvailability()
-    }
-
-    private func notificationMatchesEpisode(_ notification: Notification, urlKey: String) -> Bool {
-        guard let url = notificationURL(from: notification.userInfo?[urlKey]) else {
-            return true
+    var body: some View {
+        if let episodeURL, episodeURL == Player.shared.currentEpisode?.url {
+            Label(
+                Player.shared.isPlaying ? "Now Playing" : "Paused",
+                systemImage: Player.shared.isPlaying ? "waveform" : "waveform.low"
+            )
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(.ultraThinMaterial, in: Capsule())
+            .padding(8)
         }
-        return episode.url == url
     }
-
-    private func notificationURL(from value: Any?) -> URL? {
-        if let url = value as? URL {
-            return url
-        }
-        if let url = value as? NSURL {
-            return url as URL
-        }
-        if let string = value as? String {
-            return URL(string: string)
-        }
-        return nil
-    }
-    
-
 }
 
 private struct EpisodeRowSwipeActionModifier: ViewModifier {
@@ -610,44 +595,6 @@ private struct EpisodeRowSwipeActionModifier: ViewModifier {
 extension View {
     func episodeRowSwipeActions(for episode: Episode) -> some View {
         modifier(EpisodeRowSwipeActionModifier(episode: episode))
-    }
-}
-
-private struct EpisodeReferenceAvailability: Equatable {
-    var hasChapters = false
-    var hasTranscript = false
-    var hasBookmarks = false
-
-    static func seeded(from episode: Episode) -> EpisodeReferenceAvailability {
-        EpisodeReferenceAvailability(
-            hasChapters: episode.chapters?.isEmpty == false,
-            hasTranscript: episode.hasLoadedTranscript
-                || episode.externalFiles.contains(where: { $0.category == .transcript }),
-            hasBookmarks: episode.bookmarks?.isEmpty == false
-        )
-    }
-}
-
-@MainActor
-private final class EpisodeReferenceAvailabilityCache {
-    static let shared = EpisodeReferenceAvailabilityCache()
-
-    private var cache: [URL: EpisodeReferenceAvailability] = [:]
-
-    func availability(for url: URL) -> EpisodeReferenceAvailability? {
-        cache[url]
-    }
-
-    func store(_ availability: EpisodeReferenceAvailability, for url: URL) {
-        cache[url] = availability
-    }
-
-    func invalidate(_ url: URL?) {
-        if let url {
-            cache[url] = nil
-        } else {
-            cache.removeAll()
-        }
     }
 }
 

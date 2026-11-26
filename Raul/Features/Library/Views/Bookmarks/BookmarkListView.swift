@@ -37,7 +37,7 @@ struct BookmarkListView: View {
 
     private let pageSize = 30
     @State private var visibleCount = 30
-    @State private var filteredSortedBookmarks: [Bookmark] = []
+    @State private var filteredSortedBookmarks: [BookmarkRowSnapshot] = []
 
     init(podcast: Podcast? = nil, episode: Episode? = nil) {
         self.podcast = podcast
@@ -76,36 +76,19 @@ struct BookmarkListView: View {
         }
     }
 
-    private var visibleBookmarks: [Bookmark] {
+    private var visibleBookmarks: [BookmarkRowSnapshot] {
         Array(filteredSortedBookmarks.prefix(visibleCount))
     }
 
-    private func buildFilteredSortedBookmarks() -> [Bookmark] {
-        var result = bookmarks
+    /// Reads each bookmark's episode relationship once per rebuild; search,
+    /// sort and the rows then work on the snapshot values (#498).
+    private func buildFilteredSortedBookmarks() -> [BookmarkRowSnapshot] {
+        var result = bookmarks.map(BookmarkRowSnapshot.init(bookmark:))
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
-            result = result.filter { marker in
-                marker.title.localizedCaseInsensitiveContains(query)
-                || (marker.bookmarkEpisode?.title.localizedCaseInsensitiveContains(query) ?? false)
-                || (marker.bookmarkEpisode?.displayPodcastTitle?.localizedCaseInsensitiveContains(query) ?? false)
-            }
+            result = result.filter { $0.matches(query) }
         }
-
-        switch sort {
-        case .newestFirst:
-            result.sort { ($0.creationtime ?? .distantPast) > ($1.creationtime ?? .distantPast) }
-        case .oldestFirst:
-            result.sort { ($0.creationtime ?? .distantPast) < ($1.creationtime ?? .distantPast) }
-        case .podcastAZ:
-            result.sort {
-                let lhs = $0.bookmarkEpisode?.displayPodcastTitle ?? ""
-                let rhs = $1.bookmarkEpisode?.displayPodcastTitle ?? ""
-                return lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
-            }
-        case .titleAZ:
-            result.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
-        }
-
+        BookmarkRowSnapshot.sort(&result, by: sort)
         return result
     }
 
@@ -115,11 +98,16 @@ struct BookmarkListView: View {
                 BookmarkEmptyView()
             } else {
                 List {
-                    ForEach(Array(visibleBookmarks.enumerated()), id: \.element.id) { index, marker in
+                    ForEach(Array(visibleBookmarks.enumerated()), id: \.element.id) { index, snapshot in
+                        let marker = snapshot.bookmark
                         BookmarkRowView(
                             marker: marker,
+                            snapshot: snapshot,
                             isPlaying: isPlayingInline(marker),
-                            clipDisabled: marker.bookmarkEpisode.flatMap(resolvedAudioURL) == nil,
+                            // `resolvedAudioURL` falls back to the remote URL,
+                            // so Clip only needs an episode URL. No per-row
+                            // file-system check (#498).
+                            clipDisabled: snapshot.canClip == false,
                             groupPosition: GroupedListRowPosition(index: index, count: visibleBookmarks.count),
                             onPlayToggle: {
                                 guard let episode = marker.bookmarkEpisode else { return }
@@ -144,7 +132,7 @@ struct BookmarkListView: View {
                                              bottom: 0,
                                              trailing: 0))
                         .onAppear {
-                            loadMoreIfNeeded(currentItem: marker)
+                            loadMoreIfNeeded(currentItem: snapshot)
                         }
                         .swipeActions(edge: .trailing) {
                             Button(role: .none) {
@@ -221,7 +209,7 @@ struct BookmarkListView: View {
         }
     }
 
-    private func loadMoreIfNeeded(currentItem: Bookmark) {
+    private func loadMoreIfNeeded(currentItem: BookmarkRowSnapshot) {
         guard currentItem.id == visibleBookmarks.last?.id else { return }
         guard visibleCount < filteredSortedBookmarks.count else { return }
         visibleCount = min(visibleCount + pageSize, filteredSortedBookmarks.count)
@@ -299,5 +287,54 @@ struct BookmarkListView: View {
             return localFile
         }
         return episode.url
+    }
+}
+
+/// Value presentation of one bookmark row. `bookmark` and `episode` are kept
+/// for actions and artwork; everything the row, search and sort read is
+/// captured once when the list is rebuilt.
+struct BookmarkRowSnapshot: Identifiable {
+    let bookmark: Bookmark
+    let episode: Episode?
+    let id: PersistentIdentifier
+    let title: String
+    let creationTime: Date?
+    let episodeTitle: String?
+    let podcastTitle: String?
+    let artworkURL: URL?
+    let canClip: Bool
+
+    init(bookmark: Bookmark) {
+        let episode = bookmark.bookmarkEpisode
+        self.bookmark = bookmark
+        self.episode = episode
+        self.id = bookmark.persistentModelID
+        self.title = bookmark.title
+        self.creationTime = bookmark.creationtime
+        self.episodeTitle = episode?.title
+        self.podcastTitle = episode?.displayPodcastTitle
+        self.artworkURL = episode?.imageURL ?? episode?.podcast?.imageURL
+        self.canClip = episode?.url != nil
+    }
+
+    func matches(_ query: String) -> Bool {
+        title.localizedCaseInsensitiveContains(query)
+            || (episodeTitle?.localizedCaseInsensitiveContains(query) ?? false)
+            || (podcastTitle?.localizedCaseInsensitiveContains(query) ?? false)
+    }
+
+    static func sort(_ snapshots: inout [BookmarkRowSnapshot], by sort: BookmarkListView.Sort) {
+        switch sort {
+        case .newestFirst:
+            snapshots.sort { ($0.creationTime ?? .distantPast) > ($1.creationTime ?? .distantPast) }
+        case .oldestFirst:
+            snapshots.sort { ($0.creationTime ?? .distantPast) < ($1.creationTime ?? .distantPast) }
+        case .podcastAZ:
+            snapshots.sort {
+                ($0.podcastTitle ?? "").localizedCaseInsensitiveCompare($1.podcastTitle ?? "") == .orderedAscending
+            }
+        case .titleAZ:
+            snapshots.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        }
     }
 }

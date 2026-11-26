@@ -12,6 +12,7 @@ import ESADesignKit
 
 struct BookmarkRowView: View {
     let marker: Bookmark
+    let snapshot: BookmarkRowSnapshot
     var isPlaying: Bool
     var clipDisabled: Bool
     var groupPosition: GroupedListRowPosition = .single
@@ -23,18 +24,19 @@ struct BookmarkRowView: View {
     @ScaledMetric(relativeTo: .body) private var artworkSize: CGFloat = 100
 
     var body: some View {
-        let episode = marker.bookmarkEpisode
+        let episode = snapshot.episode
         let rowContent = VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 14) {
                 CoverImageView(
                     episode: episode,
+                    loadDelay: EpisodeRowArtworkPolicy.foregroundLoadDelay,
                     cornerRadius: GroupedListRowStyle.artworkCornerRadius
                 )
                     .frame(width: artworkSize, height: artworkSize)
                     .accessibilityHidden(true)
                 
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(episode?.displayPodcastTitle ?? episode?.title ?? "")
+                    Text(snapshot.podcastTitle ?? snapshot.episodeTitle ?? "")
                         .font(.caption)
                         .esaForeground(.secondary)
                         .lineLimit(1)
@@ -78,7 +80,7 @@ struct BookmarkRowView: View {
             
         }
         return rowContent
-            .ESA_RowView(image: episode?.imageURL ?? episode?.podcast?.imageURL, minHeight: rowHeight)
+            .ESA_RowView(image: snapshot.artworkURL, minHeight: rowHeight)
             .clipShape(groupPosition.backgroundShape)
             .contentShape(Rectangle())
     }

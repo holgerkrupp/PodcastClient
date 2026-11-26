@@ -6,12 +6,10 @@
 //
 
 import SwiftUI
-import Combine
 
 struct DownloadControllView: View {
     @Environment(DownloadedFilesManager.self) var fileManager
 
-    @StateObject var viewModel = DownloadViewModel()
     @State var episode: Episode
     var showDelete: Bool = true
     var showsLabels: Bool = false
@@ -19,6 +17,9 @@ struct DownloadControllView: View {
     var body: some View {
         let downloadedFiles = fileManager.downloadedFiles
         let isDownloaded = isDownloaded(downloadedFiles: downloadedFiles)
+        // Keyed shared state: no per-row DownloadManager lookup or
+        // notification subscriptions (#498).
+        let presentation = episode.url.map { EpisodeDownloadPresentationStore.shared.entry(for: $0) }
 
         Group {
             Group {
@@ -39,15 +40,15 @@ struct DownloadControllView: View {
                     } else {
                         EmptyView()
                     }
-                } else if viewModel.isStarting {
+                } else if presentation?.isStarting == true {
                     ProgressView()
                         .accessibilityLabel("Starting download")
-                } else if let item = viewModel.item, item.isDownloading || item.isPaused || item.errorMessage != nil {
-                    DownloadProgressView(item: item, viewModel: viewModel, episode: episode)
+                } else if let item = presentation?.item, item.isDownloading || item.isPaused || item.errorMessage != nil {
+                    DownloadProgressView(item: item, episode: episode)
                         .progressViewStyle(CircularProgressViewStyle())
                 } else if episode.url != nil {
                     Button {
-                        viewModel.startDownload(for: episode)
+                        EpisodeDownloadPresentationStore.shared.startDownload(for: episode)
                     } label: {
                         Label("Download", systemImage: "arrow.down.circle")
                     }
@@ -57,53 +58,12 @@ struct DownloadControllView: View {
             .labelStyle(AnyEpisodeDownloadLabelStyle(showsTitle: showsLabels))
         }
         .buttonStyle(.glass(.clear))
-        .task(id: episode.url) {
-            if isDownloaded {
-                viewModel.clearItem()
-                return
-            }
-            await viewModel.observeDownload(for: episode)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadFinished).receive(on: DispatchQueue.main)) { notification in
-            guard let url = notificationURL(from: notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL]),
-                  url == episode.url else { return }
-            Task { @MainActor in
-                await Task.yield()
-                guard Task.isCancelled == false else { return }
-                viewModel.clearFinishedItem(for: url)
-                fileManager.refreshDownloadedFiles()
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .episodeDownloadStarted).receive(on: DispatchQueue.main)) { notification in
-            guard notificationURL(from: notification.userInfo?[EpisodeDownloadNotificationKey.episodeURL]) == episode.url else { return }
-            Task { @MainActor in
-                await viewModel.observeDownload(for: episode)
-            }
-        }
-        .onChange(of: fileManager.downloadedFiles) { _, _ in
-            if isDownloaded {
-                viewModel.clearItem()
-            }
-        }
     }
 
     private func isDownloaded(downloadedFiles: Set<URL>) -> Bool {
         guard episode.source != .sideLoaded else { return true }
         guard let localFile = episode.localFile?.standardizedFileURL else { return false }
         return downloadedFiles.contains(localFile) || episode.metaData?.calculatedIsAvailableLocally == true
-    }
-
-    private func notificationURL(from value: Any?) -> URL? {
-        if let url = value as? URL {
-            return url
-        }
-        if let url = value as? NSURL {
-            return url as URL
-        }
-        if let string = value as? String {
-            return URL(string: string)
-        }
-        return nil
     }
 }
 
@@ -124,8 +84,9 @@ private struct AnyEpisodeDownloadLabelStyle: LabelStyle {
 
 struct DownloadProgressView: View {
     @ObservedObject var item: DownloadItem
-    var viewModel: DownloadViewModel
     var episode: Episode
+
+    private var store: EpisodeDownloadPresentationStore { .shared }
 
     var body: some View {
         if let error = item.errorMessage {
@@ -134,7 +95,7 @@ struct DownloadProgressView: View {
                     .foregroundStyle(.orange)
                 Text(error).font(.caption)
                 Button("Retry", systemImage: "arrow.clockwise") {
-                    viewModel.retryDownload(for: episode)
+                    store.retryDownload(for: episode)
                 }
             }
         } else if !item.isFinished {
@@ -144,7 +105,7 @@ struct DownloadProgressView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Retry", systemImage: "arrow.clockwise") {
-                        viewModel.retryDownload(for: episode)
+                        store.retryDownload(for: episode)
                     }
                 }
                 if item.totalBytes != nil {
@@ -162,18 +123,18 @@ struct DownloadProgressView: View {
                     }
                     Spacer()
                     if item.isPaused {
-                        Button(action: { viewModel.resumeDownload(for: episode) }) {
+                        Button(action: { store.resumeDownload(for: episode) }) {
                             Label("Resume", systemImage: "play.circle")
                         }
                         .accessibilityHint("Continues the paused download")
                     } else if item.isDownloading {
-                        Button(action: { viewModel.pauseDownload() }) {
+                        Button(action: { store.pauseDownload(for: item.url) }) {
                             Label("Pause", systemImage: "pause.circle")
                         }
                         .accessibilityHint("Pauses the active download")
                     }
                     if !item.isFinished {
-                        Button(action: { viewModel.cancelDownload() }) {
+                        Button(action: { store.cancelDownload(for: item.url) }) {
                             Label("Cancel", systemImage: "xmark.circle")
                                 .foregroundColor(.red)
                         }
@@ -205,7 +166,7 @@ struct DownloadProgressView: View {
     item.isDownloading = true
     item.update(bytesWritten: 36, totalBytes: 100)
 
-    return DownloadProgressView(item: item, viewModel: DownloadViewModel(), episode: Episode(
+    return DownloadProgressView(item: item, episode: Episode(
         title: "Preview Episode", publishDate: .now,
         url: URL(string: "https://example.com/preview-episode.mp3")!,
         duration: 1_800, author: "Preview Author"

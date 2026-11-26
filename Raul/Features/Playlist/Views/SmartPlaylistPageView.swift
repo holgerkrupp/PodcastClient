@@ -18,6 +18,12 @@ struct SmartPlaylistPageView: View {
     @State private var evaluationFailed = false
     @State private var refreshGeneration = 0
     @State private var filterState = QueueFilterState.all
+    @Environment(DownloadedFilesManager.self) private var fileManager
+    /// Cached value snapshot of the matching episodes (#498). Filtering runs
+    /// over these values; the projection is rebuilt only when membership,
+    /// the file inventory, the playing episode, play state or filters change.
+    @State private var projection = QueueProjection(isSmartPlaylist: true, entries: [])
+    @State private var episodesByIdentity: [String: Episode] = [:]
 
     let playlist: Playlist
 
@@ -25,22 +31,41 @@ struct SmartPlaylistPageView: View {
         matchingEpisodes.filter { $0.url != nil }
     }
 
-    private var projection: QueueProjection {
-        QueueProjection(
-            playlistID: playlist.id,
-            playlistTitle: playlist.displayTitle,
-            isSmartPlaylist: true,
-            episodes: displayedEpisodes
-        )
-    }
-
     private var filteredEntries: [QueueEpisodeValue] {
         projection.filtered(using: filterState).entries
     }
 
-    private var episodesByIdentity: [String: Episode] {
-        Dictionary(
-            displayedEpisodes.map { ($0.stableEpisodeIdentityKey, $0) },
+    private struct ProjectionRebuildKey: Equatable {
+        let playlistID: UUID
+        let episodeIDs: [PersistentIdentifier]
+        let downloadedFiles: Set<URL>
+        let currentEpisodeURL: URL?
+        let isPlaying: Bool
+        let filterState: QueueFilterState
+    }
+
+    private var projectionRebuildKey: ProjectionRebuildKey {
+        ProjectionRebuildKey(
+            playlistID: playlist.id,
+            episodeIDs: matchingEpisodes.map(\.persistentModelID),
+            downloadedFiles: fileManager.downloadedFiles,
+            currentEpisodeURL: Player.shared.currentEpisodeURL,
+            isPlaying: Player.shared.isPlaying,
+            filterState: filterState
+        )
+    }
+
+    private func rebuildProjection() {
+        let displayed = displayedEpisodes
+        projection = QueueProjection(
+            playlistID: playlist.id,
+            playlistTitle: playlist.displayTitle,
+            isSmartPlaylist: true,
+            episodes: displayed,
+            downloadedFiles: fileManager.downloadedFiles
+        )
+        episodesByIdentity = Dictionary(
+            displayed.map { ($0.stableEpisodeIdentityKey, $0) },
             uniquingKeysWith: { first, _ in first }
         )
     }
@@ -140,6 +165,9 @@ struct SmartPlaylistPageView: View {
         }
         .onChange(of: playlist.id) { _, _ in
             filterState.clear()
+        }
+        .onChange(of: projectionRebuildKey, initial: true) { _, _ in
+            rebuildProjection()
         }
         .navigationTitle(playlist.displayTitle)
     }
