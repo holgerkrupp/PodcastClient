@@ -366,6 +366,9 @@ actor FeedRefreshCoordinator {
         var completionWaiters: [UUID: CheckedContinuation<Void, any Error>]
         var progressObservers: [UUID: SubscriptionProgressHandler]
         var latestProgress: SubscriptionProgressUpdate?
+        /// Every caller left and the task was cancelled. A later caller must not
+        /// inherit that cancellation; it waits for the unwind and starts anew.
+        var isAbandoned = false
     }
 
     private var flights: [String: Flight] = [:]
@@ -411,11 +414,12 @@ actor FeedRefreshCoordinator {
             try Task.checkCancellation()
             if let flight = flights[key] {
                 let waiterID = UUID()
-                if flight.intent.satisfies(intent) {
+                if flight.isAbandoned == false, flight.intent.satisfies(intent) {
                     do {
                         let result: PodcastUpdateSummary = try await withTaskCancellationHandler {
                             try await withCheckedThrowingContinuation { continuation in
-                                guard var current = flights[key], current.id == flight.id else {
+                                guard var current = flights[key], current.id == flight.id,
+                                      current.isAbandoned == false else {
                                     continuation.resume(throwing: FlightChanged())
                                     return
                                 }
@@ -500,6 +504,7 @@ actor FeedRefreshCoordinator {
         }
         flight.progressObservers[waiterID] = nil
         if flight.resultWaiters.isEmpty && flight.completionWaiters.isEmpty {
+            flight.isAbandoned = true
             flight.task.cancel()
         }
         flights[key] = flight

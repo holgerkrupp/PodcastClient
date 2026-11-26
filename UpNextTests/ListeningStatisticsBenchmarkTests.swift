@@ -44,6 +44,7 @@ final class ListeningStatisticsBenchmarkTests: XCTestCase {
         XCTAssertEqual(snapshot.sessionCount, 10_000)
         XCTAssertEqual(snapshot.totalSeconds, 18_000_000, accuracy: 0.001)
         XCTAssertEqual(snapshot.podcasts.count, 20)
-        print("Listening statistics benchmark: sessions=10000 aggregate_ms=\(String(format: \"%.2f\", milliseconds))")
+        let formattedMilliseconds = String(format: "%.2f", milliseconds)
+        print("Listening statistics benchmark: sessions=10000 aggregate_ms=\(formattedMilliseconds)")
     }
 }

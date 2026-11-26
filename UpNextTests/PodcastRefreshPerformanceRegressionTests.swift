@@ -302,7 +302,9 @@ final class PodcastRefreshPerformanceRegressionTests: XCTestCase {
         XCTAssertEqual(count(stats, method: "GET", profile: "head-unsupported", status: 304), 1)
         XCTAssertGreaterThanOrEqual(count(stats, method: "GET", profile: "rate-limited", status: 429), 1)
         XCTAssertGreaterThanOrEqual(count(stats, method: "GET", profile: "rate-limited", status: 200), 1)
-        XCTAssertEqual(count(stats, method: "GET", profile: "private", status: 401), 1)
+        // URLSession may send a reserved Authorization header only after the
+        // server's challenge, so the authorized probe can add a second 401.
+        XCTAssertGreaterThanOrEqual(count(stats, method: "GET", profile: "private", status: 401), 1)
         XCTAssertEqual(count(stats, method: "GET", profile: "private", status: 200), 1)
         XCTAssertGreaterThanOrEqual(
             stats.requests.filter { $0.profile == "paged" && $0.status == 200 }.count,
@@ -474,6 +476,157 @@ final class PodcastRefreshPerformanceRegressionTests: XCTestCase {
                     max(1.0, max(sortedMedian, shuffledMedian) * 0.75),
                     "Possible fast-first/slow-last order effect for \(count) feeds / \(workers) workers"
                 )
+            }
+        }
+    }
+
+    /// Issue #430: does the same feed get slower when it is scheduled late?
+    /// Shuffling balances fast and slow fixtures across schedule positions, so
+    /// a late-position slowdown here is order-dependent, not content bias.
+    func testFixturePerFeedTimingEarlyVersusLateInShuffledOrder() async throws {
+        guard ProcessInfo.processInfo.environment["PODCAST_REFRESH_PERFORMANCE"] == "1" else {
+            throw XCTSkip("Set PODCAST_REFRESH_PERFORMANCE=1 for wall-clock measurements")
+        }
+        let baseURL = try await fixtureBaseURL()
+        let delay = ProcessInfo.processInfo.environment["PODCAST_REFRESH_FIXTURE_DELAY"] ?? "0.01"
+        let repetitions = Int(ProcessInfo.processInfo.environment["PODCAST_REFRESH_REPETITIONS"] ?? "") ?? 5
+        let previousConcurrency = UserDefaults.standard.object(forKey: "PodcastRefreshNetworkConcurrency")
+        defer {
+            if let previousConcurrency {
+                UserDefaults.standard.set(previousConcurrency, forKey: "PodcastRefreshNetworkConcurrency")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "PodcastRefreshNetworkConcurrency")
+            }
+        }
+
+        actor TimingLog {
+            var timings: [PodcastRefreshFeedTiming] = []
+            func append(_ timing: PodcastRefreshFeedTiming) { timings.append(timing) }
+        }
+        struct FeedSample {
+            let feeds: Int
+            let workers: Int
+            let mode: String
+            let feedNumber: Int
+            let scheduledOrdinal: Int
+            let milliseconds: Double
+        }
+
+        func shuffled(_ count: Int, seed: Int) -> [Int] {
+            var values = Array(0..<count)
+            var state = UInt64(seed) &* 6364136223846793005 &+ 1442695040888963407
+            for index in stride(from: count - 1, through: 1, by: -1) {
+                state = state &* 6364136223846793005 &+ 1442695040888963407
+                values.swapAt(index, Int((state >> 33) % UInt64(index + 1)))
+            }
+            return values
+        }
+
+        func percentile(_ values: [Double], _ fraction: Double) -> Double {
+            guard values.isEmpty == false else { return 0 }
+            let sorted = values.sorted()
+            return sorted[min(sorted.count - 1, Int(Double(sorted.count - 1) * fraction))]
+        }
+
+        var samples: [FeedSample] = []
+        var wallTimes: [String: [Double]] = [:]
+        for mode in ["head", "get"] {
+            for count in [10, 50, 100] {
+                for workers in [1, 4] {
+                    for repetition in 1...repetitions {
+                        try await resetFixture(at: baseURL)
+                        UserDefaults.standard.set(workers, forKey: "PodcastRefreshNetworkConcurrency")
+                        let container = try makeContainer()
+                        let context = ModelContext(container)
+                        let runID = "\(mode)-\(count)-\(workers)-\(repetition)-\(UUID().uuidString)"
+                        var feedNumbers: [URL: Int] = [:]
+                        // Insertion order is the scheduling order of the
+                        // subscribed-podcast fetch.
+                        for number in shuffled(count, seed: count * 1_000 + workers * 100 + repetition) {
+                            let profile = number % 4 == 3 ? "slow-head" : "fast"
+                            let feed = URL(string: "\(baseURL)/\(profile)/\(number)?run=\(runID)&delay=\(delay)&episodes=10")!
+                            feedNumbers[feed] = number
+                            _ = insertPodcast(
+                                feed: feed,
+                                in: context,
+                                // A future refresh date makes HEAD conclusive;
+                                // nil forces GET + parse + first import.
+                                lastRefresh: mode == "head" ? Date().addingTimeInterval(60) : nil
+                            )
+                        }
+                        try context.save()
+                        let log = TimingLog()
+                        let start = ContinuousClock.now
+                        try await PodcastModelActor(modelContainer: container).refreshAllPodcasts(
+                            feedTiming: { await log.append($0) }
+                        )
+                        let wall = start.duration(to: .now).components
+                        wallTimes["\(mode)-\(count)-\(workers)", default: []].append(
+                            Double(wall.seconds) * 1_000 + Double(wall.attoseconds) / 1e15
+                        )
+                        let timings = await log.timings
+                        XCTAssertEqual(timings.count, count)
+                        XCTAssertTrue(timings.allSatisfy(\.succeeded))
+                        for timing in timings {
+                            samples.append(FeedSample(
+                                feeds: count,
+                                workers: workers,
+                                mode: mode,
+                                feedNumber: feedNumbers[timing.feed] ?? -1,
+                                scheduledOrdinal: timing.scheduledOrdinal,
+                                milliseconds: Double(timing.durationMilliseconds)
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+
+        for mode in ["head", "get"] {
+            for count in [10, 50, 100] {
+                for workers in [1, 4] {
+                    let matching = samples.filter {
+                        $0.mode == mode && $0.feeds == count && $0.workers == workers
+                    }
+                    let third = max(1, count / 3)
+                    let early = matching.filter { $0.scheduledOrdinal < third }.map(\.milliseconds)
+                    let late = matching.filter { $0.scheduledOrdinal >= count - third }.map(\.milliseconds)
+                    // Same feed, early vs late: mean per feed in each bucket.
+                    var perFeedDeltas: [Double] = []
+                    for number in 0..<count {
+                        let feedSamples = matching.filter { $0.feedNumber == number }
+                        let feedEarly = feedSamples.filter { $0.scheduledOrdinal < third }.map(\.milliseconds)
+                        let feedLate = feedSamples.filter { $0.scheduledOrdinal >= count - third }.map(\.milliseconds)
+                        guard feedEarly.isEmpty == false, feedLate.isEmpty == false else { continue }
+                        perFeedDeltas.append(
+                            feedLate.reduce(0, +) / Double(feedLate.count)
+                                - feedEarly.reduce(0, +) / Double(feedEarly.count)
+                        )
+                    }
+                    let walls = wallTimes["\(mode)-\(count)-\(workers)"] ?? []
+                    print(String(
+                        format: "PodcastRefreshPerFeed mode=%@ feeds=%d workers=%d runs=%d "
+                            + "feed_p50_ms=%.0f feed_p95_ms=%.0f early_p50_ms=%.0f early_p95_ms=%.0f "
+                            + "late_p50_ms=%.0f late_p95_ms=%.0f same_feed_late_minus_early_median_ms=%.0f "
+                            + "same_feed_pairs=%d wall_p50_ms=%.0f wall_p95_ms=%.0f",
+                        mode, count, workers, walls.count,
+                        percentile(matching.map(\.milliseconds), 0.5),
+                        percentile(matching.map(\.milliseconds), 0.95),
+                        percentile(early, 0.5), percentile(early, 0.95),
+                        percentile(late, 0.5), percentile(late, 0.95),
+                        percentile(perFeedDeltas, 0.5), perFeedDeltas.count,
+                        percentile(walls, 0.5), percentile(walls, 0.95)
+                    ))
+                    // Broad guard only: a late-scheduled feed taking more than
+                    // twice as long (and 100 ms more) at the median points to
+                    // order-dependent degradation worth profiling.
+                    let earlyMedian = percentile(early, 0.5)
+                    XCTAssertLessThan(
+                        percentile(late, 0.5),
+                        max(earlyMedian * 2, earlyMedian + 100),
+                        "Late-scheduled feeds slower for mode=\(mode) feeds=\(count) workers=\(workers)"
+                    )
+                }
             }
         }
     }

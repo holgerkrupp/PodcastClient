@@ -23,13 +23,17 @@ from threading import Lock
 from urllib.parse import parse_qs, urlparse
 
 
-def rss_document(profile: str, feed_number: str, page: int, episodes: int, revision: int = 1) -> bytes:
+def rss_document(
+    profile: str, feed_number: str, page: int, episodes: int, revision: int = 1, durations: bool = False
+) -> bytes:
     start = (page - 1) * episodes
     items = []
     for number in range(start, start + episodes):
         items.append(
             f"<item><title>Episode {number}</title>"
             f"<guid>{profile}-{feed_number}-{number}</guid>"
+            + ("<itunes:duration>00:30:00</itunes:duration>" if durations else "")
+            +
             f"<enclosure url=\"https://media.example.invalid/{profile}/{feed_number}/{number}.mp3\" "
             "type=\"audio/mpeg\"/></item>"
         )
@@ -53,7 +57,8 @@ def rss_document(profile: str, feed_number: str, page: int, episodes: int, revis
         description = f"<description>Changed fixture revision {revision}</description>"
     body = (
         '<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" '
-        'xmlns:podcast="https://podcastindex.org/namespace/1.0"><channel>'
+        'xmlns:podcast="https://podcastindex.org/namespace/1.0" '
+        'xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd"><channel>'
         f"<title>Fixture {profile} {feed_number}</title>"
         + description
         + dynamic_metadata
@@ -146,7 +151,8 @@ class FixtureHandler(BaseHTTPRequestHandler):
             if (profile == "slow-head" and not include_body) or (profile == "slow-get" and include_body):
                 time.sleep(max(0.0, delay))
             body_profile = "large" if profile in {"large", "large-history"} else profile
-            body = rss_document(body_profile, feed_number, page, episodes, revision or 1)
+            durations = query.get("durations", ["0"])[0] == "1"
+            body = rss_document(body_profile, feed_number, page, episodes, revision or 1, durations)
             if profile in {"unchanged", "stale-last-modified"} and not include_body:
                 modified = "Wed, 01 Jan 2020 00:00:00 GMT"
             else:

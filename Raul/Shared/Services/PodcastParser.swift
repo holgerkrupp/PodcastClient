@@ -140,14 +140,52 @@ struct PreparedPodcastFeed: Sendable {
             storage = .memory(values)
             bufferedByteCount = estimatedBytes
         } else {
-            let directory = FileManager.default.temporaryDirectory
-                .appending(path: "PodcastClient/PreparedFeeds", directoryHint: .isDirectory)
+            let directory = Self.spoolDirectory
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
             let url = directory.appending(path: UUID().uuidString + ".json")
             try JSONEncoder().encode(values).write(to: url, options: .atomic)
             storage = .spool(SpoolFile(url: url))
             bufferedByteCount = 0
         }
+    }
+
+    static var spoolDirectory: URL {
+        FileManager.default.temporaryDirectory
+            .appending(path: "PodcastClient/PreparedFeeds", directoryHint: .isDirectory)
+    }
+
+    /// The spool file is removed when the last copy of this value is released,
+    /// including after errors and cancellation. Exposed for lifetime tests.
+    var spoolFileURL: URL? {
+        if case .spool(let file) = storage { return file.url }
+        return nil
+    }
+
+    /// A process that is terminated while a large feed waits for the writer
+    /// never runs the spool file's `deinit`. Remove such leftovers; files
+    /// younger than `age` may still belong to a live refresh.
+    @discardableResult
+    static func removeStaleSpoolFiles(
+        olderThan age: TimeInterval = 24 * 60 * 60,
+        now: Date = Date(),
+        in directory: URL = spoolDirectory
+    ) -> Int {
+        let fileManager = FileManager.default
+        guard let files = try? fileManager.contentsOfDirectory(
+            at: directory,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var removed = 0
+        for file in files where file.pathExtension == "json" {
+            let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+            guard now.timeIntervalSince(modified) > age else { continue }
+            if (try? fileManager.removeItem(at: file)) != nil {
+                removed += 1
+            }
+        }
+        return removed
     }
 
     /// Only the writer reconstructs the parser's legacy import shape.

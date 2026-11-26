@@ -113,7 +113,10 @@ final class ShownoteLinkHistoryTests: XCTestCase {
     ) throws -> (ShownoteLinkHistoryStore, UserDefaults) {
         let suite = "ShownoteLinkHistoryTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        return (ShownoteLinkHistoryStore(defaults: defaults, now: { clock.date }), defaults)
+        // The store gets its own instance of the same suite so the returned
+        // defaults are not sent into the actor's isolation region.
+        let storeDefaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        return (ShownoteLinkHistoryStore(defaults: storeDefaults, now: { clock.date }), defaults)
     }
 }
 

@@ -590,9 +590,22 @@ final class ModelContextExistingModelTests: XCTestCase {
         before.url = URL(string: "https://example.com/previous-enclosure.mp3")!
         try editContext.save()
 
+        // A regular refresh stops at the first known episode (matched by
+        // GUID here), so the stored row is kept as it is.
         _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
-        let episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
+        var episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
         XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.persistentModelID, before.persistentModelID)
+        XCTAssertEqual(episodes.first?.metaData?.playPosition, 42)
+        XCTAssertEqual(episodes.first?.metaData?.isArchived, true)
+
+        // An untrimmed import (bootstrap/restore) matches the stored row through
+        // the bounded GUID lookup and refreshes its enclosure URL in place.
+        let bootstrapped = try await worker.bootstrapPodcast(feed, maximumEpisodes: 10)
+        XCTAssertTrue(bootstrapped)
+        episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
+        XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.persistentModelID, before.persistentModelID)
         XCTAssertEqual(episodes.first?.guid, "fast-96-0")
         XCTAssertEqual(episodes.first?.url, URL(string: "https://media.example.invalid/fast/96/0.mp3"))
         XCTAssertEqual(episodes.first?.metaData?.playPosition, 42)
@@ -628,9 +641,21 @@ final class ModelContextExistingModelTests: XCTestCase {
         before.guid = nil
         try editContext.save()
 
+        // The regular refresh recognizes the episode by enclosure URL and
+        // stops there without duplicating it.
         _ = try await worker.updatePodcastWithSummary(feed, policy: .manualSingle, silent: true)
-        let episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
+        var episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
         XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.persistentModelID, before.persistentModelID)
+        XCTAssertEqual(episodes.first?.metaData?.playPosition, 57)
+
+        // An untrimmed import matches it through the bounded URL lookup and
+        // restores the feed GUID on the same row.
+        let bootstrapped = try await worker.bootstrapPodcast(feed, maximumEpisodes: 10)
+        XCTAssertTrue(bootstrapped)
+        episodes = try ModelContext(container).fetch(FetchDescriptor<Episode>())
+        XCTAssertEqual(episodes.count, 1)
+        XCTAssertEqual(episodes.first?.persistentModelID, before.persistentModelID)
         XCTAssertEqual(episodes.first?.guid, "fast-97-0")
         XCTAssertEqual(episodes.first?.metaData?.playPosition, 57)
     }

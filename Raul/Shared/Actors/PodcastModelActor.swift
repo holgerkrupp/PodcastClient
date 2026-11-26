@@ -174,6 +174,10 @@ struct PodcastUpdateSummary: Sendable {
 struct PodcastEpisodeImportResult: Sendable {
     var newEpisodeCount = 0
     var postCreationEpisodeURLs: [URL] = []
+    /// New episodes without a feed duration. Reading the remote MP3 is a
+    /// network request per episode, so it runs after the feed writer is
+    /// released instead of inside the serialized import loop.
+    var missingDurationEpisodes: [PersistentIdentifier] = []
     var feedDataChanged = false
     var newestImportedPublishDate: Date?
 }
@@ -241,6 +245,19 @@ typealias PodcastRefreshFeedResultHandler = @Sendable (
     _ newEpisodeCount: Int,
     _ errorMessage: String?
 ) async -> Void
+
+/// Value-only per-feed timing from Manual Refresh All, used by fixture
+/// measurements to compare the same feeds at early and late schedule positions.
+struct PodcastRefreshFeedTiming: Sendable {
+    let feed: URL
+    let scheduledOrdinal: Int
+    let completedOrdinal: Int
+    let durationMilliseconds: Int64
+    let succeeded: Bool
+    let didUpdate: Bool
+}
+
+typealias PodcastRefreshFeedTimingHandler = @Sendable (PodcastRefreshFeedTiming) async -> Void
 
 @ModelActor
 actor PodcastModelActor {
@@ -760,12 +777,13 @@ actor PodcastModelActor {
         )
         await PodcastEpisodeImportRetryQueue.shared.remove(feedURL: oldURL)
         guard let committedPodcast: Podcast = modelContext.existingModel(for: podcastID) else { return }
-        _ = try await updateDetails(
+        let importResult = try await updateDetails(
             committedPodcast,
             fullPodcast: validation.parsedFeed,
             silent: true,
             progress: progress
         )
+        await fillMissingDurations(importResult.missingDurationEpisodes)
     }
 
     private func reportProgress(
@@ -1028,6 +1046,24 @@ actor PodcastModelActor {
         modelContext.saveIfNeeded()
     }
 
+    /// Fills durations for newly imported episodes once the feed writer is
+    /// free. Each episode is re-read, so a duration set meanwhile is kept.
+    private func fillMissingDurations(
+        _ episodeIDs: [PersistentIdentifier],
+        deadline: Date? = nil
+    ) async {
+        for episodeID in episodeIDs {
+            if Task.isCancelled { return }
+            if let deadline, Date() >= deadline { return }
+            guard let episode: Episode = modelContext.existingModel(for: episodeID) else { continue }
+            await fillMissingRemoteMP3DurationIfNeeded(
+                episodeID: episodeID,
+                episodeURL: episode.url,
+                currentDuration: episode.duration
+            )
+        }
+    }
+
     private func suppressFromInbox(
         _ episode: Episode,
         reason: EpisodeSystemSuppressionReason
@@ -1263,6 +1299,7 @@ actor PodcastModelActor {
             )
             modelContext.saveIfNeeded()
             await reconcileLiveNotifications(for: finalPodcast)
+            await fillMissingDurations(importResult.missingDurationEpisodes)
             return true
         } catch {
             if let metaIDRef {
@@ -1791,6 +1828,7 @@ actor PodcastModelActor {
                     let seedPostCreationURLs = seedImportResult.postCreationEpisodeURLs
                     modelContext.saveIfNeeded()
                     await commitCoordinator.release()
+                    await fillMissingDurations(seedImportResult.missingDurationEpisodes, deadline: deadline)
                     await publishFeedImportInvalidations(
                         newEpisodeCount: seedImportResult.newEpisodeCount,
                         feed: feedURL
@@ -1984,6 +2022,7 @@ actor PodcastModelActor {
             modelContext.saveIfNeeded()
             writerHeld = false
             await commitCoordinator.release()
+            await fillMissingDurations(importResult.missingDurationEpisodes, deadline: deadline)
             await publishFeedImportInvalidations(newEpisodeCount: newEpisodeCount, feed: feedURL)
             if initialPageFeedDataChanged || importResult.feedDataChanged {
                 await EpisodeActor(modelContainer: modelContainer).applyAutomaticDownloadPolicy(for: feedURL)
@@ -2404,12 +2443,10 @@ actor PodcastModelActor {
                         userState: ModelContext(userState)
                     )
                 }
-                if shouldProcessNewEpisodes {
-                    await fillMissingRemoteMP3DurationIfNeeded(
-                        episodeID: episode.persistentModelID,
-                        episodeURL: episode.url,
-                        currentDuration: episode.duration
-                    )
+                if shouldProcessNewEpisodes,
+                   episode.duration == nil || episode.duration == 0,
+                   episode.url?.pathExtension.lowercased() == "mp3" {
+                    importResult.missingDurationEpisodes.append(episode.persistentModelID)
                 }
 
                 if shouldProcessNewEpisodes {
@@ -2672,8 +2709,10 @@ actor PodcastModelActor {
     
     func refreshAllPodcasts(
         progress: (@Sendable (_ completed: Int, _ total: Int) async -> Void)? = nil,
-        feedResult: PodcastRefreshFeedResultHandler? = nil
+        feedResult: PodcastRefreshFeedResultHandler? = nil,
+        feedTiming: PodcastRefreshFeedTimingHandler? = nil
     ) async throws {
+        PreparedPodcastFeed.removeStaleSpoolFiles()
         let bulkSignpostID = OSSignpostID(log: Self.refreshSignpostLog)
         os_signpost(.begin, log: Self.refreshSignpostLog, name: "Podcast refresh all", signpostID: bulkSignpostID)
         defer {
@@ -2785,6 +2824,14 @@ actor PodcastModelActor {
                         result.errorMessage
                     )
                 }
+                await feedTiming?(PodcastRefreshFeedTiming(
+                    feed: result.feed,
+                    scheduledOrdinal: result.scheduledOrdinal,
+                    completedOrdinal: completed - 1,
+                    durationMilliseconds: result.durationMilliseconds,
+                    succeeded: result.success,
+                    didUpdate: result.didUpdate
+                ))
                 if result.success == false {
                     failed += 1
                 }
