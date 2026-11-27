@@ -113,10 +113,12 @@ struct TranscriptPresentationSnapshot: Equatable, Sendable {
             for paragraph in affected {
                 // Rebase only the touched paragraphs using the builder's existing trimming rules.
                 let mapped = document.lines[paragraph].map { line in
-                    TranscriptSegmentSource(id: line.id, speaker: line.speaker, text: line.text,
+                    let text = line.text as NSString
+                    return TranscriptSegmentSource(id: line.id, speaker: line.speaker, text: line.text,
                                             startTime: line.startTime, endTime: line.endTime,
                                             timedSpans: (evidence.wordsByLine[line.id] ?? []).filter {
-                                                $0.cueLevel != true && $0.startTime >= 0
+                                                $0.cueLevel != true && $0.startTime >= 0 &&
+                                                Self.isComposedCharacterAligned($0, in: text)
                                             })
                 }
                 for segment in TranscriptSegmentBuilder.makeSegments(fromSorted: mapped, options: .full) {
@@ -134,5 +136,15 @@ struct TranscriptPresentationSnapshot: Equatable, Sendable {
         }
         return Self(document: document, segments: segments, timingQuality: quality,
                     timeline: timeline, enhancedWordsBySegment: enhancedWords)
+    }
+
+    /// Derived spans must cover whole graphemes. `Range(_:in:)` accepts UTF-16 offsets that
+    /// split a surrogate pair or cluster, which would duplicate highlighting inside one emoji.
+    private static func isComposedCharacterAligned(_ span: TranscriptTimedSpan, in text: NSString) -> Bool {
+        guard span.location >= 0, span.length > 0, span.length <= text.length - min(span.location, text.length) else {
+            return false
+        }
+        let range = NSRange(location: span.location, length: span.length)
+        return text.rangeOfComposedCharacterSequences(for: range) == range
     }
 }

@@ -293,7 +293,11 @@ enum TranscriptSegmentBuilder {
                 guard span.location >= 0, span.length > 0,
                       span.startTime.isFinite, span.endTime.isFinite, span.endTime > span.startTime,
                       span.location <= source.length, span.length <= source.length - span.location,
-                      Range(NSRange(location: span.location, length: span.length), in: line.text) != nil else { return nil }
+                      Range(NSRange(location: span.location, length: span.length), in: line.text) != nil,
+                      // A range that splits a surrogate pair or other composed
+                      // character still bridges to Swift; never draw half an emoji.
+                      source.rangeOfComposedCharacterSequences(for: NSRange(location: span.location, length: span.length))
+                        == NSRange(location: span.location, length: span.length) else { return nil }
                 let intersection = NSIntersectionRange(NSRange(location: span.location, length: span.length), trimmedRange)
                 guard intersection.length > 0,
                       Range(intersection, in: line.text) != nil else { return nil }
