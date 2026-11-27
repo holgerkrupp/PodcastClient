@@ -49,6 +49,8 @@ struct AudioClipExportView: View {
     @State private var resolvingCaptions = false
     @State private var captionStatus: String?
     @State private var resolvedMediaFingerprint: String?
+    @State private var publisherResolver: PublisherClipCaptionResolver?
+    @State private var resolvedPublisherSelection: PublisherSelection?
     @State private var clipGeneratedTimeline: ClipCaptionTimeline?
     @State private var clipGeneratedRange: ClosedRange<Double>?
     @State private var clipGeneratedMediaFingerprint: String?
@@ -130,12 +132,12 @@ struct AudioClipExportView: View {
                         .onChange(of: coverImage) { schedulePreviewImageUpdate() }
                         .onChange(of: trimStart) {
                             clipGenerationTask?.cancel()
-                            if availableCaptionTimeline == nil { includeCaptions = false }
+                            if publisherResolver == nil && availableCaptionTimeline == nil { includeCaptions = false }
                             schedulePreviewImageUpdate()
                         }
                         .onChange(of: trimEnd) {
                             clipGenerationTask?.cancel()
-                            if availableCaptionTimeline == nil { includeCaptions = false }
+                            if publisherResolver == nil && availableCaptionTimeline == nil { includeCaptions = false }
                             schedulePreviewImageUpdate()
                         }
                         .onChange(of: videoSize) { schedulePreviewImageUpdate() }
@@ -275,8 +277,13 @@ struct AudioClipExportView: View {
                     clipGenerationTask?.cancel()
                 }
                 .task(id: audioURL) { await resolveCaptions() }
-                .onChange(of: synchronizationStore.isEnabled) {
-                    Task { await resolveCaptions() }
+                .task(id: publisherSelection) {
+                    guard let selection = publisherSelection, let publisherResolver else { return }
+                    let timeline = await publisherResolver.resolve(in: selection.range)
+                    guard !Task.isCancelled, selection == publisherSelection else { return }
+                    resolvedCaptionTimeline = timeline
+                    resolvedPublisherSelection = selection
+                    schedulePreviewImageUpdate()
                 }
                 
                 
@@ -534,11 +541,23 @@ struct AudioClipExportView: View {
         clipGeneratedRange.map { trimStart >= $0.lowerBound && trimEnd <= $0.upperBound } ?? false
     }
 
+    private struct PublisherSelection: Equatable {
+        let key: PublisherTranscriptTimingOverlay.Key
+        let range: Range<Double>
+    }
+
+    private var publisherSelection: PublisherSelection? {
+        guard let publisherResolver, trimEnd > trimStart else { return nil }
+        return .init(key: publisherResolver.key, range: trimStart..<trimEnd)
+    }
+
     private var availableCaptionTimeline: ClipCaptionTimeline? {
-        let timeline = (clipCoversSelection ? clipGeneratedTimeline : nil) ?? captionTimeline ?? resolvedCaptionTimeline
+        let resolved = publisherSelection == resolvedPublisherSelection ? resolvedCaptionTimeline : nil
+        let timeline = (clipCoversSelection ? clipGeneratedTimeline : nil) ?? captionTimeline ?? resolved
         if let intervals = timeline?.coverage,
            !intervals.contains(where: { $0.end > trimStart && $0.start < trimEnd }) { return nil }
-        return timeline?.captions.isEmpty == false ? timeline : nil
+        guard let timeline, timeline.captions.contains(where: { $0.start < trimEnd && $0.end > trimStart }) else { return nil }
+        return timeline
     }
 
     private var captionCoverageIsPartial: Bool {
@@ -588,13 +607,19 @@ struct AudioClipExportView: View {
     @MainActor
     private func resolveCaptions() async {
         includeCaptions = false
+        clipGenerationTask?.cancel()
+        clipGeneratedTimeline = nil
+        clipGeneratedRange = nil
+        clipGeneratedMediaFingerprint = nil
+        publisherResolver = nil
+        resolvedPublisherSelection = nil
         resolvedCaptionTimeline = nil
         resolvedMediaFingerprint = nil
         guard captionTimeline == nil, let episodeURL, audioURL.isFileURL else { return }
         resolvingCaptions = true
         defer { resolvingCaptions = false }
         let container = modelContext.container
-        guard let snapshot = await EpisodeActor(modelContainer: container).clipTranscriptSnapshot(for: episodeURL) else { return }
+        let episodeActor = EpisodeActor(modelContainer: container)
         let mediaURL = audioURL
         let fingerprintTask = Task.detached(priority: .utility) { try TranscriptMediaFingerprint.make(for: mediaURL) }
         let fingerprint = await withTaskCancellationHandler {
@@ -603,12 +628,8 @@ struct AudioClipExportView: View {
             fingerprintTask.cancel()
         }
         guard !Task.isCancelled, let fingerprint else { return }
-        let alignment: TranscriptSynchronizationTimeline?
-        switch snapshot.origin {
-        case .generated:
-            alignment = nil
-        case .publisher(let revision):
-            guard synchronizationStore.isEnabled else { return }
+        if let document = await episodeActor.publisherClipDocument(for: episodeURL), let revision = document.timingRevision {
+            let alignment: TranscriptSynchronizationTimeline?
             if let activeAlignment = synchronizationStore.timeline(
                 for: episodeURL,
                 mediaFingerprint: fingerprint,
@@ -617,15 +638,18 @@ struct AudioClipExportView: View {
                 alignment = activeAlignment
             } else {
                 alignment = await TranscriptAlignmentStoreActor(modelContainer: container).load(
-                    episodeID: snapshot.episodeID, mediaFingerprint: fingerprint, transcriptRevision: revision
+                    episodeID: document.episodeID, mediaFingerprint: fingerprint, transcriptRevision: revision
                 )
             }
-            guard synchronizationStore.isEnabled else { return }
+            guard !Task.isCancelled else { return }
+            publisherResolver = await Task.detached(priority: .utility) {
+                PublisherClipCaptionResolver(document: document, mediaFingerprint: fingerprint, alignment: alignment)
+            }.value
+        } else if let snapshot = await episodeActor.clipTranscriptSnapshot(for: episodeURL) {
+            guard !Task.isCancelled else { return }
+            resolvedCaptionTimeline = ClipCaptionTimeline.resolve(snapshot: snapshot, mediaFingerprint: fingerprint,
+                                                                  publisherAlignment: nil)
         }
-        guard !Task.isCancelled else { return }
-        resolvedCaptionTimeline = ClipCaptionTimeline.resolve(
-            snapshot: snapshot, mediaFingerprint: fingerprint, publisherAlignment: alignment
-        )
         resolvedMediaFingerprint = fingerprint
         schedulePreviewImageUpdate()
     }
@@ -635,6 +659,7 @@ struct AudioClipExportView: View {
         let end = trimEnd
         let mediaURL = audioURL
         let selectedEpisodeURL = episodeURL
+        let resolver = publisherResolver
         let container = modelContext.container
         captionStatus = "Preparing clip audio…"
         clipGenerationTask = Task { @MainActor in
@@ -670,9 +695,17 @@ struct AudioClipExportView: View {
                                 startTime: start + $0.startTime, endTime: start + $0.endTime, cueLevel: $0.cueLevel)
                         })
                 }
-                let segments = TranscriptSegmentBuilder.makeSegments(from: lines, options: .compact)
-                guard let timeline = ClipCaptionTimeline.resolve(segments: segments, publisherAlignmentRequired: false, alignment: nil),
-                      !timeline.captions.isEmpty else { throw AudioClipExporter.ExportError.noPlayableMedia }
+                let timeline: ClipCaptionTimeline?
+                if let resolver {
+                    guard resolver.key.mediaFingerprint == fingerprint else { throw CancellationError() }
+                    timeline = await resolver.resolve(in: start..<end, speech: lines,
+                        language: language ?? AITranscripts.defaultSpeechLanguageIdentifier)
+                } else {
+                    let segments = TranscriptSegmentBuilder.makeSegments(from: lines, options: .compact)
+                    timeline = ClipCaptionTimeline.resolve(segments: segments, publisherAlignmentRequired: false, alignment: nil)
+                }
+                try Task.checkCancellation()
+                guard let timeline, !timeline.captions.isEmpty else { throw AudioClipExporter.ExportError.noPlayableMedia }
                 clipGeneratedTimeline = timeline
                 clipGeneratedRange = start...end
                 clipGeneratedMediaFingerprint = fingerprint
@@ -682,7 +715,7 @@ struct AudioClipExportView: View {
             } catch is CancellationError {
                 captionStatus = nil
             } catch {
-                captionStatus = "Could not generate captions for this clip. You can export without captions."
+                captionStatus = availableCaptionTimeline == nil ? "Could not generate captions for this clip. You can export without captions." : nil
             }
         }
     }
@@ -1042,6 +1075,12 @@ struct AudioClipExportView: View {
                     showCaptionsPopup = true
                 } else {
                     includeCaptions.toggle()
+                    if includeCaptions, publisherResolver != nil, !clipCoversSelection,
+                       availableCaptionTimeline?.captions.contains(where: \.cueLevel) == true, clipGenerationTask == nil {
+                        startClipCaptionGeneration()
+                    } else if !includeCaptions {
+                        clipGenerationTask?.cancel()
+                    }
                     schedulePreviewImageUpdate()
                 }
             } label: {

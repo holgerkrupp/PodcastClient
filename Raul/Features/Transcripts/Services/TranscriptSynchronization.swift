@@ -192,6 +192,74 @@ struct TranscriptSynchronizationInput: Sendable {
     let candidates: [TranscriptAlignmentCandidate]
 }
 
+/// One index per publisher revision. Matching uses the original line text so UTF-16
+/// ranges can be consumed by both the player and clip export without rebasing here.
+struct TranscriptSynchronizationWordIndex {
+    // Keep word boundaries identical to PublisherTranscriptWordMatcher, including contractions.
+    private static let words = try! NSRegularExpression(
+        pattern: #"[\p{L}\p{N}][\p{L}\p{M}\p{N}]*(?:['’][\p{L}\p{M}\p{N}]+)*"#
+    )
+    private let segments: [TranscriptSegment]
+    private let lines: [UUID: (segment: Int, firstToken: Int)]
+
+    init?(candidates: [TranscriptAlignmentCandidate]) {
+        var segments: [TranscriptSegment] = []
+        var lines: [UUID: (segment: Int, firstToken: Int)] = [:]
+        var token = 0
+        for cue in candidates {
+            guard !Task.isCancelled, cue.source == .publisher, let id = UUID(uuidString: cue.id),
+                  lines[id] == nil, cue.transcriptTime.isFinite, cue.transcriptTime >= 0,
+                  cue.transcriptTime >= (segments.last?.startTime ?? 0) else { return nil }
+            lines[id] = (segments.count, token)
+            segments.append(TranscriptSegment(id: id, speaker: nil, text: cue.text,
+                startTime: cue.transcriptTime, endTime: cue.endTime, lineIDs: [id], timedSpans: cue.timedSpans ?? []))
+            token += Self.words.numberOfMatches(in: cue.text, range: NSRange(location: 0, length: cue.text.utf16.count))
+        }
+        self.segments = segments
+        self.lines = lines
+    }
+
+    func mappings(results: [AITranscripts.TimedResult], sample: Range<TimeInterval>,
+                  expected: TimeInterval, publisherLanguage: String, speechLanguage: String)
+        -> [PublisherTranscriptTimingOverlay.Mapping] {
+        var words: [PublisherTranscriptWordMatcher.SpeechWord] = []
+        for result in results {
+            for span in result.timedSpans where span.cueLevel != true {
+                guard words.count < 48, span.location >= 0, span.length > 0,
+                      span.location <= result.text.utf16.count,
+                      span.length <= result.text.utf16.count - span.location,
+                      let range = Range(NSRange(location: span.location, length: span.length), in: result.text),
+                      span.startTime.isFinite, span.endTime.isFinite,
+                      span.startTime >= 0, span.endTime > span.startTime,
+                      sample.lowerBound + span.endTime <= sample.upperBound else { return [] }
+                words.append(.init(text: String(result.text[range]), audioStart: sample.lowerBound + span.startTime,
+                                   audioEnd: sample.lowerBound + span.endTime))
+            }
+        }
+        return PublisherTranscriptWordMatcher.match(words: words, segments: segments, expectedTranscriptTime: expected,
+            publisherLanguage: publisherLanguage, speechLanguage: speechLanguage).compactMap { match in
+                guard match.confidence >= 0.82, let line = lines[match.segmentID] else { return nil }
+                let prefix = NSRange(location: 0, length: match.textRange.lowerBound)
+                let index = line.firstToken + Self.words.numberOfMatches(in: segments[line.segment].text, range: prefix)
+                return .init(tokenIndex: index, lineID: match.segmentID, location: match.textRange.lowerBound,
+                             length: match.textRange.count, audioStart: match.audioStart, audioEnd: match.audioEnd,
+                             confidence: match.confidence)
+            }
+    }
+
+    /// Cache lookup returns audio-ordered mappings. A pair of words on either
+    /// side of an insertion is not evidence for the intervening audio.
+    static func covers(_ range: Range<TimeInterval>, mappings: [PublisherTranscriptTimingOverlay.Mapping]) -> Bool {
+        var covered = range.lowerBound
+        for word in mappings {
+            guard word.audioStart <= covered else { break }
+            covered = max(covered, word.audioEnd)
+            if covered >= range.upperBound { return true }
+        }
+        return false
+    }
+}
+
 struct TranscriptAlignmentMatcher {
     /// Prefer nearby rows, then widen the bounded search for large insertions.
     /// Ambiguous matches are never rescued by widening the search.
@@ -485,28 +553,37 @@ typealias TranscriptAlignmentCacheActor = TranscriptAlignmentStoreActor
 actor TranscriptSynchronizationService {
     static let shared = TranscriptSynchronizationService()
 
+    struct PlaybackRequest {
+        let episodeID: String
+        let mediaURL: URL
+        let size: Int?
+        let modifiedAt: Date?
+        let revision: String
+        let audioTime: TimeInterval
+
+        func canReuse(_ previous: Self, running: Bool) -> Bool {
+            guard episodeID == previous.episodeID, mediaURL == previous.mediaURL,
+                  size == previous.size, modifiedAt == previous.modifiedAt, revision == previous.revision else { return false }
+            let delta = audioTime - previous.audioTime
+            return running ? abs(delta) < 48 : (0..<15).contains(delta)
+        }
+    }
+
     private var isEnabled = false
-    private var jobs: [String: Task<Void, Never>] = [:]
-    private var backgroundProcessingTask: Task<Int, Never>?
-    private var lastAnalyzedAudioTime: [String: TimeInterval] = [:]
+    private var active: (id: UUID, task: Task<Int, Never>)?
+    private var lastRequest: PlaybackRequest?
+    private var wordIndex: (key: PublisherTranscriptTimingOverlay.Key, index: TranscriptSynchronizationWordIndex?)?
     private var cachedFingerprints: [String: (size: Int64, modifiedAt: Date?, digest: String)] = [:]
 
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
-        guard enabled == false else { return }
-        jobs.values.forEach { $0.cancel() }
-        jobs.removeAll()
-        backgroundProcessingTask?.cancel()
-        backgroundProcessingTask = nil
-        lastAnalyzedAudioTime.removeAll()
+        if !enabled { cancelAll() }
     }
 
     func cancelAll() {
-        jobs.values.forEach { $0.cancel() }
-        jobs.removeAll()
-        backgroundProcessingTask?.cancel()
-        backgroundProcessingTask = nil
-        lastAnalyzedAudioTime.removeAll()
+        active?.task.cancel()
+        lastRequest = nil
+        wordIndex = nil
     }
 
     func schedule(
@@ -519,31 +596,19 @@ actor TranscriptSynchronizationService {
         guard isEnabled,
               audioTime.isFinite, audioTime >= 0,
               input.candidates.count >= 3,
-              input.candidates.allSatisfy({ $0.source == .publisher }),
-              jobs[input.episodeID] == nil else { return }
+              input.localMediaURL.isFileURL,
+              input.candidates.allSatisfy({ $0.source == .publisher }) else { return }
 
-        if let lastTime = lastAnalyzedAudioTime[input.episodeID],
-           audioTime >= lastTime,
-           audioTime - lastTime < 15 {
-            return
-        }
-        lastAnalyzedAudioTime[input.episodeID] = audioTime
-
-        for episodeID in Array(jobs.keys) where episodeID != input.episodeID {
-            jobs[episodeID]?.cancel()
-            jobs.removeValue(forKey: episodeID)
-        }
-
-        let alignmentStore = TranscriptAlignmentStoreActor(modelContainer: libraryContainer)
-        jobs[input.episodeID] = Task { [weak self] in
-            _ = await self?.run(
-                input: input,
-                audioTime: audioTime,
-                alignmentStore: alignmentStore,
-                episodeActor: episodeActor,
-                settingsActor: settingsActor
-            )
-            await self?.finished(episodeID: input.episodeID)
+        let values = try? input.localMediaURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+        let request = PlaybackRequest(episodeID: input.episodeID, mediaURL: input.localMediaURL,
+            size: values?.fileSize, modifiedAt: values?.contentModificationDate,
+            revision: input.transcriptRevision, audioTime: audioTime)
+        if let lastRequest, request.canReuse(lastRequest, running: active != nil) { return }
+        lastRequest = request
+        startJob {
+            let alignmentStore = TranscriptAlignmentStoreActor(modelContainer: libraryContainer)
+            return await self.run(input: input, audioTime: audioTime, alignmentStore: alignmentStore,
+                                  episodeActor: episodeActor, settingsActor: settingsActor) ? 1 : 0
         }
     }
 
@@ -552,17 +617,15 @@ actor TranscriptSynchronizationService {
         episodeLimit: Int
     ) async -> Int {
         guard isEnabled, episodeLimit > 0 else { return 0 }
-        let processingTask = Task { [weak self] in
-            guard let self else { return 0 }
+        if let active, !active.task.isCancelled { return 0 }
+        lastRequest = nil
+        let task = startJob {
             return await self.processQueuedBackgroundJobs(
                 libraryContainer: libraryContainer,
                 episodeLimit: episodeLimit
             )
         }
-        backgroundProcessingTask = processingTask
-        let completedCount = await processingTask.value
-        backgroundProcessingTask = nil
-        return completedCount
+        return await task.value
     }
 
     private func processQueuedBackgroundJobs(
@@ -601,8 +664,21 @@ actor TranscriptSynchronizationService {
         return completedCount
     }
 
-    private func finished(episodeID: String) {
-        jobs.removeValue(forKey: episodeID)
+    /// Drain the old analyzer (including its cancellation cleanup) before
+    /// starting another. A stale completion cannot clear its replacement.
+    @discardableResult
+    private func startJob(_ work: @escaping @Sendable () async -> Int) -> Task<Int, Never> {
+        let previous = active?.task
+        previous?.cancel()
+        let id = UUID()
+        let task = Task {
+            _ = await previous?.value
+            let result = Task.isCancelled ? 0 : await work()
+            if active?.id == id { active = nil }
+            return result
+        }
+        active = (id, task)
+        return task
     }
 
     private func mediaFingerprint(for url: URL) throws -> String {
@@ -630,14 +706,17 @@ actor TranscriptSynchronizationService {
         do {
             try Task.checkCancellation()
             let fingerprint = try mediaFingerprint(for: input.localMediaURL)
+            let overlayKey = sampleAcrossEpisode ? nil : PublisherTranscriptTimingOverlay.Key(
+                episodeID: input.episodeID, mediaFingerprint: fingerprint, transcriptRevision: input.transcriptRevision)
             let existing = await alignmentStore.load(
                 episodeID: input.episodeID,
                 mediaFingerprint: fingerprint,
                 transcriptRevision: input.transcriptRevision
             )
+            try Task.checkCancellation()
             if let existing {
                 await MainActor.run {
-                    guard Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
+                    guard !Task.isCancelled, Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
                     TranscriptSynchronizationStore.shared.install(
                         existing,
                         episodeURL: input.episodeURL,
@@ -662,6 +741,7 @@ actor TranscriptSynchronizationService {
             } else {
                 await alignmentStore.invalidateOtherRevisions(episodeID: input.episodeID)
                 await MainActor.run {
+                    guard !Task.isCancelled else { return }
                     TranscriptSynchronizationStore.shared.removeTimeline(for: input.episodeURL)
                 }
             }
@@ -686,9 +766,13 @@ actor TranscriptSynchronizationService {
             }
             var observedAnchors: [TranscriptSynchronizationAnchor] = []
 
+            func sample(at center: TimeInterval) async throws -> TranscriptSynchronizationAnchor? {
+                try await sampleAnchor(input: input, center: center, locale: installedLocale, existing: existing,
+                                       mediaDuration: duration, overlayKey: overlayKey)
+            }
             for center in sampleCenters {
                 try Task.checkCancellation()
-                if let anchor = try await sampleAnchor(input: input, center: center, locale: installedLocale, existing: existing) {
+                if let anchor = try await sample(at: center) {
                     observedAnchors.append(anchor)
                 }
             }
@@ -708,7 +792,7 @@ actor TranscriptSynchronizationService {
                         let center = low + (high - low) * fraction
                         budget -= 1
                         try Task.checkCancellation()
-                        guard let anchor = try await sampleAnchor(input: input, center: center, locale: installedLocale, existing: existing),
+                        guard let anchor = try await sample(at: center),
                               anchor.confidence >= 0.9,
                               anchor.transcriptTime > gap.transcriptTime,
                               anchor.transcriptTime < transcriptEnd else { continue }
@@ -723,6 +807,8 @@ actor TranscriptSynchronizationService {
                 }
                 combined = Self.merge(existing?.anchors ?? [], observedAnchors)
             }
+            try Task.checkCancellation()
+            if observedAnchors.isEmpty, existing != nil, !sampleAcrossEpisode { return true }
             guard combined.count >= 3,
                   combined.map(\.confidence).reduce(0, +) / Double(combined.count) >= 0.82,
                   let gaps = TranscriptGapInference.infer(from: combined),
@@ -739,7 +825,7 @@ actor TranscriptSynchronizationService {
                 transcriptRevision: input.transcriptRevision
             )
             await MainActor.run {
-                guard Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
+                guard !Task.isCancelled, Player.shared.isPlayingTranscriptMedia(episodeURL: input.episodeURL, localMediaURL: input.localMediaURL) else { return }
                 TranscriptSynchronizationStore.shared.install(
                     timeline,
                     episodeURL: input.episodeURL,
@@ -768,13 +854,29 @@ actor TranscriptSynchronizationService {
     }
 
     private func sampleAnchor(input: TranscriptSynchronizationInput, center: TimeInterval, locale: String,
-                              existing: TranscriptSynchronizationTimeline?) async throws -> TranscriptSynchronizationAnchor? {
+                              existing: TranscriptSynchronizationTimeline?, mediaDuration: TimeInterval,
+                              overlayKey: PublisherTranscriptTimingOverlay.Key?) async throws -> TranscriptSynchronizationAnchor? {
+        try Task.checkCancellation()
+        if let overlayKey {
+            guard await MainActor.run(body: {
+                Player.shared.isPlaying && Player.shared.isPlayingTranscriptMedia(
+                    episodeURL: input.episodeURL, localMediaURL: input.localMediaURL)
+            }) else { throw CancellationError() }
+            let window = TranscriptAudioSampler.window(center: center, duration: 7, mediaDuration: mediaDuration)
+            if let existing, existing.transcriptTime(forAudioTime: window.lowerBound) != nil,
+               existing.transcriptTime(forAudioTime: window.upperBound) != nil,
+               !existing.gaps.contains(where: { ($0.audioStart..<$0.audioEnd).overlaps(window) }),
+               let cached = try? await PublisherTranscriptTimingOverlayCache.shared.mappings(for: overlayKey, in: window),
+               TranscriptSynchronizationWordIndex.covers(window, mappings: cached) {
+                return nil
+            }
+        }
         try Task.checkCancellation()
         guard let snippet = try? TranscriptAudioSampler.writeSnippet(from: input.localMediaURL, centeredAt: center, duration: 7) else { return nil }
         defer { try? FileManager.default.removeItem(at: snippet.url.deletingLastPathComponent()) }
         let transcriber = await AITranscripts(url: snippet.url, language: locale, maxSnippetDurationSeconds: 7,
             maxWordsPerSnippet: 30, analyzerPriority: .utility, allowModelDownload: false,
-            modelRetention: .lingering, diagnosticPurpose: "publisher_sync")
+            modelRetention: .lingering, diagnosticPurpose: "publisher_sync", usesTimeCodedInput: overlayKey != nil)
         guard let results = try? await transcriber.transcribe(), !results.isEmpty else {
             try Task.checkCancellation()
             return nil
@@ -782,8 +884,27 @@ actor TranscriptSynchronizationService {
         let firstOffset = results.map { CMTimeGetSeconds($0.range.start) }.filter(\.isFinite).min() ?? 0
         let actualTime = snippet.startTime + firstOffset
         let expected = existing?.transcriptTime(forAudioTime: actualTime) ?? actualTime
-        return TranscriptAlignmentMatcher.match(recognizedText: results.map(\.text).joined(separator: " "),
+        let anchor = TranscriptAlignmentMatcher.match(recognizedText: results.map(\.text).joined(separator: " "),
             actualAudioTime: actualTime, candidates: input.candidates, expectedTranscriptTime: expected)
+        try Task.checkCancellation()
+        if let overlayKey, let duration = snippet.duration, results.contains(where: { !$0.timedSpans.isEmpty }) {
+            guard try mediaFingerprint(for: input.localMediaURL) == overlayKey.mediaFingerprint else {
+                throw CancellationError()
+            }
+            if wordIndex?.key != overlayKey {
+                wordIndex = (overlayKey, TranscriptSynchronizationWordIndex(candidates: input.candidates))
+            }
+            let mappings = wordIndex?.index?.mappings(results: results,
+                sample: snippet.startTime..<(snippet.startTime + duration),
+                expected: anchor?.transcriptTime ?? expected,
+                publisherLanguage: input.language ?? AITranscripts.defaultSpeechLanguageIdentifier,
+                speechLanguage: locale) ?? []
+            try Task.checkCancellation()
+            if !mappings.isEmpty {
+                try? await PublisherTranscriptTimingOverlayCache.shared.merge(mappings, for: overlayKey)
+            }
+        }
+        return anchor
     }
 
     private func materializeGapChaptersIfEnabled(
@@ -793,7 +914,7 @@ actor TranscriptSynchronizationService {
         episodeActor: EpisodeActor?,
         settingsActor: PodcastSettingsModelActor?
     ) async {
-        guard await settingsActor?.getCreateTranscriptGapChaptersEnabled() == true,
+        guard !Task.isCancelled, await settingsActor?.getCreateTranscriptGapChaptersEnabled() == true, !Task.isCancelled,
               let episodeActor else { return }
         let updated = await episodeActor.updateTranscriptGapChapters(
             for: input.episodeURL,
@@ -845,6 +966,13 @@ enum TranscriptAudioSampler {
     struct Snippet: Sendable {
         let url: URL
         let startTime: TimeInterval
+        var duration: TimeInterval? = nil // Known for PCM samples produced by writeSnippet.
+    }
+
+    static func window(center: TimeInterval, duration: TimeInterval, mediaDuration: TimeInterval) -> Range<TimeInterval> {
+        let length = min(duration, mediaDuration)
+        let start = min(max(center - length / 2, 0), mediaDuration - length)
+        return start..<(start + length)
     }
 
     static func duration(of url: URL) throws -> TimeInterval {
@@ -870,7 +998,7 @@ enum TranscriptAudioSampler {
         let totalDuration = Double(source.length) / format.sampleRate
         let actualDuration = min(duration, totalDuration)
         guard actualDuration > 0 else { throw TranscriptAudioSnippetError.invalidFormat }
-        let startTime = min(max(center - actualDuration / 2, 0), max(totalDuration - actualDuration, 0))
+        let startTime = window(center: center, duration: duration, mediaDuration: totalDuration).lowerBound
         let startFrame = AVAudioFramePosition((startTime * format.sampleRate).rounded(.down))
         let frameCount = AVAudioFrameCount(max(1, actualDuration * format.sampleRate))
         let estimatedPCMBytes = Int64(frameCount) * Int64(format.channelCount) * Int64(MemoryLayout<Float>.size)
@@ -936,7 +1064,8 @@ enum TranscriptAudioSampler {
             )
             try output.write(from: converted)
             Self.logger.info("publisher_sync_snippet_written duration_seconds=\(Double(buffer.frameLength) / format.sampleRate, format: .fixed(precision: 2)) estimated_pcm_bytes=\(estimatedPCMBytes)")
-            return Snippet(url: sampleURL, startTime: startTime)
+            return Snippet(url: sampleURL, startTime: Double(startFrame) / format.sampleRate,
+                           duration: Double(buffer.frameLength) / format.sampleRate)
         } catch {
             try? FileManager.default.removeItem(at: folder)
             throw error

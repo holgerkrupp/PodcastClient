@@ -655,7 +655,15 @@ struct PlayerPlaybackUtilitiesRow: View {
                     .accessibilityElement(children: .combine)
                 }
 
-                if player.stopAfterEpisode == false {
+                
+                if player.isStopAfterChapterEnabled || player.remainingTime != nil || player.stopAfterEpisode {
+                    
+                        Button("Off / Cancel sleep timer", systemImage: "xmark.circle", role: .destructive) {
+                            player.cancelSleepTimer()
+                        }
+                        .accessibilityHint("Turns off timed, chapter, and episode-end sleep modes")
+                    
+                }else{
                     Text("Choose a duration, chapter, or episode end. Selecting one replaces the active sleep mode.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -681,6 +689,22 @@ struct PlayerPlaybackUtilitiesRow: View {
                 }
             }
 
+            
+
+            Section(header: Label("Timed sleep", systemImage: "clock")) {
+                SleepTimerView()
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+
+                Toggle(isOn: $player.stopAfterEpisode) {
+                    Text("Stop after this episode")
+                }
+                .tint(.accent)
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
+            }
             Section(header: Label("Stop after chapter", systemImage: "bookmark")) {
                 if player.chapterSleepTimerOptions.isEmpty {
                     Text("No current or upcoming chapter has a known end time.")
@@ -727,30 +751,7 @@ struct PlayerPlaybackUtilitiesRow: View {
                     }
                 }
             }
-
-            Section(header: Label("Timed sleep", systemImage: "clock")) {
-                SleepTimerView()
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-
-                Toggle(isOn: $player.stopAfterEpisode) {
-                    Text("Stop after this episode")
-                }
-                .tint(.accent)
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(.init(top: 0, leading: 8, bottom: 0, trailing: 8))
-            }
-
-            if player.isStopAfterChapterEnabled || player.remainingTime != nil || player.stopAfterEpisode {
-                Section {
-                    Button("Off / Cancel sleep timer", systemImage: "xmark.circle", role: .destructive) {
-                        player.cancelSleepTimer()
-                    }
-                    .accessibilityHint("Turns off timed, chapter, and episode-end sleep modes")
-                }
-            }
+            
         }
         .listStyle(.plain)
         .padding()

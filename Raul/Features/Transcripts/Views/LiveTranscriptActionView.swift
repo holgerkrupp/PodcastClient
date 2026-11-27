@@ -41,7 +41,7 @@ struct TranscriptGenerationActionsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if live.pendingSaveEpisodeURL == episode.url {
+            if let pendingURL = live.pendingSaveEpisodeURL, pendingURL == episode.url {
                 Text("Some captions are waiting to be saved. Keep Up Next open and check available storage.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -50,10 +50,6 @@ struct TranscriptGenerationActionsView: View {
             }
 
             if isLocalMediaAvailable {
-                Text("Choose how to create captions from this downloaded episode.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-
                 fullTranscriptionControl
 
                 Divider()
@@ -112,7 +108,7 @@ struct TranscriptGenerationActionsView: View {
         switch live.phase {
         case .preparing: "Preparing transcription…"
         case .catchingUp: "Transcription is catching up…"
-        case .following: "Transcribing as you listen"
+        case .following: "Transcribing…"
         case .idle, .unavailable: "Transcription unavailable"
         }
     }
@@ -151,7 +147,7 @@ struct TranscriptGenerationActionsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    Button("Stop live transcription") { live.stop() }
+                    Button("Stop transcription") { live.stop() }
                         .buttonStyle(.glass(.clear))
                 }
             } else {

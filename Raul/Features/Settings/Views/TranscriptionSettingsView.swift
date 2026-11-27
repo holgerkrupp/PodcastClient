@@ -87,19 +87,13 @@ struct TranscriptionSettingsView: View {
                     }
                     .disabled(globalSettings.enableTranscriptions == false)
                 }
-                LabeledContent("Engine") {
-                    Text("Apple SpeechTranscriber")
-                }
-                LabeledContent("Preset") {
-                    Text("Transcription")
-                }
                 LabeledContent("Installed Models") {
                     Text(installedLocales.isEmpty ? "None" : "\(installedLocales.count)")
                 }
                 LabeledContent("Supported Models") {
                     Text(supportedLocales.isEmpty ? "Loading…" : "\(supportedLocales.count)")
                 }
-                Text("When enabled, the app can start on-device transcription automatically after downloads finish. Podcasts that publish their own transcripts are never transcribed on device — their transcript is imported instead.")
+                Text("After a download, Up Next can create a transcript on this device for episodes that don’t provide one. When an episode provides a transcript, Up Next uses the publisher’s wording.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Text("Use \"Only while charging\" if you want automatic local transcription to wait for external power. While the app is open it reacts to charging changes, and in the background it works through your playlists whenever the device has a free moment.")
@@ -108,15 +102,15 @@ struct TranscriptionSettingsView: View {
                 Text("Models are language-specific on-device speech assets. The app uses the episode language when available and falls back to the current device locale.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("Shorter snippets follow playback more closely and are better for word-level highlighting, but they create more transcript rows.")
+                Text("Shorter snippets break generated transcripts into smaller passages.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Transcript Synchronization") {
+            Section("Transcript Timing") {
                 if let globalSettings {
                     Toggle(
-                        "Automatically synchronize publisher transcripts",
+                        "On-device transcript enhancements",
                         isOn: Binding(
                             get: { globalSettings.enablePublisherTranscriptSynchronization },
                             set: { enabled in
@@ -168,13 +162,7 @@ struct TranscriptionSettingsView: View {
                 Text("Automatic skipping applies to every transcript-gap chapter. Review their boundaries in the chapter list; you can also skip individual chapters there.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Text("After a download, the app queues short audio samples for analysis when iOS allows background work, usually while the device is charging and idle. iOS may delay or stop the work; playback analysis fills in later if needed.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Compare small portions of podcast audio with publisher transcripts to correct caption timing when ads or other audio have been inserted. Processing happens on device and may use additional battery. Your transcript text stays unchanged.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("Only publisher-provided transcripts are eligible. On-device AI transcripts and transcripts with unknown origin are left unchanged. Turning this off immediately restores original transcript timing.")
+                Text("Turn on enhancements to let Up Next check short portions of downloaded audio against the publisher’s transcript. This can improve timing when ads are inserted and may use extra battery. Turning it off uses the original timing. You can read, search, and copy the same text either way.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
