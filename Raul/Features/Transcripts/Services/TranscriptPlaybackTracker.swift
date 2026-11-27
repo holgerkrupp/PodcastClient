@@ -16,6 +16,60 @@ extension TranscriptSegment {
     }
 }
 
+/// Display-only continuity for word highlights. When one or two publisher
+/// words between two confidently timed neighbours stayed unmatched, the
+/// highlight is held on the earlier word until the later one begins, instead of
+/// flickering off. Nothing is written back: the unmatched words keep no timing,
+/// and they are never themselves highlighted as spoken.
+enum TranscriptHighlightContinuity {
+    /// The most unmatched words a bridge may hold the highlight across.
+    static let maximumUnmatchedWords = 2
+    /// The longest silence (transcript seconds, and audio seconds when
+    /// synchronized) between the two timed neighbours that may be bridged.
+    static let maximumGap: TimeInterval = 1.5
+
+    /// Returns the earlier timed neighbour when `time` falls in a short gap
+    /// that only holds a few unmatched words. `isBridgeAllowed` receives the
+    /// gap's transcript-time bounds and must reject ad/unverified audio.
+    static func bridgedSpan(
+        in segment: TranscriptSegment,
+        at time: TimeInterval,
+        isBridgeAllowed: (TimeInterval, TimeInterval) -> Bool
+    ) -> TranscriptTimedSpan? {
+        guard time.isFinite else { return nil }
+        let text = segment.text
+        let utf16Count = text.utf16.count
+        let wordSpans = segment.timedSpans
+            .filter {
+                $0.cueLevel != true && $0.location >= 0 && $0.length > 0
+                    && $0.location <= utf16Count && $0.length <= utf16Count - $0.location
+                    && $0.startTime.isFinite && $0.endTime.isFinite && $0.endTime > $0.startTime
+            }
+            .sorted { $0.location < $1.location }
+        guard wordSpans.count >= 2 else { return nil }
+        for index in 0..<(wordSpans.count - 1) {
+            let before = wordSpans[index]
+            let after = wordSpans[index + 1]
+            guard time >= before.endTime, time < after.startTime else { continue }
+            let gap = after.startTime - before.endTime
+            let gapStart = before.location + before.length
+            guard gap > 0, gap <= maximumGap, gapStart <= after.location,
+                  let range = Range(NSRange(location: gapStart, length: after.location - gapStart), in: text) else {
+                return nil
+            }
+            var words = 0
+            text.enumerateSubstrings(in: range, options: [.byWords, .substringNotRequired]) { _, _, _, stop in
+                words += 1
+                if words > maximumUnmatchedWords { stop = true }
+            }
+            guard (1...maximumUnmatchedWords).contains(words),
+                  isBridgeAllowed(before.endTime, after.startTime) else { return nil }
+            return before
+        }
+        return nil
+    }
+}
+
 /// A transcript owns this observer only while visible. It never replaces the
 /// player's normal progress observer and only publishes a changed caption.
 @MainActor
@@ -73,7 +127,21 @@ final class TranscriptPlaybackTracker {
             if active != nil { active = nil }
             return
         }
-        let newValue = Self.lookup(segments: segments, at: transcriptTime)
+        let store = TranscriptSynchronizationStore.shared
+        let alignment = useAlignment
+        let newValue = Self.lookup(segments: segments, at: transcriptTime) { gapStart, gapEnd in
+            // Never hold a highlight across an advertising insertion or audio
+            // the synchronization could not verify: the audio gap between the
+            // neighbours must itself be short and verified.
+            guard !store.isUnverifiedAudioTime(audioTime, episodeURL: episodeURL) else { return false }
+            guard alignment else { return true }
+            guard let audioStart = store.audioTime(forTranscriptTime: gapStart, episodeURL: episodeURL),
+                  let audioEnd = store.audioTime(forTranscriptTime: gapEnd, episodeURL: episodeURL),
+                  audioEnd >= audioStart,
+                  audioEnd - audioStart <= TranscriptHighlightContinuity.maximumGap else { return false }
+            return !store.isUnverifiedAudioTime(audioStart, episodeURL: episodeURL)
+                && !store.isUnverifiedAudioTime(audioEnd, episodeURL: episodeURL)
+        }
         if active != newValue { active = newValue }
     }
 
@@ -118,7 +186,13 @@ final class TranscriptPlaybackTracker {
         }
     }
 
-    static func lookup(segments: [TranscriptSegment], at time: TimeInterval) -> Active? {
+    /// `isBridgeAllowed` enables `TranscriptHighlightContinuity` for the gap's
+    /// transcript-time bounds; without it, gaps between words stay unhighlighted.
+    static func lookup(
+        segments: [TranscriptSegment],
+        at time: TimeInterval,
+        isBridgeAllowed: ((TimeInterval, TimeInterval) -> Bool)? = nil
+    ) -> Active? {
         guard time.isFinite else { return nil }
         var low = 0
         var high = segments.count
@@ -135,7 +209,10 @@ final class TranscriptPlaybackTracker {
         // not enough to claim that the whole caption is the spoken word. Older
         // publisher and Speech rows predate the explicit cue-level marker, so
         // only `true` means cue-level; nil remains valid word timing.
-        let wordSpan = span?.cueLevel == true ? nil : span
+        var wordSpan = span?.cueLevel == true ? nil : span
+        if span == nil, let isBridgeAllowed {
+            wordSpan = TranscriptHighlightContinuity.bridgedSpan(in: segment, at: time, isBridgeAllowed: isBridgeAllowed)
+        }
         return Active(
             segmentID: segment.id,
             location: wordSpan?.location,
