@@ -934,7 +934,7 @@ enum UserStateCloudSchemaAudit {
         "SubscriptionSync", "EpisodeStateSync", "QueueEntrySync",
         "PlaylistSync", "PlaylistEntrySync", "BookmarkSync",
         "PodcastPreferenceSync", "ListeningBaselineSync",
-        "ListeningHistorySync"
+        "ListeningHistorySync", "PlaybackSessionSync"
     ]
 
     static let forbiddenFeedDerivedModelNames: Set<String> = [
@@ -1001,6 +1001,8 @@ enum UserStateCloudSchemaAudit {
         case perUserAction
         /// One row per playback session, forever, across every device.
         case perSessionPerDevice
+        /// One row per device, overwritten in place.
+        case perDevice
         /// Rows multiply along more than one axis at once. Nothing in the synced
         /// schema is allowed to grow this way: this is the shape
         /// `ListeningSummarySync` had, and `permitsAggregateGrowth` is false so a
@@ -1027,7 +1029,10 @@ enum UserStateCloudSchemaAudit {
         "BookmarkSync": .perUserAction,
         "ListeningHistorySync": .perSessionPerDevice,
         // One frozen row per feed, written once and never updated.
-        "ListeningBaselineSync": .perFeed
+        "ListeningBaselineSync": .perFeed,
+        // The device's current episode and position, keyed by installation ID
+        // and overwritten on every update (`PlaybackSessionSyncPolicy`).
+        "PlaybackSessionSync": .perDevice
     ]
 
     /// Fields carried in the synced schema that a feed refresh could supply.
@@ -1080,7 +1085,9 @@ enum UserStateCloudSchemaAudit {
         let subscriptions = feeds
         let preferences = feeds + 1
         let baselines = feeds + 1
+        let playbackSessions = devices
         return sessions
+            + playbackSessions
             + episodeStates
             + subscriptions
             + preferences
