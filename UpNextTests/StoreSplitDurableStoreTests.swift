@@ -770,3 +770,148 @@ final class StoreSplitPendingImportLedgerTests: XCTestCase {
         XCTAssertFalse(upgraded.isFirstLibraryBuildRuntime)
     }
 }
+
+/// #394: cache-only rows that can never resolve stop the cache-local and
+/// AI-content migrations from retrying (and reopening the cache) forever.
+final class StoreCacheMigrationGiveUpTests: XCTestCase {
+    private let feed = URL(string: "https://example.com/give-up.xml")!
+
+    private func makeDefaults() throws -> (UserDefaults, String) {
+        let suite = "StoreCacheMigrationGiveUp-\(UUID().uuidString)"
+        return (try XCTUnwrap(UserDefaults(suiteName: suite)), suite)
+    }
+
+    private func orphanBookmarkDetail(in cache: ModelContainer) throws -> String {
+        let context = ModelContext(cache)
+        let id = UUID().uuidString
+        context.insert(CachedBookmarkDetail(id: id, feedURL: feed.absoluteString, episodeID: "missing"))
+        try context.save()
+        return id
+    }
+
+    @MainActor
+    func testUnresolvableLocalRowsAreAbandonedOnlyAfterRepeatedPassesOnACompleteLibrary() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        _ = try orphanBookmarkDetail(in: cache)
+
+        // While the library may still be filling, the row keeps waiting.
+        for _ in 0..<10 {
+            XCTAssertFalse(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                cache: cache, library: library, mayAbandonUnresolvedRows: false, defaults: defaults
+            ))
+        }
+        for pass in 1..<StoreCacheMigrationGiveUp.maximumUnresolvedPasses {
+            XCTAssertFalse(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                cache: cache, library: library, mayAbandonUnresolvedRows: true, defaults: defaults
+            ), "pass \(pass)")
+        }
+        XCTAssertTrue(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+            cache: cache, library: library, mayAbandonUnresolvedRows: true, defaults: defaults
+        ))
+        XCTAssertEqual(StoreCacheMigrationGiveUp.abandonedRows(.localData, defaults: defaults), 1)
+        XCTAssertEqual(
+            try ModelContext(cache).fetchCount(FetchDescriptor<CachedBookmarkDetail>()),
+            1,
+            "the unresolved row stays in the cache file"
+        )
+    }
+
+    @MainActor
+    func testAPassThatResolvesRowsStartsTheCountAgain() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        _ = try orphanBookmarkDetail(in: cache)
+        let resolvableID = try orphanBookmarkDetail(in: cache)
+        for _ in 1..<StoreCacheMigrationGiveUp.maximumUnresolvedPasses {
+            XCTAssertFalse(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                cache: cache, library: library, mayAbandonUnresolvedRows: true, defaults: defaults
+            ))
+        }
+        // The bookmark for one row arrives: progress, so no give-up this pass.
+        let bookmark = Bookmark(start: 1, title: "Arrived", type: .bookmark)
+        bookmark.uuid = UUID(uuidString: resolvableID)
+        library.mainContext.insert(bookmark)
+        try library.mainContext.save()
+        XCTAssertFalse(StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+            cache: cache, library: library, mayAbandonUnresolvedRows: true, defaults: defaults
+        ))
+        XCTAssertNil(StoreCacheMigrationGiveUp.abandonedRows(.localData, defaults: defaults))
+    }
+
+    @MainActor
+    func testInvalidAIRevisionNoLongerBlocksValidRowsAndIsAbandonedAfterTheLimit() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let cache = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: feed)
+        let episode = Episode(
+            guid: "give-up-guid",
+            title: "Episode",
+            url: URL(string: "https://example.com/give-up.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        library.mainContext.insert(podcast)
+        library.mainContext.insert(episode)
+        try library.mainContext.save()
+        let feedKey = PodcastFeedIdentity.normalizedFeedURLString(feed)
+        let episodeID = episode.stableEpisodeIdentity.episodeID
+
+        let context = ModelContext(cache)
+        // A transcript manifest whose chunks never arrived: can never resolve.
+        context.insert(AITranscriptSync(
+            feedURL: feedKey,
+            episodeID: episodeID,
+            revisionID: "incomplete",
+            chunkCount: 2,
+            lineCount: 3,
+            contentHash: "missing",
+            generatedAt: Date(timeIntervalSince1970: 20)
+        ))
+        let chapters = [AIChapterValue(
+            title: "Valid chapter", startTime: 5, duration: 10, typeRawValue: MarkerType.ai.rawValue
+        )]
+        let encoded = try AIContentSyncCodec.encodeChapters(chapters)
+        context.insert(AIChapterSetSync(
+            feedURL: feedKey,
+            episodeID: episodeID,
+            revisionID: "chapters",
+            payloadJSON: encoded.payload,
+            chapterCount: chapters.count,
+            contentHash: encoded.hash,
+            generatedAt: Date(timeIntervalSince1970: 20)
+        ))
+        try context.save()
+
+        XCTAssertFalse(StoreSplitCacheAIContentMigration.migrate(
+            cache: cache, library: library, dropUnmatchedRows: true,
+            mayAbandonUnresolvedRows: true, defaults: defaults
+        ))
+        let migrated = try XCTUnwrap(ModelContext(library).fetch(FetchDescriptor<Episode>()).first)
+        XCTAssertEqual(migrated.chapters?.map(\.title), ["Valid chapter"], "valid rows are saved")
+
+        for _ in 2..<StoreCacheMigrationGiveUp.maximumUnresolvedPasses {
+            XCTAssertFalse(StoreSplitCacheAIContentMigration.migrate(
+                cache: cache, library: library, dropUnmatchedRows: true,
+                mayAbandonUnresolvedRows: true, defaults: defaults
+            ))
+        }
+        XCTAssertTrue(StoreSplitCacheAIContentMigration.migrate(
+            cache: cache, library: library, dropUnmatchedRows: true,
+            mayAbandonUnresolvedRows: true, defaults: defaults
+        ))
+        XCTAssertEqual(StoreCacheMigrationGiveUp.abandonedRows(.aiContent, defaults: defaults), 1)
+        XCTAssertEqual(
+            try ModelContext(library).fetch(FetchDescriptor<Episode>()).first?.chapters?.count,
+            1,
+            "retries stay idempotent"
+        )
+        XCTAssertEqual(try ModelContext(cache).fetchCount(FetchDescriptor<AITranscriptSync>()), 1)
+    }
+}

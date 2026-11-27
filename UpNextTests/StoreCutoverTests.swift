@@ -219,6 +219,104 @@ final class StoreCutoverTests: XCTestCase {
         XCTAssertEqual(again, 0)
     }
 
+    /// #394: an upgraded device whose PodcastCache.sqlite no longer opens runs
+    /// the copy against empty in-memory checkpoints. Restarting from zero after
+    /// a run that already published must not duplicate history, baselines or
+    /// queue rows, or tombstone anything.
+    func testCopyRestartedWithTemporaryCheckpointsDuplicatesAndTombstonesNothing() async throws {
+        let stores = try makeStores(episodeCount: 30)
+        let summaryContext = ModelContext(stores.library)
+        summaryContext.insert(PlaySessionSummary(
+            id: UUID(),
+            periodKind: PlaySessionSummaryPeriod.year.rawValue,
+            periodStart: Date(timeIntervalSince1970: 0),
+            podcastFeed: feedURL,
+            podcastName: "Example",
+            totalSeconds: 3_600
+        ))
+        try summaryContext.save()
+        // Part of the copy ran against the real cache before it became unreadable…
+        let gate = CutoverGate(6)
+        _ = await StoreCutoverCoordinator.runDeferred(
+            legacyContainer: stores.library,
+            userStateContainer: stores.userState,
+            cacheContainer: stores.cache,
+            shouldContinue: { gate.tick() },
+            idle: {}
+        )
+        // …and also a full run, so every phase has published once.
+        let fullRun = await runCopy(stores)
+        XCTAssertEqual(fullRun, .committed)
+        appGroupDefaults.removeObject(forKey: StoreCutoverState.deferredCompleteKey)
+
+        let temporary = try ModelContainerManager.makeCacheContainer(isStoredInMemoryOnly: true)
+        let outcome = await StoreCutoverCoordinator.runDeferred(
+            legacyContainer: stores.library,
+            userStateContainer: stores.userState,
+            cacheContainer: temporary,
+            shouldContinue: { true },
+            idle: {}
+        )
+        XCTAssertEqual(outcome, .committed)
+
+        let userState = ModelContext(stores.userState)
+        let subscriptions = try userState.fetch(FetchDescriptor<SubscriptionSync>())
+        XCTAssertEqual(subscriptions.count, 1)
+        XCTAssertEqual(subscriptions.first?.isSubscribed, true)
+        XCTAssertEqual(try userState.fetchCount(FetchDescriptor<EpisodeStateSync>()), 30)
+        XCTAssertEqual(try userState.fetchCount(FetchDescriptor<BookmarkSync>()), 1)
+        XCTAssertEqual(try userState.fetchCount(FetchDescriptor<ListeningHistorySync>()), 1)
+        let queue = try userState.fetch(FetchDescriptor<QueueEntrySync>())
+        XCTAssertEqual(queue.count, 2)
+        XCTAssertTrue(queue.allSatisfy { $0.isDeleted == false })
+        XCTAssertEqual(
+            try userState.fetch(FetchDescriptor<ListeningBaselineSync>()).map(\.totalSeconds),
+            [3_600]
+        )
+        XCTAssertEqual(try ModelContext(stores.library).fetchCount(FetchDescriptor<Episode>()), 30)
+    }
+
+    func testStaleSubscriptionCleanupSkipsACopyFinishedWithTemporaryCheckpoints() async throws {
+        let defaults = appGroupDefaults
+        let startedKey = "storeSplit.localLibraryMigrationStarted.v1"
+        let startedAtKey = "storeSplit.localLibraryStartedAt.v1"
+        let saved = [startedKey, startedAtKey].map { defaults.object(forKey: $0) }
+        defer {
+            for (key, value) in zip([startedKey, startedAtKey], saved) {
+                if let value { defaults.set(value, forKey: key) } else { defaults.removeObject(forKey: key) }
+            }
+            defaults.removeObject(forKey: StoreCutoverState.completedWithTemporaryCheckpointsKey)
+            defaults.removeObject(forKey: StoreCutoverState.staleSubscriptionCleanupKey)
+        }
+        let stores = try makeStores(episodeCount: 1)
+        let copied = await runCopy(stores)
+        XCTAssertEqual(copied, .committed)
+        defaults.set(true, forKey: startedKey)
+        defaults.set(Date(timeIntervalSince1970: 5_000), forKey: startedAtKey)
+        defaults.removeObject(forKey: StoreCutoverState.staleSubscriptionCleanupKey)
+        let context = ModelContext(stores.userState)
+        context.insert(SubscriptionSync(
+            feedURL: "https://example.com/stale.xml",
+            isSubscribed: true,
+            subscribedAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        ))
+        try context.save()
+        func staleIsSubscribed() throws -> Bool? {
+            try ModelContext(stores.userState).fetch(FetchDescriptor<SubscriptionSync>())
+                .first { $0.feedURL.contains("stale") }?.isSubscribed
+        }
+
+        StoreCutoverState.recordCopyCompletedWithTemporaryCheckpoints()
+        StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: stores.library, userState: stores.userState)
+        XCTAssertEqual(try staleIsSubscribed(), true, "no tombstone after a temporary-checkpoint copy")
+
+        // Control: an ordinary completed copy does run the cleanup.
+        defaults.removeObject(forKey: StoreCutoverState.completedWithTemporaryCheckpointsKey)
+        StoreCutoverState.cleanUpStaleSubscriptionsIfNeeded(library: stores.library, userState: stores.userState)
+        XCTAssertEqual(try staleIsSubscribed(), false)
+    }
+
     func testCleanupDoesNothingWhenTheLibraryIsEmpty() throws {
         let library = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
         let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)

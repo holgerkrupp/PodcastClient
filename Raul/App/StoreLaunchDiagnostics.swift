@@ -123,6 +123,15 @@ enum StoreLaunchDiagnostics {
         return entries.keys.sorted().map { "\($0)=\(entries[$0] ?? "")" }.joined(separator: ", ")
     }
 
+    /// Historical PodcastCache.sqlite retirement (#394): open backoff,
+    /// abandoned migration rows and the legacy copy's temporary checkpoints.
+    /// Counts and flags only.
+    static var historicalCacheStatus: String {
+        "open=\(StoreCacheOpenBackoff.diagnosticSummary); "
+            + "migrations=\(StoreCacheMigrationGiveUp.diagnosticSummary()); "
+            + "legacy_copy_temporary_checkpoints=\(StoreCutoverState.temporaryCheckpointSummary)"
+    }
+
     /// Milliseconds since this process started, from the kernel's process
     /// record. Nil if the record can't be read.
     static func processAgeMilliseconds() -> Int? {

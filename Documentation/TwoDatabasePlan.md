@@ -48,9 +48,29 @@ with cache data.
   the cache-only migrations are recorded complete (nothing to copy) and the first build,
   feed fill and reconciliation run from UserState and RSS alone. The only exception is an
   upgraded legacy library whose UserState copy is still pending, because that copy keeps its
-  resumable checkpoints in the cache store. A cache that exists but fails to open is tried
-  once per launch, never blocks the library, and leaves its migrations pending for a later
-  launch.
+  resumable checkpoints in the cache store. A cache that exists but fails to open never
+  blocks the library and leaves its migrations pending. It is retried once per launch until
+  three consecutive launches fail with readable file bytes (a protected/unavailable file does
+  not count); then it is not opened again until its size, modification date or the app build
+  changes (`StoreCacheOpenBackoff`). The file is never deleted or rewritten.
+- Unopenable cache on an upgraded device with a pending UserState copy (#394, Nov 2026):
+  portable reconciliation still waits for the copy. Running the importer without it is not
+  safe, because UserState does not yet hold this device's own subscriptions, queue and
+  history, and the importer applies synced subscription state as authoritative. Instead, once
+  the cache has been given up on, the copy runs against empty in-memory checkpoints
+  (`legacyCopyCheckpointSource`). The cache is only checkpoint/scratch space for the copy:
+  it reads the library and merges every row into UserState by stable identity and date
+  (baselines are first-writer-wins per feed), so a restart from zero re-scans but does not
+  duplicate or lose rows. Because each process restarts from zero, this is bounded to five
+  processes. A copy finished this way never runs the stale-subscription tombstone pass.
+  The real cache is used again if its file changes.
+- Cache-only rows that can never resolve (#394): the cache-local and AI-content migrations
+  give up after three launches without progress, and only after the library has finished
+  its first build and feed fill. The migration is then recorded complete and the number of
+  abandoned rows is kept; the rows stay in the cache file. An invalid AI revision is now
+  skipped rather than aborting the pass, so valid rows from the same pass are saved. A
+  cache that has been given up on no longer keeps the library backfill pending.
+  Support Diagnostics shows "Historical cache" (counts and flags only).
 - Portable reconciliation (`applySyncedUserStateIfPossible`, `reconcileSplitRuntimePlaylists`,
   `importRemotePlaybackState`) no longer requires a cache container; the importer receives it
   only as an optional migration fallback while it is still open.
@@ -153,9 +173,27 @@ stall. Tests should use anonymized fixtures, never a user's database or private 
 - [ ] Stop opening `PodcastCache.sqlite` and `LibraryRuntime.sqlite` in ordinary app or
   extension startup after their first-build, migration and old-install recovery roles are
   retired. Missing or corrupt obsolete files must not block a usable library.
-  Partial: a missing cache is never opened or created, and a completed install skips it; a
-  corrupt cache is retried once per launch. Still open: the readers for unfinished legacy
-  copies and older split-only builds, and `LibraryRuntime.sqlite` until it is promoted.
+  Partial: a missing cache is never opened or created, and a completed install skips it. A
+  corrupt cache stops being opened after three failed launches, and unresolvable migration
+  rows stop retrying after three passes on a complete library. Still open: the readers for
+  unfinished legacy copies and older split-only builds, and `LibraryRuntime.sqlite` until it
+  is promoted.
+- Before a separate cleanup can delete the cache readers/writers (`StoreSplitFeedCacheWriter`
+  (`PodcastCacheRepository` no longer exists), `StoreSplitCompatibilityProjectionService` cache seeding,
+  `StoreSplitAIContentSyncWriter` cache tombstones in `EpisodeActor`, the cache-backed
+  deletion cleanup in `PodcastModelActor`, the copy's cache-backed checkpoint/baseline
+  scratch in `StoreSplitMigrationService`, the cache-local/AI-content migrations and the
+  `StoreSplitMigrationDiagnostics` cache readouts):
+  - the legacy UserState copy needs a non-cache checkpoint home, or a release where upgraded
+    devices have finished it (field evidence from Support Diagnostics);
+  - older split-only (`LibraryRuntime.sqlite`) installs must have built and promoted;
+  - built libraries seeded from a cache (first build, transcript backfill, cache recovery)
+    must have finished;
+  - the cache-local and AI-content migrations must be complete or abandoned on the devices
+    that still have a cache;
+  - deletion cleanup and AI-transcript tombstones that write into the cache while those
+    migrations are pending must be removed together with the migrations.
+  Not done in this change; the files stay intact.
   An unreadable cache on a UserState+cache install with no other evidence still classifies as
   possible legacy loss and shows the existing fail-closed recovery choice.
 - [x] Update `AGENTS.md`, user help, diagnostics and architecture/release documentation to

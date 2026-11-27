@@ -195,4 +195,130 @@ final class StoreLaunchCriticalPathTests: XCTestCase {
         XCTAssertNil(defaults.string(forKey: StoreLaunchTimer.inProgressKey))
         XCTAssertTrue((defaults.string(forKey: StoreLaunchTimer.latestKey) ?? "").contains("library="))
     }
+
+    // MARK: Unopenable historical cache (#394)
+
+    private func makeDefaults() throws -> (UserDefaults, String) {
+        let suite = "StoreCacheBackoff-\(UUID().uuidString)"
+        return (try XCTUnwrap(UserDefaults(suiteName: suite)), suite)
+    }
+
+    func testCorruptCacheIsRetriedOnlyUntilTheLimitAndAgainWhenTheFileChanges() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let signature = "100:1:42"
+        for attempt in 1...StoreCacheOpenBackoff.maximumConsecutiveFailures {
+            XCTAssertTrue(
+                StoreCacheOpenBackoff.shouldAttemptOpen(currentSignature: signature, defaults: defaults),
+                "attempt \(attempt) is still tried"
+            )
+            StoreCacheOpenBackoff.recordOpenFailed(signature: signature, dataIsReadable: true, defaults: defaults)
+        }
+        XCTAssertFalse(StoreCacheOpenBackoff.shouldAttemptOpen(currentSignature: signature, defaults: defaults))
+        // A restored/replaced file or a new build is tried again, and counts afresh.
+        XCTAssertTrue(StoreCacheOpenBackoff.shouldAttemptOpen(currentSignature: "200:2:42", defaults: defaults))
+        XCTAssertTrue(StoreCacheOpenBackoff.shouldAttemptOpen(currentSignature: "100:1:43", defaults: defaults))
+        StoreCacheOpenBackoff.recordOpenFailed(signature: "200:2:42", dataIsReadable: true, defaults: defaults)
+        XCTAssertEqual(defaults.integer(forKey: StoreCacheOpenBackoff.failuresKey), 1)
+        // A successful open forgets every failure.
+        StoreCacheOpenBackoff.recordOpenSucceeded(defaults: defaults)
+        XCTAssertNil(defaults.object(forKey: StoreCacheOpenBackoff.failuresKey))
+    }
+
+    func testProtectedOrUnreadableCacheNeverCountsTowardsGivingUp() throws {
+        let (defaults, suite) = try makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        for _ in 0..<10 {
+            StoreCacheOpenBackoff.recordOpenFailed(signature: "100:1:42", dataIsReadable: false, defaults: defaults)
+            StoreCacheOpenBackoff.recordOpenFailed(signature: nil, dataIsReadable: true, defaults: defaults)
+        }
+        XCTAssertTrue(StoreCacheOpenBackoff.shouldAttemptOpen(currentSignature: "100:1:42", defaults: defaults))
+    }
+
+    func testSignatureFollowsTheFileAndTheBuild() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("StoreCacheBackoff-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertNil(StoreCacheOpenBackoff.signature(of: url, build: "1"))
+        XCTAssertFalse(StoreCacheOpenBackoff.fileDataIsReadable(url))
+        try Data("not a database".utf8).write(to: url)
+        let first = try XCTUnwrap(StoreCacheOpenBackoff.signature(of: url, build: "1"))
+        XCTAssertTrue(StoreCacheOpenBackoff.fileDataIsReadable(url))
+        XCTAssertEqual(StoreCacheOpenBackoff.signature(of: url, build: "1"), first)
+        XCTAssertNotEqual(StoreCacheOpenBackoff.signature(of: url, build: "2"), first)
+        try Data("a longer replacement file".utf8).write(to: url)
+        XCTAssertNotEqual(StoreCacheOpenBackoff.signature(of: url, build: "1"), first)
+    }
+
+    func testGivenUpCacheIsNotOpenedEvenWhileALegacyCopyIsPending() {
+        for copyPending in [false, true] {
+            XCTAssertEqual(
+                StoreCacheOpenDecision.resolve(
+                    hasEverReset: false,
+                    migrationsComplete: false,
+                    cacheFileExists: true,
+                    legacyCopyNeedsCheckpointStore: copyPending,
+                    openIsBackedOff: true
+                ),
+                .skipAfterRepeatedOpenFailures
+            )
+        }
+        // A missing file on a pending-copy device is still created for checkpoints.
+        XCTAssertEqual(
+            StoreCacheOpenDecision.resolve(
+                hasEverReset: false,
+                migrationsComplete: false,
+                cacheFileExists: false,
+                legacyCopyNeedsCheckpointStore: true,
+                openIsBackedOff: true
+            ),
+            .open
+        )
+    }
+
+    func testLegacyCopyUsesTemporaryCheckpointsOnlyForAGivenUpCacheAndBoundedTimes() {
+        XCTAssertEqual(
+            ModelContainerManager.legacyCopyCheckpointSource(
+                cacheIsOpen: true, cacheOpenGivenUp: false, temporaryCheckpointAttempts: 0
+            ),
+            .cache
+        )
+        XCTAssertEqual(
+            ModelContainerManager.legacyCopyCheckpointSource(
+                cacheIsOpen: false, cacheOpenGivenUp: false, temporaryCheckpointAttempts: 0
+            ),
+            .waitForCache,
+            "a transient failure retries the real cache next launch"
+        )
+        XCTAssertEqual(
+            ModelContainerManager.legacyCopyCheckpointSource(
+                cacheIsOpen: false, cacheOpenGivenUp: true, temporaryCheckpointAttempts: 0
+            ),
+            .temporaryCheckpoints
+        )
+        XCTAssertEqual(
+            ModelContainerManager.legacyCopyCheckpointSource(
+                cacheIsOpen: false,
+                cacheOpenGivenUp: true,
+                temporaryCheckpointAttempts: ModelContainerManager.maximumTemporaryCheckpointAttempts
+            ),
+            .waitForCache,
+            "whole-library re-scans are bounded"
+        )
+    }
+
+    func testUnresolvedCacheRowsAreOnlyAbandonedOnceTheLibraryIsComplete() {
+        XCTAssertTrue(ModelContainerManager.cacheMigrationTargetLibraryIsComplete(
+            isFirstLibraryBuild: false, firstBuildPending: false, libraryBackfillPending: false
+        ))
+        XCTAssertFalse(ModelContainerManager.cacheMigrationTargetLibraryIsComplete(
+            isFirstLibraryBuild: true, firstBuildPending: false, libraryBackfillPending: false
+        ))
+        XCTAssertFalse(ModelContainerManager.cacheMigrationTargetLibraryIsComplete(
+            isFirstLibraryBuild: false, firstBuildPending: true, libraryBackfillPending: false
+        ))
+        XCTAssertFalse(ModelContainerManager.cacheMigrationTargetLibraryIsComplete(
+            isFirstLibraryBuild: false, firstBuildPending: false, libraryBackfillPending: true
+        ))
+    }
 }

@@ -190,13 +190,48 @@ enum StoreCutoverState {
         defaults.object(forKey: startedAtKey) as? Date
     }
 
-    private static let staleSubscriptionCleanupKey = "storeSplit.staleSubscriptionCleanup.v1"
+    static let staleSubscriptionCleanupKey = "storeSplit.staleSubscriptionCleanup.v1"
+
+    private static let temporaryCheckpointAttemptsKey = "storeSplit.localLibraryCopyTemporaryCheckpointAttempts.v1"
+    static let completedWithTemporaryCheckpointsKey = "storeSplit.localLibraryCopyCompletedWithTemporaryCheckpoints.v1"
+
+    /// Processes that ran the copy against in-memory checkpoints because the
+    /// cache file could not be opened (#394). Bounded by
+    /// `ModelContainerManager.maximumTemporaryCheckpointAttempts`.
+    nonisolated static var temporaryCheckpointAttempts: Int {
+        get { defaults.integer(forKey: temporaryCheckpointAttemptsKey) }
+        set { defaults.set(newValue, forKey: temporaryCheckpointAttemptsKey) }
+    }
+
+    nonisolated static var copyCompletedWithTemporaryCheckpoints: Bool {
+        defaults.bool(forKey: completedWithTemporaryCheckpointsKey)
+    }
+
+    nonisolated static func recordCopyCompletedWithTemporaryCheckpoints() {
+        defaults.set(true, forKey: completedWithTemporaryCheckpointsKey)
+        CrashBreadcrumbs.shared.record(
+            "store_cutover_completed_with_temporary_checkpoints",
+            details: "attempts=\(temporaryCheckpointAttempts)"
+        )
+    }
+
+    /// Counts only, for Support Diagnostics.
+    nonisolated static var temporaryCheckpointSummary: String {
+        let attempts = temporaryCheckpointAttempts
+        guard attempts > 0 else { return "not used" }
+        return "attempts=\(attempts) completed=\(copyCompletedWithTemporaryCheckpoints)"
+    }
 
     /// Once, on upgraded devices, after this device's own subscriptions are in UserState.
     static func cleanUpStaleSubscriptionsIfNeeded(library: ModelContainer, userState: ModelContainer) {
         guard let cutoff = localLibraryStartedAt,
               isDeferredMigrationPending == false,
               defaults.bool(forKey: staleSubscriptionCleanupKey) == false else { return }
+        // A copy that ran without the cache's checkpoints is complete, but this
+        // pass publishes tombstones, so it stays limited to a copy whose whole
+        // history is known. Leaving stale rows is the earlier, harmless state:
+        // the importer creates no podcast from a row older than the cutoff.
+        guard copyCompletedWithTemporaryCheckpoints == false else { return }
         do {
             let changed = try StoreSplitMigrationService.tombstoneSubscriptionsMissingFromLibrary(
                 libraryContainer: library,

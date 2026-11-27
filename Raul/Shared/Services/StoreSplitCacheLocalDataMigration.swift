@@ -24,10 +24,17 @@ enum StoreSplitCacheLocalDataMigration {
         defaults.set(true, forKey: completedKey)
     }
 
+    /// `mayAbandonUnresolvedRows`: the caller has established that the library
+    /// is complete (no first build or feed fill pending), so a row that still
+    /// has no target podcast or bookmark cannot be waiting for one. After
+    /// `StoreCacheMigrationGiveUp.maximumUnresolvedPasses` such launches
+    /// without progress the migration is recorded complete; the unresolved
+    /// rows stay in the cache file and only their count is recorded.
     @discardableResult
     static func migrateIfNeeded(
         cache: ModelContainer?,
         library: ModelContainer,
+        mayAbandonUnresolvedRows: Bool = false,
         defaults: UserDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     ) -> Bool {
         guard let cache else { return false }
@@ -38,7 +45,18 @@ enum StoreSplitCacheLocalDataMigration {
             try migrateTranscriptAlignments(from: cache, to: library)
             try migrateTranscriptJobs(from: cache, to: library)
             try migrateTranscriptionRecords(from: cache, to: library)
-            guard try migrateLocalDetails(from: cache, to: library) else { return false }
+            let unresolved = try migrateLocalDetails(from: cache, to: library)
+            guard unresolved == 0 else {
+                guard StoreCacheMigrationGiveUp.recordUnresolvedPass(
+                    .localData,
+                    unresolvedRows: unresolved,
+                    mayAbandon: mayAbandonUnresolvedRows,
+                    defaults: defaults
+                ) else { return false }
+                defaults.set(true, forKey: completedKey)
+                return true
+            }
+            StoreCacheMigrationGiveUp.clearAttempts(.localData, defaults: defaults)
             defaults.set(true, forKey: completedKey)
             CrashBreadcrumbs.shared.record("cache_local_data_migration_completed")
             return true
@@ -97,9 +115,9 @@ enum StoreSplitCacheLocalDataMigration {
     private static func migrateLocalDetails(
         from cache: ModelContainer,
         to library: ModelContainer
-    ) throws -> Bool {
+    ) throws -> Int {
         let source = ModelContext(cache)
-        var allResolved = true
+        var unresolved = 0
         var lastSettingsID: String?
         while true {
             var page: FetchDescriptor<CachedPodcastLocalSettings>
@@ -118,7 +136,7 @@ enum StoreSplitCacheLocalDataMigration {
                 lastSettingsID = row.id
                 guard let payload = try? JSONDecoder().decode(PodcastLocalSettingsPayload.self, from: row.payload),
                       try applyLocalSettings(payload, feedKey: row.feedURL, to: library) else {
-                    allResolved = false
+                    unresolved += 1
                     continue
                 }
                 source.delete(row)
@@ -144,7 +162,7 @@ enum StoreSplitCacheLocalDataMigration {
             for row in rows {
                 lastBookmarkID = row.id
                 guard try applyBookmarkDetail(row, to: library) else {
-                    allResolved = false
+                    unresolved += 1
                     continue
                 }
                 source.delete(row)
@@ -152,7 +170,7 @@ enum StoreSplitCacheLocalDataMigration {
             try source.save()
             if rows.count < pageSize { break }
         }
-        return allResolved
+        return unresolved
     }
 
     private static func applyLocalSettings(
@@ -342,5 +360,84 @@ enum StoreSplitCacheLocalDataMigration {
             offset += rows.count
             if rows.count < pageSize { break }
         }
+    }
+}
+
+/// Bounds the cache-only migrations' retries for rows that can never resolve
+/// (#394). Their completion flags used to stay unset forever, so the cache was
+/// opened and the whole migration repeated on every launch.
+///
+/// A pass counts only when the caller says the target library is complete; a
+/// pass that resolved more rows than the previous one starts the count again.
+/// Giving up records the migration complete and keeps the unresolved count.
+/// It never deletes the rows: they stay in PodcastCache.sqlite.
+enum StoreCacheMigrationGiveUp {
+    enum Migration: String, CaseIterable {
+        case localData = "cache_local_data"
+        case aiContent = "cache_ai_content"
+    }
+
+    static let maximumUnresolvedPasses = 3
+
+    private static func attemptsKey(_ migration: Migration) -> String {
+        "storeSplit.\(migration.rawValue).unresolvedPasses.v1"
+    }
+    private static func lastCountKey(_ migration: Migration) -> String {
+        "storeSplit.\(migration.rawValue).lastUnresolvedRows.v1"
+    }
+    static func abandonedKey(_ migration: Migration) -> String {
+        "storeSplit.\(migration.rawValue).abandonedRows.v1"
+    }
+
+    /// Returns true when the migration should now be recorded complete.
+    static func recordUnresolvedPass(
+        _ migration: Migration,
+        unresolvedRows: Int,
+        mayAbandon: Bool,
+        defaults: UserDefaults
+    ) -> Bool {
+        CrashBreadcrumbs.shared.record(
+            "\(migration.rawValue)_migration_deferred",
+            details: "unresolved=\(unresolvedRows),may_abandon=\(mayAbandon)"
+        )
+        guard mayAbandon else { return false }
+        var passes = defaults.integer(forKey: attemptsKey(migration))
+        if let previous = defaults.object(forKey: lastCountKey(migration)) as? Int,
+           unresolvedRows < previous {
+            passes = 0
+        }
+        passes += 1
+        defaults.set(passes, forKey: attemptsKey(migration))
+        defaults.set(unresolvedRows, forKey: lastCountKey(migration))
+        guard passes >= maximumUnresolvedPasses else { return false }
+        defaults.set(unresolvedRows, forKey: abandonedKey(migration))
+        CrashBreadcrumbs.shared.record(
+            "\(migration.rawValue)_migration_abandoned_rows",
+            details: "rows=\(unresolvedRows),passes=\(passes)"
+        )
+        return true
+    }
+
+    static func clearAttempts(_ migration: Migration, defaults: UserDefaults) {
+        defaults.removeObject(forKey: attemptsKey(migration))
+        defaults.removeObject(forKey: lastCountKey(migration))
+    }
+
+    static func abandonedRows(_ migration: Migration, defaults: UserDefaults) -> Int? {
+        defaults.object(forKey: abandonedKey(migration)) as? Int
+    }
+
+    /// Counts only, for Support Diagnostics.
+    static func diagnosticSummary(
+        defaults: UserDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    ) -> String {
+        let parts = Migration.allCases.compactMap { migration -> String? in
+            if let rows = abandonedRows(migration, defaults: defaults) {
+                return "\(migration.rawValue)=abandoned_rows:\(rows)"
+            }
+            let passes = defaults.integer(forKey: attemptsKey(migration))
+            return passes > 0 ? "\(migration.rawValue)=unresolved_passes:\(passes)" : nil
+        }
+        return parts.isEmpty ? "none" : parts.joined(separator: ", ")
     }
 }

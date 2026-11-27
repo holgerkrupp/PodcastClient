@@ -25,10 +25,18 @@ enum StoreSplitCacheAIContentMigration {
     /// Copies validated AI content into the library. A missing target episode
     /// or an unreadable/incomplete staging revision leaves the completion flag
     /// unset so startup can retry after promotion has restored the episode.
+    /// An invalid revision is skipped, not fatal: the valid rows of the same
+    /// pass are still saved.
+    ///
+    /// `mayAbandonUnresolvedRows`: the library is complete, so rows still
+    /// unresolved after `StoreCacheMigrationGiveUp.maximumUnresolvedPasses`
+    /// launches without progress are given up on (count recorded, rows kept
+    /// in the cache file) and the migration is recorded complete.
     static func migrate(
         cache: ModelContainer,
         library: ModelContainer,
         dropUnmatchedRows: Bool = false,
+        mayAbandonUnresolvedRows: Bool = false,
         defaults: UserDefaults = UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
     ) -> Bool {
         guard defaults.bool(forKey: completedKey) == false else { return true }
@@ -39,7 +47,8 @@ enum StoreSplitCacheAIContentMigration {
         libraryContext.autosaveEnabled = false
 
         do {
-            var hasUnmatchedRows = false
+            var unmatchedRows = 0
+            var invalidRows = 0
             let transcriptRows = try cacheContext.fetch(FetchDescriptor<AITranscriptSync>())
             let chapterRows = try cacheContext.fetch(FetchDescriptor<AIChapterSetSync>())
             let transcripts = newest(transcriptRows, id: \.id, date: \.updatedAt)
@@ -61,7 +70,7 @@ enum StoreSplitCacheAIContentMigration {
                         // episode.
                         continue
                     }
-                    hasUnmatchedRows = true
+                    unmatchedRows += 1
                     continue
                 }
                 let values: [AITranscriptLineValue]
@@ -81,13 +90,21 @@ enum StoreSplitCacheAIContentMigration {
                                   && chunks[index].contentHash
                                   == AIContentSyncCodec.sha256Hex(Data(chunks[index].payloadJSON.utf8))
                           }) else {
-                        return fail("transcript_chunks_invalid")
+                        invalidRows += 1
+                        skip("transcript_chunks_invalid")
+                        continue
                     }
-                    values = try AIContentSyncCodec.decodeTranscript(
-                        chunks: chunks.map(\.payloadJSON),
-                        expectedLineCount: transcript.lineCount,
-                        expectedContentHash: transcript.contentHash
-                    )
+                    do {
+                        values = try AIContentSyncCodec.decodeTranscript(
+                            chunks: chunks.map(\.payloadJSON),
+                            expectedLineCount: transcript.lineCount,
+                            expectedContentHash: transcript.contentHash
+                        )
+                    } catch {
+                        invalidRows += 1
+                        skip("transcript_decode_failed")
+                        continue
+                    }
                 } else {
                     values = []
                 }
@@ -99,15 +116,21 @@ enum StoreSplitCacheAIContentMigration {
                     StableIdentityKey.make(chapterSet.feedURL, chapterSet.episodeID)
                 ] else {
                     if dropUnmatchedRows { continue }
-                    hasUnmatchedRows = true
+                    unmatchedRows += 1
                     continue
                 }
-                let values = try AIContentSyncCodec.decodeChapters(
+                guard let values = try? AIContentSyncCodec.decodeChapters(
                     payloadJSON: chapterSet.payloadJSON,
                     expectedContentHash: chapterSet.contentHash
-                )
+                ) else {
+                    invalidRows += 1
+                    skip("chapter_decode_failed")
+                    continue
+                }
                 guard values.count == chapterSet.chapterCount else {
-                    return fail("chapter_count_invalid")
+                    invalidRows += 1
+                    skip("chapter_count_invalid")
+                    continue
                 }
                 try applyChapters(
                     values,
@@ -123,7 +146,7 @@ enum StoreSplitCacheAIContentMigration {
             // Those rows still carry unique transcript text and chapter
             // playback progress, so recover them when no manifest handled the
             // episode. Canonical content always wins on retries.
-            let hasLegacyUnmatchedRows = try migrateLegacyMaterializedAIContent(
+            let legacyUnmatchedRows = try migrateLegacyMaterializedAIContent(
                 cacheContext: cacheContext,
                 libraryContext: libraryContext,
                 episodesByIdentity: episodesByIdentity,
@@ -134,12 +157,21 @@ enum StoreSplitCacheAIContentMigration {
                     StableIdentityKey.make($0.feedURL, $0.episodeID)
                 })
             )
-            hasUnmatchedRows = hasUnmatchedRows || hasLegacyUnmatchedRows
+            if dropUnmatchedRows == false { unmatchedRows += legacyUnmatchedRows }
 
             if libraryContext.hasChanges { try libraryContext.save() }
-            if hasUnmatchedRows, dropUnmatchedRows == false {
-                return fail("episodes_pending")
+            if unmatchedRows > 0 || invalidRows > 0 {
+                _ = fail(invalidRows > 0 ? "rows_invalid" : "episodes_pending")
+                guard StoreCacheMigrationGiveUp.recordUnresolvedPass(
+                    .aiContent,
+                    unresolvedRows: unmatchedRows + invalidRows,
+                    mayAbandon: mayAbandonUnresolvedRows,
+                    defaults: defaults
+                ) else { return false }
+                defaults.set(true, forKey: completedKey)
+                return true
             }
+            StoreCacheMigrationGiveUp.clearAttempts(.aiContent, defaults: defaults)
             defaults.set(true, forKey: completedKey)
             CrashBreadcrumbs.shared.record("cache_ai_content_migration_completed")
             return true
@@ -159,8 +191,8 @@ enum StoreSplitCacheAIContentMigration {
         episodesByIdentity: [String: Episode],
         manifestedTranscriptKeys: Set<String>,
         manifestedChapterKeys: Set<String>
-    ) throws -> Bool {
-        var hasUnmatchedRows = false
+    ) throws -> Int {
+        var unmatchedGroups = 0
         let transcriptRows = try cacheContext.fetch(
             FetchDescriptor<CachedTranscriptLine>(sortBy: [SortDescriptor(\.ordinal)])
         ).filter {
@@ -170,7 +202,7 @@ enum StoreSplitCacheAIContentMigration {
         let transcriptGroups = Dictionary(grouping: transcriptRows, by: \.episodeID)
         for (key, rows) in transcriptGroups where manifestedTranscriptKeys.contains(key) == false {
             guard let episode = episodesByIdentity[key] else {
-                hasUnmatchedRows = true
+                unmatchedGroups += 1
                 continue
             }
             let current = episode.transcriptLines ?? []
@@ -199,7 +231,7 @@ enum StoreSplitCacheAIContentMigration {
         let chapterGroups = Dictionary(grouping: chapterRows, by: \.episodeID)
         for (key, rows) in chapterGroups where manifestedChapterKeys.contains(key) == false {
             guard let episode = episodesByIdentity[key] else {
-                hasUnmatchedRows = true
+                unmatchedGroups += 1
                 continue
             }
             let current = episode.chapters ?? []
@@ -226,7 +258,7 @@ enum StoreSplitCacheAIContentMigration {
             }
             episode.chapters = current + migrated
         }
-        return hasUnmatchedRows
+        return unmatchedGroups
     }
 
     private static func newest<Row, Key: Hashable & Comparable>(
@@ -387,6 +419,10 @@ enum StoreSplitCacheAIContentMigration {
             String(Int((start * 100).rounded())),
             title.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         )
+    }
+
+    private static func skip(_ stage: String) {
+        CrashBreadcrumbs.shared.record("cache_ai_content_migration_row_skipped", details: "stage=\(stage)")
     }
 
     private static func fail(_ stage: String) -> Bool {

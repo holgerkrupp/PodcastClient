@@ -136,6 +136,9 @@ enum StoreCacheOpenDecision: Equatable {
     case inMemoryAfterReset
     case skipMigrationsComplete
     case skipFileAbsent
+    /// The file exists but failed to open on several launches in a row and
+    /// has not changed since (`StoreCacheOpenBackoff`).
+    case skipAfterRepeatedOpenFailures
     case open
 
     /// True once a direct library has nothing left to take from the cache, so
@@ -164,7 +167,8 @@ enum StoreCacheOpenDecision: Equatable {
         hasEverReset: Bool,
         migrationsComplete: Bool,
         cacheFileExists: Bool,
-        legacyCopyNeedsCheckpointStore: Bool
+        legacyCopyNeedsCheckpointStore: Bool,
+        openIsBackedOff: Bool = false
     ) -> StoreCacheOpenDecision {
         if hasEverReset { return .inMemoryAfterReset }
         if migrationsComplete { return .skipMigrationsComplete }
@@ -173,7 +177,107 @@ enum StoreCacheOpenDecision: Equatable {
         if cacheFileExists == false, legacyCopyNeedsCheckpointStore == false {
             return .skipFileAbsent
         }
+        if cacheFileExists, openIsBackedOff { return .skipAfterRepeatedOpenFailures }
         return .open
+    }
+}
+
+/// Bounds how often launch retries a PodcastCache.sqlite that exists but will
+/// not open (#394). Without it a corrupt historical file was reopened, and
+/// its migrations retried, on every launch forever.
+///
+/// Only failures where the file's bytes could be read count: a file that is
+/// merely protected (device locked) or unavailable is retried normally. After
+/// `maximumConsecutiveFailures` failed launches the file is left alone until
+/// its size or modification date, or the app build, changes. Nothing here
+/// deletes, moves or rewrites the file; its pending migrations stay pending.
+enum StoreCacheOpenBackoff {
+    static let maximumConsecutiveFailures = 3
+    static let failuresKey = "storeSplit.cacheOpenFailures.v1"
+    static let signatureKey = "storeSplit.cacheOpenFailureSignature.v1"
+
+    nonisolated static var defaults: UserDefaults {
+        UserDefaults(suiteName: ModelContainerManager.appGroupID) ?? .standard
+    }
+
+    /// Size and modification date of the main SQLite file plus the app build.
+    /// Nil when the attributes cannot be read.
+    nonisolated static func signature(
+        of url: URL,
+        build: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "0"
+    ) -> String? {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = (attributes[.size] as? NSNumber)?.int64Value else { return nil }
+        let modified = (attributes[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size):\(Int64(modified * 1_000)):\(build)"
+    }
+
+    /// Whether the file's first bytes can be read. A protected or unavailable
+    /// file fails here; a corrupt one does not.
+    nonisolated static func fileDataIsReadable(_ url: URL) -> Bool {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return false }
+        defer { try? handle.close() }
+        return ((try? handle.read(upToCount: 16))?.count ?? 0) > 0
+    }
+
+    nonisolated static func shouldAttemptOpen(
+        currentSignature: String?,
+        defaults: UserDefaults = defaults
+    ) -> Bool {
+        guard defaults.integer(forKey: failuresKey) >= maximumConsecutiveFailures else { return true }
+        // A restored, replaced or repaired file, or a new app build, gets a new try.
+        guard let currentSignature,
+              currentSignature == defaults.string(forKey: signatureKey) else { return true }
+        return false
+    }
+
+    nonisolated static func recordOpenSucceeded(defaults: UserDefaults = defaults) {
+        guard defaults.object(forKey: failuresKey) != nil else { return }
+        defaults.removeObject(forKey: failuresKey)
+        defaults.removeObject(forKey: signatureKey)
+    }
+
+    nonisolated static func recordOpenFailed(
+        signature: String?,
+        dataIsReadable: Bool,
+        defaults: UserDefaults = defaults
+    ) {
+        guard dataIsReadable, let signature else {
+            CrashBreadcrumbs.shared.record("store_cache_open_failed", details: "counted=false")
+            return
+        }
+        let failures = defaults.string(forKey: signatureKey) == signature
+            ? defaults.integer(forKey: failuresKey) + 1
+            : 1
+        defaults.set(failures, forKey: failuresKey)
+        defaults.set(signature, forKey: signatureKey)
+        CrashBreadcrumbs.shared.record(
+            "store_cache_open_failed",
+            details: "counted=true,consecutive=\(failures),gave_up=\(failures >= maximumConsecutiveFailures)"
+        )
+    }
+
+    /// Records one launch's attempt. Called only where the open was tried.
+    nonisolated static func recordOpenOutcome(opened: Bool, url: URL?) {
+        if opened {
+            recordOpenSucceeded()
+        } else if let url {
+            recordOpenFailed(signature: signature(of: url), dataIsReadable: fileDataIsReadable(url))
+        }
+    }
+
+    /// True once the current file has been given up on.
+    nonisolated static var hasGivenUpOnCurrentFile: Bool {
+        guard let url = ModelContainerManager.cacheStoreURL,
+              FileManager.default.fileExists(atPath: url.path) else { return false }
+        return shouldAttemptOpen(currentSignature: signature(of: url)) == false
+    }
+
+    /// Counts only, for Support Diagnostics.
+    nonisolated static var diagnosticSummary: String {
+        let failures = defaults.integer(forKey: failuresKey)
+        guard failures > 0 else { return "no open failures" }
+        return "consecutive_failures=\(failures) gave_up=\(failures >= maximumConsecutiveFailures)"
     }
 }
 
@@ -900,6 +1004,9 @@ class ModelContainerManager: ObservableObject {
     /// portable reconciliation and the library backfill await it.
     private var deferredCacheMigrationTask: Task<Void, Never>?
     private var didRunDeferredCacheMigrations = false
+    /// In-memory checkpoints for the legacy UserState copy when the cache
+    /// file is persistently unreadable (`legacyCopyCheckpointSource`).
+    private var legacyCopyTemporaryCheckpointContainer: ModelContainer?
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
     private(set) var lastHydrationSummary: String?
@@ -1461,7 +1568,9 @@ class ModelContainerManager: ObservableObject {
                 migrationsComplete: mayRetireCache,
                 cacheFileExists: files.contains("PodcastCache.sqlite"),
                 legacyCopyNeedsCheckpointStore: bootstrapMode == .legacyUpgrade
-                    && StoreCutoverState.isDeferredMigrationPending
+                    && StoreCutoverState.isDeferredMigrationPending,
+                openIsBackedOff: files.contains("PodcastCache.sqlite")
+                    && StoreCacheOpenBackoff.hasGivenUpOnCurrentFile
             )
             let cache: ModelContainer?
             switch cacheDecision {
@@ -1482,6 +1591,11 @@ class ModelContainerManager: ObservableObject {
                 StoreSplitCacheAIContentMigration.markCompleteBecauseSourceIsAbsent()
                 UserDefaults.standard.set(Self.cacheRecoveryVersion, forKey: Self.cacheRecoveryVersionKey)
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "file_absent")
+            case .skipAfterRepeatedOpenFailures:
+                // The file is kept and its migrations stay pending; a changed
+                // file or a new build tries again.
+                cache = nil
+                CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "repeated_open_failures")
             case .open:
                 await MainActor.run {
                     SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
@@ -1490,6 +1604,7 @@ class ModelContainerManager: ObservableObject {
                 // A durable library remains available if the historical file
                 // cannot be opened.
                 cache = try? Self.makeCacheContainerWithRetry()
+                StoreCacheOpenBackoff.recordOpenOutcome(opened: cache != nil, url: Self.cacheStoreURL)
             }
             timer.mark("cache")
             if cache == nil {
@@ -1691,6 +1806,17 @@ class ModelContainerManager: ObservableObject {
         return localDataMigrationComplete == false || aiContentMigrationComplete == false
     }
 
+    /// Whether a cache-only row that still has no target can be given up on:
+    /// the library has finished its first build and feed fill, so no podcast,
+    /// episode or bookmark that could match it is still on its way.
+    nonisolated static func cacheMigrationTargetLibraryIsComplete(
+        isFirstLibraryBuild: Bool,
+        firstBuildPending: Bool,
+        libraryBackfillPending: Bool
+    ) -> Bool {
+        isFirstLibraryBuild == false && firstBuildPending == false && libraryBackfillPending == false
+    }
+
     /// Runs the cache-local and AI-content migrations once per process after
     /// the library is already on screen. They used to run inside launch
     /// preparation, where an unresolved row (they retry until every row
@@ -1714,10 +1840,21 @@ class ModelContainerManager: ObservableObject {
         // maintenance pass starts this again in the foreground.
         guard heavyStoreWorkMayRunInCurrentAppState else { return }
         didRunDeferredCacheMigrations = true
+        // Rows still unresolved once the library is complete can't be waiting
+        // for a podcast or episode to arrive, so their retries are bounded.
+        let mayAbandonUnresolvedRows = Self.cacheMigrationTargetLibraryIsComplete(
+            isFirstLibraryBuild: isFirstLibraryBuildRuntime,
+            firstBuildPending: StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending,
+            libraryBackfillPending: StoreRuntimeProjection.isLibraryBackfillPending
+        )
         SupportDiagnosticsRecorder.shared.record("Deferred cache migrations started")
         deferredCacheMigrationTask = Task.detached(priority: .utility) {
             let localStart = ContinuousClock.now
-            let local = StoreSplitCacheLocalDataMigration.migrateIfNeeded(cache: cache, library: library)
+            let local = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
+                cache: cache,
+                library: library,
+                mayAbandonUnresolvedRows: mayAbandonUnresolvedRows
+            )
             StoreLaunchTimer.recordDeferredMaintenance(
                 "cache_local_migration",
                 milliseconds: LaunchDuration.milliseconds(localStart.duration(to: .now)),
@@ -1727,7 +1864,8 @@ class ModelContainerManager: ObservableObject {
             let ai = StoreSplitCacheAIContentMigration.migrate(
                 cache: cache,
                 library: library,
-                dropUnmatchedRows: true
+                dropUnmatchedRows: true,
+                mayAbandonUnresolvedRows: mayAbandonUnresolvedRows
             )
             StoreLaunchTimer.recordDeferredMaintenance(
                 "ai_content_migration",
@@ -1883,8 +2021,13 @@ class ModelContainerManager: ObservableObject {
         // device still has one open; without it there is nothing to copy.
         let cache = preparedCacheContainer
         // A cache file that exists but did not open this launch may still hold
-        // local transcripts; keep the backfill pending so a later launch copies them.
+        // local transcripts; keep the backfill pending so a later launch copies
+        // them. A file given up on after repeated open failures
+        // (`StoreCacheOpenBackoff`) no longer holds the fill open forever: its
+        // rows stay in the file, and the AI-content and cache-local migrations
+        // stay pending, so a changed, readable file is still migrated.
         let cacheSourceUnavailable = cache == nil && Self.cacheStoreFileExists
+            && StoreCacheOpenBackoff.hasGivenUpOnCurrentFile == false
         StoreRuntimeProjection.fillUserStateContainer = userState
         let task = Task.detached(priority: .utility) { () -> Bool in
             guard await StoreRuntimeProjection.fillFromFeeds(runtime: runtime) else { return false }
@@ -1934,6 +2077,47 @@ class ModelContainerManager: ObservableObject {
         }
     }
 
+    enum LegacyCopyCheckpointSource: Equatable {
+        /// The historical cache is open: resume from its checkpoints.
+        case cache
+        /// The cache file is persistently unreadable: run the copy against
+        /// in-memory checkpoints that start over each process.
+        case temporaryCheckpoints
+        /// Try the cache again on a later launch.
+        case waitForCache
+    }
+
+    nonisolated static let maximumTemporaryCheckpointAttempts = 5
+
+    /// Where the legacy UserState copy keeps its checkpoints (#394).
+    ///
+    /// Before this, an upgraded device whose PodcastCache.sqlite would not
+    /// open never ran the copy, so portable reconciliation stayed skipped
+    /// forever. Running the importer without the copy is not safe: UserState
+    /// does not yet hold this device's own subscriptions, queue and history,
+    /// and the importer applies synced subscription state as authoritative.
+    /// The copy itself only needs the cache as checkpoint and scratch space
+    /// (it reads the library and merges every row into UserState by stable
+    /// identity and date, first writer wins for baselines), so restarting it
+    /// from zero with empty checkpoints re-scans but cannot duplicate or lose
+    /// a row. That restart costs a whole-library scan per process, so it is
+    /// bounded; a changed cache file resets the backoff and the real
+    /// checkpoints are used again.
+    nonisolated static func legacyCopyCheckpointSource(
+        cacheIsOpen: Bool,
+        cacheOpenGivenUp: Bool,
+        temporaryCheckpointAttempts: Int
+    ) -> LegacyCopyCheckpointSource {
+        if cacheIsOpen { return .cache }
+        // A transient failure (protected data, busy file) retries the real
+        // cache on the next launch instead of re-scanning from zero.
+        guard cacheOpenGivenUp,
+              temporaryCheckpointAttempts < maximumTemporaryCheckpointAttempts else {
+            return .waitForCache
+        }
+        return .temporaryCheckpoints
+    }
+
     /// Moves listening history, baselines and AI content while the app is in
     /// use. Backgrounding stops it; the next launch or activation continues.
     func runDeferredMigrationIfNeeded() async {
@@ -1944,8 +2128,52 @@ class ModelContainerManager: ObservableObject {
               runtimeStoreReadiness == .ready,
               heavyStoreWorkMayRunInCurrentAppState,
               let library = preparedContainer,
-              let userState = preparedUserStateContainer,
-              let cache = preparedCacheContainer else { return }
+              let userState = preparedUserStateContainer else { return }
+        // A process that already started on temporary checkpoints keeps them,
+        // so a foreground resume continues instead of counting a new attempt.
+        let source: LegacyCopyCheckpointSource = legacyCopyTemporaryCheckpointContainer != nil
+            && preparedCacheContainer == nil
+            ? .temporaryCheckpoints
+            : Self.legacyCopyCheckpointSource(
+                cacheIsOpen: preparedCacheContainer != nil,
+                cacheOpenGivenUp: StoreCacheOpenBackoff.hasGivenUpOnCurrentFile,
+                temporaryCheckpointAttempts: StoreCutoverState.temporaryCheckpointAttempts
+            )
+        let cache: ModelContainer
+        let usesTemporaryCheckpoints: Bool
+        switch source {
+        case .cache:
+            guard let preparedCacheContainer else { return }
+            cache = preparedCacheContainer
+            usesTemporaryCheckpoints = false
+        case .temporaryCheckpoints:
+            if legacyCopyTemporaryCheckpointContainer == nil {
+                legacyCopyTemporaryCheckpointContainer = try? Self.makeCacheContainer(
+                    isStoredInMemoryOnly: true
+                )
+                // One attempt per process: the in-memory checkpoints start over
+                // with each process.
+                if legacyCopyTemporaryCheckpointContainer != nil {
+                    StoreCutoverState.temporaryCheckpointAttempts += 1
+                }
+            }
+            guard let scratch = legacyCopyTemporaryCheckpointContainer else { return }
+            cache = scratch
+            usesTemporaryCheckpoints = true
+            CrashBreadcrumbs.shared.record(
+                "store_cutover_temporary_checkpoints",
+                details: "attempt=\(StoreCutoverState.temporaryCheckpointAttempts)"
+            )
+            SupportDiagnosticsRecorder.shared.record(
+                "Deferred library migration using temporary checkpoints",
+                detail: "attempt \(StoreCutoverState.temporaryCheckpointAttempts)"
+            )
+        case .waitForCache:
+            if StoreCacheOpenBackoff.hasGivenUpOnCurrentFile {
+                CrashBreadcrumbs.shared.record("store_cutover_blocked", details: "reason=cache_unreadable_attempts_exhausted")
+            }
+            return
+        }
         // Before the copy, so duplicates from an old install stop showing even
         // while it runs. See `hideDuplicatePodcasts` for why this can't
         // unsubscribe the surviving podcast.
@@ -1970,6 +2198,9 @@ class ModelContainerManager: ObservableObject {
             detail: outcome.diagnosticSummary
         )
         if case .committed = outcome {
+            if usesTemporaryCheckpoints {
+                StoreCutoverState.recordCopyCompletedWithTemporaryCheckpoints()
+            }
             // Only now is UserState complete enough to import back.
             _ = await performSplitStoreReconcile(
                 force: true,
@@ -2100,7 +2331,8 @@ class ModelContainerManager: ObservableObject {
     /// file that failed to open is retried on the next launch rather than on
     /// every caller of `prepareSplitStores`.
     private var cacheStoreIsStillNeeded: Bool {
-        guard didAttemptCacheOpen == false, Self.cacheStoreFileExists else { return false }
+        guard didAttemptCacheOpen == false, Self.cacheStoreFileExists,
+              StoreCacheOpenBackoff.hasGivenUpOnCurrentFile == false else { return false }
         if isFirstLibraryBuildRuntime { return true }
         if Self.deviceUsedInMemoryProjection,
            UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)

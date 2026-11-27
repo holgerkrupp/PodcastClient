@@ -33,6 +33,14 @@ runtime has not fully converged yet:
   blocks the library. Portable reconciliation and the first build no longer require a cache
   container. The cache is still opened for an unfinished legacy UserState copy (checkpoint
   store), for unfinished cache-local migrations, and to seed an older split-only build.
+- #394 (Nov 2026): a cache that fails to open on three consecutive launches (counting only
+  launches where the file's bytes were readable) is not opened again until its size,
+  modification date or the app build changes. On an upgraded device with a pending copy, the
+  copy then runs against in-memory checkpoints (bounded to five processes, no stale-
+  subscription tombstones afterwards); reconciliation still never runs before the copy.
+  Cache-only migration rows that stay unresolved for three launches on a finished library are
+  abandoned by count; the rows stay in the cache file. See `TwoDatabasePlan.md` for the
+  safety reasoning and for what must happen before cache readers can be deleted.
 - Never-fetched subscription stubs are retried from durable library state across
   cancellation, offline periods and relaunch (#441).
 - #518: an existing library no longer waits on the network or on optional maintenance before
