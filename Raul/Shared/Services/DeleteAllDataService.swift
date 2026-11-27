@@ -1,6 +1,7 @@
 import CloudKit
 import Foundation
 import SwiftData
+import Synchronization
 
 struct DeleteAllDataResult: Sendable {
     let localDataCleared: Bool
@@ -140,6 +141,120 @@ enum DeleteAllDataService {
             // reset remains pending and is retried after the next activation.
             return nil
         }
+    }
+
+    // MARK: Launch fence check (#518)
+
+    /// How long launch waits for the remote reset fence before opening the
+    /// local stores. A healthy device answers well inside this; a slow or
+    /// captive network must not hold a usable local library behind the launch
+    /// screen. Offline/no-account already returned immediately before #518.
+    static let launchFenceDeadline: Duration = .milliseconds(1_500)
+
+    /// Upper bound for portable-state work (reconcile, write drain) waiting on
+    /// a launch fence check that missed its deadline. Past it the device is
+    /// treated like an offline launch, exactly as before #518.
+    static let deferredFenceWaitLimit: Duration = .seconds(30)
+
+    enum LaunchFenceOutcome: Sendable, Equatable {
+        /// The check finished within the deadline (found or not).
+        case completed
+        /// Still in flight; it keeps running and persists any fence it finds.
+        case deferred
+    }
+
+    /// The one launch fence fetch of this process. It is held here while it
+    /// runs so portable-state publication can wait for it after the library is
+    /// already usable.
+    final class LaunchFenceGate: Sendable {
+        private let slot = Mutex<Task<Void, Never>?>(nil)
+
+        var isUnresolved: Bool { slot.withLock { $0 != nil } }
+
+        /// Starts `fetch` (unless a check is already running) and waits at most
+        /// `deadline` for it. A late result is still persisted by `fetch`.
+        func check(
+            deadline: Duration,
+            fetch: @escaping @Sendable () async -> Void
+        ) async -> LaunchFenceOutcome {
+            let task: Task<Void, Never> = slot.withLock { current in
+                if let current { return current }
+                // Created and stored under one lock, so the task's own clear
+                // below can never run before it is stored.
+                let created = Task.detached(priority: .userInitiated) { [weak self] in
+                    await fetch()
+                    self?.slot.withLock { $0 = nil }
+                }
+                current = created
+                return created
+            }
+            return await Self.wait(for: task, upTo: deadline) ? .completed : .deferred
+        }
+
+        /// Returns once no launch check is running, or after `limit`.
+        func waitIfUnresolved(limit: Duration) async {
+            guard let task = slot.withLock({ $0 }) else { return }
+            _ = await Self.wait(for: task, upTo: limit)
+        }
+
+        /// Not a task group: a group waits for every child before returning,
+        /// and awaiting an unstructured task's value ignores cancellation, so
+        /// it would wait for the whole fetch. The first of the two racers to
+        /// finish resumes the continuation; the fetch keeps running.
+        private static func wait(for task: Task<Void, Never>, upTo limit: Duration) async -> Bool {
+            let resumed = Mutex(false)
+            return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                @Sendable func finish(_ value: Bool) {
+                    let first = resumed.withLock { done -> Bool in
+                        defer { done = true }
+                        return done == false
+                    }
+                    if first { continuation.resume(returning: value) }
+                }
+                let timer = Task {
+                    try? await Task.sleep(for: limit)
+                    finish(false)
+                }
+                Task {
+                    await task.value
+                    timer.cancel()
+                    finish(true)
+                }
+            }
+        }
+    }
+
+    static let launchFenceGate = LaunchFenceGate()
+
+    /// Launch entry point: fetch the remote fence, bounded by `launchFenceDeadline`.
+    static func checkRemoteFenceForLaunch() async -> LaunchFenceOutcome {
+        await launchFenceGate.check(deadline: launchFenceDeadline) {
+            _ = await fetchNewRemoteFence()
+        }
+    }
+
+    static var isLaunchFenceCheckUnresolved: Bool { launchFenceGate.isUnresolved }
+
+    /// Portable state may be exported or reconciled only when no known reset is
+    /// pending and the launch fence check is not still in flight. A locally
+    /// known reset always wins, whatever the network does.
+    static func mayPublishPortableState(
+        hasPendingLocalReset: Bool,
+        launchFenceUnresolved: Bool
+    ) -> Bool {
+        hasPendingLocalReset == false && launchFenceUnresolved == false
+    }
+
+    /// Waits (bounded) for a launch fence check that missed its deadline, then
+    /// reports whether portable state may be published. Background callers use
+    /// this before exporting or reconciling; the UI never waits on it.
+    static func awaitPortableStatePublicationAllowed(
+        limit: Duration = deferredFenceWaitLimit
+    ) async -> Bool {
+        await launchFenceGate.waitIfUnresolved(limit: limit)
+        // After the limit the check counts as unavailable, like an offline
+        // launch; a found fence has already been persisted as pending.
+        return hasPendingLocalReset == false
     }
 
     /// Records user intent before doing destructive local work. The fence is

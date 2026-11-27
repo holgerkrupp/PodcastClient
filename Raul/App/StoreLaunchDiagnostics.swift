@@ -1,30 +1,92 @@
 import Foundation
 import SQLite3
+import os
+import Darwin
 #if canImport(UIKit)
 import UIKit
 #endif
 
 /// Times the store opens at launch. The event timeline only covers the last five
 /// minutes, so the latest result is kept for a report taken any time later.
+///
+/// Every mark is also written as the "in progress" summary, so a launch that is
+/// still on the launch screen (or was killed there) shows which phase it is in.
+/// Phase names and durations only: no paths, feed URLs or user data (#518).
 struct StoreLaunchTimer {
     static let latestKey = "storeLaunch.latestTimings"
+    static let inProgressKey = "storeLaunch.inProgressTimings"
+    static let interruptedKey = "storeLaunch.interruptedTimings"
+    static let firstUsableShellKey = "storeLaunch.firstUsableShell"
+    static let deferredMaintenanceKey = "storeLaunch.deferredMaintenance"
+
+    static let signposter = OSSignposter(
+        subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
+        category: "StoreLaunch"
+    )
 
     private let startedAt = ProcessInfo.processInfo.systemUptime
     private var lastMarkAt = ProcessInfo.processInfo.systemUptime
     private var parts: [String] = []
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults = StoreLaunchDiagnostics.defaults) {
+        self.defaults = defaults
+        // An opening that never finished (killed on the launch screen, or a
+        // failed attempt) is kept for the next report instead of overwritten.
+        if let unfinished = defaults.string(forKey: Self.inProgressKey) {
+            defaults.set(unfinished, forKey: Self.interruptedKey)
+        }
+        defaults.set("started", forKey: Self.inProgressKey)
+    }
 
     /// Call when a step ends. A step's name is reported with its duration.
     mutating func mark(_ step: String) {
         let now = ProcessInfo.processInfo.systemUptime
-        parts.append("\(step)=\(Int((now - lastMarkAt) * 1_000))ms")
+        let milliseconds = Int((now - lastMarkAt) * 1_000)
+        parts.append("\(step)=\(milliseconds)ms")
         lastMarkAt = now
+        Self.signposter.emitEvent("StoreLaunchPhase", "\(step, privacy: .public) \(milliseconds)ms")
+        defaults.set(parts.joined(separator: " "), forKey: Self.inProgressKey)
     }
 
-    func finish(libraryLogBytes: Int64, defaults: UserDefaults = StoreLaunchDiagnostics.defaults) {
+    /// Adds a fact (not a duration) to the summary, e.g. `remote_fence=deferred`.
+    mutating func note(_ fact: String) {
+        parts.append(fact)
+        defaults.set(parts.joined(separator: " "), forKey: Self.inProgressKey)
+    }
+
+    func finish(libraryLogBytes: Int64, defaults: UserDefaults? = nil) {
+        let defaults = defaults ?? self.defaults
         let total = Int((ProcessInfo.processInfo.systemUptime - startedAt) * 1_000)
         let logMegabytes = libraryLogBytes / (1_024 * 1_024)
         let summary = (parts + ["total=\(total)ms", "library_log_at_start=\(logMegabytes)MB"]).joined(separator: " ")
         defaults.set(summary, forKey: Self.latestKey)
+        defaults.removeObject(forKey: Self.inProgressKey)
+        self.defaults.removeObject(forKey: Self.inProgressKey)
+    }
+
+    /// Records how long after process start the main library became usable
+    /// (the launch screen was replaced by the app shell).
+    static func recordFirstUsableShell(defaults: UserDefaults = StoreLaunchDiagnostics.defaults) {
+        let milliseconds = StoreLaunchDiagnostics.processAgeMilliseconds()
+        signposter.emitEvent("FirstUsableShell", "\(milliseconds ?? -1)ms")
+        defaults.set(
+            milliseconds.map { "\($0)ms after process start" } ?? "recorded (process start unavailable)",
+            forKey: firstUsableShellKey
+        )
+    }
+
+    /// Records the latest duration and outcome of a post-launch maintenance step
+    /// that used to run on the launch critical path.
+    static func recordDeferredMaintenance(
+        _ step: String,
+        milliseconds: Int,
+        outcome: String,
+        defaults: UserDefaults = StoreLaunchDiagnostics.defaults
+    ) {
+        var entries = (defaults.dictionary(forKey: deferredMaintenanceKey) as? [String: String]) ?? [:]
+        entries[step] = "\(milliseconds)ms \(outcome)"
+        defaults.set(entries, forKey: deferredMaintenanceKey)
     }
 }
 
@@ -40,6 +102,39 @@ enum StoreLaunchDiagnostics {
 
     static var latestTimings: String {
         defaults.string(forKey: StoreLaunchTimer.latestKey) ?? "not recorded yet"
+    }
+
+    /// Set only while a store opening is in progress or was interrupted.
+    static var inProgressTimings: String? {
+        defaults.string(forKey: StoreLaunchTimer.inProgressKey)
+    }
+
+    static var interruptedTimings: String {
+        defaults.string(forKey: StoreLaunchTimer.interruptedKey) ?? "none recorded"
+    }
+
+    static var firstUsableShell: String {
+        defaults.string(forKey: StoreLaunchTimer.firstUsableShellKey) ?? "not recorded yet"
+    }
+
+    static var deferredMaintenance: String {
+        guard let entries = defaults.dictionary(forKey: StoreLaunchTimer.deferredMaintenanceKey) as? [String: String],
+              entries.isEmpty == false else { return "none recorded" }
+        return entries.keys.sorted().map { "\($0)=\(entries[$0] ?? "")" }.joined(separator: ", ")
+    }
+
+    /// Milliseconds since this process started, from the kernel's process
+    /// record. Nil if the record can't be read.
+    static func processAgeMilliseconds() -> Int? {
+        var info = kinfo_proc()
+        var size = MemoryLayout<kinfo_proc>.stride
+        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, getpid()]
+        guard sysctl(&mib, UInt32(mib.count), &info, &size, nil, 0) == 0 else { return nil }
+        let start = info.kp_proc.p_un.__p_starttime
+        let started = Double(start.tv_sec) + Double(start.tv_usec) / 1_000_000
+        let age = Date().timeIntervalSince1970 - started
+        guard age >= 0, age < 24 * 60 * 60 else { return nil }
+        return Int(age * 1_000)
     }
 
     static var libraryContents: String {

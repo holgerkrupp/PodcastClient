@@ -138,6 +138,28 @@ enum StoreCacheOpenDecision: Equatable {
     case skipFileAbsent
     case open
 
+    /// True once a direct library has nothing left to take from the cache, so
+    /// an established install's ordinary launch never opens it.
+    static func cacheWorkIsComplete(
+        bootstrapMode: StoreBootstrapMode,
+        hasEverReset: Bool,
+        localDataMigrationComplete: Bool,
+        aiContentMigrationComplete: Bool,
+        cacheRecoveryComplete: Bool,
+        legacyCopyPending: Bool,
+        libraryBackfillPending: Bool,
+        firstBuildPending: Bool
+    ) -> Bool {
+        if hasEverReset { return true }
+        return (bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary)
+            && localDataMigrationComplete
+            && aiContentMigrationComplete
+            && cacheRecoveryComplete
+            && legacyCopyPending == false
+            && libraryBackfillPending == false
+            && firstBuildPending == false
+    }
+
     static func resolve(
         hasEverReset: Bool,
         migrationsComplete: Bool,
@@ -152,6 +174,13 @@ enum StoreCacheOpenDecision: Equatable {
             return .skipFileAbsent
         }
         return .open
+    }
+}
+
+enum LaunchDuration {
+    static func milliseconds(_ duration: Duration) -> Int {
+        let parts = duration.components
+        return Int(parts.seconds * 1_000 + parts.attoseconds / 1_000_000_000_000_000)
     }
 }
 
@@ -866,6 +895,11 @@ class ModelContainerManager: ObservableObject {
     private var playbackWriteRebuildTask: Task<Bool, Never>?
     private var openedExistingProjection = false
     private var didAttemptCacheOpen = false
+    private var didRecordFirstUsableShell = false
+    /// The post-launch cache-local/AI migration pass (#518). Single-flight;
+    /// portable reconciliation and the library backfill await it.
+    private var deferredCacheMigrationTask: Task<Void, Never>?
+    private var didRunDeferredCacheMigrations = false
     @Published private(set) var isDeferredMigrationRunning = false
     /// Categories and counts only, for the launch diagnostics report.
     private(set) var lastHydrationSummary: String?
@@ -1257,12 +1291,21 @@ class ModelContainerManager: ObservableObject {
     nonisolated private static func makeRuntimeContainerPreparationTask(
     ) -> Task<RuntimeContainerPreparation, Error> {
         Task.detached(priority: .userInitiated) {
+            var timer = StoreLaunchTimer()
             // A tiny CloudKit control record is fetched before the mirrored
             // UserState store opens. It tells a reconnecting device to clear
             // stale local state before normal reconciliation can publish it.
-            _ = await DeleteAllDataService.fetchNewRemoteFence()
-            if await DeleteAllDataService.retryPendingFence() {
-                // Keep the pending fence until local cleanup and export finish.
+            // It overlaps the local file checks below and is awaited, bounded
+            // by `launchFenceDeadline`, right before UserState opens (#518):
+            // a slow network must not hold a usable local library behind the
+            // launch screen. A check that misses the deadline keeps running
+            // and persists any fence it finds; until it resolves, portable
+            // exports and reconciliation wait for it
+            // (`awaitPortableStatePublicationAllowed`), and a locally known
+            // pending reset is always cleared below before the library is
+            // returned.
+            let fenceCheck = Task {
+                await DeleteAllDataService.checkRemoteFenceForLaunch()
             }
             do {
                 _ = try RestorableLibraryBackupArchive.applyPendingRestoreBeforeStoresOpen(
@@ -1274,6 +1317,7 @@ class ModelContainerManager: ObservableObject {
                 CrashBreadcrumbs.shared.record("backup_restore_retry_pending")
                 throw StoreBootstrapError.persistentStoreUnavailable
             }
+            timer.mark("backup_restore")
             // This runs before the stores open, which is the earliest
             // point at which Core Data can resume a persisted CloudKit export.
             // A repeated unhealthy-launch sequence can therefore quarantine the
@@ -1314,6 +1358,7 @@ class ModelContainerManager: ObservableObject {
                 throw StoreBootstrapError.persistentStoreUnavailable
             }
             StoreLineage.forgetAcceptedStores(present: files)
+            timer.mark("lineage")
             // A split-only library is already a durable SwiftData store. Once
             // its first projection is complete, promote the file at the next
             // launch before opening any containers. Keeping the origin marker
@@ -1351,6 +1396,7 @@ class ModelContainerManager: ObservableObject {
                     )
                 }
             }
+            timer.mark("promotion")
             // A build record without its file would open an empty library as finished.
             if StoreRuntimeProjection.shouldForgetBuild(files: files) {
                 StoreRuntimeProjection.forgetBuild()
@@ -1390,19 +1436,26 @@ class ModelContainerManager: ObservableObject {
                 SupportDiagnosticsRecorder.shared.record("Opening User State store")
             }
             let libraryLogBytes = Self.sharedStoreURL.map(StoreWriteAheadLog.sizeInBytes(storeURL:)) ?? 0
-            var timer = StoreLaunchTimer()
+            let fenceOutcome = await fenceCheck.value
+            timer.mark("remote_fence_wait")
+            timer.note("remote_fence=\(fenceOutcome == .completed ? "checked" : "deferred")")
+            if fenceOutcome == .deferred {
+                CrashBreadcrumbs.shared.record("delete_all_data_launch_fence_deferred")
+            }
             let userState = try Self.makeUserStateContainerWithRetry()
             timer.mark("user_state")
-            let mayRetireCache = DeleteAllDataService.hasEverReset
-                || ((bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary)
-                && StoreSplitCacheLocalDataMigration.isComplete
-                && StoreSplitCacheAIContentMigration.isComplete
-                && (Self.deviceUsedInMemoryProjection == false
+            let mayRetireCache = StoreCacheOpenDecision.cacheWorkIsComplete(
+                bootstrapMode: bootstrapMode,
+                hasEverReset: DeleteAllDataService.hasEverReset,
+                localDataMigrationComplete: StoreSplitCacheLocalDataMigration.isComplete,
+                aiContentMigrationComplete: StoreSplitCacheAIContentMigration.isComplete,
+                cacheRecoveryComplete: Self.deviceUsedInMemoryProjection == false
                     || UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)
-                        >= Self.cacheRecoveryVersion)
-                && StoreCutoverState.isDeferredMigrationPending == false
-                && StoreRuntimeProjection.isLibraryBackfillPending == false
-                && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false)
+                        >= Self.cacheRecoveryVersion,
+                legacyCopyPending: StoreCutoverState.isDeferredMigrationPending,
+                libraryBackfillPending: StoreRuntimeProjection.isLibraryBackfillPending,
+                firstBuildPending: StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending
+            )
             let cacheDecision = StoreCacheOpenDecision.resolve(
                 hasEverReset: DeleteAllDataService.hasEverReset,
                 migrationsComplete: mayRetireCache,
@@ -1464,25 +1517,21 @@ class ModelContainerManager: ObservableObject {
                 let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
                     try Self.makeLegacyContainer(storageURL: storeURL)
                 }
+                timer.mark("library_open")
                 await MainActor.run {
                     SupportDiagnosticsRecorder.shared.record(
                         "Runtime library store opened",
                         detail: storeDetail
                     )
                 }
-                if DeleteAllDataService.hasEverReset == false {
-                    _ = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
-                        cache: cache,
-                        library: library
-                    )
-                }
-                if let cache, DeleteAllDataService.hasEverReset == false {
-                    _ = StoreSplitCacheAIContentMigration.migrate(
-                        cache: cache,
-                        library: library,
-                        dropUnmatchedRows: true
-                    )
-                }
+                // The cache-local and AI-content migrations copy optional,
+                // device-local extras (transcripts, AI chapters, local
+                // settings) and scan the whole library. They are idempotent
+                // and checkpointed by their completion flags, so they run
+                // right after the library is usable instead of before it
+                // (`startDeferredCacheMigrationsIfNeeded`, #518). Portable
+                // reconciliation waits for them, so nothing reads the library
+                // as if those rows were absent.
                 if DeleteAllDataService.hasPendingLocalReset {
                     do {
                         let baselineEventID = await MainActor.run {
@@ -1500,9 +1549,11 @@ class ModelContainerManager: ObservableObject {
                     } catch {
                         CrashBreadcrumbs.shared.record("delete_all_data_local_retry_pending")
                     }
+                    timer.mark("pending_reset_cleanup")
                 }
                 timer.mark("library")
                 timer.finish(libraryLogBytes: libraryLogBytes)
+                Self.retryPendingResetFenceInBackground()
                 if bootstrapMode == .legacyUpgrade {
                     StoreLibraryOrigin.recordExistingLibraryOpened()
                     StoreCutoverState.beginLocalLibrary()
@@ -1600,6 +1651,7 @@ class ModelContainerManager: ObservableObject {
             }
             timer.mark("library")
             timer.finish(libraryLogBytes: libraryLogBytes)
+            Self.retryPendingResetFenceInBackground()
             StoreSplitLaunchHealth.markRuntimeReady()
             return RuntimeContainerPreparation(
                 container: runtimeContainer,
@@ -1613,6 +1665,102 @@ class ModelContainerManager: ObservableObject {
                 userStateContainer: userState,
                 cacheContainer: cache
             )
+        }
+    }
+
+    private func recordFirstUsableShellIfNeeded() {
+        guard didRecordFirstUsableShell == false, isRuntimeGraphFixture == false else { return }
+        didRecordFirstUsableShell = true
+        StoreLaunchTimer.recordFirstUsableShell()
+    }
+
+    /// Whether an opened direct library still has cache-local or AI-content
+    /// migration work. Pure, so the launch classification can be tested.
+    nonisolated static func deferredCacheMigrationsArePending(
+        bootstrapMode: StoreBootstrapMode,
+        isFirstLibraryBuild: Bool,
+        hasEverReset: Bool,
+        cacheIsOpen: Bool,
+        localDataMigrationComplete: Bool,
+        aiContentMigrationComplete: Bool
+    ) -> Bool {
+        guard bootstrapMode == .legacyUpgrade || bootstrapMode == .builtLibrary,
+              isFirstLibraryBuild == false,
+              hasEverReset == false,
+              cacheIsOpen else { return false }
+        return localDataMigrationComplete == false || aiContentMigrationComplete == false
+    }
+
+    /// Runs the cache-local and AI-content migrations once per process after
+    /// the library is already on screen. They used to run inside launch
+    /// preparation, where an unresolved row (they retry until every row
+    /// resolves) repeated a whole-library scan in front of the UI on every
+    /// cold launch. Completion stays persisted by each migration's own flag.
+    private func startDeferredCacheMigrationsIfNeeded() {
+        guard deferredCacheMigrationTask == nil,
+              didRunDeferredCacheMigrations == false,
+              isRuntimeGraphFixture == false,
+              let library = preparedContainer,
+              Self.deferredCacheMigrationsArePending(
+                  bootstrapMode: bootstrapMode,
+                  isFirstLibraryBuild: isFirstLibraryBuildRuntime,
+                  hasEverReset: DeleteAllDataService.hasEverReset,
+                  cacheIsOpen: preparedCacheContainer != nil,
+                  localDataMigrationComplete: StoreSplitCacheLocalDataMigration.isComplete,
+                  aiContentMigrationComplete: StoreSplitCacheAIContentMigration.isComplete
+              ),
+              let cache = preparedCacheContainer else { return }
+        // A background launch must not run whole-library scans; the launch
+        // maintenance pass starts this again in the foreground.
+        guard heavyStoreWorkMayRunInCurrentAppState else { return }
+        didRunDeferredCacheMigrations = true
+        SupportDiagnosticsRecorder.shared.record("Deferred cache migrations started")
+        deferredCacheMigrationTask = Task.detached(priority: .utility) {
+            let localStart = ContinuousClock.now
+            let local = StoreSplitCacheLocalDataMigration.migrateIfNeeded(cache: cache, library: library)
+            StoreLaunchTimer.recordDeferredMaintenance(
+                "cache_local_migration",
+                milliseconds: LaunchDuration.milliseconds(localStart.duration(to: .now)),
+                outcome: local ? "complete" : "pending"
+            )
+            let aiStart = ContinuousClock.now
+            let ai = StoreSplitCacheAIContentMigration.migrate(
+                cache: cache,
+                library: library,
+                dropUnmatchedRows: true
+            )
+            StoreLaunchTimer.recordDeferredMaintenance(
+                "ai_content_migration",
+                milliseconds: LaunchDuration.milliseconds(aiStart.duration(to: .now)),
+                outcome: ai ? "complete" : "pending"
+            )
+            await MainActor.run {
+                SupportDiagnosticsRecorder.shared.record(
+                    "Deferred cache migrations ended",
+                    detail: local && ai ? "completed" : "will retry next launch"
+                )
+            }
+        }
+    }
+
+    /// Portable reconciliation and the library backfill wait here so they
+    /// never run against a library whose cache-only rows are mid-copy, and
+    /// so two AI-content passes never overlap.
+    private func awaitDeferredCacheMigrations() async {
+        if let deferredCacheMigrationTask {
+            await deferredCacheMigrationTask.value
+        }
+    }
+
+    /// Re-saves this device's own pending reset fence after the local stores
+    /// are open. It only does network work when a reset of ours is pending,
+    /// and it runs after any pending local cleanup, so its acknowledgement can
+    /// never skip that cleanup. Activation retries it again
+    /// (`synchronizeRemoteDeleteAllFenceIfNeeded`).
+    nonisolated private static func retryPendingResetFenceInBackground() {
+        guard DeleteAllDataService.canRetryPendingCloudReset else { return }
+        Task.detached(priority: .utility) {
+            _ = await DeleteAllDataService.retryPendingFence()
         }
     }
 
@@ -1652,6 +1800,8 @@ class ModelContainerManager: ObservableObject {
                     didBuildCompatibilityProjection = true
                     openedExistingProjection = true
                     self.preparedContainer = preparedContainer
+                    recordFirstUsableShellIfNeeded()
+                    startDeferredCacheMigrationsIfNeeded()
                 } else {
                     // Never show a library that is still being built. This is
                     // the one-time step, on the same screen as the migration.
@@ -1719,6 +1869,8 @@ class ModelContainerManager: ObservableObject {
     /// Adds the remaining episodes and saved transcripts while the app is in use.
     /// Backgrounding stops it; the next launch or activation continues.
     func runLibraryBackfillIfNeeded() async {
+        // The AI-content copy must never run twice at once.
+        await awaitDeferredCacheMigrations()
         guard DeleteAllDataService.hasEverReset == false,
               StoreRuntimeProjection.isLibraryBackfillPending,
               libraryFillTask == nil,
@@ -1998,6 +2150,7 @@ class ModelContainerManager: ObservableObject {
             preparedContainer = pendingRuntimeContainer
             self.pendingRuntimeContainer = nil
             cutoverProgress = nil
+            recordFirstUsableShellIfNeeded()
         }
         if openedExistingProjection {
             // Pick up what arrived while the app wasn't running.
@@ -2075,6 +2228,7 @@ class ModelContainerManager: ObservableObject {
 
     private func retryPortableWritesIfSafe() async {
         guard DeleteAllDataService.hasPendingLocalReset == false else { return }
+        guard await DeleteAllDataService.awaitPortableStatePublicationAllowed() else { return }
         await drainPortableWritesIfSafe()
         await rebuildUnqueuedPlaybackWritesIfNeeded()
     }
@@ -2123,6 +2277,12 @@ class ModelContainerManager: ObservableObject {
     }
 
     private func drainPortableWritesIfSafe() async {
+        // Never export queued state while a launch reset-fence check is still
+        // unresolved or a known reset is pending (#518).
+        guard DeleteAllDataService.mayPublishPortableState(
+            hasPendingLocalReset: DeleteAllDataService.hasPendingLocalReset,
+            launchFenceUnresolved: DeleteAllDataService.isLaunchFenceCheckUnresolved
+        ) else { return }
         guard StoreDevelopmentConfiguration.splitStoresEnabled,
               StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false,
               let userStateContainer = preparedUserStateContainer,
@@ -2642,6 +2802,15 @@ class ModelContainerManager: ObservableObject {
             AppDiagnostics.log("database_work operation=launch_store_maintenance source=launch app_state=background_without_grant skipped=true phase=after_store_preparation")
             return
         }
+        // Tombstoning and cleanup below publish portable state: a remote reset
+        // found after launch (#518) is applied first and ends this pass.
+        if DeleteAllDataService.isLaunchFenceCheckUnresolved
+            || DeleteAllDataService.hasPendingLocalReset {
+            if await synchronizeRemoteDeleteAllFenceIfNeeded() { return }
+        }
+        // A background launch skipped these; the foreground runs them now.
+        startDeferredCacheMigrationsIfNeeded()
+        await awaitDeferredCacheMigrations()
         if let userStateContainer = preparedUserStateContainer {
             await StoreSplitPlaylistPresenceStore.publish(
                 modelContainer: userStateContainer
@@ -2909,6 +3078,7 @@ class ModelContainerManager: ObservableObject {
     /// playback pause, then lets a paused player follow the newest session.
     func importRemotePlaybackState() async {
         if await synchronizeRemoteDeleteAllFenceIfNeeded() { return }
+        await awaitDeferredCacheMigrations()
         defer {
             Task { await Player.shared.followRemotePlaybackSessionIfNeeded() }
         }
@@ -3115,6 +3285,8 @@ class ModelContainerManager: ObservableObject {
         // playback guards below still apply, and foreground callers are
         // throttled by `shouldRunUserStateImport`.
         guard DeleteAllDataService.hasPendingLocalReset == false else { return .skipped }
+        guard await DeleteAllDataService.awaitPortableStatePublicationAllowed() else { return .skipped }
+        await awaitDeferredCacheMigrations()
         guard StoreCutoverState.isDeferredMigrationPending == false else { return .skipped }
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             lastSplitStoreReconcileSummary = "Paused for stability"
@@ -3205,7 +3377,16 @@ class ModelContainerManager: ObservableObject {
         if DeleteAllDataService.hasPendingCloudReset {
             _ = await retryPendingDeleteAllDataSync()
         }
-        let newFence = await DeleteAllDataService.fetchNewRemoteFence()
+        // A launch check that missed its deadline is still fetching; wait for
+        // it (bounded) instead of racing a second slow request. Whatever it
+        // found is already persisted as a pending local reset.
+        let launchCheckWasRunning = DeleteAllDataService.isLaunchFenceCheckUnresolved
+        if launchCheckWasRunning {
+            await DeleteAllDataService.launchFenceGate.waitIfUnresolved(
+                limit: DeleteAllDataService.deferredFenceWaitLimit
+            )
+        }
+        let newFence = launchCheckWasRunning ? nil : await DeleteAllDataService.fetchNewRemoteFence()
         guard newFence != nil || DeleteAllDataService.hasPendingLocalReset else { return false }
         guard let library = preparedContainer,
               let userState = preparedUserStateContainer else { return true }
@@ -3437,6 +3618,7 @@ class ModelContainerManager: ObservableObject {
     /// Lightweight playlist hydration for split-only runtimes. Legacy upgrade
     /// reads retain their shipping authority and background migration policy.
     func reconcileSplitRuntimePlaylists() async {
+        await awaitDeferredCacheMigrations()
         guard runtimeStoreReadiness == .ready,
               let runtime = preparedContainer,
               let userState = preparedUserStateContainer else {
@@ -3817,7 +3999,7 @@ class ModelContainerManager: ObservableObject {
             next: { () async -> HydrationItem? in
                 guard let item = await next() else { return nil }
                 announceIfNeeded(item)
-                monitor.feedStarted()
+                monitor.feedStarted(key: item.key)
                 return item
             },
             shouldContinue: { [weak self] in
@@ -3843,7 +4025,7 @@ class ModelContainerManager: ObservableObject {
                 }
             },
             completed: { (item: HydrationItem, outcome: HydrationOutcome) in
-                monitor.feedFinished()
+                monitor.feedFinished(key: item.key)
                 switch outcome {
                 case .fetched(_, let milliseconds):
                     didRefreshAny = true
@@ -4023,6 +4205,12 @@ class ModelContainerManager: ObservableObject {
             return result
         }
         guard DeleteAllDataService.hasPendingLocalReset == false else { return deferredResult() }
+        // A launch reset-fence check that missed its deadline resolves first,
+        // and the deferred cache-only copy finishes, before any import (#518).
+        guard await DeleteAllDataService.awaitPortableStatePublicationAllowed() else {
+            return deferredResult()
+        }
+        await awaitDeferredCacheMigrations()
         guard StoreDevelopmentConfiguration.splitStoreHeavyWorkPaused == false else {
             return deferredResult()
         }

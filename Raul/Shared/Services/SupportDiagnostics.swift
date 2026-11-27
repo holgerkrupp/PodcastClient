@@ -441,6 +441,11 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         return """
         Library origin: \(origin)
         Last completed store opening: \(StoreLaunchDiagnostics.latestTimings)
+        Store opening in progress: \(StoreLaunchDiagnostics.inProgressTimings ?? "none")
+        Last unfinished store opening: \(StoreLaunchDiagnostics.interruptedTimings)
+        First usable library after process start: \(StoreLaunchDiagnostics.firstUsableShell)
+        Deferred launch maintenance: \(StoreLaunchDiagnostics.deferredMaintenance)
+        Launch reset check still running: \(DeleteAllDataService.isLaunchFenceCheckUnresolved)
         Library contents: \(StoreLaunchDiagnostics.libraryContents)
         """
     }
@@ -503,6 +508,8 @@ final class SupportDiagnosticsRecorder: ObservableObject {
             "Runtime compatibility hydration finished",
             "Runtime compatibility hydration interrupted",
             "Runtime compatibility hydration failed",
+            "Deferred cache migrations started",
+            "Deferred cache migrations ended",
             "Playlist hydration started",
             "Playlist hydration finished"
         ]

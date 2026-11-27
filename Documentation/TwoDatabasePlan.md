@@ -60,6 +60,23 @@ with cache data.
   only the one-time first build of a split-install library. The first build seeds from the
   cache when one is present (older split-only installs) and otherwise from UserState plus the
   checkpointed feed fill.
+- Launch critical path (#518, Nov 2026): for an existing local library only local work runs
+  before the first usable UI: App Group/lineage read, promotion, UserState open, the
+  historical cache open while its migrations are unfinished, the one-time index backfill,
+  the SharedDatabase open and any locally known pending reset cleanup. The remote reset
+  fence is fetched concurrently and awaited for at most 1.5 s before UserState opens; a
+  check that misses the deadline keeps running, persists any fence it finds, and until it
+  resolves (bounded at 30 s, after which the launch counts as offline exactly as before)
+  portable write drains, reconciliation and imports wait for it. Our own pending fence is
+  re-saved in the background after local cleanup. The cache-local and AI-content migrations
+  now run once per process right after the library is shown (foreground only), and
+  reconciliation, imports and the library backfill await that pass. Each phase is timed in
+  Support Diagnostics ("Last completed store opening", "Store opening in progress", "Last
+  unfinished store opening", "First usable library after process start", "Deferred launch
+  maintenance"). Residual: the UserState CloudKit mirror can start exporting before a slow
+  fence check resolves; that was already true for offline launches. 4245e89b did not add
+  work to this path (it only skips a missing cache); no device timing has proven which phase
+  caused the reported wait.
 - A prolonged startup wait is an opening/update status, not a progress estimate. Launch
   diagnostics now record the local store filename and its initial SQLite/WAL sizes so a slow
   `SharedDatabase.sqlite` or older `LibraryRuntime.sqlite` open can be distinguished.

@@ -87,7 +87,7 @@ final class StoreLibraryConvergenceStepTests: XCTestCase {
     // MARK: Launch diagnostics
 
     func testTimerKeepsEveryStepAndTheLogSize() {
-        var timer = StoreLaunchTimer()
+        var timer = StoreLaunchTimer(defaults: defaults)
         timer.mark("user_state")
         timer.mark("library")
 

@@ -35,6 +35,12 @@ runtime has not fully converged yet:
   store), for unfinished cache-local migrations, and to seed an older split-only build.
 - Never-fetched subscription stubs are retried from durable library state across
   cancellation, offline periods and relaunch (#441).
+- #518: an existing library no longer waits on the network or on optional maintenance before
+  it is shown. The remote reset fence check is bounded to 1.5 s at launch; a late check gates
+  portable exports/reconciliation (bounded) instead of the UI, and a known pending reset is
+  still cleared before the library is returned. Cache-local/AI-content migrations run once
+  per process after the library is usable. Launch phases and first-usable time are in Support
+  Diagnostics. Device p50/p95 timing remains for #291.
 - Long startup waits now say the app is opening/updating its local library and explain that the
   user can reopen it; they no longer imply the app must stay foreground. Recovery diagnostics
   include the opening local-store filename and initial SQLite/WAL sizes.
