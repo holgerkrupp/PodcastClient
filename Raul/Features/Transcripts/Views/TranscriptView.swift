@@ -34,6 +34,11 @@ struct TranscriptView: View {
     @Binding var currentTime: TimeInterval
     var onOpenFullTranscript: (() -> Void)?
     var reservesBottomTrailingAccessory = false
+    /// Verified audio-clock word timing (#492). Upgrades only the highlight;
+    /// it never changes `snapshot`, its segments or the caption window.
+    var enhancedWords: TranscriptEnhancedWords = .empty
+    /// Called on every playback tick so the host can load timing for a new window.
+    var onPlaybackTimeChange: ((TimeInterval) -> Void)?
 
     @State private var window = InlineCaptionWindow()
     @State private var followPlayback = true
@@ -47,12 +52,16 @@ struct TranscriptView: View {
         snapshot: InlineCaptionSnapshot,
         currentTime: Binding<TimeInterval>,
         onOpenFullTranscript: (() -> Void)? = nil,
-        reservesBottomTrailingAccessory: Bool = false
+        reservesBottomTrailingAccessory: Bool = false,
+        enhancedWords: TranscriptEnhancedWords = .empty,
+        onPlaybackTimeChange: ((TimeInterval) -> Void)? = nil
     ) {
         self.snapshot = snapshot
         self._currentTime = currentTime
         self.onOpenFullTranscript = onOpenFullTranscript
         self.reservesBottomTrailingAccessory = reservesBottomTrailingAccessory
+        self.enhancedWords = enhancedWords
+        self.onPlaybackTimeChange = onPlaybackTimeChange
     }
 
     private var usesPublisherAlignment: Bool { snapshot.usesPublisherAlignment }
@@ -117,6 +126,9 @@ struct TranscriptView: View {
                     if canFollowPlayback { startTracker() }
                 }
                 .onDisappear { tracker.stop() }
+                .onChange(of: enhancedWords) {
+                    tracker.updateEnhancedWords(enhancedWords.words)
+                }
                 .publisherTimingDemand(episodeURL: usesPublisherAlignment ? episodeURL : nil)
                 .onChange(of: currentTime) {
                     // Never move a window the listener is reading; a saved
@@ -128,6 +140,7 @@ struct TranscriptView: View {
                         }
                     }
                     tracker.refresh()
+                    onPlaybackTimeChange?(currentTime)
                 }
                 .onChange(of: Player.shared.currentEpisodeURL) {
                     followPlayback = true
@@ -286,6 +299,7 @@ struct TranscriptView: View {
 
     private func startTracker() {
         tracker.start(segments: window.captionSegments, episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
+        if !enhancedWords.words.isEmpty { tracker.updateEnhancedWords(enhancedWords.words) }
     }
 
     private func updateTracker() {
@@ -305,6 +319,17 @@ struct TranscriptView: View {
         window.materialize(segments: snapshot.segments, center: center, radius: radius, layout: layout)
         if window.captionSegments != previous { updateTracker() }
     }
+}
+
+/// Verified audio-clock word spans keyed by displayed segment ID (#492).
+/// Compared by `revision` only, so SwiftUI change checks stay cheap.
+struct TranscriptEnhancedWords: Equatable, Sendable {
+    static let empty = Self(revision: 0, words: [:])
+
+    let revision: Int
+    let words: [UUID: [TranscriptTimedSpan]]
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.revision == rhs.revision }
 }
 
 /// The compact, immutable caption input for ``TranscriptView``. Segments are

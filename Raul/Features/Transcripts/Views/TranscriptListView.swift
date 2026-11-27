@@ -41,6 +41,7 @@ struct TranscriptListView: View {
     @State private var selectionActive = false
     @State private var frozenActive: TranscriptPlaybackTracker.Active?
     @State private var pendingRowsUpdate = false
+    @State private var timingUpgrade = PublisherTimingUpgradeLoader()
 
     init(
         preparedSnapshot: TranscriptPreparedSnapshot,
@@ -215,8 +216,10 @@ struct TranscriptListView: View {
                 .onAppear {
                     if canFollowPlayback {
                         tracker.start(segments: displayRows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
+                        tracker.updateEnhancedWords(timingUpgrade.words.words)
                     }
                     scrollToInitialLocation(with: proxy)
+                    configureTimingUpgrade()
                 }
                 .task(id: preparedSnapshot) {
                     await prepareDisplayRows()
@@ -225,13 +228,36 @@ struct TranscriptListView: View {
             PlayerOpeningPerformance.event("Transcript surface visible")
         }
         .publisherTimingDemand(episodeURL: usesPublisherAlignment ? viewedEpisodeURL : nil)
-                .onDisappear { tracker.stop() }
-                .onChange(of: player.playPosition) { tracker.refresh() }
-                .onChange(of: player.currentEpisodeURL) { tracker.refresh() }
+                .onDisappear {
+                    tracker.stop()
+                    timingUpgrade.configure(nil, playhead: 0)
+                }
+                .onChange(of: player.playPosition) {
+                    tracker.refresh()
+                    timingUpgrade.playheadMoved(to: player.playPosition)
+                }
+                .onChange(of: player.currentEpisodeURL) {
+                    tracker.refresh()
+                    configureTimingUpgrade()
+                }
                 .onChange(of: canFollowPlayback) {
                     if canFollowPlayback {
                         tracker.start(segments: displayRows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
                     } else { tracker.stop() }
+                    configureTimingUpgrade()
+                }
+                // Verified word timing upgrades only the highlight: rows,
+                // scroll position, search, selection and Follow stay as they are.
+                .onChange(of: timingUpgrade.words) {
+                    tracker.updateEnhancedWords(timingUpgrade.words.words)
+                }
+                .onReceive(
+                    NotificationCenter.default.publisher(for: .publisherTranscriptTimingDidChange)
+                        .receive(on: DispatchQueue.main)
+                ) { notification in
+                    timingUpgrade.timingDidChange(
+                        episodeURL: notification.userInfo?[PublisherTimingEvidenceLoader.episodeURLKey] as? URL
+                    )
                 }
                 .onChange(of: searchText) {
                     if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
@@ -246,6 +272,7 @@ struct TranscriptListView: View {
                     // the rows on screen; the task below swaps in the new rows
                     // without a loading state, scroll reset or Follow recenter
                     // (#487).
+                    configureTimingUpgrade()
                 }
                 .onChange(of: isPreparingRows) {
                     guard isPreparingRows == false else { return }
@@ -440,6 +467,23 @@ struct TranscriptListView: View {
         } else {
             await player.playEpisode(viewedEpisodeURL, playDirectly: true, startingAt: audioTime)
         }
+    }
+
+    /// Publisher transcripts of the episode playing from a downloaded file get
+    /// verified word timing; anything else keeps its existing cue timing.
+    private func configureTimingUpgrade() {
+        guard canFollowPlayback, isShowingCurrentEpisode, let viewedEpisode,
+              let document = preparedSnapshot.presentation.document, document.source == .publisher else {
+            timingUpgrade.configure(nil, playhead: player.playPosition)
+            return
+        }
+        timingUpgrade.configure(PublisherTimingUpgradeLoader.Source.make(
+            episodeURL: viewedEpisodeURL,
+            episodeID: viewedEpisode.stableEpisodeIdentity.key,
+            localMediaURL: viewedEpisode.localFile,
+            document: document,
+            options: .full
+        ), playhead: player.playPosition)
     }
 
     private func formatTime(_ timeInterval: TimeInterval) -> String {
@@ -742,6 +786,197 @@ private struct PartialTranscriptPane: View {
         guard !Task.isCancelled, preparation.generation.isCurrent(token),
               let snapshot = updated.snapshot else { return }
         partial = snapshot
+    }
+}
+
+// MARK: - Verified publisher word timing (#492)
+
+/// Loads verified publisher word timing for a window around the playhead and
+/// publishes it as audio-clock spans keyed by displayed segment ID, so a
+/// transcript surface can upgrade its highlighting in place. Only `words` is
+/// observed; rows, segments and snapshots are never touched.
+///
+/// One load runs at a time. Requests that arrive while it runs coalesce into a
+/// single follow-up load, and a result is dropped when the source changed
+/// (other episode, transcript revision or media) since the load began.
+@MainActor
+@Observable
+final class PublisherTimingUpgradeLoader {
+    /// Everything a load needs, captured on the main actor.
+    struct Source: Sendable, Equatable {
+        let episodeURL: URL
+        /// The stable identity the synchronization keys its cache with.
+        let episodeID: String
+        let localMediaURL: URL
+        /// The canonical publisher document; its lines are in display order.
+        let document: TranscriptDocumentSnapshot
+        let options: TranscriptSegmentBuilder.Options
+
+        /// Cheap: the timing revision already identifies the document lines.
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.episodeURL == rhs.episodeURL && lhs.episodeID == rhs.episodeID
+                && lhs.localMediaURL == rhs.localMediaURL && lhs.options == rhs.options
+                && lhs.document.timingRevision == rhs.document.timingRevision
+                && lhs.document.lines.count == rhs.document.lines.count
+        }
+
+        /// Nil unless `document` is a publisher transcript of `episodeURL` and the
+        /// media is a downloaded file; other transcripts keep their cue timing.
+        static func make(
+            episodeURL: URL?,
+            episodeID: String?,
+            localMediaURL: URL?,
+            document: TranscriptDocumentSnapshot?,
+            options: TranscriptSegmentBuilder.Options
+        ) -> Self? {
+            guard let episodeURL, let episodeID, !episodeID.isEmpty,
+                  let document, document.source == .publisher,
+                  document.timingRevision?.isEmpty == false,
+                  let localMediaURL, localMediaURL.isFileURL,
+                  FileManager.default.fileExists(atPath: localMediaURL.path) else { return nil }
+            return Self(episodeURL: episodeURL, episodeID: episodeID, localMediaURL: localMediaURL,
+                        document: document, options: options)
+        }
+    }
+
+    struct Token: Equatable, Sendable {
+        let episodeURL: URL
+        let generation: Int
+    }
+
+    typealias Load = @Sendable (Source, Range<TimeInterval>) async -> [UUID: [TranscriptTimedSpan]]?
+
+    nonisolated static let lookBehind: TimeInterval = 30
+    nonisolated static let lookAhead: TimeInterval = 150
+    /// Reload this long before the playhead reaches the end of the loaded window.
+    nonisolated static let reloadMargin: TimeInterval = 30
+
+    private(set) var words = TranscriptEnhancedWords.empty
+
+    @ObservationIgnored private(set) var source: Source?
+    @ObservationIgnored private(set) var loadedWindow: Range<TimeInterval>?
+    @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var inFlight: Task<Void, Never>?
+    @ObservationIgnored private var pendingReload = false
+    @ObservationIgnored private var latestPlayhead: TimeInterval = 0
+    @ObservationIgnored private let load: Load
+
+    init(load: @escaping Load = { await PublisherTimingUpgradeLoader.loadEvidence($0, window: $1) }) {
+        self.load = load
+    }
+
+    nonisolated static func window(around playhead: TimeInterval) -> Range<TimeInterval> {
+        let time = playhead.isFinite ? max(0, playhead) : 0
+        return max(0, time - lookBehind)..<(time + lookAhead)
+    }
+
+    /// Whether the playhead left (or is about to leave) the loaded window.
+    nonisolated static func needsReload(loadedWindow: Range<TimeInterval>?, playhead: TimeInterval) -> Bool {
+        guard playhead.isFinite else { return false }
+        guard let loadedWindow else { return true }
+        let end = max(loadedWindow.lowerBound, loadedWindow.upperBound - reloadMargin)
+        return playhead < loadedWindow.lowerBound || playhead > end
+    }
+
+    var currentToken: Token? {
+        source.map { Token(episodeURL: $0.episodeURL, generation: generation) }
+    }
+
+    func isCurrent(_ token: Token) -> Bool { token == currentToken }
+
+    /// Switches to `source` (nil stops). The same source is a no-op; a different
+    /// one drops the running load and clears the published words.
+    func configure(_ source: Source?, playhead: TimeInterval) {
+        latestPlayhead = playhead
+        guard source != self.source else { return }
+        generation += 1
+        inFlight?.cancel()
+        inFlight = nil
+        pendingReload = false
+        loadedWindow = nil
+        self.source = source
+        if !words.words.isEmpty { publish([:]) }
+        if source != nil { startLoad(after: nil) }
+    }
+
+    /// Cheap enough for every playback tick.
+    func playheadMoved(to playhead: TimeInterval) {
+        latestPlayhead = playhead
+        guard source != nil, inFlight == nil,
+              Self.needsReload(loadedWindow: loadedWindow, playhead: playhead) else { return }
+        startLoad(after: .milliseconds(250))
+    }
+
+    /// New mappings were cached for `episodeURL`; bursts coalesce into one load.
+    func timingDidChange(episodeURL: URL?) {
+        guard let source, episodeURL == nil || episodeURL == source.episodeURL else { return }
+        startLoad(after: .milliseconds(500))
+    }
+
+    private func startLoad(after delay: Duration?) {
+        guard let source, let token = currentToken else { return }
+        guard inFlight == nil else {
+            pendingReload = true
+            return
+        }
+        let load = self.load
+        inFlight = Task { [weak self] in
+            if let delay {
+                try? await Task.sleep(for: delay)
+            } else {
+                await Task.yield()
+            }
+            guard let self, !Task.isCancelled, self.isCurrent(token) else { return }
+            let window = Self.window(around: self.latestPlayhead)
+            // Recorded before the result so ticks do not start a second load.
+            self.loadedWindow = window
+            let result = await load(source, window)
+            guard !Task.isCancelled else { return }
+            self.receive(result, for: token)
+        }
+    }
+
+    /// Applies a finished load. Results for a superseded source are dropped.
+    func receive(_ result: [UUID: [TranscriptTimedSpan]]?, for token: Token) {
+        guard isCurrent(token) else { return }
+        inFlight = nil
+        let newWords = result ?? [:]
+        if newWords != words.words { publish(newWords) }
+        if pendingReload || Self.needsReload(loadedWindow: loadedWindow, playhead: latestPlayhead) {
+            pendingReload = false
+            startLoad(after: .milliseconds(250))
+        }
+    }
+
+    private func publish(_ newWords: [UUID: [TranscriptTimedSpan]]) {
+        words = TranscriptEnhancedWords(revision: words.revision + 1, words: newWords)
+    }
+
+    /// Reads cached publisher timing and rebases it onto the source's segments, off the main actor.
+    nonisolated static func loadEvidence(
+        _ source: Source,
+        window: Range<TimeInterval>
+    ) async -> [UUID: [TranscriptTimedSpan]]? {
+        let work = Task.detached(priority: .utility) { () -> [UUID: [TranscriptTimedSpan]]? in
+            // Prepared snapshots carry no episode identity; resolve the same
+            // lines under the identity the synchronization cache uses.
+            let document = source.document.episodeID == source.episodeID
+                ? source.document
+                : TranscriptDocumentSnapshot.resolve(episodeID: source.episodeID,
+                                                     storedLines: source.document.lines)
+            guard let document, !Task.isCancelled,
+                  let evidence = await PublisherTimingEvidenceLoader.load(
+                    document: document, episodeURL: source.episodeURL,
+                    localMediaURL: source.localMediaURL, audioWindow: window),
+                  !Task.isCancelled else { return nil }
+            return TranscriptSegmentBuilder.rebasedWords(
+                lines: document.lines, wordsByLine: evidence.wordsByLine, options: source.options)
+        }
+        return await withTaskCancellationHandler {
+            await work.value
+        } onCancel: {
+            work.cancel()
+        }
     }
 }
 

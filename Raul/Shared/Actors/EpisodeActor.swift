@@ -3387,17 +3387,29 @@ actor EpisodeActor {
               lines.count >= 3,
               lines.allSatisfy({ $0.transcriptSource == .publisher }) else { return nil }
 
-        let candidates = lines.map {
+        // Candidates and revision come from the same canonical document the
+        // transcript UI shows (#492). Hashing the raw stored lines instead
+        // included blank lines and SQLite tie order, so the revisions differed
+        // and cached word timing never reached playback highlighting.
+        let sources = lines.map {
+            TranscriptSegmentSource(id: $0.id, speaker: $0.speaker, text: $0.text, startTime: $0.startTime,
+                                    endTime: $0.endTime, sourceRawValue: $0.sourceRawValue, timedSpans: $0.timedSpans)
+        }
+        guard let document = TranscriptDocumentSnapshot.resolve(
+                episodeID: episode.stableEpisodeIdentity.key, storedLines: sources
+              ),
+              document.source == .publisher, document.lines.count >= 3,
+              let revision = document.timingRevision else { return nil }
+        let candidates = document.lines.map {
             TranscriptAlignmentCandidate(
                 id: $0.id.uuidString,
                 transcriptTime: $0.startTime,
                 text: $0.text,
-                source: $0.transcriptSource,
+                source: $0.sourceRawValue.flatMap(CachedTranscriptSource.init(rawValue:)),
                 endTime: $0.endTime,
                 timedSpans: $0.timedSpans
             )
         }
-        guard let revision = TranscriptSynchronizationRevision.make(candidates: candidates) else { return nil }
 
         return TranscriptSynchronizationInput(
             episodeID: episode.stableEpisodeIdentity.key,

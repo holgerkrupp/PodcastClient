@@ -14,8 +14,6 @@ struct TranscriptDocumentSnapshot: Equatable, Sendable {
     let lines: [TranscriptSegmentSource]
     let segments: [TranscriptSegment]
     fileprivate let baseQuality: TranscriptPresentationSnapshot.TimingQuality
-    /// Every paragraph consists of consecutive, nonblank source lines.
-    fileprivate let paragraphByLine: [UUID: Range<Int>]
 
     static func resolve(episodeID: String, storedLines: [TranscriptSegmentSource]) -> Self? {
         let usable = storedLines.filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -45,15 +43,8 @@ struct TranscriptDocumentSnapshot: Equatable, Sendable {
                                          endTime: $0.endTime, timedSpans: $0.timedSpans)
         })
         let segments = TranscriptSegmentBuilder.makeSegments(fromSorted: lines, options: .full)
-        var paragraphByLine: [UUID: Range<Int>] = [:]
-        var offset = 0
-        for paragraph in segments {
-            let range = offset..<(offset + paragraph.lineIDs.count)
-            for id in paragraph.lineIDs { paragraphByLine[id] = range }
-            offset = range.upperBound
-        }
         return Self(episodeID: episodeID, source: selected, timingRevision: revision, lines: lines,
-                    segments: segments, baseQuality: .native(in: segments), paragraphByLine: paragraphByLine)
+                    segments: segments, baseQuality: .native(in: segments))
     }
 }
 
@@ -109,23 +100,8 @@ struct TranscriptPresentationSnapshot: Equatable, Sendable {
            let mediaFingerprint, !mediaFingerprint.isEmpty, mediaFingerprint == evidence.mediaFingerprint,
            document.episodeID == evidence.episodeID, document.timingRevision == evidence.transcriptRevision {
             timeline = evidence.timeline
-            let affected = Set(evidence.wordsByLine.keys.compactMap { document.paragraphByLine[$0] })
-            for paragraph in affected {
-                // Rebase only the touched paragraphs using the builder's existing trimming rules.
-                let mapped = document.lines[paragraph].map { line in
-                    let text = line.text as NSString
-                    return TranscriptSegmentSource(id: line.id, speaker: line.speaker, text: line.text,
-                                            startTime: line.startTime, endTime: line.endTime,
-                                            timedSpans: (evidence.wordsByLine[line.id] ?? []).filter {
-                                                $0.cueLevel != true && $0.startTime >= 0 &&
-                                                Self.isComposedCharacterAligned($0, in: text)
-                                            })
-                }
-                for segment in TranscriptSegmentBuilder.makeSegments(fromSorted: mapped, options: .full) {
-                    let words = segment.timedSpans.filter { $0.cueLevel != true }
-                    if !words.isEmpty { enhancedWords[segment.id] = words }
-                }
-            }
+            enhancedWords = TranscriptSegmentBuilder.rebasedWords(
+                lines: document.lines, wordsByLine: evidence.wordsByLine, options: .full)
         }
         if quality != .nativeWords {
             if !enhancedWords.isEmpty {
@@ -140,11 +116,48 @@ struct TranscriptPresentationSnapshot: Equatable, Sendable {
 
     /// Derived spans must cover whole graphemes. `Range(_:in:)` accepts UTF-16 offsets that
     /// split a surrogate pair or cluster, which would duplicate highlighting inside one emoji.
-    private static func isComposedCharacterAligned(_ span: TranscriptTimedSpan, in text: NSString) -> Bool {
+    fileprivate static func isComposedCharacterAligned(_ span: TranscriptTimedSpan, in text: NSString) -> Bool {
         guard span.location >= 0, span.length > 0, span.length <= text.length - min(span.location, text.length) else {
             return false
         }
         let range = NSRange(location: span.location, length: span.length)
         return text.rangeOfComposedCharacterSequences(for: range) == range
+    }
+}
+
+extension TranscriptSegmentBuilder {
+    /// Rebases audio-clock word spans, keyed by original (untrimmed) line ID, onto the
+    /// segments `lines` form with `options`. `lines` must be in display order, as in
+    /// ``TranscriptDocumentSnapshot/lines``; result keys equal the IDs that
+    /// `makeSegments(fromSorted: lines, options: options)` produces. Only segments that
+    /// contain a line from `wordsByLine` are regrouped. Cue-level, negative-time and
+    /// composed-character-splitting spans are dropped.
+    nonisolated static func rebasedWords(
+        lines: [TranscriptSegmentSource],
+        wordsByLine: [UUID: [TranscriptTimedSpan]],
+        options: Options
+    ) -> [UUID: [TranscriptTimedSpan]] {
+        guard !wordsByLine.isEmpty else { return [:] }
+        let indexed = makeIndexedSegments(fromSorted: lines, startingAt: 0, options: options)
+        var result: [UUID: [TranscriptTimedSpan]] = [:]
+        for (position, entry) in indexed.enumerated()
+        where entry.segment.lineIDs.contains(where: { wordsByLine[$0] != nil }) {
+            // Grouping ignores spans, so regrouping one segment's lines yields that segment again.
+            let end = position + 1 < indexed.count ? indexed[position + 1].sourceIndex : lines.count
+            let mapped = lines[entry.sourceIndex..<end].map { line in
+                let text = line.text as NSString
+                return TranscriptSegmentSource(id: line.id, speaker: line.speaker, text: line.text,
+                                               startTime: line.startTime, endTime: line.endTime,
+                                               timedSpans: (wordsByLine[line.id] ?? []).filter {
+                                                   $0.cueLevel != true && $0.startTime >= 0 &&
+                                                   TranscriptPresentationSnapshot.isComposedCharacterAligned($0, in: text)
+                                               })
+            }
+            for segment in makeSegments(fromSorted: mapped, options: options) {
+                let words = segment.timedSpans.filter { $0.cueLevel != true }
+                if !words.isEmpty { result[segment.id] = words }
+            }
+        }
+        return result
     }
 }

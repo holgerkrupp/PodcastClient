@@ -57,15 +57,18 @@ struct TranscriptPreparedSnapshot: Equatable, Sendable {
     /// while callers that need provenance can inspect the same immutable model.
     let presentation: TranscriptPresentationSnapshot
 
+    /// - Parameter episodeID: `Episode.stableEpisodeIdentity.key`; the canonical
+    ///   document carries it so cached publisher word timing can be matched (#492).
     static func make(
         from sources: [TranscriptSegmentSource],
-        sourcesAreSorted: Bool = false
+        sourcesAreSorted: Bool = false,
+        episodeID: String = ""
     ) -> Self {
         let orderedSources = sourcesAreSorted
             ? sources
             : sources.sorted { $0.startTime < $1.startTime }
         let document = TranscriptDocumentSnapshot.resolve(
-            episodeID: "",
+            episodeID: episodeID,
             storedLines: orderedSources
         )
         let presentation = TranscriptPresentationSnapshot.resolve(

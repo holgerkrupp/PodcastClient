@@ -100,10 +100,12 @@ actor PublisherTranscriptTimingOverlayCache {
         return result.sorted { ($0.audioStart, $0.tokenIndex) < ($1.audioStart, $1.tokenIndex) }
     }
 
-    func merge(_ mappings: [Mapping], for key: Key) throws {
-        guard let digest = key.digest else { return }
+    /// - Returns: Whether any stored mapping was added or superseded.
+    @discardableResult
+    func merge(_ mappings: [Mapping], for key: Key) throws -> Bool {
+        guard let digest = key.digest else { return false }
         let pages = Dictionary(grouping: mappings.filter(\.isUsable)) { $0.tokenIndex / Chunk.tokensPerChunk }
-        guard !pages.isEmpty else { return }
+        guard !pages.isEmpty else { return false }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var entries = try index()
         if needsCleanup {
@@ -137,6 +139,7 @@ actor PublisherTranscriptTimingOverlayCache {
             try removeUnreferencedChunks(keeping: entries)
             needsCleanup = false
         }
+        return changed
     }
 
     func remove(for key: Key) throws {

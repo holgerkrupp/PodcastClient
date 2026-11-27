@@ -798,6 +798,22 @@ actor TranscriptSynchronizationService {
         try cachedFingerprint(for: url, bounded: true)
     }
 
+    /// Bounded overlay-cache fingerprint, reusing the size/mtime cache. Used by
+    /// ``PublisherTimingEvidenceLoader`` so playback UI reads the same cache key.
+    func boundedFingerprint(for url: URL) throws -> String {
+        try overlayMediaFingerprint(for: url)
+    }
+
+    /// The full-file digest only when it was already computed for the unchanged file.
+    /// Never hashes, so callers can use it for optional, cheap lookups.
+    func cachedFullFingerprint(for url: URL) -> String? {
+        guard let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey]),
+              let fileSize = values.fileSize,
+              let cached = cachedFingerprints["full:" + url.standardizedFileURL.path],
+              cached.size == Int64(fileSize), cached.modifiedAt == values.contentModificationDate else { return nil }
+        return cached.digest
+    }
+
     private func cachedFingerprint(for url: URL, bounded: Bool) throws -> String {
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         guard let fileSize = values.fileSize else { throw TranscriptAudioSnippetError.invalidFormat }
@@ -1041,8 +1057,13 @@ actor TranscriptSynchronizationService {
                 publisherLanguage: input.language ?? AITranscripts.defaultSpeechLanguageIdentifier,
                 speechLanguage: locale) ?? []
             try Task.checkCancellation()
-            if !mappings.isEmpty {
-                try? await PublisherTranscriptTimingOverlayCache.shared.merge(mappings, for: overlayKey)
+            if !mappings.isEmpty,
+               (try? await PublisherTranscriptTimingOverlayCache.shared.merge(mappings, for: overlayKey)) == true {
+                let episodeURL = input.episodeURL
+                await MainActor.run {
+                    NotificationCenter.default.post(name: .publisherTranscriptTimingDidChange, object: nil,
+                                                    userInfo: [PublisherTimingEvidenceLoader.episodeURLKey: episodeURL])
+                }
             }
         }
         return anchor

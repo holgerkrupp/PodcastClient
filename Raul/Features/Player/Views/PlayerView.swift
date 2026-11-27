@@ -697,9 +697,9 @@ actor PlayerTranscriptModelActor {
             predicate: #Predicate { $0.url == episodeURL }
         )
         episodeDescriptor.fetchLimit = 1
-        guard let episodeID = try modelContext.fetch(episodeDescriptor).first?.persistentModelID else {
-            return nil
-        }
+        guard let episode = try modelContext.fetch(episodeDescriptor).first else { return nil }
+        let episodeID = episode.persistentModelID
+        let stableEpisodeID = episode.stableEpisodeIdentity.key
         // Foreign-key predicate so SQLite can use the episode index.
         let descriptor = FetchDescriptor<TranscriptLineAndTime>(
             predicate: #Predicate { $0.episode != nil && $0.episode!.persistentModelID == episodeID },
@@ -718,7 +718,9 @@ actor PlayerTranscriptModelActor {
         }
         guard sources.isEmpty == false else { return nil }
 
-        let snapshot = TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
+        let snapshot = TranscriptPreparedSnapshot.make(
+            from: sources, sourcesAreSorted: true, episodeID: stableEpisodeID
+        )
         os_signpost(
             .event,
             log: PlayerOpeningPerformance.log,

@@ -52,7 +52,12 @@ struct PlayerTranscriptOverlayHost: View {
             }
             .task(id: episode.url) {
                 let container = modelContext.container
-                presenter.show(episodeURL: episode.url, container: container) { [episode] in
+                presenter.show(
+                    episodeURL: episode.url,
+                    container: container,
+                    timingIdentity: .init(episodeID: episode.stableEpisodeIdentity.key,
+                                          localMediaURL: episode.localFile)
+                ) { [episode] in
                     await LiveTranscriptController.shared.startAutomaticallyIfAppropriate(
                         episode: episode, container: container
                     )
@@ -67,6 +72,14 @@ struct PlayerTranscriptOverlayHost: View {
                     episodeURL: notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL
                 )
             }
+            .onReceive(
+                NotificationCenter.default.publisher(for: .publisherTranscriptTimingDidChange)
+                    .receive(on: DispatchQueue.main)
+            ) { notification in
+                presenter.timing.timingDidChange(
+                    episodeURL: notification.userInfo?[PublisherTimingEvidenceLoader.episodeURLKey] as? URL
+                )
+            }
     }
 
     @ViewBuilder
@@ -77,7 +90,9 @@ struct PlayerTranscriptOverlayHost: View {
                 snapshot: snapshot,
                 currentTime: $player.playPosition,
                 onOpenFullTranscript: { onOpenFullTranscript(true) },
-                reservesBottomTrailingAccessory: true
+                reservesBottomTrailingAccessory: true,
+                enhancedWords: snapshot.kind == .document ? presenter.timing.words : .empty,
+                onPlaybackTimeChange: { presenter.playheadMoved(to: $0) }
             )
             .onAppear { presenter.noteContentVisible() }
         case .preparing:
@@ -222,6 +237,15 @@ enum InlineTranscriptState: Equatable, Sendable {
 @Observable
 final class InlineTranscriptPresenter {
     private(set) var state: InlineTranscriptState = .preparing
+    /// Verified publisher word timing for document captions (#492). Observed
+    /// separately so a timing-only update never bumps the caption snapshot.
+    @ObservationIgnored let timing: PublisherTimingUpgradeLoader
+
+    /// What the episode contributes to a verified-timing lookup, captured on show.
+    struct TimingIdentity: Sendable {
+        let episodeID: String
+        let localMediaURL: URL?
+    }
 
     @ObservationIgnored private let live: LiveTranscriptController
     @ObservationIgnored private var episodeURL: URL?
@@ -236,9 +260,17 @@ final class InlineTranscriptPresenter {
     @ObservationIgnored private var contentSignpost: OSSignpostID?
     @ObservationIgnored private var requestLiveStart: (@MainActor () async -> Void)?
     @ObservationIgnored private var liveStartTask: Task<Void, Never>?
+    @ObservationIgnored private var timingIdentity: TimingIdentity?
+    /// The canonical document behind `.document` captions; nil for live/partial.
+    @ObservationIgnored private var timingDocument: TranscriptDocumentSnapshot?
+    @ObservationIgnored private var timingCheckedCurrentEpisodeURL: URL?
 
-    init(live: LiveTranscriptController = .shared) {
+    init(
+        live: LiveTranscriptController = .shared,
+        timing: PublisherTimingUpgradeLoader = PublisherTimingUpgradeLoader()
+    ) {
         self.live = live
+        self.timing = timing
     }
 
     /// Phase A is the caller's frame: state is `.preparing` and nothing else
@@ -248,11 +280,13 @@ final class InlineTranscriptPresenter {
     func show(
         episodeURL: URL?,
         container: ModelContainer,
+        timingIdentity: TimingIdentity? = nil,
         requestLiveStart: (@MainActor () async -> Void)? = nil
     ) {
         stop()
         self.episodeURL = episodeURL
         self.container = container
+        self.timingIdentity = timingIdentity
         self.requestLiveStart = requestLiveStart
         guard episodeURL != nil else {
             state = .status(.noTranscript)
@@ -290,6 +324,10 @@ final class InlineTranscriptPresenter {
         accumulator = InlineSegmentAccumulator()
         publisherAlignment = false
         episodeURL = nil
+        timingIdentity = nil
+        timingDocument = nil
+        timingCheckedCurrentEpisodeURL = nil
+        timing.configure(nil, playhead: 0)
         if let contentSignpost {
             os_signpost(.end, log: PlayerOpeningPerformance.log, name: "Transcript overlay content",
                         signpostID: contentSignpost, "outcome=%{public}s", "hidden")
@@ -369,6 +407,8 @@ final class InlineTranscriptPresenter {
             kind = .document
             accumulator = document.accumulator
             publisherAlignment = document.usesPublisherAlignment
+            timingDocument = document.document
+            configureTiming()
             InlineCaptionDocumentCache.shared.store(
                 document.accumulator,
                 usesPublisherAlignment: document.usesPublisherAlignment,
@@ -396,6 +436,8 @@ final class InlineTranscriptPresenter {
             applyLive(sources)
             return
         }
+        timingDocument = nil
+        configureTiming()
         if let partial, !partial.segments.isEmpty {
             kind = .savedPartial
             accumulator = partial
@@ -412,6 +454,7 @@ final class InlineTranscriptPresenter {
         let accumulator: InlineSegmentAccumulator
         let changed: Bool
         let usesPublisherAlignment: Bool
+        let document: TranscriptDocumentSnapshot
     }
 
     /// Reuses the player's cached prepared snapshot (#484/#487) and groups the
@@ -424,13 +467,16 @@ final class InlineTranscriptPresenter {
         await Task.detached(priority: .userInitiated) {
             let worker = PlayerTranscriptModelActor(modelContainer: container)
             guard let snapshot = try? await worker.preparedSnapshot(for: episodeURL),
-                  let lines = snapshot.presentation.document?.lines, !lines.isEmpty else { return nil }
+                  let document = snapshot.presentation.document else { return nil }
+            let lines = document.lines
+            guard !lines.isEmpty else { return nil }
             var accumulator = previous ?? InlineSegmentAccumulator()
             let update = accumulator.update(with: lines)
             return PreparedDocument(
                 accumulator: accumulator,
                 changed: update.changed,
-                usesPublisherAlignment: snapshot.sourceMetadata.usesPublisherAlignment
+                usesPublisherAlignment: snapshot.sourceMetadata.usesPublisherAlignment,
+                document: document
             )
         }.value
     }
@@ -510,8 +556,37 @@ final class InlineTranscriptPresenter {
         if kind != .live && kind != .savedPartial { accumulator = InlineSegmentAccumulator() }
         kind = .live
         publisherAlignment = false
+        if timingDocument != nil {
+            timingDocument = nil
+            configureTiming()
+        }
         let update = accumulator.update(with: sources)
         if update.changed || !wasLive { publish() }
+    }
+
+    // MARK: Verified word timing (#492)
+
+    /// Called on every playback tick; re-evaluates eligibility only when the
+    /// playing episode changed, otherwise just checks the loaded window.
+    func playheadMoved(to playhead: TimeInterval) {
+        if Player.shared.currentEpisodeURL != timingCheckedCurrentEpisodeURL { configureTiming() }
+        timing.playheadMoved(to: playhead)
+    }
+
+    /// Publisher document captions of the episode playing from a downloaded file
+    /// get verified word timing; everything else keeps its cue timing.
+    private func configureTiming() {
+        let current = Player.shared.currentEpisodeURL
+        timingCheckedCurrentEpisodeURL = current
+        let source = kind == .document && current != nil && current == episodeURL
+            ? PublisherTimingUpgradeLoader.Source.make(
+                episodeURL: episodeURL,
+                episodeID: timingIdentity?.episodeID,
+                localMediaURL: timingIdentity?.localMediaURL,
+                document: timingDocument,
+                options: accumulator.options)
+            : nil
+        timing.configure(source, playhead: Player.shared.playPosition)
     }
 
     private func publish() {
