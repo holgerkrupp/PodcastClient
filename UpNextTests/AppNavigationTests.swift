@@ -126,7 +126,8 @@ final class AppNavigationTests: XCTestCase {
                 fullSize: true,
                 size: CGSize(width: 390, height: 844),
                 horizontalSizeClass: .compact,
-                requestedExpandedLayout: nil
+                requestedExpandedLayout: nil,
+                isPhone: false
             ),
             .compactFull
         )
@@ -135,7 +136,8 @@ final class AppNavigationTests: XCTestCase {
                 fullSize: true,
                 size: CGSize(width: 890, height: 626),
                 horizontalSizeClass: .regular,
-                requestedExpandedLayout: nil
+                requestedExpandedLayout: nil,
+                isPhone: false
             ),
             .expandedHorizontal
         )
@@ -144,9 +146,47 @@ final class AppNavigationTests: XCTestCase {
                 fullSize: true,
                 size: CGSize(width: 626, height: 890),
                 horizontalSizeClass: .regular,
-                requestedExpandedLayout: nil
+                requestedExpandedLayout: nil,
+                isPhone: false
             ),
             .expandedVertical
+        )
+    }
+
+    func testEveryPhoneLayoutKeepsTheCoverHeroPlayer() {
+        // Closed Duo, unfolded Duo (also as a requested context panel), wide
+        // landscape iPhone: the player model stays the same; only size adapts.
+        let sizes = [
+            CGSize(width: 466, height: 678),
+            CGSize(width: 517, height: 669),
+            CGSize(width: 951, height: 669),
+            CGSize(width: 932, height: 430)
+        ]
+        for size in sizes {
+            for requested in [nil, true, false] as [Bool?] {
+                XCTAssertEqual(
+                    PlayerLayoutPolicy.mode(
+                        fullSize: true,
+                        size: size,
+                        horizontalSizeClass: .regular,
+                        requestedExpandedLayout: requested,
+                        isPhone: true
+                    ),
+                    .compactFull,
+                    "\(size) requested=\(String(describing: requested))"
+                )
+            }
+        }
+        XCTAssertEqual(
+            PlayerLayoutPolicy.mode(
+                fullSize: false,
+                size: CGSize(width: 951, height: 669),
+                horizontalSizeClass: .regular,
+                requestedExpandedLayout: true,
+                isPhone: true
+            ),
+            .compact,
+            "the mini player is unaffected"
         )
     }
 

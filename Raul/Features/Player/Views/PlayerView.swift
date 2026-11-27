@@ -18,13 +18,19 @@ enum PlayerLayoutMode: Equatable {
 enum PlayerLayoutPolicy {
     static let horizontalArrangementMinimumWidth: CGFloat = 640
 
+    /// - Parameter isPhone: Every iPhone, including a wide or unfolded iPhone
+    ///   Duo, keeps the cover-hero player (AGENTS.md player requirements):
+    ///   only its dimensions adapt. The context-pane arrangements are for
+    ///   iPad and Mac.
     static func mode(
         fullSize: Bool,
         size: CGSize,
         horizontalSizeClass: UserInterfaceSizeClass?,
-        requestedExpandedLayout: Bool?
+        requestedExpandedLayout: Bool?,
+        isPhone: Bool
     ) -> PlayerLayoutMode {
         guard fullSize else { return .compact }
+        guard isPhone == false else { return .compactFull }
 
         let isExpanded = requestedExpandedLayout
             ?? (horizontalSizeClass == .regular
@@ -99,7 +105,8 @@ struct PlayerView: View {
                         fullSize: fullSize,
                         size: geometry.size,
                         horizontalSizeClass: horizontalSizeClass,
-                        requestedExpandedLayout: usesExpandedLayout
+                        requestedExpandedLayout: usesExpandedLayout,
+                        isPhone: PlatformSupport.isPhone
                     ) {
                     case .compact:
                         compactPlayer(episode: episode)
@@ -309,7 +316,11 @@ struct PlayerView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if let onDismiss {
+            // The pinned transport owns the top edge, so the close button
+            // steps aside while it is pinned and returns when scrolled back up.
+            // Reserving room for it instead shifted and squeezed the row until
+            // the clip and bookmark buttons overlapped the skip buttons.
+            if let onDismiss, !isTransportPinned {
                 Button(action: onDismiss) {
                     Label("Close player", systemImage: "xmark")
                         .labelStyle(.iconOnly)
@@ -331,7 +342,6 @@ struct PlayerView: View {
         PlayerPrimaryTransportControlsView(includeBookmark: true)
             .tint(.primary)
             .padding(.horizontal)
-            .padding(.trailing, onDismiss == nil ? 0 : 48)
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity)
             .onAppear {
