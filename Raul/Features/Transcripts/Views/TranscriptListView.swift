@@ -236,12 +236,15 @@ struct TranscriptListView: View {
                 .onChange(of: searchText) {
                     if selectionActive { pendingRowsUpdate = true } else { rebuildDisplayRows() }
                 }
-                .onChange(of: preparedSnapshot) {
+                .onChange(of: preparedSnapshot) { oldSnapshot, newSnapshot in
                     if selectionActive {
                         pendingRowsUpdate = true
-                    } else {
+                    } else if !oldSnapshot.hasSameDocumentLayout(as: newSnapshot) {
                         isPreparingRows = true
                     }
+                    // Timing-only upgrades keep the rows on screen; the task below
+                    // swaps in the new timing without a loading state, scroll
+                    // reset or Follow recenter (#487).
                 }
                 .onChange(of: isPreparingRows) {
                     guard isPreparingRows == false else { return }
@@ -450,7 +453,9 @@ struct TranscriptListView: View {
         isPreparingRows = false
         tracker.update(segments: rows.map(\.segment), episodeURL: viewedEpisodeURL, useAlignment: usesPublisherAlignment)
         speakerColorMap = Self.makeSpeakerColorMap(from: rows)
-        selectedSearchRowID = nil
+        if let selectedSearchRowID, !rows.contains(where: { $0.id == selectedSearchRowID }) {
+            self.selectedSearchRowID = nil
+        }
     }
 
     private func prepareDisplayRows() async {
@@ -546,6 +551,7 @@ struct TranscriptPane: View {
     }
 
     @State private var content: Content = .loading
+    @State private var loadedEpisodeURL: URL?
     @State private var retryCount = 0
 
     private struct LoadID: Equatable {
@@ -598,7 +604,17 @@ struct TranscriptPane: View {
 
     @MainActor
     private func loadTranscript() async {
-        content = .loading
+        // `episode.refresh` also toggles for unrelated or timing-only changes
+        // (for example transcript gap chapters after a verified alignment).
+        // Keep the shown document mounted while re-checking the same episode so
+        // the list keeps its scroll position, search and Follow state (#487).
+        let keepsShownDocument: Bool
+        if case .document = content, loadedEpisodeURL == episode.url {
+            keepsShownDocument = true
+        } else {
+            keepsShownDocument = false
+            content = .loading
+        }
         guard let episodeURL = episode.url else {
             content = .failed
             return
@@ -608,6 +624,7 @@ struct TranscriptPane: View {
             let worker = PlayerTranscriptModelActor(modelContainer: modelContext.container)
             let snapshot = try await worker.preparedSnapshot(for: episodeURL)
             guard !Task.isCancelled else { return }
+            loadedEpisodeURL = episodeURL
             if let snapshot, !snapshot.segments.isEmpty {
                 content = .document(snapshot)
             } else {
@@ -617,7 +634,8 @@ struct TranscriptPane: View {
             return
         } catch {
             guard Task.isCancelled == false else { return }
-            content = .failed
+            // A failed re-check must not remove a transcript that is already readable.
+            if !keepsShownDocument { content = .failed }
         }
     }
 

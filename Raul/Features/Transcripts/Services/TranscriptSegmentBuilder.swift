@@ -79,6 +79,17 @@ struct TranscriptPreparedSnapshot: Equatable, Sendable {
             presentation: presentation
         )
     }
+
+    /// Whether `other` shows the same canonical rows: identical segment IDs, order,
+    /// speakers and text. A timing-only upgrade (cue -> verified alignment -> word
+    /// timing) keeps this true, so views update highlighting in place instead of
+    /// reloading, and search/copy results stay identical (#487).
+    func hasSameDocumentLayout(as other: Self) -> Bool {
+        segments.count == other.segments.count
+            && zip(segments, other.segments).allSatisfy {
+                $0.id == $1.id && $0.speaker == $1.speaker && $0.lineIDs == $1.lineIDs && $0.text == $1.text
+            }
+    }
 }
 
 /// Several consecutive transcript lines of the same speaker, merged into one block of text.
