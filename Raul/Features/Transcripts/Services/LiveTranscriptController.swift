@@ -211,22 +211,6 @@ final class LiveTranscriptController {
         return displayLiveLines(for: episode)
     }
 
-    /// Returns live or saved partial captions without touching the persisted
-    /// transcript relationship. Player transcript loading uses this path while
-    /// the full transcript is prepared in a model actor.
-    func displaySources(for episode: Episode) -> [TranscriptSegmentSource] {
-        displayLiveCues(for: episode).map { cue in
-            TranscriptSegmentSource(
-                id: cue.id,
-                text: cue.text,
-                startTime: cue.start,
-                endTime: cue.end,
-                sourceRawValue: CachedTranscriptSource.localAI.rawValue,
-                timedSpans: cue.spans
-            )
-        }
-    }
-
     private func displayLiveLines(for episode: Episode) -> [TranscriptLineAndTime] {
         displayLiveCues(for: episode).map { cue in
             if let cached = cachedLines[cue.id], cached.0 == cue { return cached.1 }

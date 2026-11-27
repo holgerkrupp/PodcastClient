@@ -645,8 +645,15 @@ struct TranscriptPane: View {
 private struct PartialTranscriptPane: View {
     let episode: Episode
     let startFollowingPlayback: Bool
+    @Environment(\.modelContext) private var modelContext
     @Bindable private var liveTranscript = LiveTranscriptController.shared
     @State private var partial: TranscriptPreparedSnapshot?
+
+    /// Reloads on each finalized live cue and when recognition starts or stops.
+    private struct LoadKey: Equatable {
+        let cueCount: Int
+        let isLive: Bool
+    }
 
     var body: some View {
         Group {
@@ -665,8 +672,23 @@ private struct PartialTranscriptPane: View {
                 TranscriptEmptyStateView(episode: episode)
             }
         }
-        .task(id: liveTranscript.cues.count) {
-            let sources = liveTranscript.displaySources(for: episode)
+        .task(id: LoadKey(cueCount: liveTranscript.cues.count, isLive: liveTranscript.isActive(for: episode))) {
+            guard let episodeURL = episode.url else { return }
+            // Same sources as the inline overlay (#484/#520): running recognition
+            // hands over value cues merged in linear time, and a saved partial
+            // transcript is decoded on a model actor. Nothing here reads
+            // `liveTranscriptData` or decodes JSON on the main actor.
+            let sources: [TranscriptSegmentSource]
+            if let live = liveTranscript.liveCaptionSources(episodeURL: episodeURL) {
+                sources = live
+            } else {
+                let store = LiveTranscriptStoreActor(modelContainer: modelContext.container)
+                sources = await store.partialSources(
+                    episodeURL: episodeURL,
+                    pending: liveTranscript.pendingCues(episodeURL: episodeURL)
+                )
+            }
+            guard !Task.isCancelled else { return }
             let snapshot = await Task.detached(priority: .userInitiated) {
                 TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
             }.value
