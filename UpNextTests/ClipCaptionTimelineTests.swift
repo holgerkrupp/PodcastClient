@@ -221,6 +221,52 @@ final class ClipCaptionTimelineTests: XCTestCase {
 }
 
 final class ClipExportShareLinkTests: XCTestCase {
+    func testRateMappingAtHalfAndNormalSpeed() throws {
+        let segment = TranscriptSegmentBuilder.makeSegments(from: [
+            TranscriptSegmentSource(text: "Hello world", startTime: 150, endTime: 160,
+                timedSpans: [TranscriptTimedSpan(location: 6, length: 5, startTime: 154, endTime: 156)])
+        ], options: .compact)
+        let source = try XCTUnwrap(ClipCaptionTimeline.resolve(segments: segment, publisherAlignmentRequired: false, alignment: nil))
+        let normal = try XCTUnwrap(source.clipped(start: 150, end: 160, playbackRate: 1).captions.first)
+        XCTAssertEqual(normal.start, 4, accuracy: 0.001)
+        XCTAssertEqual(normal.end, 6, accuracy: 0.001)
+        let half = try XCTUnwrap(source.clipped(start: 150, end: 160, playbackRate: 0.5).captions.first)
+        XCTAssertEqual(half.start, 8, accuracy: 0.001)
+        XCTAssertEqual(half.end, 12, accuracy: 0.001)
+        XCTAssertEqual(half.text, "Hello world")
+    }
+
+    func testStaleGeneratedRangeIsRejected() {
+        XCTAssertFalse(ClipCaptionTimeline.generatedRange(nil, covers: 10, 20))
+        XCTAssertTrue(ClipCaptionTimeline.generatedRange(10...20, covers: 10, 20))
+        XCTAssertTrue(ClipCaptionTimeline.generatedRange(10...20, covers: 12, 18))
+        XCTAssertFalse(ClipCaptionTimeline.generatedRange(10...20, covers: 9, 20))
+        XCTAssertFalse(ClipCaptionTimeline.generatedRange(10...20, covers: 10, 21))
+        XCTAssertFalse(ClipCaptionTimeline.generatedRange(10...20, covers: 15, 15))
+    }
+
+    func testLayeredFallbackPrefersEarlierLayersAndResumesLowerOnes() {
+        typealias Caption = ClipCaptionTimeline.Caption
+        let text = "canonical publisher words"
+        let native = Caption(text: text, location: 0, length: 9, start: 0, end: 2, cueLevel: false)
+        let cached = Caption(text: text, location: 10, length: 9, start: 1, end: 4, cueLevel: false)
+        let matched = Caption(text: text, location: 20, length: 5, start: 3, end: 6, cueLevel: false)
+        let coarse = Caption(text: text, location: 0, length: 25, start: 0, end: 8, cueLevel: true)
+        let local = Caption(text: "speech wording", location: 0, length: 6, start: 0, end: 10, cueLevel: false)
+        let timeline = PublisherClipCaptionResolver.layered([[native], [cached], [matched], [coarse], [local]],
+                                                            in: 0..<10)
+        let spans = timeline.captions.map { ($0.location, $0.start, $0.end, $0.text) }
+        XCTAssertEqual(spans.count, 5)
+        XCTAssertEqual(spans[0].0, 0); XCTAssertEqual(spans[0].1, 0); XCTAssertEqual(spans[0].2, 2)
+        XCTAssertEqual(spans[1].0, 10); XCTAssertEqual(spans[1].1, 2); XCTAssertEqual(spans[1].2, 4)
+        XCTAssertEqual(spans[2].0, 20); XCTAssertEqual(spans[2].1, 4); XCTAssertEqual(spans[2].2, 6)
+        XCTAssertTrue(timeline.captions[3].cueLevel)
+        XCTAssertEqual(spans[3].1, 6); XCTAssertEqual(spans[3].2, 8)
+        XCTAssertEqual(spans[4].3, "speech wording")
+        XCTAssertEqual(spans[4].1, 8); XCTAssertEqual(spans[4].2, 10)
+        XCTAssertTrue(timeline.captions.dropLast().allSatisfy { $0.text == text })
+    }
+
     func testPrefersEpisodePageAndKeepsArbitraryPodcastURLValid() throws {
         let page = try XCTUnwrap(URL(string: "https://publisher.example/episodes/42"))
         let enclosure = try XCTUnwrap(URL(string: "https://cdn.example/episode.mp3"))

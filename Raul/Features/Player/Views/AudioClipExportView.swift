@@ -55,6 +55,9 @@ struct AudioClipExportView: View {
     @State private var clipGeneratedRange: ClosedRange<Double>?
     @State private var clipGeneratedMediaFingerprint: String?
     @State private var clipGenerationTask: Task<Void, Never>?
+    /// Identifies the newest generation request so an older, cancelled task
+    /// can never apply its result or clear the newer task's state.
+    @State private var clipGenerationID = 0
     @State private var lastExportedShareLink: ClipExportShareLink?
     @State private var exportConfirmation: String?
     private let waveformGesturesTip = ClipWaveformGesturesTip()
@@ -538,7 +541,7 @@ struct AudioClipExportView: View {
     }
 
     private var clipCoversSelection: Bool {
-        clipGeneratedRange.map { trimStart >= $0.lowerBound && trimEnd <= $0.upperBound } ?? false
+        ClipCaptionTimeline.generatedRange(clipGeneratedRange, covers: trimStart, trimEnd)
     }
 
     private struct PublisherSelection: Equatable {
@@ -672,9 +675,11 @@ struct AudioClipExportView: View {
         let selectedEpisodeURL = episodeURL
         let resolver = publisherResolver
         let container = modelContext.container
+        clipGenerationID &+= 1
+        let generationID = clipGenerationID
         captionStatus = "Preparing clip audio…"
         clipGenerationTask = Task { @MainActor in
-            defer { clipGenerationTask = nil }
+            defer { if clipGenerationID == generationID { clipGenerationTask = nil } }
             let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("m4a")
             defer { try? FileManager.default.removeItem(at: output) }
             do {
@@ -720,6 +725,9 @@ struct AudioClipExportView: View {
                 }
                 try Task.checkCancellation()
                 guard let timeline, !timeline.captions.isEmpty else { throw AudioClipExporter.ExportError.noPlayableMedia }
+                // Never apply a result for an obsolete request, trim or media file.
+                guard clipGenerationID == generationID, mediaURL == audioURL,
+                      ClipCaptionTimeline.generatedRange(start...end, covers: trimStart, trimEnd) else { throw CancellationError() }
                 clipGeneratedTimeline = timeline
                 clipGeneratedRange = start...end
                 clipGeneratedMediaFingerprint = fingerprint
@@ -727,8 +735,9 @@ struct AudioClipExportView: View {
                 captionStatus = "Clip captions are kept separate from the episode transcript."
                 schedulePreviewImageUpdate()
             } catch is CancellationError {
-                captionStatus = nil
+                if clipGenerationID == generationID { captionStatus = nil }
             } catch {
+                guard clipGenerationID == generationID else { return }
                 captionStatus = availableCaptionTimeline == nil ? "Could not generate captions for this clip. You can export without captions." : nil
             }
         }

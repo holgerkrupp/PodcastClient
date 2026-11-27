@@ -209,6 +209,13 @@ struct ClipCaptionTimeline: Sendable, Equatable {
         return ClipCaptionTimeline(captions: captions.sorted { $0.start < $1.start })
     }
 
+    /// Clip-generated captions apply only while the current trim stays inside
+    /// the source range they were generated for; anything else is stale.
+    static func generatedRange(_ range: ClosedRange<Double>?, covers start: Double, _ end: Double) -> Bool {
+        guard let range, start.isFinite, end.isFinite, end > start else { return false }
+        return start >= range.lowerBound && end <= range.upperBound
+    }
+
     /// Resolve against the preview player's source-media clock.
     func caption(atMediaTime time: TimeInterval) -> Caption? {
         guard time.isFinite else { return nil }
@@ -374,7 +381,7 @@ struct PublisherClipCaptionResolver: Sendable {
 
     /// At each boundary choose the first active caption in priority order. Splitting
     /// the lower-priority cue lets it resume immediately after an enhanced word ends.
-    private static func layered(_ layers: [[Caption]], in range: Range<Double>) -> ClipCaptionTimeline {
+    static func layered(_ layers: [[Caption]], in range: Range<Double>) -> ClipCaptionTimeline {
         var items: [Caption] = []
         var events: [(time: Double, index: Int, begins: Bool)] = []
         for layer in layers {
