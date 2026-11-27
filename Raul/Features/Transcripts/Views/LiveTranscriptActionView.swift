@@ -147,7 +147,7 @@ struct TranscriptGenerationActionsView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    Button("Stop transcription") { live.stop() }
+                    Button("Stop transcription") { live.stopByUser() }
                         .buttonStyle(.glass(.clear))
                 }
             } else {

@@ -15,6 +15,11 @@
 //  snapshot or the live value cues arrive asynchronously and update only this
 //  host. Hiding unmounts it and never waits for Speech, cancellation or saves.
 //
+//  When the episode is playing and has no stored transcript, the overlay asks
+//  LiveTranscriptController to start live transcription (#494), only after the
+//  first frame and only once per show or episode. Hiding the overlay does not
+//  stop it; the Stop control lives in the full Transcript view.
+//
 
 import SwiftUI
 import SwiftData
@@ -46,7 +51,12 @@ struct PlayerTranscriptOverlayHost: View {
                 SystemPressureGate.shared.noteUserInteraction()
             }
             .task(id: episode.url) {
-                presenter.show(episodeURL: episode.url, container: modelContext.container)
+                let container = modelContext.container
+                presenter.show(episodeURL: episode.url, container: container) { [episode] in
+                    await LiveTranscriptController.shared.startAutomaticallyIfAppropriate(
+                        episode: episode, container: container
+                    )
+                }
             }
             .onDisappear { presenter.stop() }
             .onReceive(
@@ -198,6 +208,8 @@ final class InlineTranscriptPresenter {
     @ObservationIgnored private var session = 0
     @ObservationIgnored private var loadTask: Task<Void, Never>?
     @ObservationIgnored private var contentSignpost: OSSignpostID?
+    @ObservationIgnored private var requestLiveStart: (@MainActor () async -> Void)?
+    @ObservationIgnored private var liveStartTask: Task<Void, Never>?
 
     init(live: LiveTranscriptController = .shared) {
         self.live = live
@@ -205,10 +217,17 @@ final class InlineTranscriptPresenter {
 
     /// Phase A is the caller's frame: state is `.preparing` and nothing else
     /// runs synchronously. Phase B (loading) starts after a yield.
-    func show(episodeURL: URL?, container: ModelContainer) {
+    /// - Parameter requestLiveStart: Called at most once per show, after the
+    ///   first load finds no stored transcript and no running live session.
+    func show(
+        episodeURL: URL?,
+        container: ModelContainer,
+        requestLiveStart: (@MainActor () async -> Void)? = nil
+    ) {
         stop()
         self.episodeURL = episodeURL
         self.container = container
+        self.requestLiveStart = requestLiveStart
         guard episodeURL != nil else {
             state = .status(.noTranscript)
             return
@@ -236,6 +255,10 @@ final class InlineTranscriptPresenter {
         session += 1
         loadTask?.cancel()
         loadTask = nil
+        // An in-flight start finishes on its own; the session it creates is
+        // owned by LiveTranscriptController, not by this overlay.
+        liveStartTask = nil
+        requestLiveStart = nil
         kind = nil
         hasLoaded = false
         accumulator = InlineSegmentAccumulator()
@@ -356,6 +379,7 @@ final class InlineTranscriptPresenter {
         }
         publisherAlignment = false
         publish()
+        requestLiveStartIfNeeded(session: session)
     }
 
     private struct PreparedDocument: Sendable {
@@ -399,6 +423,18 @@ final class InlineTranscriptPresenter {
             accumulator.update(with: sources)
             return accumulator
         }.value
+    }
+
+    /// The status above is already published, so the start never delays the
+    /// overlay; the controller re-checks eligibility and deduplicates.
+    private func requestLiveStartIfNeeded(session: Int) {
+        guard let request = requestLiveStart, liveStartTask == nil else { return }
+        requestLiveStart = nil
+        liveStartTask = Task { @MainActor [weak self] in
+            guard let self, session == self.session else { return }
+            PlayerOpeningPerformance.event("Transcript overlay live auto-start requested")
+            await request()
+        }
     }
 
     // MARK: Live

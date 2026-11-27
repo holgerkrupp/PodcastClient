@@ -47,8 +47,10 @@ actor LiveTranscriptStoreActor {
     }
 }
 
-/// A user-started, bounded local-file transcription session. The player keeps
-/// running; recognition and disk writes happen outside the audio callback.
+/// A bounded local-file transcription session, started by the user from the
+/// full Transcript view or automatically when the inline overlay is shown for
+/// a playing, untranscribed episode (#494). The player keeps running;
+/// recognition and disk writes happen outside the audio callback.
 @MainActor
 @Observable
 final class LiveTranscriptController {
@@ -123,6 +125,17 @@ final class LiveTranscriptController {
     @ObservationIgnored private var pendingSaves: [PendingSave] = []
     @ObservationIgnored private var retryTask: Task<Void, Never>?
     @ObservationIgnored private var foregroundObserver: NSObjectProtocol?
+    /// True while the running session was started by the overlay rather than
+    /// the user; automatic sessions yield to Low Power Mode and heat.
+    @ObservationIgnored private var startedAutomatically = false
+    /// Deduplicates overlapping automatic start requests.
+    @ObservationIgnored private var automaticStartInFlight = false
+    /// The episode whose live transcription the user stopped. The overlay does
+    /// not restart it; a manual start from the full Transcript view does.
+    @ObservationIgnored private var userStoppedEpisodeURL: URL?
+    /// Coalesces skip-button bursts into one recognition restart.
+    @ObservationIgnored private var seekRestartTask: Task<Void, Never>?
+    nonisolated static let seekSettleDelay: Duration = .milliseconds(500)
 
     private init() {
 #if canImport(UIKit)
@@ -255,7 +268,89 @@ final class LiveTranscriptController {
         return visible
     }
 
+    /// Why an automatic start was skipped; logged as a privacy-safe category.
+    enum AutomaticStartSkip: String, Equatable {
+        case notCurrentEpisode, notPlaying, notInteractive, lowPower, thermal
+        case alreadyActive, inFlight, stoppedByUser, notDownloaded
+        case fullTranscriptionRunning, hasTranscript, unsupportedLocale
+    }
+
+    /// Conditions that keep optional, automatic Speech work from running.
+    nonisolated static func automaticWorkBlocker(
+        lowPower: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
+        thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
+    ) -> AutomaticStartSkip? {
+        if lowPower { return .lowPower }
+        if thermal == .serious || thermal == .critical { return .thermal }
+        return nil
+    }
+
+    private var appIsInteractive: Bool {
+#if canImport(UIKit) && !os(watchOS)
+        UIApplication.shared.applicationState == .active
+#elseif canImport(AppKit)
+        NSApplication.shared.isActive
+#else
+        true
+#endif
+    }
+
+    /// Starts live transcription because the listener showed the inline
+    /// transcript overlay for the episode that is playing (#494). Unlike
+    /// ``start(episode:container:)`` it never downloads, never starts playback,
+    /// never competes with a full transcription and yields to Low Power Mode,
+    /// heat and an explicit stop. Cheap checks run first; the caller has already
+    /// painted the overlay.
+    @discardableResult
+    func startAutomaticallyIfAppropriate(episode: Episode, container: ModelContainer) async -> AutomaticStartSkip? {
+        let skip = await automaticStartSkip(episode: episode, container: container)
+        if let skip {
+            AppDiagnostics.log("live_transcript_auto_start skipped=\(skip.rawValue)")
+            return skip
+        }
+        automaticStartInFlight = true
+        defer { automaticStartInFlight = false }
+        await start(episode: episode, container: container, automatic: true)
+        AppDiagnostics.log("live_transcript_auto_start started phase=\(phase)")
+        return nil
+    }
+
+    private func automaticStartSkip(episode: Episode, container: ModelContainer) async -> AutomaticStartSkip? {
+        guard let episodeURL = episode.url, Player.shared.currentEpisodeURL == episodeURL else { return .notCurrentEpisode }
+        guard Player.shared.isPlaying else { return .notPlaying }
+        guard appIsInteractive else { return .notInteractive }
+        if let blocker = Self.automaticWorkBlocker() { return blocker }
+        guard !isActive(episodeURL: episodeURL) else { return .alreadyActive }
+        guard !automaticStartInFlight else { return .inFlight }
+        guard userStoppedEpisodeURL != episodeURL else { return .stoppedByUser }
+        guard let media = episode.localFile, FileManager.default.fileExists(atPath: media.path) else { return .notDownloaded }
+        guard !EpisodeAIGenerationCoordinator.shared.isRunning(for: episodeURL) else { return .fullTranscriptionRunning }
+        let language = episode.podcast?.language
+        automaticStartInFlight = true
+        defer { automaticStartInFlight = false }
+        if await EpisodeActor(modelContainer: container).hasTranscript(for: episodeURL) { return .hasTranscript }
+        guard await AITranscripts.supportedSpeechLocale(for: language) != nil else { return .unsupportedLocale }
+        // The listener may have paused, switched episodes or hidden the app
+        // while the checks above ran.
+        guard Player.shared.currentEpisodeURL == episodeURL, Player.shared.isPlaying, appIsInteractive else {
+            return .notPlaying
+        }
+        guard !isActive(episodeURL: episodeURL) else { return .alreadyActive }
+        return nil
+    }
+
+    /// Stop requested by the listener: the overlay will not restart it.
+    func stopByUser() {
+        userStoppedEpisodeURL = episodeURL
+        stop()
+    }
+
     func start(episode: Episode, container: ModelContainer) async {
+        await start(episode: episode, container: container, automatic: false)
+    }
+
+    private func start(episode: Episode, container: ModelContainer, automatic: Bool) async {
+        if !automatic, userStoppedEpisodeURL == episode.url { userStoppedEpisodeURL = nil }
         retryPendingSaves()
         guard let episodeURL = episode.url else {
             unavailableReason = .notDownloaded
@@ -304,12 +399,16 @@ final class LiveTranscriptController {
         observer = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self] time in
             Task { @MainActor in self?.playbackChanged(time.seconds) }
         }
-        if !Player.shared.isPlaying { Player.shared.play() }
+        startedAutomatically = automatic
+        if !automatic, !Player.shared.isPlaying { Player.shared.play() }
         restart()
     }
 
     func stop() {
         generation = UUID()
+        seekRestartTask?.cancel()
+        seekRestartTask = nil
+        startedAutomatically = false
         drainingWorker = worker ?? drainingWorker
         worker?.cancel()
         worker = nil
@@ -357,9 +456,25 @@ final class LiveTranscriptController {
         }
         guard time.isFinite else { return }
         if let lastTime, abs(time - lastTime) > 4 {
-            restart()
+            scheduleSeekRestart()
         }
         lastTime = time
+    }
+
+    /// A seek or skip burst restarts recognition once the playhead settles;
+    /// each further jump within the window pushes the restart back. The run
+    /// loop skips windows already covered, so returning into analyzed audio
+    /// costs no new Speech work.
+    private func scheduleSeekRestart() {
+        seekRestartTask?.cancel()
+        let token = generation
+        seekRestartTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.seekSettleDelay)
+            guard !Task.isCancelled, let self, self.generation == token,
+                  self.phase != .idle, self.phase != .unavailable else { return }
+            self.seekRestartTask = nil
+            self.restart()
+        }
     }
 
     private func restart() {
@@ -374,6 +489,12 @@ final class LiveTranscriptController {
             guard !Task.isCancelled, generation == token else { return }
             await run(token: token)
         }
+    }
+
+    /// Seconds of audio to analyze ahead of the playhead.
+    nonisolated static func lookahead(playbackRate: Float) -> TimeInterval {
+        let rate = playbackRate.isFinite ? Double(playbackRate) : 1
+        return 14 * min(3, max(1, rate))
     }
 
     private func markUnavailable(token: UUID, reason: UnavailableReason = .analysisFailed) {
@@ -482,8 +603,17 @@ final class LiveTranscriptController {
                 let playhead = Player.shared.videoPlayer.currentTime().seconds
                 guard playhead.isFinite else { try await Task.sleep(for: .milliseconds(300)); continue }
                 if !Player.shared.isPlaying { try await Task.sleep(for: .milliseconds(300)); continue }
+                // Automatic sessions are optional work: pause, don't fail,
+                // while Low Power Mode is on or the device is hot.
+                if startedAutomatically, Self.automaticWorkBlocker() != nil {
+                    try await Task.sleep(for: .seconds(2))
+                    continue
+                }
+                // Plan further ahead at higher speeds so fast listeners don't
+                // outrun recognition.
+                let lookahead = Self.lookahead(playbackRate: Player.shared.playbackRate)
                 if cursor < playhead - 14 { cursor = max(0, floor(playhead / 7) * 7) }
-                if cursor > playhead + 14 || cursor >= duration {
+                if cursor > playhead + lookahead || cursor >= duration {
                     phase = .following
                     try await Task.sleep(for: .milliseconds(400))
                     continue

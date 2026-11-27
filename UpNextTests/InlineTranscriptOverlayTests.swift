@@ -261,4 +261,22 @@ final class InlineTranscriptOverlayTests: XCTestCase {
         XCTAssertNil(cache.entry(for: urls[2]), "a changed transcript is not reused")
         XCTAssertNotNil(cache.entry(for: urls[1]))
     }
+
+    // MARK: Automatic live transcription policy (#494)
+
+    func testAutomaticLiveWorkYieldsToLowPowerAndHeat() {
+        XCTAssertNil(LiveTranscriptController.automaticWorkBlocker(lowPower: false, thermal: .nominal))
+        XCTAssertNil(LiveTranscriptController.automaticWorkBlocker(lowPower: false, thermal: .fair))
+        XCTAssertEqual(LiveTranscriptController.automaticWorkBlocker(lowPower: true, thermal: .nominal), .lowPower)
+        XCTAssertEqual(LiveTranscriptController.automaticWorkBlocker(lowPower: false, thermal: .serious), .thermal)
+        XCTAssertEqual(LiveTranscriptController.automaticWorkBlocker(lowPower: false, thermal: .critical), .thermal)
+    }
+
+    func testLiveLookaheadScalesWithPlaybackRate() {
+        XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: 1), 14)
+        XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: 0.75), 14, "never plans less than at 1x")
+        XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: 2.5), 35)
+        XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: 10), 42, "bounded")
+        XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: .nan), 14)
+    }
 }
