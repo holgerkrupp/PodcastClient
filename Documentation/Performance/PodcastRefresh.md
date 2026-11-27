@@ -39,6 +39,8 @@ Profiles used by the automated suite are:
 | `private` | HTTP Basic `fixture` / `password` authentication |
 | `rate-limited` | One 429 with configurable `Retry-After`, then 200 |
 | `malformed`, `server-error` | Parse and HTTP failure paths |
+| `redirect-301`, `redirect-302`, `redirect-307`, `redirect-308` | Redirect to `/fast/<number>`; the stored feed URL must not change |
+| `gone`, `missing` | 410 and 404; the subscription stays with a feed-health status |
 
 The fixture server is local and deterministic, but it is still an HTTP server:
 the app's per-origin limit of two requests can affect wall time when four

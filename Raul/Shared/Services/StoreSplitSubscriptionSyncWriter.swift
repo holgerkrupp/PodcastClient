@@ -82,6 +82,22 @@ enum PodcastSubscriptionPersistence {
         return try await StoreSplitSubscriptionSyncWriter(modelContainer: userStateContainer)
             .upsertAccessProfile(for: feedURL, profile: profile)
     }
+
+    /// Stamps `profile` on the record of the URL a podcast used before the
+    /// user replaced it, so every device maps both URLs to one podcast.
+    static func linkPreviousFeedURL(
+        _ previousFeedURL: URL,
+        to profile: PodcastAccessProfile
+    ) async throws {
+        await ModelContainerManager.shared.prepareSplitStores()
+        guard let userStateContainer = await MainActor.run(body: {
+            ModelContainerManager.shared.preparedUserStateContainer
+        }) else {
+            throw PodcastSubscriptionMutationError.authoritativeStoreUnavailable
+        }
+        try await StoreSplitSubscriptionSyncWriter(modelContainer: userStateContainer)
+            .linkPreviousFeedURL(previousFeedURL, to: profile)
+    }
 }
 
 func storedPodcastAccessProfile(for podcast: Podcast) -> PodcastAccessProfile? {
@@ -280,6 +296,49 @@ actor StoreSplitSubscriptionSyncWriter {
             throw WriteError.saveFailed(error)
         }
         return Result(feedKey: key, isSubscribed: subscription.isSubscribed, didChange: true, committedAt: subscription.updatedAt)
+    }
+
+    /// Links the record of a replaced feed URL to the podcast's access profile.
+    ///
+    /// Only the profile reference changes: the record keeps its subscription
+    /// state, so the old URL is never tombstoned and no device unsubscribes.
+    /// A missing record stays missing and an unsubscribed one is left alone,
+    /// so linking can never make a tombstone the newest record of a podcast.
+    @discardableResult
+    func linkPreviousFeedURL(
+        _ previousFeedURL: URL,
+        to profile: PodcastAccessProfile,
+        at date: Date = .now
+    ) throws -> Bool {
+        let key = PodcastFeedIdentity.normalizedFeedURLString(previousFeedURL)
+        let descriptor = FetchDescriptor<SubscriptionSync>(
+            predicate: #Predicate<SubscriptionSync> { $0.id == key }
+        )
+        let record: SubscriptionSync?
+        do {
+            record = try modelContext.fetch(descriptor).first
+        } catch {
+            throw WriteError.fetchFailed(error)
+        }
+        guard let record,
+              record.isSubscribed,
+              record.unsubscribedAt == nil,
+              record.accessProfileID != profile.id
+                || record.accessKindRawValue != profile.kind.rawValue
+                || record.accessProviderID != profile.providerID?.rawValue else {
+            return false
+        }
+        record.accessProfileID = profile.id
+        record.accessKindRawValue = profile.kind.rawValue
+        record.accessProviderID = profile.providerID?.rawValue
+        record.updatedAt = max(date, record.updatedAt)
+        record.sourceDeviceID = ListeningDeviceIdentity.current().id
+        do {
+            try modelContext.save()
+        } catch {
+            throw WriteError.saveFailed(error)
+        }
+        return true
     }
 
     private static func legacyAccessProfile(for feedURL: URL) -> PodcastAccessProfile? {

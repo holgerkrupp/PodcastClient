@@ -2909,7 +2909,19 @@ struct PodcastAccessEditorView: View {
             return
         }
 
-        let profile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
+        let madeProfile = PodcastAccessProfile.make(for: sourceURL, kind: kind)
+        // Keep the podcast's profile ID when a replaced private URL changes the
+        // feed identity. Synced records under the old and new URL then share
+        // it, and other devices keep one podcast instead of adding a second.
+        let profile = podcast.metaData?.accessProfileID.map {
+            PodcastAccessProfile(
+                id: $0,
+                kind: madeProfile.kind,
+                resourceURL: madeProfile.resourceURL,
+                providerID: madeProfile.providerID
+            )
+        } ?? madeProfile
+        let previousFeed = podcast.feed
         Task {
             do {
                 let validated = try await PodcastFeedResolver.resolve(url: sourceURL, credential: credential)
@@ -2933,6 +2945,16 @@ struct PodcastAccessEditorView: View {
                             for: profile.resourceURL ?? sourceURL,
                             profile: profile
                         )
+                        if let previousFeed,
+                           let newFeed = profile.resourceURL,
+                           previousFeed.podcastFeedComparisonKeys
+                               .isDisjoint(with: newFeed.podcastFeedComparisonKeys) {
+                            // Best effort: the new URL's record is already saved.
+                            try? await PodcastSubscriptionPersistence.linkPreviousFeedURL(
+                                previousFeed,
+                                to: profile
+                            )
+                        }
                     }
                     podcast.feed = profile.resourceURL
                     podcast.metaData?.accessProfileID = profile.id

@@ -6,8 +6,10 @@ Run, for example:
 
 Endpoints are /<profile>/<feed-number>. Profiles include fast, slow-head,
 slow-get, unchanged, head-unsupported, malformed, paged, private, large,
-large-history, dynamic, changed, stale-last-modified, rate-limited, and
-server-error. /__stats returns bounded request metadata and /__reset clears it.
+large-history, dynamic, changed, stale-last-modified, rate-limited,
+server-error, redirect-301, redirect-302, redirect-307, redirect-308 (each
+redirects to /fast/<feed-number> with the same query), gone (410) and
+missing (404). /__stats returns bounded request metadata and /__reset clears it.
 The server logs only method, profile, feed number, and status.
 """
 
@@ -141,6 +143,18 @@ class FixtureHandler(BaseHTTPRequestHandler):
             self.send_response(status)
             self.send_header("Retry-After", query.get("retry_after", ["2"])[0])
             self.end_headers()
+        elif profile.startswith("redirect-"):
+            status = int(profile.split("-", 1)[1])
+            location = f"/fast/{feed_number}" + (f"?{parsed.query}" if parsed.query else "")
+            self.send_response(status)
+            self.send_header("Location", location)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        elif profile in {"gone", "missing"}:
+            status = 410 if profile == "gone" else 404
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
         elif profile == "server-error":
             status = 503
             self.send_response(status)
@@ -199,6 +213,8 @@ def main() -> None:
         "fast", "slow-head", "slow-get", "unchanged", "head-unsupported",
         "malformed", "paged", "private", "large", "large-history", "dynamic", "changed",
         "stale-last-modified", "rate-limited", "server-error",
+        "redirect-301", "redirect-302", "redirect-307", "redirect-308",
+        "gone", "missing",
     }
     server = ThreadingHTTPServer((args.host, args.port), FixtureHandler)
     server.profiles = profiles

@@ -70,6 +70,15 @@ actor StoreSplitUserStateImporter {
     private var legacyContext: ModelContext
     private var userStateContext: ModelContext
     private var podcastsByComparisonKey: [String: PersistentIdentifier] = [:]
+    /// Local podcasts by access-profile ID. A private feed whose URL the user
+    /// replaced keeps its profile ID, so this links the old and new
+    /// SubscriptionSync URLs to one podcast. See `addAccessProfileAliases`.
+    private var podcastsByAccessProfileID: [String: PersistentIdentifier] = [:]
+    /// Stubs the subscription pass created and has not saved yet, by feed
+    /// comparison key and by `profile:<access-profile ID>`. Their temporary IDs
+    /// don't resolve through `existingModel`, so a second record for the same
+    /// podcast would otherwise create a second stub.
+    private var subscriptionStubsCreatedThisPass: [String: Podcast] = [:]
     private var resolvedEpisodeIDsByIdentity: [String: PersistentIdentifier] = [:]
     /// Identities this run has already tried and failed to resolve.
     ///
@@ -272,7 +281,17 @@ actor StoreSplitUserStateImporter {
         }
         let accessResolver = PodcastAccessResolver(credentialStore: credentialStore)
         if changedStreams.contains(.subscriptions) {
-        for subscription in subscriptions.values {
+        // Several records can name one local podcast: URL variants another
+        // device wrote, or the old and new URL of a private feed the user
+        // replaced. Apply the newest one per podcast so an older record can't
+        // undo a newer subscribe or unsubscribe depending on dictionary order.
+        var appliedPodcastIDs = Set<PersistentIdentifier>()
+        let newestFirst = subscriptions.values.sorted { lhs, rhs in
+            lhs.updatedAt != rhs.updatedAt
+                ? lhs.updatedAt > rhs.updatedAt
+                : lhs.feedURL < rhs.feedURL
+        }
+        for subscription in newestFirst {
             if await shouldStop() {
                 result.interruptedByPlayback = true
                 return result
@@ -281,9 +300,15 @@ actor StoreSplitUserStateImporter {
                 result.failed += 1
                 continue
             }
-            let locallyKnownPodcast = manifestFeedURL.podcastFeedComparisonKeys
+            let locallyKnownPodcast = createdStub(
+                forFeed: manifestFeedURL,
+                accessProfileID: subscription.accessProfileID
+            ) ?? manifestFeedURL.podcastFeedComparisonKeys
                 .compactMap { podcastsByComparisonKey[$0].flatMap(indexedPodcast) }
                 .first
+                ?? subscription.accessProfileID
+                    .flatMap { podcastsByAccessProfileID[$0] }
+                    .flatMap(indexedPodcast)
             // A legacy/partial UserState record may omit access metadata even
             // though the library already has the authoritative local profile.
             let accessProfile = locallyKnownPodcast.flatMap(storedPodcastAccessProfile(for:))
@@ -294,6 +319,7 @@ actor StoreSplitUserStateImporter {
             )
             let resolvedFeedURL: URL
             let hasCredential: Bool
+            var credentialRequiredProfileID: String?
             switch bootstrapDecision {
             case .publicFeed(let url), .ready(let url):
                 resolvedFeedURL = url
@@ -301,11 +327,12 @@ actor StoreSplitUserStateImporter {
             case .credentialsRequired(let profileID, let feedURL):
                 resolvedFeedURL = feedURL
                 hasCredential = false
-                result.feedsAwaitingCredentials.append(feedURL)
-                result.credentialRequiredProfileIDs.append(profileID)
+                credentialRequiredProfileID = profileID
             }
             var createdPodcast = false
-            let podcast = locallyKnownPodcast ?? resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
+            let podcast = locallyKnownPodcast
+                ?? createdStub(forFeed: resolvedFeedURL, accessProfileID: nil)
+                ?? resolvedFeedURL.podcastFeedComparisonKeys.compactMap {
                 podcastsByComparisonKey[$0].flatMap(indexedPodcast)
             }.first ?? {
                 guard subscription.isSubscribed else { return nil }
@@ -324,9 +351,22 @@ actor StoreSplitUserStateImporter {
                 for key in resolvedFeedURL.podcastFeedComparisonKeys {
                     self.podcastsByComparisonKey[key] = podcast.persistentModelID
                 }
+                for key in resolvedFeedURL.podcastFeedComparisonKeys
+                    .union(manifestFeedURL.podcastFeedComparisonKeys) {
+                    self.subscriptionStubsCreatedThisPass[key] = podcast
+                }
+                if let profileID = accessProfile?.id {
+                    self.podcastsByAccessProfileID[profileID] = podcast.persistentModelID
+                    self.subscriptionStubsCreatedThisPass["profile:" + profileID] = podcast
+                }
                 return podcast
             }()
             guard let podcast else { continue }
+            guard appliedPodcastIDs.insert(podcast.persistentModelID).inserted else { continue }
+            if let credentialRequiredProfileID {
+                result.feedsAwaitingCredentials.append(resolvedFeedURL)
+                result.credentialRequiredProfileIDs.append(credentialRequiredProfileID)
+            }
 
             let metadata = ensureMetadata(for: podcast)
             let profileWasAlreadyApplied = metadata.accessProfileID == accessProfile?.id
@@ -536,6 +576,7 @@ actor StoreSplitUserStateImporter {
                 }
             }
         }
+        addAccessProfileAliases()
         let cpuDelta = max(0, SystemProcessCPUTimeSource().sample().cpuTime - cpuStartedAt)
         let appState = await MainActor.run {
             ModelContainerManager.shared.databaseWorkAppState
@@ -547,6 +588,51 @@ actor StoreSplitUserStateImporter {
         return podcasts
     }
 
+    /// Links SubscriptionSync URLs that match no local feed to the podcast with
+    /// the same access-profile ID.
+    ///
+    /// When a user replaces a private feed URL, Podcast Settings keeps the
+    /// podcast's profile ID and stamps it on the old URL's record too. Without
+    /// this, a device that still has the old URL would add the new one as a
+    /// second podcast, and the device that switched would restore the old one.
+    /// Mapping the URL keys here also lets preferences, queue and episode state
+    /// recorded under either URL reach that podcast. Only private feeds carry a
+    /// profile ID, so both fetches stay small.
+    private func addAccessProfileAliases() {
+        podcastsByAccessProfileID = [:]
+        let recordDescriptor = FetchDescriptor<SubscriptionSync>(
+            predicate: #Predicate<SubscriptionSync> { $0.accessProfileID != nil }
+        )
+        guard let records = try? userStateContext.fetch(recordDescriptor),
+              records.isEmpty == false else { return }
+        let metadataDescriptor = FetchDescriptor<PodcastMetaData>(
+            predicate: #Predicate<PodcastMetaData> { $0.accessProfileID != nil }
+        )
+        guard let metadata = try? legacyContext.fetch(metadataDescriptor) else { return }
+        for row in metadata {
+            guard let profileID = row.accessProfileID,
+                  podcastsByAccessProfileID[profileID] == nil,
+                  let podcast = row.podcast,
+                  let feed = podcast.feed else { continue }
+            // Prefer the podcast the URL index already chose for its feed, so a
+            // hidden duplicate never becomes the alias target.
+            podcastsByAccessProfileID[profileID] = feed.podcastFeedComparisonKeys
+                .lazy.compactMap { self.podcastsByComparisonKey[$0] }.first
+                ?? podcast.persistentModelID
+        }
+        for record in records {
+            guard let profileID = record.accessProfileID,
+                  let podcastID = podcastsByAccessProfileID[profileID],
+                  let url = URL(string: record.feedURL) else { continue }
+            let keys = url.podcastFeedComparisonKeys
+            // A URL that already names a local podcast keeps it.
+            guard keys.allSatisfy({ podcastsByComparisonKey[$0] == nil }) else { continue }
+            for key in keys {
+                podcastsByComparisonKey[key] = podcastID
+            }
+        }
+    }
+
     /// Resolves an identifier the comparison-key index handed out.
     ///
     /// The index is built once and then consulted across many `await`s, so an
@@ -554,6 +640,15 @@ actor StoreSplitUserStateImporter {
     /// `model(for:)` would return an object for it anyway and trap on first use.
     private func indexedPodcast(_ podcastID: PersistentIdentifier) -> Podcast? {
         legacyContext.existingModel(for: podcastID)
+    }
+
+    private func createdStub(forFeed feedURL: URL, accessProfileID: String?) -> Podcast? {
+        guard subscriptionStubsCreatedThisPass.isEmpty == false else { return nil }
+        if let podcast = feedURL.podcastFeedComparisonKeys
+            .lazy.compactMap({ self.subscriptionStubsCreatedThisPass[$0] }).first {
+            return podcast
+        }
+        return accessProfileID.flatMap { subscriptionStubsCreatedThisPass["profile:" + $0] }
     }
 
     private func applyPreferences(
@@ -2141,6 +2236,7 @@ actor StoreSplitUserStateImporter {
     }
 
     private func refreshContexts() {
+        subscriptionStubsCreatedThisPass = [:]
         legacyContext = ModelContext(legacyContainer)
         userStateContext = ModelContext(userStateContainer)
         legacyContext.autosaveEnabled = false
