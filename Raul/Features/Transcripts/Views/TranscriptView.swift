@@ -16,6 +16,11 @@ import UIKit
 import AppKit
 #endif
 
+/// Compact, display-only caption card for the player's inline transcript
+/// overlay. It paints immutable compact segments prepared by
+/// ``PlayerTranscriptOverlayHost`` and wraps only a small window of captions
+/// around the playback position, so neither a long publisher transcript nor a
+/// growing live transcript is re-wrapped in full (#495, #520).
 struct TranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -25,17 +30,12 @@ struct TranscriptView: View {
     @ScaledMetric(relativeTo: .body) private var captionFontSize: CGFloat = 17
     #endif
 
-    let transcriptLines: [TranscriptLineAndTime]
-    let usesPublisherAlignment: Bool
+    let snapshot: InlineCaptionSnapshot
     @Binding var currentTime: TimeInterval
     var onOpenFullTranscript: (() -> Void)?
     var reservesBottomTrailingAccessory = false
-    var canFollowPlayback = true
 
-    @State private var captions: [PlaybackCaption] = []
-    @State private var captionIndex: [UUID: Int] = [:]
-    @State private var speakerHeaderIDs: Set<UUID> = []
-    @State private var speakerColorMap: [String: Color] = [:]
+    @State private var window = InlineCaptionWindow()
     @State private var followPlayback = true
     @State private var tracker = TranscriptPlaybackTracker()
 
@@ -44,19 +44,20 @@ struct TranscriptView: View {
     private let verticalPadding: CGFloat = 10
 
     init(
-        transcriptLines: [TranscriptLineAndTime],
+        snapshot: InlineCaptionSnapshot,
         currentTime: Binding<TimeInterval>,
         onOpenFullTranscript: (() -> Void)? = nil,
-        reservesBottomTrailingAccessory: Bool = false,
-        canFollowPlayback: Bool = true
+        reservesBottomTrailingAccessory: Bool = false
     ) {
-        self.transcriptLines = transcriptLines
-        self.usesPublisherAlignment = TranscriptSourceMetadata.make(from: transcriptLines).usesPublisherAlignment
+        self.snapshot = snapshot
         self._currentTime = currentTime
         self.onOpenFullTranscript = onOpenFullTranscript
         self.reservesBottomTrailingAccessory = reservesBottomTrailingAccessory
-        self.canFollowPlayback = canFollowPlayback
     }
+
+    private var usesPublisherAlignment: Bool { snapshot.usesPublisherAlignment }
+    private var canFollowPlayback: Bool { snapshot.canFollowPlayback }
+    private var episodeURL: URL? { snapshot.episodeURL }
 
     var body: some View {
         GeometryReader { geometry in
@@ -104,16 +105,29 @@ struct TranscriptView: View {
                     }
                 }
                 .onChange(of: layout, initial: true) { _, newLayout in
-                    rebuildCaptions(layout: newLayout)
+                    materialize(layout: newLayout, recenter: true)
                 }
-                .onChange(of: transcriptLines) {
-                    rebuildCaptions(layout: layout)
+                .onChange(of: snapshot) {
+                    materialize(layout: layout, recenter: followPlayback)
+                }
+                .onChange(of: followPlayback) {
+                    materialize(layout: layout, recenter: true)
                 }
                 .onAppear {
                     if canFollowPlayback { startTracker() }
                 }
                 .onDisappear { tracker.stop() }
-                .onChange(of: currentTime) { tracker.refresh() }
+                .onChange(of: currentTime) {
+                    // Never move a window the listener is reading; a saved
+                    // partial transcript cannot follow, so it stays put too.
+                    if followPlayback && canFollowPlayback {
+                        let center = currentCenter
+                        if window.needsRecentering(around: center, segmentCount: snapshot.segments.count) {
+                            materialize(layout: layout, recenter: true)
+                        }
+                    }
+                    tracker.refresh()
+                }
                 .onChange(of: Player.shared.currentEpisodeURL) {
                     followPlayback = true
                     updateTracker()
@@ -144,14 +158,10 @@ struct TranscriptView: View {
 
     private var accessoryInset: CGFloat { reservesBottomTrailingAccessory ? 28 : 0 }
 
-    private var episodeURL: URL? {
-        transcriptLines.first?.episode?.url ?? Player.shared.currentEpisodeURL
-    }
-
     private var activeCaption: PlaybackCaption? {
-        guard let id = tracker.active?.segmentID, let index = captionIndex[id],
-              captions.indices.contains(index) else { return nil }
-        return captions[index]
+        guard let id = tracker.active?.segmentID, let index = window.captionIndex[id],
+              window.captions.indices.contains(index) else { return nil }
+        return window.captions[index]
     }
 
     /// Live recognition can lag behind audio playback. For transcripts on the
@@ -165,6 +175,7 @@ struct TranscriptView: View {
 
         // Same chronological lookup as the playback tracker, intentionally
         // ignoring the end time to tolerate delayed speech recognition.
+        let captions = window.captions
         var low = 0
         var high = captions.count
         while low < high {
@@ -185,7 +196,7 @@ struct TranscriptView: View {
     }
 
     private var visibleCaptions: [PlaybackCaption] {
-        guard followPlayback && canFollowPlayback else { return captions }
+        guard followPlayback && canFollowPlayback else { return window.captions }
         return playbackCaption.map { [$0] } ?? []
     }
 
@@ -200,16 +211,32 @@ struct TranscriptView: View {
         return CaptionLineID(captionID: caption.id, lineIndex: line)
     }
 
+    /// Segment index nearest the playback position on the transcript clock.
+    private var currentCenter: Int {
+        guard episodeURL == Player.shared.currentEpisodeURL, currentTime.isFinite else {
+            return window.center
+        }
+        let time = usesPublisherAlignment
+            ? (TranscriptSynchronizationStore.shared.transcriptTime(forAudioTime: currentTime, episodeURL: episodeURL) ?? currentTime)
+            : currentTime
+        return InlineCaptionWindow.segmentIndex(in: snapshot.segments, at: time)
+    }
+
+    private func speakerColor(_ speaker: String) -> Color {
+        guard let index = snapshot.speakers.firstIndex(of: speaker) else { return .accentColor }
+        return speakerColors[index % speakerColors.count]
+    }
+
     private func captionView(_ caption: PlaybackCaption) -> some View {
         let segment = caption.segment
         let isActive = tracker.active?.segmentID == caption.id
         let isFallback = followPlayback && canFollowPlayback && !isActive
             && playbackCaption?.id == caption.id
         return VStack(alignment: .leading, spacing: 2) {
-            if let speaker = segment.speaker, speakerHeaderIDs.contains(caption.id) {
+            if let speaker = segment.speaker, window.speakerHeaderIDs.contains(caption.id) {
                 Text("\(speaker):")
                     .font(.system(size: captionFontSize, weight: .semibold))
-                    .foregroundStyle(differentiateWithoutColor ? Color.primary : (speakerColorMap[speaker] ?? .accentColor))
+                    .foregroundStyle(differentiateWithoutColor ? Color.primary : speakerColor(speaker))
                     .lineLimit(nil)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -257,30 +284,153 @@ struct TranscriptView: View {
     }
 
     private func startTracker() {
-        tracker.start(segments: captions.map(\.segment), episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
+        tracker.start(segments: window.captionSegments, episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
     }
 
     private func updateTracker() {
         guard canFollowPlayback else { return }
-        tracker.update(segments: captions.map(\.segment), episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
+        tracker.update(segments: window.captionSegments, episodeURL: episodeURL, useAlignment: usesPublisherAlignment)
     }
 
-    private func rebuildCaptions(layout: CaptionLayout) {
-        let source = TranscriptSegmentBuilder.makeSegments(from: transcriptLines, options: .compact)
-        let newCaptions = InlineCaptionBuilder.makeCaptions(from: source, layout: layout)
-        captions = newCaptions
-        captionIndex = Dictionary(uniqueKeysWithValues: newCaptions.enumerated().map { ($0.element.id, $0.offset) })
+    /// Wraps only the captions near the playback position. Unchanged segments
+    /// reuse their cached captions, so a new live cue re-wraps just the
+    /// trailing segment(s) and a layout change re-wraps only the window.
+    private func materialize(layout: CaptionLayout, recenter: Bool) {
+        let radius = followPlayback && canFollowPlayback
+            ? InlineCaptionWindow.followRadius
+            : InlineCaptionWindow.browseRadius
+        let center = recenter ? currentCenter : window.center
+        let previous = window.captionSegments
+        window.materialize(segments: snapshot.segments, center: center, radius: radius, layout: layout)
+        if window.captionSegments != previous { updateTracker() }
+    }
+}
 
-        var previousSpeaker: String?
-        speakerHeaderIDs = Set(newCaptions.compactMap { caption in
-            defer { previousSpeaker = caption.segment.speaker }
-            return caption.segment.speaker != previousSpeaker ? caption.id : nil
-        })
-        let speakers = Set(newCaptions.compactMap { $0.segment.speaker }).sorted()
-        speakerColorMap = Dictionary(uniqueKeysWithValues: speakers.enumerated().map {
-            ($0.element, speakerColors[$0.offset % speakerColors.count])
-        })
-        updateTracker()
+/// The compact, immutable caption input for ``TranscriptView``. Segments are
+/// already grouped (off the main actor for stored transcripts, incrementally for
+/// live recognition); `revision` changes whenever they do.
+struct InlineCaptionSnapshot: Equatable, Sendable {
+    enum Kind: Equatable, Sendable { case document, live, savedPartial }
+
+    let episodeURL: URL
+    let kind: Kind
+    let revision: Int
+    let segments: [TranscriptSegment]
+    let speakers: [String]
+    let usesPublisherAlignment: Bool
+    let canFollowPlayback: Bool
+
+    /// Cheap identity comparison: `revision` is bumped for every new segment list.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.episodeURL == rhs.episodeURL && lhs.kind == rhs.kind && lhs.revision == rhs.revision
+            && lhs.usesPublisherAlignment == rhs.usesPublisherAlignment
+            && lhs.canFollowPlayback == rhs.canFollowPlayback
+    }
+}
+
+/// A bounded window of wrapped captions around one segment (#520). Captions
+/// are cached per segment and reused while the segment and its successor's
+/// start time are unchanged, which keeps live updates O(changed segments).
+struct InlineCaptionWindow {
+    /// While following playback only the current caption is shown.
+    static let followRadius = 3
+    /// After the listener scrolls the card, keep a readable neighbourhood.
+    static let browseRadius = 20
+
+    private struct Entry {
+        let segment: TranscriptSegment
+        let nextStart: TimeInterval?
+        let captions: [PlaybackCaption]
+    }
+
+    private(set) var layout: CaptionLayout?
+    private(set) var range: Range<Int> = 0..<0
+    private(set) var center = 0
+    private(set) var radius = 0
+    private(set) var captions: [PlaybackCaption] = []
+    private(set) var captionSegments: [TranscriptSegment] = []
+    private(set) var captionIndex: [UUID: Int] = [:]
+    private(set) var speakerHeaderIDs: Set<UUID> = []
+    /// Segments wrapped since creation; exposes reuse to tests and diagnostics.
+    private(set) var wrappedSegmentCount = 0
+    private var cache: [UUID: Entry] = [:]
+
+    /// Index of the last segment starting at or before `time`, clamped to the list.
+    static func segmentIndex(in segments: [TranscriptSegment], at time: TimeInterval) -> Int {
+        guard !segments.isEmpty, time.isFinite else { return 0 }
+        var low = 0
+        var high = segments.count
+        while low < high {
+            let mid = (low + high) / 2
+            if segments[mid].startTime <= time { low = mid + 1 } else { high = mid }
+        }
+        return max(0, low - 1)
+    }
+
+    func needsRecentering(around newCenter: Int, segmentCount: Int) -> Bool {
+        guard segmentCount > 0 else { return false }
+        if range.isEmpty { return true }
+        return abs(newCenter - center) > max(1, radius / 2)
+    }
+
+    mutating func materialize(
+        segments: [TranscriptSegment],
+        center requestedCenter: Int,
+        radius: Int,
+        layout: CaptionLayout
+    ) {
+        if layout != self.layout {
+            cache.removeAll()
+            self.layout = layout
+        }
+        guard !segments.isEmpty else {
+            range = 0..<0
+            center = 0
+            self.radius = radius
+            captions = []
+            captionSegments = []
+            captionIndex = [:]
+            speakerHeaderIDs = []
+            cache.removeAll()
+            return
+        }
+
+        let center = min(max(0, requestedCenter), segments.count - 1)
+        let range = max(0, center - radius)..<min(segments.count, center + radius + 1)
+        var newCache: [UUID: Entry] = [:]
+        var newCaptions: [PlaybackCaption] = []
+        var headers = Set<UUID>()
+        for index in range {
+            let segment = segments[index]
+            let nextStart = index + 1 < segments.count ? segments[index + 1].startTime : nil
+            let wrapped: [PlaybackCaption]
+            if let entry = cache[segment.id], entry.nextStart == nextStart, entry.segment == segment {
+                wrapped = entry.captions
+            } else {
+                wrapped = InlineCaptionBuilder.captions(for: segment, nextStart: nextStart, layout: layout)
+                wrappedSegmentCount += 1
+            }
+            newCache[segment.id] = Entry(segment: segment, nextStart: nextStart, captions: wrapped)
+            // Captions of one segment share its speaker, so only a segment's
+            // first caption can start a new speaker turn.
+            let previousSpeaker = index > 0 ? segments[index - 1].speaker : nil
+            if let first = wrapped.first, segment.speaker != previousSpeaker {
+                headers.insert(first.id)
+            }
+            newCaptions.append(contentsOf: wrapped)
+        }
+
+        cache = newCache
+        self.range = range
+        self.center = center
+        self.radius = radius
+        captions = newCaptions
+        captionSegments = newCaptions.map(\.segment)
+        captionIndex = Dictionary(
+            newCaptions.enumerated().map { ($0.element.id, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        speakerHeaderIDs = headers
     }
 }
 
@@ -291,14 +441,14 @@ private struct CaptionLineID: Hashable {
     let lineIndex: Int
 }
 
-private struct PlaybackCaption: Identifiable {
+struct PlaybackCaption: Identifiable, Equatable {
     let segment: TranscriptSegment
     // UTF-16 ranges into segment.text, not the original source segment.
     let lines: [NSRange]
     var id: UUID { segment.id }
 }
 
-private struct CaptionLayout: Equatable {
+struct CaptionLayout: Equatable {
     let width: CGFloat
     let height: CGFloat
     let fontSize: CGFloat
@@ -336,7 +486,7 @@ private struct CaptionLayout: Equatable {
 
 // MARK: - BBC-inspired line and caption segmentation
 
-private enum InlineCaptionBuilder {
+enum InlineCaptionBuilder {
     private static let maxDuration: TimeInterval = 5
     private static let targetCharactersPerLine = 37
     private static let maxWords = 14
@@ -349,13 +499,21 @@ private enum InlineCaptionBuilder {
         "und", "oder", "aber", "ist", "sind", "war", "wird", "hat", "haben"
     ]
 
+    /// Wraps every segment. Used as the reference result in tests; views use
+    /// ``InlineCaptionWindow`` to wrap only the captions they can show.
     static func makeCaptions(from segments: [TranscriptSegment], layout: CaptionLayout) -> [PlaybackCaption] {
         var result: [PlaybackCaption] = []
         for (index, segment) in segments.enumerated() {
             let nextStart = index + 1 < segments.count ? segments[index + 1].startTime : nil
-            result.append(contentsOf: split(segment, nextStart: nextStart, layout: layout))
+            result.append(contentsOf: captions(for: segment, nextStart: nextStart, layout: layout))
         }
         return result
+    }
+
+    /// Captions for one segment. The result depends only on the segment, the
+    /// following segment's start time and the layout.
+    static func captions(for segment: TranscriptSegment, nextStart: TimeInterval?, layout: CaptionLayout) -> [PlaybackCaption] {
+        split(segment, nextStart: nextStart, layout: layout)
     }
 
     private static func split(_ source: TranscriptSegment, nextStart: TimeInterval?, layout: CaptionLayout) -> [PlaybackCaption] {
@@ -530,12 +688,13 @@ private enum InlineCaptionBuilder {
         return times
     }
 
+    private static let tokenPattern = try! NSRegularExpression(pattern: #"\S+"#)
+
     private static func tokenRanges(in text: String) -> [NSRange] {
         // Keep punctuation and Unicode graphemes intact. NaturalLanguage also
         // provides word boundaries for scripts that do not separate words by spaces.
         let ns = text as NSString
-        let pattern = try! NSRegularExpression(pattern: #"\S+"#)
-        let matches = pattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        let matches = tokenPattern.matches(in: text, range: NSRange(location: 0, length: ns.length))
         var ranges: [NSRange] = []
         for match in matches {
             let raw = ns.substring(with: match.range)

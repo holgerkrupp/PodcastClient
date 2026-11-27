@@ -45,7 +45,6 @@ struct PlayerView: View {
     @SceneStorage("player.contentTab") private var contentTabRawValue = PlayerContentTab.shownotes.rawValue
     @State private var contentAvailability: PlayerContentAvailability?
     @State private var isTransportPinned = false
-    @State private var aiGeneration = EpisodeAIGenerationCoordinator.shared
 
     let fullSize: Bool
     /// Set by the iOS presentation host because a sheet's local size class can
@@ -60,7 +59,11 @@ struct PlayerView: View {
     private var contentTabSelection: Binding<PlayerContentTab> {
         Binding(
             get: { contentTab },
-            set: { contentTabRawValue = $0.rawValue }
+            set: { newValue in
+                guard newValue != contentTab else { return }
+                PlayerOpeningPerformance.beginInteraction(.contentTab)
+                contentTabRawValue = newValue.rawValue
+            }
         )
     }
 
@@ -87,8 +90,9 @@ struct PlayerView: View {
 
     var body: some View {
         if let episode = player.currentEpisode {
-            let _ = episode.refresh
-
+            // No root-level `episode.refresh` read: reference changes reach the
+            // availability snapshot below and the shownotes/chapter tab views
+            // through their own revisions, never the whole player (#520).
             GeometryReader { geometry in
                 Group {
                     switch PlayerLayoutPolicy.mode(
@@ -118,6 +122,7 @@ struct PlayerView: View {
             }
             .esaResolveTheme(image: currentArtworkSource)
             .onAppear {
+                PlayerOpeningPerformance.noteInteraction()
                 PlayerOpeningPerformance.firstMeaningfulFrame(artworkReady: player.currentArtworkImage != nil)
             }
             .background {
@@ -203,12 +208,7 @@ struct PlayerView: View {
         PlayerControllView(
             mediaHeight: min(size.width, size.height) * 0.33,
             showsInlineTranscript: false,
-            usesCachedContentAvailability: true,
-            contentAvailability: contentAvailability,
-            generationAction: generationAction(for: episode),
-            generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
-            generateAction: { action in startAIGeneration(action, for: episode) },
-            cancelGeneration: { if let url = episode.url { Task { await aiGeneration.cancel(episodeURL: url) } } }
+            contentAvailability: contentAvailability
         )
         .frame(maxWidth: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
@@ -227,7 +227,7 @@ struct PlayerView: View {
                 .pickerStyle(.segmented)
                 .accessibilityLabel("Player content")
 
-                playerMoreActionsMenu(episode: episode)
+                PlayerMoreActionsMenu(episode: episode)
             }
             .padding()
 
@@ -248,33 +248,16 @@ struct PlayerView: View {
                         startFollowingPlayback: true
                     )
                 case .chapters:
-                    let chapterMarkers = episode.chapters ?? []
-                    if hasDisplayableChapters(in: chapterMarkers, for: episode) {
-                        ChapterListView(
-                            episode: episode,
-                            showsTitle: false,
-                            markersOverride: chapterMarkers
-                        )
-                    } else {
-                        missingChaptersView(episode: episode)
-                    }
+                    PlayerChaptersTabContent(episode: episode)
                 case .upNext:
                     UpcomingQueuePreview()
                 }
             }
+            .id(contentTab)
+            .onAppear { PlayerOpeningPerformance.interactionVisible(.contentTab) }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .background(.regularMaterial)
-    }
-
-    private func missingChaptersView(episode: Episode) -> some View {
-        ContentUnavailableView {
-            Label("No Chapters", systemImage: "list.bullet.rectangle")
-        } description: {
-            Text("Generate a transcript and use it to create chapter markers.")
-        } actions: {
-            Text("Use the chapter row to generate chapters on this device.")
-        }
     }
 
     private func compactFullPlayer(episode: Episode, in size: CGSize) -> some View {
@@ -288,12 +271,7 @@ struct PlayerView: View {
                     showsMedia: !usesArtworkHero,
                     showsTranscriptOverHero: usesArtworkHero,
                     showsPlaybackUtilities: false,
-                    usesCachedContentAvailability: true,
-                    contentAvailability: contentAvailability,
-                    generationAction: generationAction(for: episode),
-                    generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
-                    generateAction: { action in startAIGeneration(action, for: episode) },
-                    cancelGeneration: { if let url = episode.url { Task { await aiGeneration.cancel(episodeURL: url) } } }
+                    contentAvailability: contentAvailability
                 )
                     .frame(maxWidth: .infinity, alignment: .top)
 
@@ -376,108 +354,42 @@ struct PlayerView: View {
 
             Divider()
 
-            switch contentTab {
-            case .shownotes:
-                HStack {
-                    Text("Shownotes")
-                        .font(.headline)
-                    Spacer()
-                    playerMoreActionsMenu(episode: episode)
-                }
-                .padding(.bottom, 8)
+            VStack(alignment: .leading) {
+                switch contentTab {
+                case .shownotes:
+                    HStack {
+                        Text("Shownotes")
+                            .font(.headline)
+                        Spacer()
+                        PlayerMoreActionsMenu(episode: episode)
+                    }
+                    .padding(.bottom, 8)
 
-                PlayerShownotesView(episode: episode)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            case .transcript:
-                TranscriptPane(
-                    episode: episode,
-                    availability: contentAvailability,
-                    startFollowingPlayback: true
-                )
-            case .chapters:
-                let chapterMarkers = episode.chapters ?? []
-                if hasDisplayableChapters(in: chapterMarkers, for: episode) {
-                    ChapterListView(
+                    PlayerShownotesView(episode: episode)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                case .transcript:
+                    TranscriptPane(
                         episode: episode,
-                        showsTitle: false,
-                        markersOverride: chapterMarkers
+                        availability: contentAvailability,
+                        startFollowingPlayback: true
                     )
-                } else {
-                    missingChaptersView(episode: episode)
+                case .chapters:
+                    PlayerChaptersTabContent(episode: episode)
+                case .upNext:
+                    UpcomingQueuePreview()
                 }
-            case .upNext:
-                UpcomingQueuePreview()
             }
+            .id(contentTab)
+            .onAppear { PlayerOpeningPerformance.interactionVisible(.contentTab) }
         }
         .padding()
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    @ViewBuilder
-    private func playerMoreActionsMenu(episode: Episode) -> some View {
-        Menu {
-            if let episodeLink = episode.link {
-                Link(destination: episodeLink) {
-                    Label("Open Episode Website", systemImage: "safari")
-                }
-            }
-
-            if let url = episode.deeplinks?.first ?? episode.link {
-                ShareLink(item: positionedURL(for: url)) {
-                    Label("Share at Current Position", systemImage: "square.and.arrow.up")
-                }
-            }
-
-            if player.canSwitchCurrentEpisodeMedia {
-                Button {
-                    Task { await player.switchCurrentEpisodeMedia() }
-                } label: {
-                    Label(
-                        player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video",
-                        systemImage: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle"
-                    )
-                }
-            }
-
-            if ListenTogetherController.shared.isInSession {
-                Button {
-                    ListenTogetherController.shared.leave()
-                } label: {
-                    Label("Leave SharePlay", systemImage: "shareplay.slash")
-                }
-            } else if let activity = ListenTogetherActivity(episode: episode) {
-                ShareLink(
-                    item: ListenTogetherInvitation(activity: activity),
-                    preview: SharePreview(episode.title)
-                ) {
-                    Label("Listen Together", systemImage: "shareplay")
-                }
-            }
-
-#if DEBUG
-            NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
-                Label("Episode Debug Metadata", systemImage: "ladybug")
-            }
-#endif
-        } label: {
-            Label("More", systemImage: "ellipsis")
-                .labelStyle(.titleAndIcon)
-            
-        }
-      
-        .accessibilityLabel("More episode actions")
-        .accessibilityHint("Opens website, sharing, media, and developer actions")
-    }
-
     private func compactPlayer(episode: Episode) -> some View {
         VStack(spacing: 0) {
             PlayerControllView(
-                usesCachedContentAvailability: true,
-                contentAvailability: contentAvailability,
-                generationAction: generationAction(for: episode),
-                generationState: episode.url.flatMap { aiGeneration.state(for: $0) },
-                generateAction: { action in startAIGeneration(action, for: episode) },
-                cancelGeneration: { if let url = episode.url { Task { await aiGeneration.cancel(episodeURL: url) } } }
+                contentAvailability: contentAvailability
             )
                 .padding()
 #if DEBUG
@@ -493,40 +405,6 @@ struct PlayerView: View {
         }
     }
 
-    private func generationAction(for episode: Episode) -> EpisodeAIGenerationAction? {
-        guard let availability = contentAvailability,
-              availability.episodeURL == episode.url else {
-            // Until the background availability check resolves, no absence is confirmed.
-            return nil
-        }
-
-        let hasPlaybackChapters = PlayerChapterRowPolicy.hasSelectablePlaybackChapters(
-            for: episode.url,
-            activeEpisodeURL: player.currentEpisodeURL,
-            chapterCount: player.chapters?.count,
-            firstStart: player.chapters?.first?.start
-        )
-        return PlayerChapterRowPolicy.generationAction(
-            availability: availability,
-            hasPlaybackChapters: hasPlaybackChapters,
-            aiAvailable: AppleIntelligenceAvailability.isAvailable
-        )
-    }
-
-    private func startAIGeneration(_ action: EpisodeAIGenerationAction, for episode: Episode) {
-        guard let episodeURL = episode.url else { return }
-        aiGeneration.start(action: action, episodeURL: episodeURL, modelContainer: modelContext.container)
-    }
-
-    private func hasDisplayableChapters(in markers: [Marker], for episode: Episode) -> Bool {
-        if markers.contains(where: { $0.type == .soundbite }) {
-            return true
-        }
-
-        let displayChapters = episode.chaptersForDisplay(from: markers)
-        return displayChapters.count > 1 || (displayChapters.first?.start ?? 0) > 0.5
-    }
-
     @MainActor
     private func refreshContentAvailability(for episode: Episode, forceRefresh: Bool = false) async {
         guard let episodeURL = episode.url else { return }
@@ -539,24 +417,20 @@ struct PlayerView: View {
         }
         let snapshot = await worker.availability(for: episodeURL)
         guard Task.isCancelled == false, player.currentEpisode?.url == episodeURL else { return }
-        contentAvailability = snapshot
+        // Re-queries after unrelated reference notifications usually return the
+        // same value; don't invalidate the player for them.
+        if contentAvailability != snapshot {
+            contentAvailability = snapshot
+        }
     }
 
     private func notificationMatchesEpisode(_ notification: Notification, episode: Episode) -> Bool {
-        guard let changedURL = notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL else {
-            return true
-        }
-        return changedURL == episode.url
+        PlayerReferenceNotificationPolicy.matches(
+            changedURL: notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL,
+            episodeURL: episode.url
+        )
     }
 
-    private func positionedURL(for url: URL) -> URL {
-        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        var queryItems = components.queryItems ?? []
-        queryItems.removeAll { $0.name == "t" }
-        queryItems.append(URLQueryItem(name: "t", value: "\(Int(player.playPosition))"))
-        components.queryItems = queryItems
-        return components.url ?? url
-    }
 }
 
 struct PlayerContentAvailability: Sendable, Equatable {
@@ -564,6 +438,9 @@ struct PlayerContentAvailability: Sendable, Equatable {
     let hasTranscript: Bool
     let hasChapterSelectionUI: Bool
     let hasUsableChapters: Bool
+    /// A saved live-caption session exists. Read by the background query so
+    /// the player never inspects `liveTranscriptData` while rendering.
+    var hasSavedLiveTranscript: Bool = false
 }
 
 
@@ -580,6 +457,21 @@ enum PlayerChapterRowPolicy {
         guard let episodeURL, episodeURL == activeEpisodeURL else { return false }
         return (chapterCount ?? 0) > 1
             || (chapterCount == 1 && (firstStart ?? 0) > 0.5)
+    }
+
+    /// Chapter controls appear for a matching prepared snapshot or for the
+    /// chapters the player already loaded for playback. A missing snapshot
+    /// never falls back to a relationship fault during body evaluation.
+    static func hasChapterSelectionUI(
+        availability: PlayerContentAvailability?,
+        episodeURL: URL?,
+        hasPlaybackChapters: Bool
+    ) -> Bool {
+        if hasPlaybackChapters { return true }
+        guard let availability, let episodeURL, availability.episodeURL == episodeURL else {
+            return false
+        }
+        return availability.hasChapterSelectionUI
     }
 
     /// A missing availability snapshot is *unknown*, not "no transcript/chapters".
@@ -642,16 +534,23 @@ actor PlayerContentAvailabilityModelActor {
         )
         let episode = (try? modelContext.fetch(episodeDescriptor))?.first
 
-        var transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
-            predicate: #Predicate { $0.episode?.url == episodeURL }
-        )
-        transcriptDescriptor.fetchLimit = 1
-        let hasTranscript = (try? modelContext.fetch(transcriptDescriptor))?.isEmpty == false
+        // Query children by the episode's foreign key. An optional-chained
+        // `$0.episode?.url` predicate compiles to CASE…END and scans the whole
+        // transcript/marker table.
+        var hasTranscript = false
+        var markers: [Marker] = []
+        if let episodeID = episode?.persistentModelID {
+            var transcriptDescriptor = FetchDescriptor<TranscriptLineAndTime>(
+                predicate: #Predicate { $0.episode != nil && $0.episode!.persistentModelID == episodeID }
+            )
+            transcriptDescriptor.fetchLimit = 1
+            hasTranscript = ((try? modelContext.fetchCount(transcriptDescriptor)) ?? 0) > 0
 
-        let markerDescriptor = FetchDescriptor<Marker>(
-            predicate: #Predicate { $0.episode?.url == episodeURL }
-        )
-        let markers = (try? modelContext.fetch(markerDescriptor)) ?? []
+            let markerDescriptor = FetchDescriptor<Marker>(
+                predicate: #Predicate { $0.episode != nil && $0.episode!.persistentModelID == episodeID }
+            )
+            markers = (try? modelContext.fetch(markerDescriptor)) ?? []
+        }
         let displayChapters = episode?.chaptersForDisplay(from: markers) ?? []
         let hasChapterSelectionUI = displayChapters.count > 1
             || (displayChapters.first?.start ?? 0) > 0.5
@@ -661,7 +560,8 @@ actor PlayerContentAvailabilityModelActor {
             episodeURL: episodeURL,
             hasTranscript: hasTranscript,
             hasChapterSelectionUI: hasChapterSelectionUI,
-            hasUsableChapters: hasUsableChapters
+            hasUsableChapters: hasUsableChapters,
+            hasSavedLiveTranscript: episode?.liveTranscriptData != nil
         )
 
         await PlayerContentAvailabilitySnapshotCache.shared.store(snapshot)
@@ -715,8 +615,16 @@ actor PlayerTranscriptModelActor {
             os_signpost(.end, log: PlayerOpeningPerformance.log, name: "Transcript snapshot load", signpostID: signpostID)
         }
 
+        var episodeDescriptor = FetchDescriptor<Episode>(
+            predicate: #Predicate { $0.url == episodeURL }
+        )
+        episodeDescriptor.fetchLimit = 1
+        guard let episodeID = try modelContext.fetch(episodeDescriptor).first?.persistentModelID else {
+            return nil
+        }
+        // Foreign-key predicate so SQLite can use the episode index.
         let descriptor = FetchDescriptor<TranscriptLineAndTime>(
-            predicate: #Predicate { $0.episode?.url == episodeURL },
+            predicate: #Predicate { $0.episode != nil && $0.episode!.persistentModelID == episodeID },
             sortBy: [SortDescriptor(\.startTime)]
         )
         let sources = try modelContext.fetch(descriptor).map { line in
@@ -767,15 +675,137 @@ private enum PlayerContentTab: String, CaseIterable, Identifiable {
 
 private struct PlayerShownotesView: View {
     let episode: Episode
+    @State private var revision = 0
 
     var body: some View {
+        let _ = revision
         ShownoteContentView(
             html: episode.content ?? episode.desc ?? "",
             episodeURL: episode.url,
             episodeTitle: episode.title
         )
+        .modifier(EpisodeReferenceRevisionModifier(episodeURL: episode.url, revision: $revision))
     }
 }
+
+/// The More menu builds its share URL from the playback position, so it lives
+/// in its own view: playback ticks rebuild this menu, not the player (#520).
+private struct PlayerMoreActionsMenu: View {
+    let episode: Episode
+    private var player: Player { .shared }
+
+    var body: some View {
+        Menu {
+            if let episodeLink = episode.link {
+                Link(destination: episodeLink) {
+                    Label("Open Episode Website", systemImage: "safari")
+                }
+            }
+
+            if let url = episode.deeplinks?.first ?? episode.link {
+                ShareLink(item: positionedURL(for: url)) {
+                    Label("Share at Current Position", systemImage: "square.and.arrow.up")
+                }
+            }
+
+            if player.canSwitchCurrentEpisodeMedia {
+                Button {
+                    Task { await player.switchCurrentEpisodeMedia() }
+                } label: {
+                    Label(
+                        player.currentPlaybackIsVideo ? "Switch to Audio" : "Switch to Video",
+                        systemImage: player.currentPlaybackIsVideo ? "waveform" : "play.rectangle"
+                    )
+                }
+            }
+
+            if ListenTogetherController.shared.isInSession {
+                Button {
+                    ListenTogetherController.shared.leave()
+                } label: {
+                    Label("Leave SharePlay", systemImage: "shareplay.slash")
+                }
+            } else if let activity = ListenTogetherActivity(episode: episode) {
+                ShareLink(
+                    item: ListenTogetherInvitation(activity: activity),
+                    preview: SharePreview(episode.title)
+                ) {
+                    Label("Listen Together", systemImage: "shareplay")
+                }
+            }
+
+#if DEBUG
+            NavigationLink(destination: EpisodeDebugMetadataView(episode: episode)) {
+                Label("Episode Debug Metadata", systemImage: "ladybug")
+            }
+#endif
+        } label: {
+            Label("More", systemImage: "ellipsis")
+                .labelStyle(.titleAndIcon)
+            
+        }
+      
+        .accessibilityLabel("More episode actions")
+        .accessibilityHint("Opens website, sharing, media, and developer actions")
+    }
+
+    private func positionedURL(for url: URL) -> URL {
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        var queryItems = components.queryItems ?? []
+        queryItems.removeAll { $0.name == "t" }
+        queryItems.append(URLQueryItem(name: "t", value: "\(Int(player.playPosition))"))
+        components.queryItems = queryItems
+        return components.url ?? url
+    }
+}
+
+/// Chapter tab content. It reads the chapter relationship only while the tab is
+/// visible and re-reads it on this episode's reference/chapter revisions.
+private struct PlayerChaptersTabContent: View {
+    let episode: Episode
+    @State private var revision = 0
+
+    var body: some View {
+        let _ = revision
+        let chapterMarkers = episode.chapters ?? []
+        Group {
+            if hasDisplayableChapters(in: chapterMarkers, for: episode) {
+                ChapterListView(
+                    episode: episode,
+                    showsTitle: false,
+                    markersOverride: chapterMarkers
+                )
+            } else {
+                missingChaptersView
+            }
+        }
+        .modifier(EpisodeReferenceRevisionModifier(
+            episodeURL: episode.url,
+            includesChapterData: true,
+            revision: $revision
+        ))
+    }
+
+    private var missingChaptersView: some View {
+        ContentUnavailableView {
+            Label("No Chapters", systemImage: "list.bullet.rectangle")
+        } description: {
+            Text("Generate a transcript and use it to create chapter markers.")
+        } actions: {
+            Text("Use the chapter row to generate chapters on this device.")
+        }
+    }
+
+    private func hasDisplayableChapters(in markers: [Marker], for episode: Episode) -> Bool {
+        if markers.contains(where: { $0.type == .soundbite }) {
+            return true
+        }
+
+        let displayChapters = episode.chaptersForDisplay(from: markers)
+        return displayChapters.count > 1 || (displayChapters.first?.start ?? 0) > 0.5
+    }
+}
+
 
 #Preview {
     @Previewable @State var fullSize: Bool = false

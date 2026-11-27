@@ -171,30 +171,43 @@ enum TranscriptSegmentBuilder {
     }
 
     static func makeSegments(fromSorted lines: [TranscriptSegmentSource], options: Options) -> [TranscriptSegment] {
-        let sourceLines = lines
-            .filter { $0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+        makeIndexedSegments(fromSorted: lines, startingAt: 0, options: options).map(\.segment)
+    }
 
-        guard sourceLines.isEmpty == false else { return [] }
+    /// Groups `lines[startIndex...]` and reports, for every segment, the index in
+    /// `lines` of its first source line. Grouping is greedy and left to right, so a
+    /// suffix can be regrouped from any segment start without touching earlier
+    /// segments (see ``InlineSegmentAccumulator``).
+    static func makeIndexedSegments(
+        fromSorted lines: [TranscriptSegmentSource],
+        startingAt startIndex: Int,
+        options: Options
+    ) -> [(segment: TranscriptSegment, sourceIndex: Int)] {
+        guard startIndex < lines.count else { return [] }
 
-        var segments: [TranscriptSegment] = []
+        var segments: [(segment: TranscriptSegment, sourceIndex: Int)] = []
         var builder: PartialSegment?
+        var builderStart = startIndex
 
-        for line in sourceLines {
+        for index in startIndex..<lines.count {
+            let line = lines[index]
             let text = line.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard text.isEmpty == false else { continue }
 
             if var current = builder, current.canAppend(line, text: text, options: options) {
                 current.append(line, text: text)
                 builder = current
             } else {
                 if let finished = builder?.finalized() {
-                    segments.append(finished)
+                    segments.append((finished, builderStart))
                 }
                 builder = PartialSegment(line: line, text: text)
+                builderStart = index
             }
         }
 
         if let finished = builder?.finalized() {
-            segments.append(finished)
+            segments.append((finished, builderStart))
         }
 
         return segments
@@ -296,5 +309,103 @@ enum TranscriptSegmentBuilder {
 
         guard let last = characters.last else { return false }
         return sentenceTerminators.contains(last)
+    }
+}
+
+/// Keeps compact segments for a growing, start-sorted source list (#520).
+///
+/// Live recognition appends cues and revises only the trailing window. Instead
+/// of regrouping the whole transcript for every cue, the accumulator finds the
+/// first changed source, keeps every segment that was closed before it and
+/// regroups only from the segment that contained the last unchanged source.
+/// The result is always identical to
+/// `TranscriptSegmentBuilder.makeSegments(fromSorted:options:)`.
+struct InlineSegmentAccumulator: Sendable {
+    struct Update: Equatable, Sendable {
+        /// Leading segments carried over unchanged (same values and IDs).
+        let reusedSegments: Int
+        /// Segments regrouped by this update.
+        let rebuiltSegments: Int
+        let changed: Bool
+    }
+
+    let options: TranscriptSegmentBuilder.Options
+    private(set) var sources: [TranscriptSegmentSource] = []
+    private(set) var segments: [TranscriptSegment] = []
+    /// Sorted speaker names, used for stable speaker colours.
+    private(set) var speakers: [String] = []
+    private var segmentSourceStarts: [Int] = []
+    private var speakerCounts: [String: Int] = [:]
+
+    init(options: TranscriptSegmentBuilder.Options = .compact) {
+        self.options = options
+    }
+
+    @discardableResult
+    mutating func update(with newSources: [TranscriptSegmentSource]) -> Update {
+        // Value comparison is cheap here: unchanged cues share string and
+        // array storage, so equality takes the identity fast path.
+        let common = min(sources.count, newSources.count)
+        var firstChange = 0
+        while firstChange < common && sources[firstChange] == newSources[firstChange] {
+            firstChange += 1
+        }
+        if firstChange == sources.count && firstChange == newSources.count {
+            return Update(reusedSegments: segments.count, rebuiltSegments: 0, changed: false)
+        }
+
+        // The segment holding the last unchanged source may still grow; every
+        // earlier segment was closed by an unchanged source and is final.
+        var keep = 0
+        var restart = 0
+        if firstChange > 0, let holder = Self.lastIndex(in: segmentSourceStarts, notAfter: firstChange - 1) {
+            keep = holder
+            restart = segmentSourceStarts[holder]
+        }
+
+        for segment in segments[keep...] {
+            if let speaker = segment.speaker { adjustSpeaker(speaker, by: -1) }
+        }
+        segments.removeSubrange(keep...)
+        segmentSourceStarts.removeSubrange(keep...)
+
+        let tail = TranscriptSegmentBuilder.makeIndexedSegments(
+            fromSorted: newSources,
+            startingAt: restart,
+            options: options
+        )
+        segments.reserveCapacity(keep + tail.count)
+        for entry in tail {
+            segments.append(entry.segment)
+            segmentSourceStarts.append(entry.sourceIndex)
+            if let speaker = entry.segment.speaker { adjustSpeaker(speaker, by: 1) }
+        }
+        sources = newSources
+        return Update(reusedSegments: keep, rebuiltSegments: tail.count, changed: true)
+    }
+
+    private mutating func adjustSpeaker(_ speaker: String, by delta: Int) {
+        let count = (speakerCounts[speaker] ?? 0) + delta
+        if count <= 0 {
+            speakerCounts.removeValue(forKey: speaker)
+            speakers.removeAll { $0 == speaker }
+        } else {
+            if speakerCounts[speaker] == nil {
+                let index = speakers.firstIndex { $0 > speaker } ?? speakers.endIndex
+                speakers.insert(speaker, at: index)
+            }
+            speakerCounts[speaker] = count
+        }
+    }
+
+    /// Largest index whose value is <= `limit` in an ascending array.
+    private static func lastIndex(in values: [Int], notAfter limit: Int) -> Int? {
+        var low = 0
+        var high = values.count
+        while low < high {
+            let mid = (low + high) / 2
+            if values[mid] <= limit { low = mid + 1 } else { high = mid }
+        }
+        return low > 0 ? low - 1 : nil
     }
 }

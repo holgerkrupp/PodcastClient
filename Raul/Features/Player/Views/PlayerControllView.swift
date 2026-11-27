@@ -10,13 +10,14 @@ import AVFoundation
 import AVKit
 import TipKit
 
+/// The player shell. It observes only the current episode identity and its own
+/// presentation state; every frequently changing value (playback ticks, live
+/// cues, sleep countdown, chapter-skip history, generation progress) is read by
+/// a narrow island further down so it cannot rebuild this hierarchy (#520).
 struct PlayerControllView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openPodcastSettings) private var openSettings
 
-    @Bindable private var player = Player.shared
-    @Bindable private var liveTranscript = LiveTranscriptController.shared
-    @Bindable private var chapterSkipRecognition = ChapterSkipRecognition.shared
     @State private var showTranscripts: Bool = false
 
     @State private var showFullTranscripts: Bool = false
@@ -32,24 +33,19 @@ struct PlayerControllView: View {
     var showsInlineTranscript = true
     var showsTranscriptOverHero = false
     var showsPlaybackUtilities = true
-    var usesCachedContentAvailability = false
+    /// Prepared off-main by `PlayerContentAvailabilityModelActor`. Nil means
+    /// unknown: transcript/chapter affordances wait for it instead of faulting
+    /// relationships during body evaluation.
     var contentAvailability: PlayerContentAvailability?
-    var generationAction: EpisodeAIGenerationAction?
-    var generationState: EpisodeAIGenerationState?
-    var generateAction: ((EpisodeAIGenerationAction) -> Void)?
-    var cancelGeneration: (() -> Void)?
-    
+
+    private var player: Player { .shared }
+
     var body: some View {
         if let episode = player.currentEpisode {
             VStack(spacing: 8) {
                 if showsMedia, let mediaHeight {
                     VStack(spacing: 0) {
-                        PlayerMediaView(
-                            player: player.videoPlayer,
-                            isVideo: player.currentPlaybackIsVideo,
-                            artworkImage: player.currentArtworkImage
-                        )
-                            .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
+                        PlayerMediaSurface(episodeURL: episode.url)
                             .scaledToFit()
                             .frame(maxWidth: .infinity)
                             .frame(
@@ -72,12 +68,7 @@ struct PlayerControllView: View {
                     .frame(height: mediaHeight, alignment: .top)
                     .animation(reduceMotion ? nil : .spring(response: 0.32, dampingFraction: 0.85), value: showTranscripts)
                 } else if showsMedia {
-                    PlayerMediaView(
-                        player: player.videoPlayer,
-                        isVideo: player.currentPlaybackIsVideo,
-                        artworkImage: player.currentArtworkImage
-                    )
-                    .id("\(episode.url?.absoluteString ?? "")-\(player.currentPlaybackIsVideo)")
+                    PlayerMediaSurface(episodeURL: episode.url)
                     .scaledToFit()
                     .frame(maxWidth: .infinity)
                     .aspectRatio(1, contentMode: .fit)
@@ -90,31 +81,18 @@ struct PlayerControllView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 }
                 
-                chapterControlsRow
+                PlayerChapterControlSlot(
+                    episode: episode,
+                    showTranscripts: $showTranscripts,
+                    showsInlineTranscript: showsInlineTranscript,
+                    showsTranscriptOverHero: showsTranscriptOverHero,
+                    contentAvailability: contentAvailability,
+                    onOpenPlaybackSettings: openPlaybackSettings
+                )
 
-                if let suggestion = chapterSkipRecognition.suggestion(for: episode.podcast?.feed),
-                   let podcast = episode.podcast {
-                    let tip = ChapterSkipSuggestionTip(suggestion: suggestion)
-                    TipView(tip, arrowEdge: .none) { action in
-                        if action.id == "create-rule" {
-                            openSuggestedChapterRule(for: podcast, suggestion: suggestion)
-                        } else if action.id == "not-now" {
-                            chapterSkipRecognition.dismiss(suggestion)
-                            tip.invalidate(reason: .tipClosed)
-                        }
-                    }
-                    .padding(.horizontal)
-                    .task(id: tip.id) {
-                        for await status in tip.statusUpdates {
-                            guard case .invalidated(let reason) = status else { continue }
-                            if reason == .tipClosed || reason == .displayCountExceeded {
-                                chapterSkipRecognition.dismiss(suggestion)
-                            }
-                            break
-                        }
-                    }
+                ChapterSkipSuggestionIsland(episode: episode) { podcast, suggestion in
+                    openSuggestedChapterRule(for: podcast, suggestion: suggestion)
                 }
-                
                 
                 Text("\(episode.title)")
                     .font(.body)
@@ -124,19 +102,7 @@ struct PlayerControllView: View {
                 
                 PlayerPlaybackTimelineView()
 
-                if let undo = player.skipProtectionUndo {
-                    Button {
-                        Task {
-                            await player.undoSkipProtection(undoID: undo.id)
-                        }
-                    } label: {
-                        Label("Undo skip", systemImage: "arrow.uturn.backward.circle.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .accessibilityHint("Returns to \(undo.episodeTitle) at the previous playback position")
-                    .transition(reduceMotion ? .identity : .move(edge: .top).combined(with: .opacity))
-                }
+                PlayerSkipProtectionUndoIsland()
 
                 if showPrimaryTransportControls {
                     PlayerPrimaryTransportControlsView(includeBookmark: true)
@@ -180,197 +146,27 @@ struct PlayerControllView: View {
                 }
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .onAppear { PlayerOpeningPerformance.interactionVisible(.fullTranscript) }
             }
 #if os(iOS)
             .sheet(item: $settingsRequest) { request in
                 SettingsWindowContent(request: request)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
+                    .onAppear { PlayerOpeningPerformance.interactionVisible(.settingsSheet) }
             }
 #endif
         }
     }
 
-    private var chapterControlsRow: some View {
-        ZStack {
-            if hasChapterSelectionUI {
-                PlayerChapterView(hasChapterSelectionUI: hasChapterSelectionUI)
-                    .padding(.horizontal, 16)
-            } else if let generateAction,
-                      let cancelGeneration,
-                      shouldShowChapterRowGeneration {
-                EpisodeAIGenerationControl(
-                    action: generationAction,
-                    state: generationState,
-                    start: generateAction,
-                    cancel: cancelGeneration
-                )
-                .frame(maxWidth: .infinity)
-            }
-
-            if player.canSkipCurrentAdvertisement {
-                Button {
-                    Task { await player.skipCurrentAdvertisement() }
-                } label: {
-                    Label("Skip Ad", systemImage: "forward.end.fill")
-                        .font(.caption.weight(.semibold))
-                }
-                .buttonStyle(.glass(.clear))
-                .accessibilityLabel("Skip advertisement")
-                .accessibilityHint("Seeks to the end of the detected advertisement")
-            }
-
-            HStack(spacing: 0) {
-                if showsInlineTranscript, hasTranscript || hasLocalMedia {
-                    transcriptVisibilityButton
-                } else {
-                    Color.clear
-                        .frame(width: 44, height: 44)
-                        .accessibilityHidden(true)
-                }
-
-                Spacer(minLength: 0)
-                playbackSettingsButton
-            }
-        }
-        .frame(maxWidth: .infinity, minHeight: 44)
-        .zIndex(3)
-    }
-
-    private var hasTranscript: Bool {
-        guard let episode = player.currentEpisode else { return false }
-        if episode.liveTranscriptData != nil || liveTranscript.isActive(for: episode) { return true }
-        if usesCachedContentAvailability {
-            return contentAvailability?.episodeURL == episode.url
-                && contentAvailability?.hasTranscript == true
-        }
-        if contentAvailability?.episodeURL == episode.url {
-            return contentAvailability?.hasTranscript == true
-        }
-        return episode.transcriptLines?.isEmpty == false
-    }
-
-    private var hasLocalMedia: Bool {
-        guard let localFile = player.currentEpisode?.localFile else { return false }
-        return FileManager.default.fileExists(atPath: localFile.path)
-    }
-
-    private var shouldShowChapterRowGeneration: Bool {
-        guard let generationAction else { return false }
-        guard generationAction != .generateChapters else { return true }
-        return !showsInlineTranscript || !showTranscripts
-    }
-
-    private var hasChapterSelectionUI: Bool {
-        guard let episode = player.currentEpisode else { return false }
-        let snapshotMatches = contentAvailability?.episodeURL == episode.url
-        let hasSnapshotChapters = snapshotMatches
-            && contentAvailability?.hasChapterSelectionUI == true
-        // The player has already prepared these chapters for navigation.
-        // Display them on the first frame, without waiting for the actor query.
-        let hasPlaybackChapters = PlayerChapterRowPolicy.hasSelectablePlaybackChapters(
-            for: episode.url,
-            activeEpisodeURL: player.currentEpisodeURL,
-            chapterCount: player.chapters?.count,
-            firstStart: player.chapters?.first?.start
-        )
-
-        if usesCachedContentAvailability || snapshotMatches {
-            return hasSnapshotChapters || hasPlaybackChapters
-        }
-        return hasPlaybackChapters || episode.hasChapterSelectionUI
-    }
-
-    private var playbackSettingsButton: some View {
-        Button {
-            openPlaybackSettings()
-        } label: {
-            Label("Playback Settings", systemImage: "gear")
-                .labelStyle(.iconOnly)
-        }
-        .buttonStyle(.plain)
-        .frame(width: 44, height: 44)
-        .accessibilityLabel("Playback Settings")
-        .accessibilityHint("Opens settings related to playback")
-        .help("Adjust playback options for this podcast")
-        .accessibilityInputLabels([Text("Playback settings"), Text("Player settings")])
-    }
-
-    private var transcriptVisibilityButton: some View {
-        Button {
-            showTranscripts.toggle()
-        } label: {
-            if showTranscripts {
-                Image("custom.quote.bubble.slash")
-            } else {
-                Image(systemName: "quote.bubble")
-            }
-        }
-        .buttonStyle(.plain)
-        .frame(width: 44, height: 44)
-        .accessibilityLabel(showTranscripts ? "Hide inline transcript" : "Show inline transcript")
-        .accessibilityHint(transcriptVisibilityAccessibilityHint)
-        .help(showTranscripts ? "Hide the transcript" : "Show the transcript")
-        .accessibilityInputLabels([Text(showTranscripts ? "Hide captions" : "Show captions"), Text("Transcript")])
-    }
-
-    private var transcriptVisibilityAccessibilityHint: String {
-        if showsTranscriptOverHero {
-            return showTranscripts
-                ? "Removes the transcript panel from the artwork"
-                : "Shows the transcript panel over the artwork"
-        }
-        return showTranscripts
-            ? "Removes the transcript panel below the artwork"
-            : "Shows the transcript panel below the artwork"
-    }
-
-    @ViewBuilder
     private func transcriptCard(episode: Episode) -> some View {
-        let lines = liveTranscript.displayLines(for: episode)
-        if lines.isEmpty {
-            LiveTranscriptActionView(episode: episode)
-                .overlay(alignment: .bottomTrailing) {
-                    Button { showFullTranscripts = true } label: {
-                        Image("custom.quote.bubble.rectangle.portrait")
-                    }
-                    .buttonStyle(.glass(.clear))
-                    .frame(width: 44, height: 44)
-                    .padding(6)
-                    .accessibilityLabel("Open full transcript")
-                }
-        } else {
-            inlineTranscriptCard(transcriptLines: lines)
+        PlayerTranscriptOverlayHost(episode: episode) { followPlayback in
+            PlayerOpeningPerformance.beginInteraction(.fullTranscript)
+            openFullTranscriptFollowingPlayback = followPlayback
+            showFullTranscripts = true
         }
-    }
-
-    private func inlineTranscriptCard(transcriptLines: [TranscriptLineAndTime]) -> some View {
-        TranscriptView(
-            transcriptLines: transcriptLines,
-            currentTime: $player.playPosition,
-            onOpenFullTranscript: {
-                openFullTranscriptFollowingPlayback = true
-                showFullTranscripts = true
-            },
-            reservesBottomTrailingAccessory: true,
-            canFollowPlayback: player.currentEpisode?.transcriptLines?.isEmpty == false
-                || (player.currentEpisode.map { liveTranscript.isActive(for: $0) } ?? false)
-        )
-        .overlay(alignment: .bottomTrailing) {
-            Button {
-                openFullTranscriptFollowingPlayback = false
-                showFullTranscripts = true
-            } label: {
-                Image("custom.quote.bubble.rectangle.portrait")
-            }
-            .buttonStyle(.glass(.clear))
-            .frame(width: 44, height: 44)
-            .padding(6)
-            .accessibilityLabel("Open full transcript")
-            .accessibilityHint("Opens the full transcript in a sheet")
-            .help("Read the whole episode as text")
-            .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
-        }
+        .onAppear { PlayerOpeningPerformance.interactionVisible(.transcriptShow) }
+        .onDisappear { PlayerOpeningPerformance.interactionVisible(.transcriptHide) }
     }
 
     private func openPlaybackSettings() {
@@ -379,6 +175,7 @@ struct PlayerControllView: View {
         settingsRequest = request
 #else
         openSettings(request)
+        PlayerOpeningPerformance.interactionVisible(.settingsSheet)
 #endif
     }
 
@@ -456,6 +253,7 @@ private struct PlayerPlaybackTimelineView: View {
                     adSegments: player.showDetectedAdvertisements ? player.adSegments : [],
                     onEditingChanged: { isEditing, progress in
                         if isEditing {
+                            PlayerOpeningPerformance.noteInteraction()
                             player.beginSkipProtectionSeek()
                         } else {
                             player.endSkipProtectionSeek(at: progress)
@@ -486,37 +284,25 @@ private struct PlayerPlaybackTimelineView: View {
     }
 }
 
+/// Playback speed, AirPlay, furthest position and sleep timer. Each control is
+/// its own island so the sleep countdown or a persisted play position updates
+/// only the button that displays it.
 struct PlayerPlaybackUtilitiesRow: View {
-    @Bindable private var player = Player.shared
-    @State private var showPlaybackSpeedSettings = false
-    @State private var showSleepTimerSettings = false
-    @State private var currentAudioSettings: PodcastSettings?
-    private let furthestPositionTip = FurthestPositionTip()
-
     var body: some View {
         ZStack {
             airPlayButton
 
             HStack(spacing: 10) {
-                playbackSpeedButton
+                PlayerPlaybackSpeedControl()
                 Spacer(minLength: 0)
 
-                if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition,
-                   maxPlay - 5 > player.currentEpisode?.metaData?.playPosition ?? 0 {
-                    maxPlayPositionButton(maxPlay: maxPlay)
-                }
+                PlayerMaxPlayPositionButton()
 
-                sleepTimerButton
+                PlayerSleepTimerControl()
             }
         }
         .frame(maxWidth: .infinity, minHeight: 44)
         .zIndex(3)
-        .sheet(isPresented: $showPlaybackSpeedSettings) {
-            audioSpeedSettingsSheet
-        }
-        .sheet(isPresented: $showSleepTimerSettings) {
-            sleepTimerSheet
-        }
     }
 
     private var airPlayButton: some View {
@@ -529,9 +315,23 @@ struct PlayerPlaybackUtilitiesRow: View {
             .accessibilityHint("Choose an audio output device")
             .help("Choose where audio plays")
     }
+}
+
+private struct PlayerPlaybackSpeedControl: View {
+    @Bindable private var player = Player.shared
+    @State private var showPlaybackSpeedSettings = false
+    @State private var currentAudioSettings: PodcastSettings?
+
+    var body: some View {
+        playbackSpeedButton
+            .sheet(isPresented: $showPlaybackSpeedSettings) {
+                audioSpeedSettingsSheet
+            }
+    }
 
     private var playbackSpeedButton: some View {
         Button {
+            PlayerOpeningPerformance.beginInteraction(.speedSheet)
             currentAudioSettings = player.audioSpeedSettingsModel()
             showPlaybackSpeedSettings = true
         } label: {
@@ -551,7 +351,44 @@ struct PlayerPlaybackUtilitiesRow: View {
         .accessibilityInputLabels([Text("Playback speed"), Text("Speed")])
     }
 
-    private func maxPlayPositionButton(maxPlay: Double) -> some View {
+    private var playbackSpeedButtonTitle: String {
+        player.playbackRate.formatted(.number.precision(.fractionLength(0...1))) + "x"
+    }
+
+    private var audioSpeedSettingsSheet: some View {
+        NavigationStack {
+            Form {
+                if let currentAudioSettings {
+                    AudioSpeedSettingsSection(
+                        settings: currentAudioSettings,
+                        scope: .currentPlayback,
+                        onChange: { player.applyAudioSpeedSettings(currentAudioSettings) }
+                    )
+                }
+            }
+            .navigationTitle("Audio & Speed")
+#if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+#endif
+        }
+        .onAppear { PlayerOpeningPerformance.interactionVisible(.speedSheet) }
+        .presentationDragIndicator(.visible)
+        .presentationDetents([.medium, .large])
+    }
+}
+
+private struct PlayerMaxPlayPositionButton: View {
+    private var player: Player { .shared }
+    private let furthestPositionTip = FurthestPositionTip()
+
+    var body: some View {
+        if let maxPlay = player.currentEpisode?.metaData?.maxPlayposition,
+           maxPlay - 5 > player.currentEpisode?.metaData?.playPosition ?? 0 {
+            button(maxPlay: maxPlay)
+        }
+    }
+
+    private func button(maxPlay: Double) -> some View {
         Button {
             furthestPositionTip.invalidate(reason: .actionPerformed)
             Task { await player.jumpTo(time: maxPlay) }
@@ -565,9 +402,22 @@ struct PlayerPlaybackUtilitiesRow: View {
         .help("Jump to the furthest point you've listened to")
         .popoverTip(furthestPositionTip)
     }
+}
+
+private struct PlayerSleepTimerControl: View {
+    private var player: Player { .shared }
+    @State private var showSleepTimerSettings = false
+
+    var body: some View {
+        sleepTimerButton
+            .sheet(isPresented: $showSleepTimerSettings) {
+                PlayerSleepTimerSheet()
+            }
+    }
 
     private var sleepTimerButton: some View {
         Button {
+            PlayerOpeningPerformance.beginInteraction(.sleepSheet)
             showSleepTimerSettings = true
         } label: {
             Image(systemName: "zzz")
@@ -579,10 +429,6 @@ struct PlayerPlaybackUtilitiesRow: View {
         .accessibilityHint("Opens sleep timer controls")
         .help("Stop playback after a set time or at the end of the episode")
         .accessibilityInputLabels([Text("Sleep timer"), Text("Timer")])
-    }
-
-    private var playbackSpeedButtonTitle: String {
-        player.playbackRate.formatted(.number.precision(.fractionLength(0...1))) + "x"
     }
 
     private var sleepTimerAccessibilityValue: String {
@@ -601,44 +447,12 @@ struct PlayerPlaybackUtilitiesRow: View {
 
         return "Off"
     }
+}
 
-    private var playbackSpeedSheet: some View {
-        List {
-            Section(header: Label("Playback Speed", systemImage: "gauge.with.dots.needle.50percent")) {
-                Stepper(value: $player.playbackRate, in: 0.1...3.0, step: 0.1) {
-                    Text(String(format: "%.1fx", player.playbackRate))
-                }
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
-                .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-            }
-        }
-        .listStyle(.plain)
-        .padding()
-        .presentationDragIndicator(.visible)
-        .presentationBackground(.ultraThinMaterial)
-        .presentationDetents([.fraction(0.25)])
-    }
+private struct PlayerSleepTimerSheet: View {
+    @Bindable private var player = Player.shared
 
-    private var audioSpeedSettingsSheet: some View {
-        NavigationStack {
-            Form {
-                if let currentAudioSettings {
-                    AudioSpeedSettingsSection(
-                        settings: currentAudioSettings,
-                        scope: .currentPlayback,
-                        onChange: { player.applyAudioSpeedSettings(currentAudioSettings) }
-                    )
-                }
-            }
-            .navigationTitle("Audio & Speed")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-        .presentationDragIndicator(.visible)
-        .presentationDetents([.medium, .large])
-    }
-
-    private var sleepTimerSheet: some View {
+    var body: some View {
         List {
             Section(header: Label("Sleep timer", systemImage: "zzz")) {
                 if player.isStopAfterChapterEnabled {
@@ -757,6 +571,7 @@ struct PlayerPlaybackUtilitiesRow: View {
         .padding()
         .presentationDragIndicator(.visible)
         .presentationBackground(.ultraThinMaterial)
+        .onAppear { PlayerOpeningPerformance.interactionVisible(.sleepSheet) }
 #if os(iOS)
         .presentationDetents([.medium, .large])
         .presentationContentInteraction(.scrolls)
@@ -764,7 +579,7 @@ struct PlayerPlaybackUtilitiesRow: View {
     }
 }
 
-private struct PlayerMediaView: View {
+struct PlayerMediaView: View {
     let player: AVPlayer
     let isVideo: Bool
     let artworkImage: UIImage?
@@ -814,7 +629,10 @@ struct PlayerPrimaryTransportControlsView: View {
     var body: some View {
         ZStack {
             HStack(spacing: centerControlsSpacing) {
-                Button(action: player.skipback) {
+                Button(action: {
+                    PlayerOpeningPerformance.noteInteraction()
+                    player.skipback()
+                }) {
                     Label {
                         Text("Skip back")
                     } icon: {
@@ -835,6 +653,7 @@ struct PlayerPrimaryTransportControlsView: View {
                 .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
                 
                 Button(action: {
+                    PlayerOpeningPerformance.beginInteraction(.playPause)
                     if player.isPlaying {
                         player.pause()
                     } else {
@@ -855,7 +674,10 @@ struct PlayerPrimaryTransportControlsView: View {
                 .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
                 .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
                 
-                Button(action: player.skipforward) {
+                Button(action: {
+                    PlayerOpeningPerformance.noteInteraction()
+                    player.skipforward()
+                }) {
                     Label {
                         Text("Skip forward")
                     } icon: {
@@ -945,6 +767,9 @@ struct PlayerPrimaryTransportControlsView: View {
         }
         .frame(height: 50)
         .zIndex(3)
+        .onChange(of: player.isPlaying) {
+            PlayerOpeningPerformance.interactionVisible(.playPause)
+        }
         .alert("Couldn’t Save Bookmark", isPresented: Binding(
             get: { bookmarkError != nil },
             set: { if !$0 { bookmarkError = nil } }

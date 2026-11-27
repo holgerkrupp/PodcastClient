@@ -17,6 +17,17 @@ actor LiveTranscriptStoreActor {
         return try JSONDecoder().decode(LiveTranscriptState.self, from: data)
     }
 
+    /// Saved partial captions plus not-yet-saved windows as start-sorted values.
+    /// Fetch, decode and merge run on this actor, never in a SwiftUI body (#520).
+    func partialSources(episodeURL: URL, pending: [LiveTranscriptState.Cue]) -> [TranscriptSegmentSource] {
+        let saved = (try? load(episodeURL: episodeURL))?.cues ?? []
+        guard !saved.isEmpty || !pending.isEmpty else { return [] }
+        var byID: [UUID: LiveTranscriptState.Cue] = [:]
+        for cue in saved { byID[cue.id] = cue }
+        for cue in pending { byID[cue.id] = cue }
+        return byID.values.sorted { $0.start < $1.start }.map(LiveTranscriptController.source(for:))
+    }
+
     func append(episodeURL: URL, fingerprint: String, windows: [LiveTranscriptState.FinalWindow]) throws -> Bool {
         var descriptor = FetchDescriptor<Episode>(predicate: #Predicate { $0.url == episodeURL })
         descriptor.fetchLimit = 1
@@ -127,7 +138,60 @@ final class LiveTranscriptController {
     }
 
     func isActive(for episode: Episode) -> Bool {
-        episode.url != nil && episode.url == episodeURL && phase != .idle && phase != .unavailable
+        isActive(episodeURL: episode.url)
+    }
+
+    func isActive(episodeURL url: URL?) -> Bool {
+        url != nil && url == episodeURL && phase != .idle && phase != .unavailable
+    }
+
+    /// Value cues for painting the inline overlay while recognition runs for
+    /// `episodeURL`; nil when it does not. No SwiftData models are created, and
+    /// finalized cues (kept start-sorted by `LiveTranscriptState.append`) are
+    /// merged with the few tentative cues in linear time instead of re-sorting.
+    func liveCaptionSources(episodeURL url: URL) -> [TranscriptSegmentSource]? {
+        guard isActive(episodeURL: url) else { return nil }
+        return Self.mergedSources(final: cues, tentative: tentativeCues)
+    }
+
+    /// Finalized windows still waiting to be written for `episodeURL`.
+    func pendingCues(episodeURL url: URL) -> [LiveTranscriptState.Cue] {
+        pendingSaves.filter { $0.episodeURL == url }.flatMap(\.windows).flatMap(\.cues)
+    }
+
+    nonisolated static func source(for cue: LiveTranscriptState.Cue) -> TranscriptSegmentSource {
+        TranscriptSegmentSource(
+            id: cue.id,
+            text: cue.text,
+            startTime: cue.start,
+            endTime: cue.end,
+            sourceRawValue: CachedTranscriptSource.localAI.rawValue,
+            timedSpans: cue.spans
+        )
+    }
+
+    /// Merges start-sorted finalized cues with tentative cues. Ties keep the
+    /// finalized cue first, matching a stable sort of `final + tentative`.
+    nonisolated static func mergedSources(
+        final: [LiveTranscriptState.Cue],
+        tentative: [LiveTranscriptState.Cue]
+    ) -> [TranscriptSegmentSource] {
+        let pending = tentative.count > 1 ? tentative.sorted { $0.start < $1.start } : tentative
+        var result: [TranscriptSegmentSource] = []
+        result.reserveCapacity(final.count + pending.count)
+        var next = 0
+        for cue in final {
+            while next < pending.count && pending[next].start < cue.start {
+                result.append(source(for: pending[next]))
+                next += 1
+            }
+            result.append(source(for: cue))
+        }
+        while next < pending.count {
+            result.append(source(for: pending[next]))
+            next += 1
+        }
+        return result
     }
 
     func displayLines(for episode: Episode) -> [TranscriptLineAndTime] {
