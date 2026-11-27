@@ -3182,7 +3182,12 @@ actor EpisodeActor {
     
     
     
-    private func bestExternalFile(
+    /// The advertised transcript file to fetch, by format preference.
+    ///
+    /// Preference order wins over feed order: a feed listing a plain-text
+    /// transcript before its VTT used to get the untimed text file, which
+    /// decodes to no lines, so the episode never had a transcript (#520).
+    nonisolated static func bestExternalFile(
         in files: [ExternalFile],
         preferredTypes: [String] = [
             "text/vtt",
@@ -3195,12 +3200,11 @@ actor EpisodeActor {
             "text/plain"
         ]
     ) -> ExternalFile? {
-        // 1) Exact fileType match (e.g. "text/vtt")
-        if let vttByType = files.first(where: { file in
-            guard let type = file.fileType?.lowercased() else { return false }
-            return preferredTypes.contains(where: { type.contains($0) })
-        }) {
-            return vttByType
+        // 1) Declared fileType, most preferred format first (e.g. "text/vtt")
+        for preferred in preferredTypes {
+            if let match = files.first(where: { $0.fileType?.lowercased().contains(preferred) == true }) {
+                return match
+            }
         }
 
         // 2) URL extension contains "vtt" (or "srt" as a fallback)
@@ -3239,6 +3243,23 @@ actor EpisodeActor {
         }
     }
     
+    /// Fetches the publisher transcript the feed advertises when nothing is
+    /// stored yet. Until now this only happened after the audio download
+    /// finished, so a streamed episode never had its transcript: no inline
+    /// toggle, an empty Transcript tab. Only the small text file is fetched;
+    /// the Transcriptions setting and an existing transcript still win.
+    /// - Returns: true when transcript lines were saved.
+    func fetchAdvertisedTranscriptIfNeeded(episodeURL: URL) async -> Bool {
+        guard let episode = await fetchEpisode(byURL: episodeURL),
+              episode.externalFiles.contains(where: { $0.category == .transcript }) else { return false }
+        do {
+            try await downloadTranscript(episode.persistentModelID)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     func downloadTranscript(_ episodeID: PersistentIdentifier, manuallyRequested: Bool = false) async throws {
         print("downloading transcript")
         let settingsActor = PodcastSettingsModelActor(modelContainer: modelContainer)
@@ -3256,7 +3277,7 @@ actor EpisodeActor {
         }
         
 
-        if let transcriptfile = bestExternalFile(
+        if let transcriptfile = Self.bestExternalFile(
             in: episode.externalFiles.filter { $0.category == .transcript },
             preferredTypes: [
                 "text/vtt",
@@ -3276,6 +3297,9 @@ actor EpisodeActor {
                 )
                 if let transcription {
                     let snapshots = decodeTranscriptSnapshots(transcription)
+                    // An empty decode is a failure, not an empty transcript:
+                    // callers fall back (for example to on-device transcription).
+                    guard snapshots.isEmpty == false else { throw TranscriptError.decodingFailed }
                     // The episode is taken from the store again: the download
                     // above may have outlived it.
                     guard let episode: Episode = modelContext.existingModel(for: episodeID) else {

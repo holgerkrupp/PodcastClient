@@ -51,6 +51,10 @@ struct PlayerView: View {
     @SceneStorage("player.contentTab") private var contentTabRawValue = PlayerContentTab.shownotes.rawValue
     @State private var contentAvailability: PlayerContentAvailability?
     @State private var isTransportPinned = false
+    /// iPhone Duo vertical bar (closed display, inner landscape). While it is
+    /// present the pinned transport moves into that strip (HIG, Vertical
+    /// controls); elsewhere it pins horizontally to the top.
+    @State private var verticalBar = VerticalBarPlacement.none
 
     let fullSize: Bool
     /// Set by the iOS presentation host because a sheet's local size class can
@@ -141,6 +145,7 @@ struct PlayerView: View {
             }
             .task(id: episode.url) {
                 await refreshContentAvailability(for: episode)
+                await fetchAdvertisedTranscriptIfNeeded(for: episode)
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .episodeReferencesDidChange)
@@ -310,7 +315,7 @@ struct PlayerView: View {
             placeholderAspectRatio: 1.0
         )
         .overlay(alignment: .top) {
-            if isTransportPinned {
+            if isTransportPinned, verticalBar.edge == nil {
                 transportControls
                     .safeAreaPadding(.horizontal)
             }
@@ -333,9 +338,50 @@ struct PlayerView: View {
         // A square cover should fit within a short landscape iPhone viewport.
         .frame(width: min(size.width, size.height * 0.55))
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay {
+            if isTransportPinned, let edge = verticalBar.edge {
+                verticalTransportColumn(edge: edge)
+            }
+        }
+#if os(iOS)
+        .background {
+            VerticalBarProbe(placement: $verticalBar)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+        }
+#endif
         .scrollIndicators(.automatic)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Playback controls and shownotes for \(episode.title)")
+    }
+
+    /// The pinned transport as a column in the vertical bar strip, below the
+    /// status items and centred in the rest of the bar, within thumb reach.
+    /// The strip lies outside the safe area, so the column is offset past the
+    /// content's edge by the bar's inset and never covers content.
+    private func verticalTransportColumn(edge: VerticalBarPlacement.Edge) -> some View {
+        GeometryReader { proxy in
+            let barWidth = edge == .trailing ? proxy.safeAreaInsets.trailing : proxy.safeAreaInsets.leading
+            // The status items sit at the top of the window; this view may start lower.
+            let windowTop = proxy.frame(in: .global).minY
+            let reservedTop = max(VerticalBarPlacement.reservedStatusHeight - windowTop, 0)
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                PlayerPrimaryTransportControlsView(includeBookmark: true, axis: .vertical)
+                    .tint(.primary)
+                Spacer(minLength: 0)
+            }
+            .frame(width: max(barWidth, 64))
+            .padding(.top, reservedTop)
+            .padding(.bottom, proxy.safeAreaInsets.bottom)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: edge == .trailing ? .trailing : .leading
+            )
+            .offset(x: edge == .trailing ? barWidth : -barWidth)
+        }
+        .transition(.opacity)
     }
 
     private var transportControls: some View {
@@ -413,6 +459,27 @@ struct PlayerView: View {
             .accessibilityLabel("Episode debug metadata")
 #endif
         }
+    }
+
+    /// Episodes whose advertised transcript was already requested this launch,
+    /// so a missing or broken file is not fetched on every player open.
+    @MainActor private static var advertisedTranscriptRequests: Set<URL> = []
+
+    /// A streamed episode gets its publisher transcript here; downloads still
+    /// fetch it after the audio file arrives.
+    @MainActor
+    private func fetchAdvertisedTranscriptIfNeeded(for episode: Episode) async {
+        guard let episodeURL = episode.url,
+              let availability = contentAvailability,
+              availability.episodeURL == episodeURL,
+              availability.hasTranscript == false,
+              Self.advertisedTranscriptRequests.insert(episodeURL).inserted else { return }
+        let container = modelContext.container
+        let fetched = await Task.detached(priority: .utility) {
+            await EpisodeActor(modelContainer: container).fetchAdvertisedTranscriptIfNeeded(episodeURL: episodeURL)
+        }.value
+        guard fetched, !Task.isCancelled, player.currentEpisode?.url == episodeURL else { return }
+        await refreshContentAvailability(for: episode, forceRefresh: true)
     }
 
     @MainActor

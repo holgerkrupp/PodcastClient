@@ -620,152 +620,24 @@ private struct NativeVideoPlayerView: View {
 struct PlayerPrimaryTransportControlsView: View {
     @Bindable private var player = Player.shared
     var includeBookmark: Bool = false
+    /// `.vertical` stacks the same controls for the iPhone Duo vertical bar
+    /// (clip, skip back, play/pause, skip forward, bookmark from top to bottom,
+    /// matching their left-to-right order in the horizontal row).
+    var axis: Axis = .horizontal
     @ScaledMetric(relativeTo: .body) private var centerControlsSpacing: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var verticalControlsSpacing: CGFloat = 12
     @ScaledMetric(relativeTo: .body) private var skipIconOpticalOffset: CGFloat = 2
     @ScaledMetric(relativeTo: .body) private var playIconOpticalOffset: CGFloat = 2
     @State private var showClipExport = false
     @State private var bookmarkError: String?
 
     var body: some View {
-        ZStack {
-            HStack(spacing: centerControlsSpacing) {
-                Button(action: {
-                    PlayerOpeningPerformance.noteInteraction()
-                    player.skipback()
-                }) {
-                    Label {
-                        Text("Skip back")
-                    } icon: {
-                        Image(systemName: player.skipBackStep.triangleBackString)
-                            .resizable()
-                            .scaledToFit()
-                            .offset(y: -skipIconOpticalOffset)
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-
-                .frame(width: 50)
-                .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
-                .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
-                .help("Go back \(player.skipBackStep.rawValue) seconds")
-                .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
-                
-                Button(action: {
-                    PlayerOpeningPerformance.beginInteraction(.playPause)
-                    if player.isPlaying {
-                        player.pause()
-                    } else {
-                        player.play()
-                    }
-                }) {
-                    Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                        .resizable()
-                        .scaledToFit()
-                        .padding(5)
-                        .offset(x: player.isPlaying ? 0 : playIconOpticalOffset )
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-
-                .frame(width: 80)
-                .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
-                .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
-                .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
-                
-                Button(action: {
-                    PlayerOpeningPerformance.noteInteraction()
-                    player.skipforward()
-                }) {
-                    Label {
-                        Text("Skip forward")
-                    } icon: {
-                        Image(systemName: player.skipForwardStep.triangleForwardString)
-                            .resizable()
-                            .scaledToFit()
-                            .offset(y: -skipIconOpticalOffset)
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-
-                .frame(width: 50)
-                .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
-                .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
-                .help("Go forward \(player.skipForwardStep.rawValue) seconds")
-                .accessibilityInputLabels([Text("Skip forward"), Text("Forward \(player.skipForwardStep.rawValue) seconds")])
-            }
-
-            HStack {
-
-#if os(iOS)
-                Button(action: { showClipExport = true }) {
-                    Label {
-                        Text("Create audio clip")
-                    } icon: {
-                        Image(systemName: "scissors")
-                            .resizable()
-                            .scaledToFit()
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .frame(height: 30)
-                .help("Share audio clip")
-                .accessibilityLabel("Create audio clip")
-                .accessibilityHint("Opens clip export for the current episode")
-                .sheet(isPresented: $showClipExport) {
-                    if let episode = player.currentEpisode, let audioURL = player.currentPlaybackURL {
-                        AudioClipExportView(
-                            title: episode.title,
-                            episodeURL: episode.url,
-                            episodeLink: episode.link,
-                            audioURL: audioURL,
-                            isVideo: player.currentPlaybackIsVideo,
-                            coverImageURL: episode.imageURL,
-                            fallbackCoverImageURL: episode.podcast?.imageURL,
-                            playPosition: player.playPosition,
-                            duration: episode.duration ?? 60
-                        )
-                    } else {
-                        EmptyView()
-                    }
-                }
-#endif
-
-                Spacer()
-
-                if includeBookmark {
-                    Button {
-                        Task {
-                            do { try await player.createBookmark() }
-                            catch { bookmarkError = error.localizedDescription }
-                        }
-                    } label: {
-                        Label {
-                            Text("Bookmark")
-                        } icon: {
-                            Image(systemName: "bookmark.fill")
-                                .resizable()
-                                .scaledToFit()
-                        }
-                        .labelStyle(.iconOnly)
-                    }
-                    .buttonStyle(.glass)
-                    .buttonBorderShape(.circle)
-                    .frame(height: 30)
-                    .accessibilityLabel("Add bookmark")
-                    .accessibilityHint("Saves the current playback position as a bookmark")
-                    .help("Save this moment to your bookmarks")
-                    .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
-                }
+        Group {
+            switch axis {
+            case .horizontal: horizontalLayout
+            case .vertical: verticalLayout
             }
         }
-        .frame(height: 50)
         .zIndex(3)
         .onChange(of: player.isPlaying) {
             PlayerOpeningPerformance.interactionVisible(.playPause)
@@ -778,6 +650,170 @@ struct PlayerPrimaryTransportControlsView: View {
         } message: {
             Text(bookmarkError ?? "")
         }
+    }
+
+    private var horizontalLayout: some View {
+        ZStack {
+            HStack(spacing: centerControlsSpacing) {
+                skipBackButton.frame(width: 50)
+                playPauseButton.frame(width: 80)
+                skipForwardButton.frame(width: 50)
+            }
+
+            HStack {
+#if os(iOS)
+                clipButton.frame(height: 30)
+#endif
+                Spacer()
+                if includeBookmark {
+                    bookmarkButton.frame(height: 30)
+                }
+            }
+        }
+        .frame(height: 50)
+    }
+
+    private var verticalLayout: some View {
+        VStack(spacing: verticalControlsSpacing) {
+#if os(iOS)
+            clipButton.frame(width: 30, height: 30)
+#endif
+            skipBackButton.frame(width: 44, height: 44)
+            playPauseButton.frame(width: 60, height: 60)
+            skipForwardButton.frame(width: 44, height: 44)
+            if includeBookmark {
+                bookmarkButton.frame(width: 30, height: 30)
+            }
+        }
+    }
+
+    private var skipBackButton: some View {
+        Button(action: {
+            PlayerOpeningPerformance.noteInteraction()
+            player.skipback()
+        }) {
+            Label {
+                Text("Skip back")
+            } icon: {
+                Image(systemName: player.skipBackStep.triangleBackString)
+                    .resizable()
+                    .scaledToFit()
+                    .offset(y: -skipIconOpticalOffset)
+            }
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel("Skip back \(player.skipBackStep.rawValue) seconds")
+        .accessibilityHint("Moves playback backward by \(player.skipBackStep.rawValue) seconds")
+        .help("Go back \(player.skipBackStep.rawValue) seconds")
+        .accessibilityInputLabels([Text("Skip back"), Text("Back \(player.skipBackStep.rawValue) seconds")])
+    }
+
+    private var playPauseButton: some View {
+        Button(action: {
+            PlayerOpeningPerformance.beginInteraction(.playPause)
+            if player.isPlaying {
+                player.pause()
+            } else {
+                player.play()
+            }
+        }) {
+            Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
+                .resizable()
+                .scaledToFit()
+                .padding(5)
+                .offset(x: player.isPlaying ? 0 : playIconOpticalOffset )
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel(player.isPlaying ? "Pause playback" : "Start playback")
+        .accessibilityHint(player.isPlaying ? "Pauses the current episode" : "Starts playing the current episode")
+        .accessibilityInputLabels([Text("Play"), Text("Pause"), Text("Playback")])
+    }
+
+    private var skipForwardButton: some View {
+        Button(action: {
+            PlayerOpeningPerformance.noteInteraction()
+            player.skipforward()
+        }) {
+            Label {
+                Text("Skip forward")
+            } icon: {
+                Image(systemName: player.skipForwardStep.triangleForwardString)
+                    .resizable()
+                    .scaledToFit()
+                    .offset(y: -skipIconOpticalOffset)
+            }
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel("Skip forward \(player.skipForwardStep.rawValue) seconds")
+        .accessibilityHint("Moves playback forward by \(player.skipForwardStep.rawValue) seconds")
+        .help("Go forward \(player.skipForwardStep.rawValue) seconds")
+        .accessibilityInputLabels([Text("Skip forward"), Text("Forward \(player.skipForwardStep.rawValue) seconds")])
+    }
+
+#if os(iOS)
+    private var clipButton: some View {
+        Button(action: { showClipExport = true }) {
+            Label {
+                Text("Create audio clip")
+            } icon: {
+                Image(systemName: "scissors")
+                    .resizable()
+                    .scaledToFit()
+            }
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .help("Share audio clip")
+        .accessibilityLabel("Create audio clip")
+        .accessibilityHint("Opens clip export for the current episode")
+        .sheet(isPresented: $showClipExport) {
+            if let episode = player.currentEpisode, let audioURL = player.currentPlaybackURL {
+                AudioClipExportView(
+                    title: episode.title,
+                    episodeURL: episode.url,
+                    episodeLink: episode.link,
+                    audioURL: audioURL,
+                    isVideo: player.currentPlaybackIsVideo,
+                    coverImageURL: episode.imageURL,
+                    fallbackCoverImageURL: episode.podcast?.imageURL,
+                    playPosition: player.playPosition,
+                    duration: episode.duration ?? 60
+                )
+            } else {
+                EmptyView()
+            }
+        }
+    }
+#endif
+
+    private var bookmarkButton: some View {
+        Button {
+            Task {
+                do { try await player.createBookmark() }
+                catch { bookmarkError = error.localizedDescription }
+            }
+        } label: {
+            Label {
+                Text("Bookmark")
+            } icon: {
+                Image(systemName: "bookmark.fill")
+                    .resizable()
+                    .scaledToFit()
+            }
+            .labelStyle(.iconOnly)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel("Add bookmark")
+        .accessibilityHint("Saves the current playback position as a bookmark")
+        .help("Save this moment to your bookmarks")
+        .accessibilityInputLabels([Text("Bookmark"), Text("Add bookmark")])
     }
 }
 
