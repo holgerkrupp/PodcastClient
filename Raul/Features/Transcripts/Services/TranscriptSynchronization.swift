@@ -662,6 +662,7 @@ actor TranscriptSynchronizationService {
     private var active: (id: UUID, task: Task<Int, Never>)?
     private var lastRequest: PlaybackRequest?
     private var wordIndex: (key: PublisherTranscriptTimingOverlay.Key, index: TranscriptSynchronizationWordIndex?)?
+    /// Keyed by kind + path; reused while the file's size and modification date are unchanged.
     private var cachedFingerprints: [String: (size: Int64, modifiedAt: Date?, digest: String)] = [:]
     /// Playback windows already sent to Speech for this transcript and media,
     /// matched or not, so ads and music are not re-analyzed on every pass.
@@ -787,16 +788,26 @@ actor TranscriptSynchronizationService {
         return task
     }
 
+    /// Full-file digest. Saved alignment records and gap chapters are keyed by it.
     private func mediaFingerprint(for url: URL) throws -> String {
+        try cachedFingerprint(for: url, bounded: false)
+    }
+
+    /// Bounded digest (size + first/middle/last 64 KiB) for the disposable timing overlay cache.
+    private func overlayMediaFingerprint(for url: URL) throws -> String {
+        try cachedFingerprint(for: url, bounded: true)
+    }
+
+    private func cachedFingerprint(for url: URL, bounded: Bool) throws -> String {
         let values = try url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
         guard let fileSize = values.fileSize else { throw TranscriptAudioSnippetError.invalidFormat }
-        let key = url.standardizedFileURL.path
+        let key = (bounded ? "bounded:" : "full:") + url.standardizedFileURL.path
         if let cached = cachedFingerprints[key],
            cached.size == Int64(fileSize),
            cached.modifiedAt == values.contentModificationDate {
             return cached.digest
         }
-        let digest = try TranscriptMediaFingerprint.make(for: url)
+        let digest = try bounded ? TranscriptMediaFingerprint.makeBounded(for: url) : TranscriptMediaFingerprint.make(for: url)
         cachedFingerprints[key] = (Int64(fileSize), values.contentModificationDate, digest)
         return digest
     }
@@ -814,8 +825,10 @@ actor TranscriptSynchronizationService {
         do {
             try Task.checkCancellation()
             let fingerprint = try mediaFingerprint(for: input.localMediaURL)
-            let overlayKey = sampleAcrossEpisode ? nil : PublisherTranscriptTimingOverlay.Key(
-                episodeID: input.episodeID, mediaFingerprint: fingerprint, transcriptRevision: input.transcriptRevision)
+            // The disposable overlay cache uses the bounded fingerprint; alignment records keep the full digest.
+            let overlayKey = try sampleAcrossEpisode ? nil : PublisherTranscriptTimingOverlay.Key(
+                episodeID: input.episodeID, mediaFingerprint: overlayMediaFingerprint(for: input.localMediaURL),
+                transcriptRevision: input.transcriptRevision)
             let existing = await alignmentStore.load(
                 episodeID: input.episodeID,
                 mediaFingerprint: fingerprint,
@@ -1016,7 +1029,7 @@ actor TranscriptSynchronizationService {
             actualAudioTime: actualTime, candidates: input.candidates, expectedTranscriptTime: expected)
         try Task.checkCancellation()
         if let overlayKey, let duration = snippet.duration, results.contains(where: { !$0.timedSpans.isEmpty }) {
-            guard try mediaFingerprint(for: input.localMediaURL) == overlayKey.mediaFingerprint else {
+            guard try overlayMediaFingerprint(for: input.localMediaURL) == overlayKey.mediaFingerprint else {
                 throw CancellationError()
             }
             if wordIndex?.key != overlayKey {
@@ -1213,5 +1226,43 @@ enum TranscriptMediaFingerprint {
             hasher.update(data: chunk)
         }
         return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    }
+
+    static let boundedVersionPrefix = "v2:"
+    static let boundedSampleLength = 64 * 1024
+
+    /// Fast cache identity for disposable caches, not a security boundary: SHA-256 over
+    /// the file size plus the first, middle and last 64 KiB. Files up to 192 KiB are hashed
+    /// once in full. The "v2:" prefix keeps it distinct from a full-file `make(for:)` digest.
+    /// Throws for missing or empty files.
+    static func makeBounded(for url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let size = try handle.seekToEnd()
+        guard size > 0 else { throw CocoaError(.fileReadCorruptFile) }
+        let sample = UInt64(boundedSampleLength)
+        let ranges: [(offset: UInt64, length: UInt64)]
+        if size <= sample * 3 {
+            ranges = [(0, size)]
+        } else {
+            ranges = [(0, sample), ((size - sample) / 2, sample), (size - sample, sample)]
+        }
+        var hasher = SHA256()
+        hasher.update(data: Data("fingerprint-v2\n".utf8))
+        withUnsafeBytes(of: size.bigEndian) { hasher.update(bufferPointer: $0) }
+        for range in ranges {
+            try Task.checkCancellation()
+            try handle.seek(toOffset: range.offset)
+            var remaining = range.length
+            while remaining > 0 {
+                try Task.checkCancellation()
+                let chunk = try handle.read(upToCount: Int(remaining)) ?? Data()
+                // The file shrank while reading; never publish a partial identity.
+                guard !chunk.isEmpty else { throw CocoaError(.fileReadCorruptFile) }
+                hasher.update(data: chunk)
+                remaining -= UInt64(chunk.count)
+            }
+        }
+        return boundedVersionPrefix + hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 }

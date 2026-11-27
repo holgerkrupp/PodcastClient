@@ -273,9 +273,19 @@ struct PublisherClipCaptionResolver: Sendable {
     private let native: [Caption]
     private let coarse: [Caption]
 
-    init?(document: TranscriptDocumentSnapshot, mediaFingerprint: String, alignment: TranscriptSynchronizationTimeline?) {
-        guard document.source == .publisher, let revision = document.timingRevision, !mediaFingerprint.isEmpty else { return nil }
-        key = .init(episodeID: document.episodeID, mediaFingerprint: mediaFingerprint, transcriptRevision: revision)
+    /// - Parameter overlayFingerprint: The bounded `v2:` fingerprint that keys
+    ///   the shared word-timing overlay cache (#488), so clip export reuses the
+    ///   pages playback enrichment wrote. Defaults to `mediaFingerprint`.
+    init?(
+        document: TranscriptDocumentSnapshot,
+        mediaFingerprint: String,
+        overlayFingerprint: String? = nil,
+        alignment: TranscriptSynchronizationTimeline?
+    ) {
+        let overlayFingerprint = overlayFingerprint ?? mediaFingerprint
+        guard document.source == .publisher, let revision = document.timingRevision,
+              !mediaFingerprint.isEmpty, !overlayFingerprint.isEmpty else { return nil }
+        key = .init(episodeID: document.episodeID, mediaFingerprint: overlayFingerprint, transcriptRevision: revision)
         self.alignment = alignment
         // Matcher and cache offsets refer to original, untrimmed individual lines.
         lines = document.lines.map {

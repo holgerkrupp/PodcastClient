@@ -6,7 +6,7 @@ import Foundation
 struct PublisherTranscriptTimingOverlay: Codable, Sendable {
     struct Key: Codable, Hashable, Sendable {
         let episodeID: String          // Episode.stableEpisodeIdentity.key
-        let mediaFingerprint: String   // TranscriptMediaFingerprint.make(for:)
+        let mediaFingerprint: String   // TranscriptMediaFingerprint.makeBounded(for:)
         let transcriptRevision: String // TranscriptSynchronizationRevision.make(candidates:)
 
         fileprivate var digest: String? {

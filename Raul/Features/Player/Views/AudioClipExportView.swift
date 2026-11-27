@@ -642,8 +642,19 @@ struct AudioClipExportView: View {
                 )
             }
             guard !Task.isCancelled else { return }
+            // The overlay cache is keyed by the bounded fingerprint (#488);
+            // alignment records keep the full digest above.
+            let overlayFingerprint = try? await Task.detached(priority: .utility) {
+                try TranscriptMediaFingerprint.makeBounded(for: mediaURL)
+            }.value
+            guard !Task.isCancelled, let overlayFingerprint else { return }
             publisherResolver = await Task.detached(priority: .utility) {
-                PublisherClipCaptionResolver(document: document, mediaFingerprint: fingerprint, alignment: alignment)
+                PublisherClipCaptionResolver(
+                    document: document,
+                    mediaFingerprint: fingerprint,
+                    overlayFingerprint: overlayFingerprint,
+                    alignment: alignment
+                )
             }.value
         } else if let snapshot = await episodeActor.clipTranscriptSnapshot(for: episodeURL) {
             guard !Task.isCancelled else { return }
@@ -697,7 +708,10 @@ struct AudioClipExportView: View {
                 }
                 let timeline: ClipCaptionTimeline?
                 if let resolver {
-                    guard resolver.key.mediaFingerprint == fingerprint else { throw CancellationError() }
+                    let overlayFingerprint = try await Task.detached(priority: .utility) {
+                        try TranscriptMediaFingerprint.makeBounded(for: mediaURL)
+                    }.value
+                    guard resolver.key.mediaFingerprint == overlayFingerprint else { throw CancellationError() }
                     timeline = await resolver.resolve(in: start..<end, speech: lines,
                         language: language ?? AITranscripts.defaultSpeechLanguageIdentifier)
                 } else {
