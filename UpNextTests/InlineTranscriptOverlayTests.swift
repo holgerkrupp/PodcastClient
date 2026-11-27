@@ -279,4 +279,46 @@ final class InlineTranscriptOverlayTests: XCTestCase {
         XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: 10), 42, "bounded")
         XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: .nan), 14)
     }
+
+    // MARK: Publisher timing enrichment policy (#490)
+
+    func testEnrichmentLookaheadScalesWithRateAndIsBounded() {
+        XCTAssertEqual(OptionalSpeechWorkPolicy.enrichmentLookahead(playbackRate: 1), 30)
+        XCTAssertEqual(OptionalSpeechWorkPolicy.enrichmentLookahead(playbackRate: 0.5), 30)
+        XCTAssertEqual(OptionalSpeechWorkPolicy.enrichmentLookahead(playbackRate: 2.5), 75)
+        XCTAssertEqual(OptionalSpeechWorkPolicy.enrichmentLookahead(playbackRate: 5), 90)
+    }
+
+    func testEnrichmentWindowsStartAtPlayheadAndStayContiguous() {
+        let centers = OptionalSpeechWorkPolicy.enrichmentWindowCenters(
+            audioTime: 100, mediaDuration: 3600, playbackRate: 1
+        )
+        // 100 s lies in the window starting at 98 s.
+        XCTAssertEqual(centers.first, 101.5)
+        let ahead = centers.filter { $0 >= 101.5 }
+        XCTAssertEqual(ahead, ahead.sorted())
+        XCTAssertTrue(zip(ahead, ahead.dropFirst()).allSatisfy { $1 - $0 == 7 }, "no holes ahead")
+        XCTAssertGreaterThanOrEqual(ahead.last! + 3.5, 130, "covers the 30 s lookahead")
+        XCTAssertEqual(centers.last, 94.5, "the short behind window comes last")
+
+        let fast = OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: 100, mediaDuration: 3600, playbackRate: 2.5)
+        XCTAssertGreaterThan(fast.count, centers.count)
+    }
+
+    func testEnrichmentWindowsStayInsideTheMedia() {
+        let start = OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: 0, mediaDuration: 60, playbackRate: 1)
+        XCTAssertEqual(start.first, 3.5)
+        XCTAssertTrue(start.allSatisfy { $0 >= 3.5 && $0 <= 56.5 })
+
+        let end = OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: 58, mediaDuration: 60, playbackRate: 1)
+        XCTAssertEqual(Set(end).count, end.count, "clamped windows are deduplicated")
+        XCTAssertTrue(end.allSatisfy { $0 <= 56.5 })
+        XCTAssertTrue(OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: .nan, mediaDuration: 60, playbackRate: 1).isEmpty)
+    }
+
+    func testOptionalSpeechWorkYieldsToPressure() {
+        XCTAssertNil(OptionalSpeechWorkPolicy.blocker(lowPower: false, thermal: .fair))
+        XCTAssertEqual(OptionalSpeechWorkPolicy.blocker(lowPower: true, thermal: .nominal), .lowPower)
+        XCTAssertEqual(OptionalSpeechWorkPolicy.blocker(lowPower: false, thermal: .serious), .thermal)
+    }
 }

@@ -341,12 +341,74 @@ struct TranscriptAlignmentMatcher {
 
 /// Main-actor snapshot used synchronously by transcript views and seek controls.
 /// Disabling it drops active mappings in the same turn; cached data can be reloaded later.
+/// Shared rules for optional, automatic Speech work: live transcription
+/// started by the inline overlay (#494) and publisher timing enrichment (#490).
+enum OptionalSpeechWorkPolicy {
+    /// How long the playhead must stay put after a seek or skip before new
+    /// analysis starts. Bursts of skips coalesce into the final position.
+    static let seekSettleDelay: Duration = .milliseconds(500)
+
+    enum Blocker: String, Equatable, Sendable { case lowPower, thermal }
+
+    static func blocker(
+        lowPower: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
+        thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
+    ) -> Blocker? {
+        if lowPower { return .lowPower }
+        if thermal == .serious || thermal == .critical { return .thermal }
+        return nil
+    }
+
+    /// Audio analyzed behind the playhead for on-screen enrichment; context
+    /// for recovery, deliberately not scaled with speed.
+    static let enrichmentBehind: TimeInterval = 5
+    static let enrichmentWindow: TimeInterval = 7
+
+    /// Audio analyzed ahead of the playhead: 30 s of listening time, so faster
+    /// playback plans proportionally further, capped to bound CPU and memory.
+    static func enrichmentLookahead(playbackRate: Float) -> TimeInterval {
+        let rate = playbackRate.isFinite ? Double(playbackRate) : 1
+        return min(90, 30 * max(1, rate))
+    }
+
+    /// Contiguous 7-second window centers around the playhead, nearest the
+    /// playhead first, then ahead, then the short window behind. Windows the
+    /// word-timing cache already covers are skipped by the caller.
+    static func enrichmentWindowCenters(
+        audioTime: TimeInterval,
+        mediaDuration: TimeInterval,
+        playbackRate: Float
+    ) -> [TimeInterval] {
+        guard audioTime.isFinite, mediaDuration.isFinite, mediaDuration > 0 else { return [] }
+        let window = enrichmentWindow
+        let lastCenter = max(mediaDuration - window / 2, window / 2)
+        func center(_ index: Int) -> TimeInterval {
+            min(max(Double(index) * window + window / 2, window / 2), lastCenter)
+        }
+        let current = Int(floor(max(0, audioTime) / window))
+        let ahead = Int(ceil(enrichmentLookahead(playbackRate: playbackRate) / window))
+        let behind = Int(ceil(enrichmentBehind / window))
+        var centers: [TimeInterval] = []
+        for index in Array(current...(current + ahead)) + (max(0, current - behind)..<current).reversed() {
+            let value = center(index)
+            if !centers.contains(where: { abs($0 - value) < 1 }) { centers.append(value) }
+        }
+        return centers
+    }
+}
+
 @MainActor
 @Observable
 final class TranscriptSynchronizationStore {
     static let shared = TranscriptSynchronizationStore()
 
+    /// The On-device transcript enhancements setting: also align in the
+    /// background and whenever a publisher episode plays.
     private(set) var isEnabled = false
+    /// Publisher transcripts currently on screen, by episode (#490). While one
+    /// is visible its playing episode is enriched automatically, whatever the
+    /// setting says.
+    private var timingDemand: [URL: Int] = [:]
     private struct Entry {
         let mediaFingerprint: String
         let transcriptRevision: String
@@ -358,8 +420,35 @@ final class TranscriptSynchronizationStore {
 
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
-        if enabled == false {
+        if enabled == false, timingDemand.isEmpty {
             timelinesByEpisodeKey.removeAll()
+        }
+    }
+
+    /// Verified timelines apply when the setting is on or a publisher
+    /// transcript is on screen.
+    var isActive: Bool { isEnabled || !timingDemand.isEmpty }
+
+    func hasTimingDemand(for episodeURL: URL?) -> Bool {
+        guard let episodeURL else { return false }
+        return timingDemand[episodeURL, default: 0] > 0
+    }
+
+    /// A publisher transcript for `episodeURL` became visible.
+    func beginTimingDemand(for episodeURL: URL) {
+        timingDemand[episodeURL, default: 0] += 1
+        guard timingDemand[episodeURL] == 1 else { return }
+        Player.shared.transcriptTimingDemandDidChange(for: episodeURL)
+    }
+
+    /// The transcript went away. Without the setting, in-flight analysis
+    /// stops; cached coverage stays for the next time it is shown.
+    func endTimingDemand(for episodeURL: URL) {
+        guard let count = timingDemand[episodeURL] else { return }
+        if count > 1 { timingDemand[episodeURL] = count - 1; return }
+        timingDemand.removeValue(forKey: episodeURL)
+        if !isEnabled, !hasTimingDemand(for: Player.shared.currentEpisodeURL) {
+            Task { await TranscriptSynchronizationService.shared.cancelAll() }
         }
     }
 
@@ -396,12 +485,12 @@ final class TranscriptSynchronizationStore {
     }
 
     func hasVerifiedTimeline(for episodeURL: URL?) -> Bool {
-        guard isEnabled, let episodeURL else { return false }
+        guard isActive, let episodeURL else { return false }
         return timelinesByEpisodeKey[episodeURL.absoluteString] != nil
     }
 
     func isUnverifiedAudioTime(_ time: TimeInterval, episodeURL: URL?) -> Bool {
-        guard isEnabled, time.isFinite, let episodeURL,
+        guard isActive, time.isFinite, let episodeURL,
               let entry = timelinesByEpisodeKey[episodeURL.absoluteString] else { return false }
         guard let first = entry.timeline.anchors.first, let last = entry.timeline.anchors.last else { return true }
         if time < first.audioTime || time > last.audioTime { return true }
@@ -411,13 +500,13 @@ final class TranscriptSynchronizationStore {
     }
 
     func transcriptTime(forAudioTime time: TimeInterval, episodeURL: URL?) -> TimeInterval? {
-        guard isEnabled, let episodeURL,
+        guard isActive, let episodeURL,
               let entry = timelinesByEpisodeKey[episodeURL.absoluteString] else { return time }
         return entry.timeline.transcriptTime(forAudioTime: time)
     }
 
     func audioTime(forTranscriptTime time: TimeInterval, episodeURL: URL?) -> TimeInterval? {
-        guard isEnabled, let episodeURL,
+        guard isActive, let episodeURL,
               let entry = timelinesByEpisodeKey[episodeURL.absoluteString] else { return time }
         return entry.timeline.audioTime(forTranscriptTime: time)
     }
@@ -574,6 +663,9 @@ actor TranscriptSynchronizationService {
     private var lastRequest: PlaybackRequest?
     private var wordIndex: (key: PublisherTranscriptTimingOverlay.Key, index: TranscriptSynchronizationWordIndex?)?
     private var cachedFingerprints: [String: (size: Int64, modifiedAt: Date?, digest: String)] = [:]
+    /// Playback windows already sent to Speech for this transcript and media,
+    /// matched or not, so ads and music are not re-analyzed on every pass.
+    private var attemptedWindows: (key: PublisherTranscriptTimingOverlay.Key, starts: Set<Int>)?
 
     func setEnabled(_ enabled: Bool) {
         isEnabled = enabled
@@ -584,16 +676,25 @@ actor TranscriptSynchronizationService {
         active?.task.cancel()
         lastRequest = nil
         wordIndex = nil
+        attemptedWindows = nil
     }
 
+    /// - Parameters:
+    ///   - onScreen: A publisher transcript for this episode is visible, so
+    ///     analyze contiguous windows around the playhead for word timing even
+    ///     when the setting is off (#490).
+    ///   - playbackRate: Scales the on-screen lookahead.
     func schedule(
         input: TranscriptSynchronizationInput,
         audioTime: TimeInterval,
+        onScreen: Bool = false,
+        playbackRate: Float = 1,
         libraryContainer: ModelContainer,
         episodeActor: EpisodeActor?,
         settingsActor: PodcastSettingsModelActor?
     ) {
-        guard isEnabled,
+        guard isEnabled || onScreen,
+              OptionalSpeechWorkPolicy.blocker() == nil,
               audioTime.isFinite, audioTime >= 0,
               input.candidates.count >= 3,
               input.localMediaURL.isFileURL,
@@ -605,9 +706,14 @@ actor TranscriptSynchronizationService {
             revision: input.transcriptRevision, audioTime: audioTime)
         if let lastRequest, request.canReuse(lastRequest, running: active != nil) { return }
         lastRequest = request
+        // Cancelling the previous job is immediate; the replacement waits for
+        // the playhead to settle so a burst of skips starts Speech only once.
         startJob {
+            try? await Task.sleep(for: OptionalSpeechWorkPolicy.seekSettleDelay)
+            guard !Task.isCancelled else { return 0 }
             let alignmentStore = TranscriptAlignmentStoreActor(modelContainer: libraryContainer)
             return await self.run(input: input, audioTime: audioTime, alignmentStore: alignmentStore,
+                                  onScreen: onScreen, playbackRate: playbackRate,
                                   episodeActor: episodeActor, settingsActor: settingsActor) ? 1 : 0
         }
     }
@@ -700,6 +806,8 @@ actor TranscriptSynchronizationService {
         audioTime: TimeInterval,
         alignmentStore: TranscriptAlignmentStoreActor,
         sampleAcrossEpisode: Bool = false,
+        onScreen: Bool = false,
+        playbackRate: Float = 1,
         episodeActor: EpisodeActor? = nil,
         settingsActor: PodcastSettingsModelActor? = nil
     ) async -> Bool {
@@ -757,6 +865,9 @@ actor TranscriptSynchronizationService {
                 sampleCenters = (0..<sampleCount).map { index in
                     duration * Double(index) / Double(max(sampleCount - 1, 1))
                 }
+            } else if onScreen {
+                sampleCenters = OptionalSpeechWorkPolicy.enrichmentWindowCenters(
+                    audioTime: audioTime, mediaDuration: duration, playbackRate: playbackRate)
             } else {
                 sampleCenters = [audioTime - 48, audioTime - 24, audioTime, audioTime + 24, audioTime + 48]
                     .map { min(max($0, 0), max(duration - 7, 0)) }
@@ -858,17 +969,34 @@ actor TranscriptSynchronizationService {
                               overlayKey: PublisherTranscriptTimingOverlay.Key?) async throws -> TranscriptSynchronizationAnchor? {
         try Task.checkCancellation()
         if let overlayKey {
+            // Optional work: yield at a window boundary under Low Power Mode or
+            // heat. Publisher text and cue/coarse timing stay usable.
+            guard OptionalSpeechWorkPolicy.blocker() == nil else { throw CancellationError() }
             guard await MainActor.run(body: {
                 Player.shared.isPlaying && Player.shared.isPlayingTranscriptMedia(
                     episodeURL: input.episodeURL, localMediaURL: input.localMediaURL)
             }) else { throw CancellationError() }
             let window = TranscriptAudioSampler.window(center: center, duration: 7, mediaDuration: mediaDuration)
-            if let existing, existing.transcriptTime(forAudioTime: window.lowerBound) != nil,
-               existing.transcriptTime(forAudioTime: window.upperBound) != nil,
-               !existing.gaps.contains(where: { ($0.audioStart..<$0.audioEnd).overlaps(window) }),
+            let windowStart = Int((window.lowerBound * 2).rounded())
+            if attemptedWindows?.key != overlayKey { attemptedWindows = (overlayKey, []) }
+            if attemptedWindows?.starts.contains(windowStart) == true { return nil }
+            // Reuse cached word timing. Without a timeline yet there is no gap
+            // to narrow, so covered audio needs no anchor either.
+            let timelineCovers = existing.map { existing in
+                existing.transcriptTime(forAudioTime: window.lowerBound) != nil
+                    && existing.transcriptTime(forAudioTime: window.upperBound) != nil
+                    && !existing.gaps.contains(where: { ($0.audioStart..<$0.audioEnd).overlaps(window) })
+            } ?? true
+            if timelineCovers,
                let cached = try? await PublisherTranscriptTimingOverlayCache.shared.mappings(for: overlayKey, in: window),
                TranscriptSynchronizationWordIndex.covers(window, mappings: cached) {
                 return nil
+            }
+        }
+        defer {
+            if !Task.isCancelled, let overlayKey, attemptedWindows?.key == overlayKey {
+                let window = TranscriptAudioSampler.window(center: center, duration: 7, mediaDuration: mediaDuration)
+                attemptedWindows?.starts.insert(Int((window.lowerBound * 2).rounded()))
             }
         }
         try Task.checkCancellation()

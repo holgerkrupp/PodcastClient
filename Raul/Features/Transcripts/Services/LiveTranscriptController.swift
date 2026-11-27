@@ -135,7 +135,6 @@ final class LiveTranscriptController {
     @ObservationIgnored private var userStoppedEpisodeURL: URL?
     /// Coalesces skip-button bursts into one recognition restart.
     @ObservationIgnored private var seekRestartTask: Task<Void, Never>?
-    nonisolated static let seekSettleDelay: Duration = .milliseconds(500)
 
     private init() {
 #if canImport(UIKit)
@@ -280,9 +279,11 @@ final class LiveTranscriptController {
         lowPower: Bool = ProcessInfo.processInfo.isLowPowerModeEnabled,
         thermal: ProcessInfo.ThermalState = ProcessInfo.processInfo.thermalState
     ) -> AutomaticStartSkip? {
-        if lowPower { return .lowPower }
-        if thermal == .serious || thermal == .critical { return .thermal }
-        return nil
+        switch OptionalSpeechWorkPolicy.blocker(lowPower: lowPower, thermal: thermal) {
+        case .lowPower: .lowPower
+        case .thermal: .thermal
+        case nil: nil
+        }
     }
 
     private var appIsInteractive: Bool {
@@ -469,7 +470,7 @@ final class LiveTranscriptController {
         seekRestartTask?.cancel()
         let token = generation
         seekRestartTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.seekSettleDelay)
+            try? await Task.sleep(for: OptionalSpeechWorkPolicy.seekSettleDelay)
             guard !Task.isCancelled, let self, self.generation == token,
                   self.phase != .idle, self.phase != .unavailable else { return }
             self.seekRestartTask = nil

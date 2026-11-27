@@ -4222,9 +4222,19 @@ class Player {
         playbackTask = nil
     }
 
-    private func requestTranscriptSynchronizationIfNeeded(at audioTime: TimeInterval) {
+    /// A publisher transcript for `episodeURL` appeared on screen: start
+    /// enrichment now instead of waiting for the next playback interval.
+    func transcriptTimingDemandDidChange(for episodeURL: URL) {
+        guard episodeURL == currentEpisodeURL else { return }
+        requestTranscriptSynchronizationIfNeeded(at: playPosition, force: true)
+    }
+
+    private func requestTranscriptSynchronizationIfNeeded(at audioTime: TimeInterval, force: Bool = false) {
         let episodeURL = currentEpisodeURL
-        guard TranscriptSynchronizationStore.shared.isEnabled,
+        // Automatic while a publisher transcript is visible (#490); the
+        // setting additionally enables it for all publisher playback.
+        let onScreen = TranscriptSynchronizationStore.shared.hasTimingDemand(for: episodeURL)
+        guard TranscriptSynchronizationStore.shared.isEnabled || onScreen,
               isPlaying,
               playbackPowerMode == .foreground,
               currentPlaybackSource == .local,
@@ -4243,8 +4253,18 @@ class Player {
         let seekedBack = previousPosition.map { audioTime < $0 - 30 } ?? false
         let needsCoverage = !TranscriptSynchronizationStore.shared.hasVerifiedTimeline(for: episodeURL)
             || TranscriptSynchronizationStore.shared.isUnverifiedAudioTime(audioTime, episodeURL: episodeURL)
-        let intervalElapsed = previousPosition.map { audioTime - $0 >= (needsCoverage ? 15 : 240) } ?? (audioTime >= 20)
-        guard episodeChanged || seekedBack || intervalElapsed else { return }
+        // On screen, keep the rolling word-timing window ahead of the playhead.
+        let interval: TimeInterval = onScreen || needsCoverage ? 15 : 240
+        let intervalElapsed = previousPosition.map { audioTime - $0 >= interval } ?? (onScreen || audioTime >= 20)
+        let seekedForward = onScreen && (previousPosition.map { audioTime > $0 + 45 } ?? false)
+        guard force || episodeChanged || seekedBack || seekedForward || intervalElapsed else { return }
+        // Optional work yields silently to Low Power Mode and heat; the next
+        // tick retries once conditions recover.
+        guard OptionalSpeechWorkPolicy.blocker() == nil else { return }
+        // One Speech job per media: never alongside a full or live transcription.
+        guard !EpisodeAIGenerationCoordinator.shared.isRunning(for: episodeURL),
+              !LiveTranscriptController.shared.isActive(episodeURL: episodeURL) else { return }
+        let playbackRate = playbackRate
 
         lastTranscriptSynchronizationEpisodeURL = episodeURL
         lastTranscriptSynchronizationPosition = audioTime
@@ -4255,11 +4275,14 @@ class Player {
                   self.isPlaying,
                   self.playbackPowerMode == .foreground,
                   self.currentPlaybackSource == .local,
-                  TranscriptSynchronizationStore.shared.isEnabled,
+                  TranscriptSynchronizationStore.shared.isEnabled
+                    || TranscriptSynchronizationStore.shared.hasTimingDemand(for: episodeURL),
                   let libraryContainer = ModelContainerManager.shared.preparedContainer else { return }
             await TranscriptSynchronizationService.shared.schedule(
                 input: input,
                 audioTime: audioTime,
+                onScreen: TranscriptSynchronizationStore.shared.hasTimingDemand(for: episodeURL),
+                playbackRate: playbackRate,
                 libraryContainer: libraryContainer,
                 episodeActor: self.episodeActor,
                 settingsActor: self.settingsActor

@@ -224,6 +224,7 @@ struct TranscriptListView: View {
         .onAppear {
             PlayerOpeningPerformance.event("Transcript surface visible")
         }
+        .publisherTimingDemand(episodeURL: usesPublisherAlignment ? viewedEpisodeURL : nil)
                 .onDisappear { tracker.stop() }
                 .onChange(of: player.playPosition) { tracker.refresh() }
                 .onChange(of: player.currentEpisodeURL) { tracker.refresh() }
@@ -282,7 +283,7 @@ struct TranscriptListView: View {
     private func transcriptRow(_ row: TranscriptDisplayRow) -> some View {
         let isActive = row.id == activeDisplayRowID
         let isFocusedSearchMatch = row.id == selectedSearchRowID
-        let canSeek = !usesPublisherAlignment || !synchronizationStore.isEnabled
+        let canSeek = !usesPublisherAlignment || !synchronizationStore.isActive
             || synchronizationStore.audioTime(forTranscriptTime: row.startTime, episodeURL: viewedEpisodeURL) != nil
         let caption = row.segment.highlightedText(selectionActive ? frozenActive : tracker.active)
         let displayedCaption = !searchText.isEmpty && TranscriptSearchText.matches(row.text, query: searchText)

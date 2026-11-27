@@ -117,6 +117,7 @@ struct TranscriptView: View {
                     if canFollowPlayback { startTracker() }
                 }
                 .onDisappear { tracker.stop() }
+                .publisherTimingDemand(episodeURL: usesPublisherAlignment ? episodeURL : nil)
                 .onChange(of: currentTime) {
                     // Never move a window the listener is reading; a saved
                     // partial transcript cannot follow, so it stays put too.

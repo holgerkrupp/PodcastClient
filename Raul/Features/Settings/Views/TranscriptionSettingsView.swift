@@ -133,6 +133,9 @@ struct TranscriptionSettingsView: View {
                             }
                         )
                     )
+                    Text("While a publisher transcript is on screen and a downloaded episode plays, Up Next refines its word timing automatically. Turn this on to also do it in the background and whenever such an episode plays.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
                     Toggle(
                         "Add likely ad breaks to the chapter list",
