@@ -1,23 +1,6 @@
 import SwiftUI
 import SwiftData
 
-struct LiveTranscriptActionView: View {
-    let episode: Episode
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Transcript", systemImage: "waveform.and.mic")
-                .font(.headline)
-
-            TranscriptGenerationActionsView(episode: episode)
-        }
-        .multilineTextAlignment(.leading)
-        .frame(maxWidth: .infinity)
-        .padding(8)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-}
-
 struct TranscriptEmptyStateView: View {
     let episode: Episode
 

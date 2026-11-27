@@ -220,6 +220,7 @@ struct PlayerView: View {
         PlayerControllView(
             mediaHeight: min(size.width, size.height) * 0.33,
             showsInlineTranscript: false,
+            hidesTranscriptGeneration: contentTab == .transcript,
             contentAvailability: contentAvailability
         )
         .frame(maxWidth: .infinity, alignment: .top)

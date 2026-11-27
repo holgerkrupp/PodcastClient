@@ -152,6 +152,7 @@ struct PlayerChapterControlSlot: View {
     let showsInlineTranscript: Bool
     let showsTranscriptOverHero: Bool
     let contentAvailability: PlayerContentAvailability?
+    var hidesTranscriptGeneration = false
     let onOpenPlaybackSettings: () -> Void
 
     private var player: Player { .shared }
@@ -179,6 +180,7 @@ struct PlayerChapterControlSlot: View {
                     availability: contentAvailability,
                     hasPlaybackChapters: hasPlaybackChapters,
                     hidesChapterGeneration: showsInlineTranscript && showTranscripts,
+                    hidesTranscriptGeneration: hidesTranscriptGeneration,
                     modelContainer: modelContext.container
                 )
             }
@@ -225,6 +227,7 @@ private struct PlayerChapterRowGenerationSlot: View {
     let availability: PlayerContentAvailability?
     let hasPlaybackChapters: Bool
     let hidesChapterGeneration: Bool
+    let hidesTranscriptGeneration: Bool
     let modelContainer: ModelContainer
 
     private var aiGeneration: EpisodeAIGenerationCoordinator { .shared }
@@ -258,7 +261,8 @@ private struct PlayerChapterRowGenerationSlot: View {
     }
 
     private func shouldShow(_ action: EpisodeAIGenerationAction) -> Bool {
-        action != .generateChapters || !hidesChapterGeneration
+        if action == .generateChapters { return !hidesChapterGeneration }
+        return !hidesTranscriptGeneration
     }
 }
 

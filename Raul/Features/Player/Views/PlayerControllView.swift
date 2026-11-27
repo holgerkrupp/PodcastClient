@@ -31,6 +31,10 @@ struct PlayerControllView: View {
     var mediaHeight: CGFloat?
     var showsMedia = true
     var showsInlineTranscript = true
+    /// The expanded player shows the Transcript tab beside these controls; it
+    /// owns transcription actions and progress, so the chapter row must not
+    /// repeat them (#477: one progress indicator per job).
+    var hidesTranscriptGeneration = false
     var showsTranscriptOverHero = false
     var showsPlaybackUtilities = true
     /// Prepared off-main by `PlayerContentAvailabilityModelActor`. Nil means
@@ -87,6 +91,7 @@ struct PlayerControllView: View {
                     showsInlineTranscript: showsInlineTranscript,
                     showsTranscriptOverHero: showsTranscriptOverHero,
                     contentAvailability: contentAvailability,
+                    hidesTranscriptGeneration: hidesTranscriptGeneration,
                     onOpenPlaybackSettings: openPlaybackSettings
                 )
 

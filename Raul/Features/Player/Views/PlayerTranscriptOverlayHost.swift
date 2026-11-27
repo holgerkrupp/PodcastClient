@@ -98,13 +98,7 @@ struct PlayerTranscriptOverlayHost: View {
             .onAppear { presenter.noteContentVisible() }
         case .status(.noTranscript):
             statusView {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("No Transcript", systemImage: "quote.bubble")
-                        .font(.subheadline.weight(.semibold))
-                    Text("Open the full transcript to create one.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                InlineMissingTranscriptStatus(episodeURL: episode.url)
             }
             .accessibilityElement(children: .combine)
             .onAppear { presenter.noteContentVisible() }
@@ -134,6 +128,38 @@ struct PlayerTranscriptOverlayHost: View {
         .accessibilityHint("Opens the full transcript in a sheet")
         .help("Read the whole episode as text")
         .accessibilityInputLabels([Text("Open captions"), Text("Open transcript")])
+    }
+}
+
+/// Non-interactive missing-transcript status. Only this view observes the
+/// shared generation job, so a full transcription started from the Transcript
+/// view or the chapter row reads as in progress here instead of "No
+/// Transcript". Progress and Cancel stay in the full Transcript view (#477).
+private struct InlineMissingTranscriptStatus: View {
+    let episodeURL: URL?
+
+    private var isFullTranscriptionRunning: Bool {
+        guard let episodeURL,
+              case .running = EpisodeAIGenerationCoordinator.shared.state(for: episodeURL) else { return false }
+        return true
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if isFullTranscriptionRunning {
+                Label("Creating transcript…", systemImage: "quote.bubble")
+                    .font(.subheadline.weight(.semibold))
+                Text("Open the full transcript to follow progress.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Label("No Transcript", systemImage: "quote.bubble")
+                    .font(.subheadline.weight(.semibold))
+                Text("Open the full transcript to create one.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
