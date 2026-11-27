@@ -424,3 +424,116 @@ struct InlineSegmentAccumulator: Sendable {
         return low > 0 ? low - 1 : nil
     }
 }
+
+extension TranscriptPreparedSnapshot {
+    /// Whether `self` continues `older`'s rows: the same layout, or an update
+    /// that keeps the first row and only appends or revises later rows (a live
+    /// or partial transcript growing). Views keep their rows, scroll position,
+    /// search and Follow state instead of showing a loading state.
+    func continuesDocumentLayout(of older: Self) -> Bool {
+        if hasSameDocumentLayout(as: older) { return true }
+        guard let first = segments.first, let olderFirst = older.segments.first else { return false }
+        // The first row may still grow while the transcript is short.
+        return first.id == olderFirst.id && first.speaker == olderFirst.speaker
+    }
+}
+
+/// Keeps a full-transcript ``TranscriptPreparedSnapshot`` for a growing,
+/// start-sorted live or saved-partial source list.
+///
+/// A full rebuild re-sorts, regroups and hashes every line for each new cue.
+/// This regroups only the changed tail through ``InlineSegmentAccumulator``
+/// (with `.full` options), so earlier segments keep identical IDs and values.
+/// The resulting `segments`, `sourceMetadata` and `presentation.timingQuality`
+/// equal `TranscriptPreparedSnapshot.make(from:sourcesAreSorted:)`; the
+/// presentation carries no stored-document provenance (`document == nil`),
+/// which partial transcripts never use. Inputs the document path would filter
+/// or reorder (mixed sources, unsorted or non-finite starts) fall back to a
+/// full rebuild.
+struct PartialTranscriptSnapshotAccumulator: Sendable {
+    private var accumulator = InlineSegmentAccumulator(options: .full)
+    private(set) var snapshot: TranscriptPreparedSnapshot?
+    /// What the most recent incremental update reused; nil after a fallback.
+    private(set) var lastUpdate: InlineSegmentAccumulator.Update?
+
+    @discardableResult
+    mutating func update(with sources: [TranscriptSegmentSource]) -> TranscriptPreparedSnapshot {
+        guard Self.supportsIncrementalUpdate(sources) else {
+            accumulator = InlineSegmentAccumulator(options: .full)
+            lastUpdate = nil
+            // The cache mirrors the (now reset) incremental accumulator only, so
+            // an unchanged incremental update can never return this rebuild.
+            snapshot = nil
+            return TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
+        }
+        let update = accumulator.update(with: sources)
+        lastUpdate = update
+        if !update.changed, let snapshot { return snapshot }
+        let segments = accumulator.segments
+        let publisher = sources.first?.sourceRawValue == CachedTranscriptSource.publisher.rawValue
+        let prepared = TranscriptPreparedSnapshot(
+            segments: segments,
+            sourceMetadata: TranscriptSourceMetadata(usesPublisherAlignment: publisher),
+            presentation: TranscriptPresentationSnapshot(
+                document: nil,
+                segments: segments,
+                timingQuality: Self.nativeTimingQuality(in: segments),
+                timeline: nil,
+                enhancedWordsBySegment: [:]
+            )
+        )
+        snapshot = prepared
+        return prepared
+    }
+
+    /// Sorted by finite start and one document source class, so the document
+    /// path would select every nonblank line in the given order.
+    static func supportsIncrementalUpdate(_ sources: [TranscriptSegmentSource]) -> Bool {
+        guard let first = sources.first else { return true }
+        let sourceClass = documentSourceClass(first.sourceRawValue)
+        var previousStart = -TimeInterval.infinity
+        for source in sources {
+            guard source.startTime.isFinite, source.startTime >= previousStart,
+                  documentSourceClass(source.sourceRawValue) == sourceClass else { return false }
+            previousStart = source.startTime
+        }
+        return true
+    }
+
+    private static func documentSourceClass(_ rawValue: String?) -> Int {
+        switch rawValue.flatMap(CachedTranscriptSource.init(rawValue:)) {
+        case .publisher: 0
+        case .ai, .localAI: 1
+        case .unknown, nil: 2
+        }
+    }
+
+    /// Mirrors `TranscriptPresentationSnapshot.TimingQuality.native(in:)`;
+    /// the equivalence tests guard against drift.
+    private static func nativeTimingQuality(in segments: [TranscriptSegment]) -> TranscriptPresentationSnapshot.TimingQuality {
+        if segments.contains(where: { $0.timedSpans.contains { $0.cueLevel != true && $0.startTime >= 0 } }) {
+            return .nativeWords
+        }
+        if segments.contains(where: {
+            $0.startTime.isFinite && $0.startTime >= 0 &&
+            ($0.startTime > 0 || ($0.endTime.map { $0.isFinite && $0 > 0 } ?? false) ||
+             $0.timedSpans.contains { $0.startTime >= 0 })
+        }) {
+            return .rawCues
+        }
+        return .unavailable
+    }
+}
+
+/// Supersedes asynchronous preparation runs: only the most recently begun run
+/// may publish its result.
+struct TranscriptPreparationGeneration: Sendable {
+    private(set) var current = 0
+
+    mutating func begin() -> Int {
+        current &+= 1
+        return current
+    }
+
+    func isCurrent(_ token: Int) -> Bool { token == current }
+}

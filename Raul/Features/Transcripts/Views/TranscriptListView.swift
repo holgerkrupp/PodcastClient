@@ -239,12 +239,13 @@ struct TranscriptListView: View {
                 .onChange(of: preparedSnapshot) { oldSnapshot, newSnapshot in
                     if selectionActive {
                         pendingRowsUpdate = true
-                    } else if !oldSnapshot.hasSameDocumentLayout(as: newSnapshot) {
+                    } else if !newSnapshot.continuesDocumentLayout(of: oldSnapshot) {
                         isPreparingRows = true
                     }
-                    // Timing-only upgrades keep the rows on screen; the task below
-                    // swaps in the new timing without a loading state, scroll
-                    // reset or Follow recenter (#487).
+                    // Timing-only upgrades and appended or revised live cues keep
+                    // the rows on screen; the task below swaps in the new rows
+                    // without a loading state, scroll reset or Follow recenter
+                    // (#487).
                 }
                 .onChange(of: isPreparingRows) {
                     guard isPreparingRows == false else { return }
@@ -648,11 +649,36 @@ private struct PartialTranscriptPane: View {
     @Environment(\.modelContext) private var modelContext
     @Bindable private var liveTranscript = LiveTranscriptController.shared
     @State private var partial: TranscriptPreparedSnapshot?
+    @State private var preparation = Preparation()
 
-    /// Reloads on each finalized live cue and when recognition starts or stops.
+    /// Main-actor bookkeeping for incremental preparation. Mutations must not
+    /// re-render, so this is a plain reference held in `@State`.
+    @MainActor
+    private final class Preparation {
+        var generation = TranscriptPreparationGeneration()
+        var accumulator = PartialTranscriptSnapshotAccumulator()
+        /// The single preparation allowed to run; later runs start from its result.
+        var inFlight: Task<PartialTranscriptSnapshotAccumulator, Never>?
+    }
+
+    /// Reloads when a live cue is finalized, when the tentative cues are revised
+    /// (same count included) and when recognition starts or stops. Cheap: it
+    /// hashes only the last finalized cue and the few tentative cues.
     private struct LoadKey: Equatable {
-        let cueCount: Int
         let isLive: Bool
+        let cueCount: Int
+        let revision: Int
+    }
+
+    private var loadKey: LoadKey {
+        var hasher = Hasher()
+        hasher.combine(liveTranscript.cues.last)
+        hasher.combine(liveTranscript.tentativeCues)
+        return LoadKey(
+            isLive: liveTranscript.isActive(for: episode),
+            cueCount: liveTranscript.cues.count,
+            revision: hasher.finalize()
+        )
     }
 
     var body: some View {
@@ -672,29 +698,50 @@ private struct PartialTranscriptPane: View {
                 TranscriptEmptyStateView(episode: episode)
             }
         }
-        .task(id: LoadKey(cueCount: liveTranscript.cues.count, isLive: liveTranscript.isActive(for: episode))) {
-            guard let episodeURL = episode.url else { return }
-            // Same sources as the inline overlay (#484/#520): running recognition
-            // hands over value cues merged in linear time, and a saved partial
-            // transcript is decoded on a model actor. Nothing here reads
-            // `liveTranscriptData` or decodes JSON on the main actor.
-            let sources: [TranscriptSegmentSource]
-            if let live = liveTranscript.liveCaptionSources(episodeURL: episodeURL) {
-                sources = live
-            } else {
-                let store = LiveTranscriptStoreActor(modelContainer: modelContext.container)
-                sources = await store.partialSources(
-                    episodeURL: episodeURL,
-                    pending: liveTranscript.pendingCues(episodeURL: episodeURL)
-                )
-            }
-            guard !Task.isCancelled else { return }
-            let snapshot = await Task.detached(priority: .userInitiated) {
-                TranscriptPreparedSnapshot.make(from: sources, sourcesAreSorted: true)
-            }.value
-            guard !Task.isCancelled else { return }
-            partial = snapshot
+        .task(id: loadKey) {
+            await loadPartial()
         }
+    }
+
+    @MainActor
+    private func loadPartial() async {
+        guard let episodeURL = episode.url else { return }
+        let token = preparation.generation.begin()
+        // Wait for the running preparation instead of starting a second one;
+        // superseded runs drop out here without doing any work.
+        let base = await preparation.inFlight?.value ?? preparation.accumulator
+        guard !Task.isCancelled, preparation.generation.isCurrent(token) else { return }
+
+        // Same sources as the inline overlay (#484/#520): running recognition
+        // hands over value cues merged in linear time, and a saved partial
+        // transcript is decoded on a model actor. Nothing here reads
+        // `liveTranscriptData` or decodes JSON on the main actor.
+        let sources: [TranscriptSegmentSource]
+        if let live = liveTranscript.liveCaptionSources(episodeURL: episodeURL) {
+            sources = live
+        } else {
+            let store = LiveTranscriptStoreActor(modelContainer: modelContext.container)
+            sources = await store.partialSources(
+                episodeURL: episodeURL,
+                pending: liveTranscript.pendingCues(episodeURL: episodeURL)
+            )
+        }
+        guard !Task.isCancelled, preparation.generation.isCurrent(token) else { return }
+
+        let work = Task.detached(priority: .userInitiated) {
+            var accumulator = base
+            accumulator.update(with: sources)
+            return accumulator
+        }
+        preparation.inFlight = work
+        let updated = await work.value
+        // Keep the newest regrouping as the base even if its result is stale;
+        // the accumulator diffs against its own sources, so any base is valid.
+        preparation.accumulator = updated
+        if preparation.inFlight == work { preparation.inFlight = nil }
+        guard !Task.isCancelled, preparation.generation.isCurrent(token),
+              let snapshot = updated.snapshot else { return }
+        partial = snapshot
     }
 }
 
