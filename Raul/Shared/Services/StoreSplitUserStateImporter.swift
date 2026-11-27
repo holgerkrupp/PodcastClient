@@ -1105,9 +1105,9 @@ actor StoreSplitUserStateImporter {
 
         var activeRemoteIdentitiesByPlaylistID: [String: Set<String>] = [:]
         var seenEntryIDs = Set<String>()
-        var seenLogicalEntries = Set<String>()
+        // The same membership rule `PlaylistRestoreFacts` counts with (#519).
+        var membership = PlaylistMembershipResolver()
         var localEntriesByPlaylistID: [String: [String: PlaylistEntry]] = [:]
-        var defaultQueuePlaylistEntryDates: [String: Date] = [:]
         var entryOffset = 0
 
         while true {
@@ -1115,7 +1115,7 @@ actor StoreSplitUserStateImporter {
                 PlaylistEntrySync.self,
                 offset: entryOffset,
                 limit: sourcePageSize,
-                sortBy: [SortDescriptor(\PlaylistEntrySync.updatedAt, order: .reverse)]
+                sortBy: PlaylistMembershipResolver.playlistEntryOrder
             )
             guard page.isEmpty == false else { break }
 
@@ -1147,18 +1147,18 @@ actor StoreSplitUserStateImporter {
                     feedURL: record.feedURL,
                     episodeID: record.episodeID
                 )
-                let logicalEntryKey = StableIdentityKey.make(
-                    localPlaylistID,
-                    identityKey
+                let decision = membership.resolvePlaylistEntry(
+                    playlistKey: localPlaylistID,
+                    identityKey: identityKey,
+                    updatedAt: record.updatedAt,
+                    isTombstone: record.isDeleted || record.deletedAt != nil,
+                    isDefaultQueue: playlist.title == Playlist.defaultQueueTitle
                 )
-                guard seenLogicalEntries.insert(logicalEntryKey).inserted else {
+                guard decision != .superseded else {
                     continue
                 }
                 if activeRemoteIdentitiesByPlaylistID[localPlaylistID] == nil {
                     activeRemoteIdentitiesByPlaylistID[localPlaylistID] = []
-                }
-                if playlist.title == Playlist.defaultQueueTitle {
-                    defaultQueuePlaylistEntryDates[identityKey] = record.updatedAt
                 }
 
                 if localEntriesByPlaylistID[localPlaylistID] == nil {
@@ -1182,7 +1182,7 @@ actor StoreSplitUserStateImporter {
                     localEntriesByPlaylistID[localPlaylistID] = entriesByIdentity
                 }
 
-                if record.isDeleted || record.deletedAt != nil {
+                if decision == .removed {
                     if let existing = localEntriesByPlaylistID[localPlaylistID]?
                         .removeValue(forKey: identityKey) {
                         legacyContext.delete(existing)
@@ -1206,11 +1206,7 @@ actor StoreSplitUserStateImporter {
                 // `addedAt` newer than the completion, and still projects.
                 // `PlayedEpisodePlaylistPruner` removes and tombstones whatever
                 // is already queued, so this only has to stop new arrivals.
-                if PlayedEpisodePlaylistPruner.isEnabled,
-                   PlayedEpisodeQueuePolicy.isStaleQueueMembership(
-                       for: episode,
-                       addedAt: record.addedAt
-                   ) {
+                if PlaylistMembershipResolver.isStaleCompletion(for: episode, addedAt: record.addedAt) {
                     continue
                 }
                 let entry: PlaylistEntry
@@ -1254,7 +1250,7 @@ actor StoreSplitUserStateImporter {
            }) {
             await applyQueueEntryFallback(
                 to: defaultQueue,
-                playlistEntryDates: defaultQueuePlaylistEntryDates,
+                membership: &membership,
                 activeRemoteIdentitiesByPlaylistID: &activeRemoteIdentitiesByPlaylistID,
                 result: &result
             )
@@ -1269,7 +1265,7 @@ actor StoreSplitUserStateImporter {
 
     private func applyQueueEntryFallback(
         to playlist: Playlist,
-        playlistEntryDates: [String: Date],
+        membership: inout PlaylistMembershipResolver,
         activeRemoteIdentitiesByPlaylistID: inout [String: Set<String>],
         result: inout StoreSplitUserStateImportResult
     ) async {
@@ -1299,7 +1295,7 @@ actor StoreSplitUserStateImporter {
                 QueueEntrySync.self,
                 offset: offset,
                 limit: sourcePageSize,
-                sortBy: [SortDescriptor(\QueueEntrySync.updatedAt, order: .reverse)]
+                sortBy: PlaylistMembershipResolver.queueEntryOrder
             )
             guard page.isEmpty == false else { break }
             if activeRemoteIdentitiesByPlaylistID[localPlaylistID] == nil {
@@ -1320,11 +1316,15 @@ actor StoreSplitUserStateImporter {
                     feedURL: record.feedURL,
                     episodeID: record.episodeID
                 )
-                if let playlistEntryDate = playlistEntryDates[identityKey],
-                   playlistEntryDate > record.updatedAt {
+                let decision = membership.resolveQueueEntry(
+                    identityKey: identityKey,
+                    updatedAt: record.updatedAt,
+                    isTombstone: record.isDeleted || record.deletedAt != nil
+                )
+                if decision == .superseded {
                     continue
                 }
-                if record.isDeleted || record.deletedAt != nil {
+                if decision == .removed {
                     activeRemoteIdentitiesByPlaylistID[localPlaylistID]?
                         .remove(identityKey)
                     if let existing = entriesByIdentity.removeValue(forKey: identityKey) {
@@ -1350,11 +1350,7 @@ actor StoreSplitUserStateImporter {
                 // `addedAt` newer than the completion, and still projects.
                 // `PlayedEpisodePlaylistPruner` removes and tombstones whatever
                 // is already queued, so this only has to stop new arrivals.
-                if PlayedEpisodePlaylistPruner.isEnabled,
-                   PlayedEpisodeQueuePolicy.isStaleQueueMembership(
-                       for: episode,
-                       addedAt: record.addedAt
-                   ) {
+                if PlaylistMembershipResolver.isStaleCompletion(for: episode, addedAt: record.addedAt) {
                     continue
                 }
                 let entry: PlaylistEntry
@@ -1850,13 +1846,7 @@ actor StoreSplitUserStateImporter {
         feedURL: String,
         episodeID: String
     ) -> String {
-        let normalizedFeedURL = URL(string: feedURL).map(
-            {
-                $0.podcastFeedComparisonKeys.sorted().first
-                    ?? PodcastFeedIdentity.normalizedFeedURLString($0)
-            }
-        ) ?? feedURL
-        return StableIdentityKey.make(normalizedFeedURL, episodeID)
+        PlaylistMembershipResolver.identityKey(feedURL: feedURL, episodeID: episodeID)
     }
 
     private func appendMissingFeed(

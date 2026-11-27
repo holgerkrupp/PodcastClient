@@ -542,6 +542,53 @@ final class StoreSplitPlaylistProjectionTests: XCTestCase {
     }
 
     @MainActor
+    func testOlderQueueTombstoneAliasDoesNotRemoveANewerReAdd() async throws {
+        let legacy = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let episode = Episode(
+            guid: "re-added",
+            title: "Re-added",
+            url: URL(string: "https://example.com/re-added.mp3")!,
+            podcast: podcast
+        )
+        podcast.episodes = [episode]
+        legacy.mainContext.insert(podcast)
+        legacy.mainContext.insert(Playlist())
+        let identity = episode.stableEpisodeIdentity
+        // Removed under one feed URL spelling, re-added later under another:
+        // two QueueEntrySync rows for one normalized identity.
+        userState.mainContext.insert(QueueEntrySync(
+            feedURL: "https://EXAMPLE.com/feed.xml/",
+            episodeID: identity.episodeID,
+            sortIndex: 0,
+            isDeleted: true,
+            deletedAt: Date(timeIntervalSince1970: 1_000),
+            updatedAt: Date(timeIntervalSince1970: 1_000)
+        ))
+        userState.mainContext.insert(QueueEntrySync(
+            feedURL: identity.feedURL,
+            episodeID: identity.episodeID,
+            sortIndex: 0,
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        ))
+        try legacy.mainContext.save()
+        try userState.mainContext.save()
+
+        _ = await StoreSplitUserStateImporter.apply(
+            legacyContainer: legacy,
+            userStateContainer: userState,
+            authoritativePlaylists: true
+        )
+
+        let queue = try XCTUnwrap(
+            try ModelContext(legacy).fetch(FetchDescriptor<Playlist>())
+                .first { $0.title == Playlist.defaultQueueTitle }
+        )
+        XCTAssertEqual(queue.ordered.compactMap { $0.episode?.guid }, ["re-added"])
+    }
+
+    @MainActor
     func testStalePublishDoesNotReviveANewerRemoval() async throws {
         let userState = try ModelContainerManager.makeUserStateContainer(isStoredInMemoryOnly: true)
         let identity = EpisodeStableIdentity(

@@ -321,6 +321,9 @@ private struct ManualPlaylistPageView: View {
     @State private var projection = QueueProjection(entries: [])
     @State private var episodesByIdentity: [String: Episode] = [:]
     @State private var hasBuiltProjection = false
+    /// Bumped when hydration publishes or a referenced feed/episode commits,
+    /// so a same-ID entry whose episode data changed is re-snapshotted.
+    @State private var projectionGeneration = 0
     @State private var recordedEntryCount = 0
     @State private var isSmartShuffling = false
     @State private var smartShuffleMessage: String?
@@ -342,25 +345,17 @@ private struct ManualPlaylistPageView: View {
         projection.filtered(using: filterState).entries
     }
 
-    private struct ProjectionRebuildKey: Equatable {
-        let playlistID: UUID
-        let entryIDs: [PersistentIdentifier]
-        let downloadedFiles: Set<URL>
-        let currentEpisodeURL: URL?
-        let isPlaying: Bool
-        let filterState: QueueFilterState
-    }
-
-    private var projectionRebuildKey: ProjectionRebuildKey {
-        ProjectionRebuildKey(
+    private var projectionRebuildKey: QueueProjectionRebuildKey {
+        QueueProjectionRebuildKey(
             playlistID: playlist.id,
-            entryIDs: playlistEntries.map(\.persistentModelID),
+            entries: playlistEntries,
             downloadedFiles: fileManager.downloadedFiles,
             currentEpisodeURL: Player.shared.currentEpisodeURL,
             isPlaying: Player.shared.isPlaying,
             // Re-snapshot when filters change so in-progress/downloaded
             // filters see current values.
-            filterState: filterState
+            filterState: filterState,
+            generation: projectionGeneration
         )
     }
 
@@ -537,6 +532,19 @@ private struct ManualPlaylistPageView: View {
         }
         .onChange(of: projectionRebuildKey, initial: true) { _, _ in
             rebuildProjection()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .splitRuntimeDidHydrate)) { _ in
+            projectionGeneration &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .podcastFeedImportDidCommit)) { notification in
+            guard let feed = notification.object as? URL,
+                  projection.entries.contains(where: { $0.podcastFeedURL == feed }) else { return }
+            projectionGeneration &+= 1
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .episodeReferencesDidChange)) { notification in
+            guard let url = notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL,
+                  projection.entries.contains(where: { $0.episodeURL == url }) else { return }
+            projectionGeneration &+= 1
         }
     }
 

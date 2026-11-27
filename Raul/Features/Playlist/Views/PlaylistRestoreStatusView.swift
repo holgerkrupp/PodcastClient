@@ -26,20 +26,28 @@ final class PlaylistRestoreStatusModel {
                     userState: userState
                 )
             }.value
+        } else {
+            facts.readFailed = true
         }
         guard Task.isCancelled == false else { return }
         self.facts = facts
+        // The facts count the local playlist themselves; the caller's
+        // projection count only covers a not-yet-prepared library.
+        let resolved = facts.readFailed ? resolvedCount : facts.resolvedCount
         readiness = .derive(.init(
-            referenceCount: facts.referenceCount,
-            resolvedCount: resolvedCount,
+            referenceCount: facts.readFailed ? resolved : facts.referenceCount,
+            resolvedCount: resolved,
             cloudReferenceCount: StoreSplitPlaylistPresenceStore
                 .cloudReferenceCount(forDefaultQueue: isDefaultQueue),
             awaitingInitialImport: manager.requiresInitialCloudImport,
             pendingFeedCount: facts.pendingFeedCount,
+            waitingFeedCount: facts.waitingFeedCount,
             loginFeedCount: facts.loginFeedCount,
             failedFeedCount: facts.failedFeedCount,
+            inFlightFeedCount: facts.unresolvedFeedKeys.intersection(monitor.inFlightFeedKeys).count,
             isHydrating: monitor.isHydrating || isRetrying,
-            isOffline: monitor.isOffline
+            isOffline: monitor.isOffline,
+            readFailed: facts.readFailed && resolved == 0
         ))
         hasLoaded = true
     }
@@ -121,7 +129,7 @@ struct PlaylistRestoreStatusView: View {
         switch readiness {
         case .restoring(let resolved, let total), .partial(let resolved, let total, _):
             (resolved, total)
-        case .empty, .waitingForICloud, .complete:
+        case .empty, .unknown, .waitingForICloud, .complete:
             nil
         }
     }
@@ -137,9 +145,11 @@ struct PlaylistRestoreStatusView: View {
             Image(systemName: "wifi.slash")
         case .partial(_, _, .needsLogin):
             Image(systemName: "lock")
+        case .partial(_, _, .waiting):
+            Image(systemName: "clock")
         case .partial(_, _, .unavailable):
             Image(systemName: "exclamationmark.circle")
-        case .empty, .complete:
+        case .empty, .unknown, .complete:
             EmptyView()
         }
     }
@@ -159,9 +169,11 @@ struct PlaylistRestoreStatusView: View {
             Text("Offline")
         case .partial(_, _, .needsLogin):
             Text("Sign-In Needed")
+        case .partial(_, _, .waiting):
+            Text("Waiting to Load Episodes")
         case .partial(_, _, .unavailable):
             Text("Some Episodes Aren’t Available Yet")
-        case .empty, .complete:
+        case .empty, .unknown, .complete:
             EmptyView()
         }
     }
@@ -177,9 +189,11 @@ struct PlaylistRestoreStatusView: View {
             Text("\(resolved) of \(total) episodes ready. Restoring continues when this device is back online.")
         case .partial(let resolved, let total, .needsLogin):
             Text("\(resolved) of \(total) episodes ready. A private podcast needs you to sign in on this device.")
+        case .partial(let resolved, let total, .waiting):
+            Text("\(resolved) of \(total) episodes ready. Their podcast feeds load again automatically, or tap Retry.")
         case .partial(let resolved, let total, .unavailable):
             Text("\(resolved) of \(total) episodes ready. Their podcast feeds didn’t include them or couldn’t be loaded.")
-        case .empty, .complete:
+        case .empty, .unknown, .complete:
             EmptyView()
         }
     }
@@ -201,7 +215,7 @@ struct PlaylistRestoreStatusView: View {
                 }
             }
             .buttonStyle(.borderless)
-        case .empty, .waitingForICloud, .restoring, .complete:
+        case .empty, .unknown, .waitingForICloud, .restoring, .complete:
             EmptyView()
         }
     }

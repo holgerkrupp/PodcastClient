@@ -11,62 +11,87 @@ import SwiftData
 enum PlaylistRestoreBlocker: Sendable, Equatable {
     case offline
     case needsLogin
+    /// The feeds may be fetched but are not right now (never fetched yet,
+    /// or in their retry backoff).
+    case waiting
     case unavailable
 }
 
 /// What a Queue or manual playlist can honestly say about its synced entries.
 ///
-/// Derived from existing state only: portable references in UserState, the
-/// local projection, library feed facts and the hydration monitor. It never
+/// Derived from existing state only: effective portable references in
+/// UserState (`PlaylistMembershipResolver`), the local playlist, library feed
+/// facts and this playlist's own feeds in the hydration monitor. It never
 /// decides membership; unresolved references stay authoritative in UserState.
 enum PlaylistRestoreReadiness: Sendable, Equatable {
     /// No saved entries anywhere: show the ordinary empty state.
     case empty
+    /// The saved references could not be read; say nothing rather than
+    /// claim the playlist is empty or restoring.
+    case unknown
     /// Another device reported entries, but none have arrived here yet.
     case waitingForICloud
-    /// Feeds for unresolved entries are being fetched or are about to be.
+    /// Feeds for this playlist's unresolved entries are being fetched.
     case restoring(resolved: Int, total: Int)
-    /// Nothing is fetching right now and some entries are still missing.
+    /// Nothing is fetching them right now and some entries are still missing.
     case partial(resolved: Int, total: Int, blocker: PlaylistRestoreBlocker)
     case complete
 
     struct Inputs: Sendable, Equatable {
-        /// Active portable references for this playlist (deduplicated).
+        /// Entries in effect for this playlist: local entries plus effective
+        /// references that are not on this device.
         var referenceCount = 0
-        /// Entries shown by the local projection.
+        /// Entries in the local playlist.
         var resolvedCount = 0
         /// Entry count another device published, if known (default queue only).
         var cloudReferenceCount: Int?
         var awaitingInitialImport = false
-        /// Referenced feeds not fetched yet and allowed to fetch.
+        /// Unresolved entries' feeds never fetched here and allowed to fetch now.
         var pendingFeedCount = 0
-        /// Referenced feeds waiting for a sign-in on this device.
+        /// Unresolved entries' feeds that may fetch later (backoff).
+        var waitingFeedCount = 0
+        /// Unresolved entries' feeds waiting for a sign-in on this device.
         var loginFeedCount = 0
-        /// Referenced feeds whose fetch failed and has not succeeded since.
+        /// Unresolved entries' feeds whose fetch failed or did not include them.
         var failedFeedCount = 0
+        /// Unresolved entries' feeds being fetched right now.
+        var inFlightFeedCount = 0
+        /// A hydration run is active (it may pick up pending feeds).
         var isHydrating = false
         var isOffline = false
+        var readFailed = false
     }
 
     static func derive(_ inputs: Inputs) -> PlaylistRestoreReadiness {
-        let total = inputs.referenceCount
+        if inputs.readFailed {
+            return inputs.awaitingInitialImport || (inputs.cloudReferenceCount ?? 0) > 0
+                ? .waitingForICloud
+                : .unknown
+        }
+        let total = max(inputs.referenceCount, inputs.resolvedCount)
         let resolved = min(inputs.resolvedCount, total)
         if total == 0 {
-            if inputs.resolvedCount > 0 { return .complete }
             if inputs.awaitingInitialImport || (inputs.cloudReferenceCount ?? 0) > 0 {
                 return .waitingForICloud
             }
             return .empty
         }
         guard resolved < total else { return .complete }
-        if inputs.isOffline, inputs.pendingFeedCount + inputs.failedFeedCount > 0 {
+        let networkFeeds = inputs.pendingFeedCount + inputs.waitingFeedCount
+            + inputs.failedFeedCount + inputs.inFlightFeedCount
+        if inputs.isOffline, networkFeeds > 0 {
             return .partial(resolved: resolved, total: total, blocker: .offline)
         }
-        if inputs.isHydrating || inputs.pendingFeedCount > 0 {
+        // Only this playlist's own feeds count: other feeds loading says
+        // nothing about these entries.
+        if inputs.inFlightFeedCount > 0 || (inputs.isHydrating && inputs.pendingFeedCount > 0) {
             return .restoring(resolved: resolved, total: total)
         }
         if inputs.loginFeedCount > 0 {
             return .partial(resolved: resolved, total: total, blocker: .needsLogin)
+        }
+        if inputs.pendingFeedCount + inputs.waitingFeedCount > 0 {
+            return .partial(resolved: resolved, total: total, blocker: .waiting)
         }
         return .partial(resolved: resolved, total: total, blocker: .unavailable)
     }
@@ -74,71 +99,162 @@ enum PlaylistRestoreReadiness: Sendable, Equatable {
     /// Whether the status deserves space in the list or empty state.
     var isVisible: Bool {
         switch self {
-        case .empty, .complete: false
+        case .empty, .unknown, .complete: false
         case .waitingForICloud, .restoring, .partial: true
         }
     }
 }
 
-/// Facts about one playlist's referenced feeds, read off the main actor.
+/// Facts about one playlist's effective membership, read off the main actor.
 struct PlaylistRestoreFacts: Sendable, Equatable {
+    /// The UserState references could not be read (store missing or fetch
+    /// failed). Distinct from "no references".
+    var readFailed = false
+    /// Local entries plus effective references that need a feed here.
     var referenceCount = 0
+    /// Entries in the local playlist (shown or awaiting portable export).
+    var resolvedCount = 0
+    /// Effective references whose episode is already in this library but not
+    /// in the playlist (stale completion, pending reconciliation or a local
+    /// removal not exported yet). Not counted: no feed work can change them.
+    var locallyAvailableCount = 0
     var pendingFeedCount = 0
+    var waitingFeedCount = 0
     var loginFeedCount = 0
     var failedFeedCount = 0
+    /// Normalized keys (`PodcastFeedIdentity`) of feeds the unresolved
+    /// references need; matched against hydration's in-flight feeds.
+    var unresolvedFeedKeys: Set<String> = []
     /// First referenced feed that needs a sign-in, for the repair link.
     var loginFeed: URL?
     /// Referenced feeds a targeted Retry should fetch again.
     var retryFeeds: [URL] = []
 
-    /// Bounded reads: this playlist's UserState references and the library
-    /// podcasts they name (one episode-count probe per distinct feed).
+    /// Bounded reads: this playlist's UserState references, its local
+    /// entries, and the library podcasts that unresolved references name (one
+    /// episode-count probe per distinct feed).
     static func read(
         playlistSyncID: String,
         includesLegacyQueueEntries: Bool,
         library: ModelContainer,
-        userState: ModelContainer?
+        userState: ModelContainer?,
+        now: Date = .now
     ) -> PlaylistRestoreFacts {
         var facts = PlaylistRestoreFacts()
-        guard let userState else { return facts }
+        guard let userState else {
+            facts.readFailed = true
+            return facts
+        }
         let stateContext = ModelContext(userState)
-        var identities = Set<String>()
+        let libraryContext = ModelContext(library)
+
+        // Local playlist and its entries, by the same normalized identity.
+        let playlists = (try? libraryContext.fetch(FetchDescriptor<Playlist>())) ?? []
+        let localPlaylist = playlists.first {
+            $0.storeSplitSyncID == playlistSyncID && $0.hidden == false
+        } ?? playlists.first { $0.storeSplitSyncID == playlistSyncID }
+        var localIdentities = Set<String>()
+        var localEpisodeIDs = Set<String>()
+        if let localPlaylist {
+            let playlistID = localPlaylist.id
+            let entries: [PlaylistEntry]
+            do {
+                entries = try libraryContext.fetch(FetchDescriptor<PlaylistEntry>(
+                    predicate: #Predicate<PlaylistEntry> { $0.playlist?.id == playlistID }
+                ))
+            } catch {
+                facts.readFailed = true
+                return facts
+            }
+            for entry in entries {
+                guard let episode = entry.episode, episode.url != nil else { continue }
+                let key = PlaylistMembershipResolver.identityKey(for: episode)
+                localIdentities.insert(key)
+                if let episodeID = PlaylistMembershipResolver.episodeID(ofIdentityKey: key) {
+                    localEpisodeIDs.insert(episodeID)
+                }
+            }
+        }
+        facts.resolvedCount = localIdentities.count
+
+        // Every synced playlist ID the importer maps onto this playlist.
+        var aliasIDs: Set<String> = [playlistSyncID]
+        let logicalKey = localPlaylist.map {
+            PlaylistMembershipResolver.playlistLogicalKey(title: $0.title, kindRawValue: $0.kindRawValue)
+        }
+        let effective: [String: PlaylistMembershipResolver.Reference]
+        do {
+            if let logicalKey {
+                for header in try stateContext.fetch(FetchDescriptor<PlaylistSync>())
+                where PlaylistMembershipResolver.playlistLogicalKey(
+                    title: header.title, kindRawValue: header.kindRawValue
+                ) == logicalKey {
+                    aliasIDs.insert(header.id)
+                }
+            }
+            let aliases = Array(aliasIDs)
+            // Tombstones included: they carry the deletion intent.
+            let playlistEntries = try stateContext.fetch(FetchDescriptor<PlaylistEntrySync>(
+                predicate: #Predicate<PlaylistEntrySync> { aliases.contains($0.playlistID) },
+                sortBy: PlaylistMembershipResolver.playlistEntryOrder
+            ))
+            let queueEntries = includesLegacyQueueEntries
+                ? try stateContext.fetch(FetchDescriptor<QueueEntrySync>(
+                    sortBy: PlaylistMembershipResolver.queueEntryOrder
+                ))
+                : nil
+            effective = PlaylistMembershipResolver.effectiveMembership(
+                playlistEntries: playlistEntries,
+                aliasIDs: aliasIDs,
+                queueEntries: queueEntries
+            )
+        } catch {
+            facts.readFailed = true
+            return facts
+        }
+
+        // Set intersection by identity, never row counts. A reference whose
+        // feed URL spelling moved still matches its local entry by episode ID.
+        var unresolved = effective.values.filter { reference in
+            guard localIdentities.contains(reference.identityKey) == false else { return false }
+            guard let episodeID = PlaylistMembershipResolver.episodeID(ofIdentityKey: reference.identityKey) else {
+                return true
+            }
+            return localEpisodeIDs.contains(episodeID) == false
+        }
+
+        // Episodes already in this library need no feed: either a stale
+        // completion (excluded by policy) or pending local reconciliation.
+        if unresolved.isEmpty == false {
+            let local = locallyAvailableEpisodes(for: unresolved, in: libraryContext)
+            unresolved.removeAll { reference in
+                guard let episodeID = PlaylistMembershipResolver.episodeID(ofIdentityKey: reference.identityKey),
+                      local.contains(episodeID) else { return false }
+                facts.locallyAvailableCount += 1
+                return true
+            }
+        }
+        facts.referenceCount = facts.resolvedCount + unresolved.count
+        guard unresolved.isEmpty == false else { return facts }
+
         var feedStrings: [String] = []
         var seenFeeds = Set<String>()
-        func add(feedURL: String, episodeID: String) {
-            guard identities.insert(StableIdentityKey.make(feedURL, episodeID)).inserted else { return }
-            if seenFeeds.insert(feedURL).inserted { feedStrings.append(feedURL) }
+        for reference in unresolved.sorted(by: { $0.sortIndex < $1.sortIndex })
+        where seenFeeds.insert(reference.feedURL).inserted {
+            feedStrings.append(reference.feedURL)
         }
-        let entries = (try? stateContext.fetch(FetchDescriptor<PlaylistEntrySync>(
-            predicate: #Predicate<PlaylistEntrySync> {
-                $0.playlistID == playlistSyncID && $0.deletedAt == nil
-            }
-        ))) ?? []
-        for entry in entries where entry.isDeleted == false {
-            add(feedURL: entry.feedURL, episodeID: entry.episodeID)
-        }
-        if includesLegacyQueueEntries {
-            let queue = (try? stateContext.fetch(FetchDescriptor<QueueEntrySync>(
-                predicate: #Predicate<QueueEntrySync> { $0.deletedAt == nil }
-            ))) ?? []
-            for entry in queue where entry.isDeleted == false {
-                add(feedURL: entry.feedURL, episodeID: entry.episodeID)
-            }
-        }
-        facts.referenceCount = identities.count
-        guard feedStrings.isEmpty == false else { return facts }
 
-        let libraryContext = ModelContext(library)
-        let podcasts = (try? libraryContext.fetch(FetchDescriptor<Podcast>())) ?? []
         var podcastByKey: [String: Podcast] = [:]
-        for podcast in podcasts {
+        for podcast in (try? libraryContext.fetch(FetchDescriptor<Podcast>())) ?? [] {
             guard let feed = podcast.feed else { continue }
             for key in feed.podcastFeedComparisonKeys where podcastByKey[key] == nil {
                 podcastByKey[key] = podcast
             }
         }
+        var classifiedPodcasts = Set<PersistentIdentifier>()
         for feedString in feedStrings {
             guard let feed = URL(string: feedString) else { continue }
+            facts.unresolvedFeedKeys.insert(PodcastFeedIdentity.normalizedFeedURLString(feed))
             guard let podcast = feed.podcastFeedComparisonKeys.lazy
                 .compactMap({ podcastByKey[$0] }).first else {
                 // No local podcast: a subscribed feed gets its stub from the
@@ -151,6 +267,9 @@ struct PlaylistRestoreFacts: Sendable, Equatable {
                 continue
             }
             let podcastID = podcast.persistentModelID
+            guard classifiedPodcasts.insert(podcastID).inserted else { continue }
+            let podcastFeed = podcast.feed ?? feed
+            facts.unresolvedFeedKeys.insert(PodcastFeedIdentity.normalizedFeedURLString(podcastFeed))
             var count = FetchDescriptor<Episode>(
                 predicate: #Predicate<Episode> { $0.podcast != nil && $0.podcast!.persistentModelID == podcastID }
             )
@@ -159,22 +278,82 @@ struct PlaylistRestoreFacts: Sendable, Equatable {
             let metadata = podcast.metaData
             let credential = metadata?.credentialState ?? .available
             if hasEpisodes {
-                // Fetched; a still-missing episode may appear on a re-fetch.
-                facts.retryFeeds.append(podcast.feed ?? feed)
+                // Fetched, but without these episodes: nothing more arrives
+                // unless a fetch is running for it (see in-flight) or Retry.
+                facts.failedFeedCount += 1
+                facts.retryFeeds.append(podcastFeed)
             } else if credential != .available, credential != .unsupported {
                 facts.loginFeedCount += 1
-                if facts.loginFeed == nil { facts.loginFeed = podcast.feed ?? feed }
-            } else if metadata?.lastFeedFailureDate != nil || metadata?.feedUpdateCheckDate != nil {
-                // Failed, or fetched successfully but still empty: nothing is
-                // coming without another fetch, so never report "restoring".
+                if facts.loginFeed == nil { facts.loginFeed = podcastFeed }
+            } else if metadata?.lastFeedFailureDate == nil, metadata?.feedUpdateCheckDate != nil {
+                // Fetched successfully but still empty.
                 facts.failedFeedCount += 1
-                facts.retryFeeds.append(podcast.feed ?? feed)
+                facts.retryFeeds.append(podcastFeed)
+            } else if metadata?.lastFeedFailureDate != nil {
+                let candidate = SubscriptionHydrationScheduler.Candidate(
+                    feed: podcastFeed,
+                    isSubscribed: true,
+                    credentialState: credential,
+                    authenticationRetryAfter: metadata?.authenticationRetryAfter,
+                    lastLocalCheck: nil,
+                    lastFailure: metadata?.lastFeedFailureDate,
+                    consecutiveFailures: metadata?.consecutiveFeedFailureCount ?? 0
+                )
+                if SubscriptionHydrationScheduler.mayAttempt(candidate, now: now) {
+                    // Due again: the next hydration pass picks it up.
+                    facts.pendingFeedCount += 1
+                } else {
+                    facts.waitingFeedCount += 1
+                }
+                facts.retryFeeds.append(podcastFeed)
             } else {
                 facts.pendingFeedCount += 1
-                facts.retryFeeds.append(podcast.feed ?? feed)
+                facts.retryFeeds.append(podcastFeed)
             }
         }
         return facts
+    }
+
+    /// Episode IDs (`guid:…`, `enclosure:…`, `episode:…`) of the unresolved
+    /// references that already exist in this library. Two batched fetches.
+    private static func locallyAvailableEpisodes(
+        for references: [PlaylistMembershipResolver.Reference],
+        in context: ModelContext
+    ) -> Set<String> {
+        var guids: [String] = []
+        var urls: [URL] = []
+        var addedAtByEpisodeID: [String: Date] = [:]
+        for reference in references {
+            guard let episodeID = PlaylistMembershipResolver.episodeID(ofIdentityKey: reference.identityKey) else {
+                continue
+            }
+            addedAtByEpisodeID[episodeID] = reference.addedAt
+            if episodeID.hasPrefix("guid:") {
+                guids.append(String(episodeID.dropFirst(5)))
+            } else if episodeID.hasPrefix("enclosure:") || episodeID.hasPrefix("episode:") {
+                let prefix = episodeID.hasPrefix("enclosure:") ? 10 : 8
+                if let url = URL(string: String(episodeID.dropFirst(prefix))) { urls.append(url) }
+            }
+        }
+        var episodes: [Episode] = []
+        if guids.isEmpty == false {
+            episodes += (try? context.fetch(FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.guid != nil && guids.contains($0.guid!) }
+            ))) ?? []
+        }
+        if urls.isEmpty == false {
+            episodes += (try? context.fetch(FetchDescriptor<Episode>(
+                predicate: #Predicate<Episode> { $0.url != nil && urls.contains($0.url!) }
+            ))) ?? []
+        }
+        var found = Set<String>()
+        for episode in episodes {
+            guard let episodeID = PlaylistMembershipResolver.episodeID(
+                ofIdentityKey: PlaylistMembershipResolver.identityKey(for: episode)
+            ), addedAtByEpisodeID[episodeID] != nil else { continue }
+            found.insert(episodeID)
+        }
+        return found
     }
 }
 
@@ -230,6 +409,9 @@ final class LibraryRestoreMonitor {
 
     private(set) var isHydrating = false
     private(set) var inFlightFeeds = 0
+    /// Normalized feed keys being fetched right now, so a playlist reports
+    /// "restoring" only for its own feeds (#519).
+    private(set) var inFlightFeedKeys: Set<String> = []
     private(set) var completedFeeds = 0
     /// Bumped after each relevant feed commit and incremental publish, so
     /// status views re-read their counts without polling.
@@ -244,16 +426,21 @@ final class LibraryRestoreMonitor {
         revision &+= 1
     }
 
-    func feedStarted() { inFlightFeeds += 1 }
+    func feedStarted(key: String? = nil) {
+        inFlightFeeds += 1
+        if let key, inFlightFeedKeys.insert(key).inserted { revision &+= 1 }
+    }
 
-    func feedFinished() {
+    func feedFinished(key: String? = nil) {
         inFlightFeeds = max(0, inFlightFeeds - 1)
         completedFeeds += 1
+        if let key, inFlightFeedKeys.remove(key) != nil { revision &+= 1 }
     }
 
     func hydrationFinished() {
         isHydrating = false
         inFlightFeeds = 0
+        inFlightFeedKeys.removeAll()
         revision &+= 1
     }
 

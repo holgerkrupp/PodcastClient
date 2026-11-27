@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import UpNext
 
@@ -130,5 +131,47 @@ final class QueueProjectionTests: XCTestCase {
             isPlayed: isPlayed,
             isDownloaded: downloaded
         )
+    }
+
+    // MARK: Rebuild key (#498, #519)
+
+    @MainActor
+    func testRebuildKeyChangesWhenAnEntryKeepsItsIDButGetsAnotherEpisode() throws {
+        let container = try ModelContainerManager.makeLegacyContainer(isStoredInMemoryOnly: true)
+        let context = container.mainContext
+        let podcast = Podcast(feed: URL(string: "https://example.com/feed.xml")!)
+        let first = Episode(guid: "first", title: "First", url: firstURL, podcast: podcast)
+        let second = Episode(guid: "second", title: "Second", url: secondURL, podcast: podcast)
+        podcast.episodes = [first, second]
+        let playlist = Playlist()
+        let entry = PlaylistEntry(episode: first, order: 0)
+        entry.playlist = playlist
+        context.insert(podcast)
+        context.insert(playlist)
+        context.insert(entry)
+        try context.save()
+
+        func key(generation: Int = 0) -> QueueProjectionRebuildKey {
+            QueueProjectionRebuildKey(
+                playlistID: playlist.id,
+                entries: [entry],
+                downloadedFiles: [],
+                currentEpisodeURL: nil,
+                isPlaying: false,
+                filterState: .all,
+                generation: generation
+            )
+        }
+        let original = key()
+        // Playback progress is not part of the key: no rebuild on ticks.
+        first.metaData?.playPosition = 120
+        XCTAssertEqual(key(), original)
+
+        let entryID = entry.persistentModelID
+        entry.episode = second
+        try context.save()
+        XCTAssertEqual(entry.persistentModelID, entryID)
+        XCTAssertNotEqual(key(), original, "a repointed entry must rebuild the projection")
+        XCTAssertNotEqual(key(generation: 1), key(), "hydration/feed notifications bump the generation")
     }
 }

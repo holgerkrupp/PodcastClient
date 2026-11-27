@@ -24,6 +24,9 @@ struct SmartPlaylistPageView: View {
     /// the file inventory, the playing episode, play state or filters change.
     @State private var projection = QueueProjection(isSmartPlaylist: true, entries: [])
     @State private var episodesByIdentity: [String: Episode] = [:]
+    /// Bumped whenever matches are re-read or hydration publishes, so the
+    /// same episode IDs with changed episode data are re-snapshotted (#519).
+    @State private var projectionGeneration = 0
 
     let playlist: Playlist
 
@@ -42,6 +45,7 @@ struct SmartPlaylistPageView: View {
         let currentEpisodeURL: URL?
         let isPlaying: Bool
         let filterState: QueueFilterState
+        let generation: Int
     }
 
     private var projectionRebuildKey: ProjectionRebuildKey {
@@ -51,7 +55,8 @@ struct SmartPlaylistPageView: View {
             downloadedFiles: fileManager.downloadedFiles,
             currentEpisodeURL: Player.shared.currentEpisodeURL,
             isPlaying: Player.shared.isPlaying,
-            filterState: filterState
+            filterState: filterState,
+            generation: projectionGeneration
         )
     }
 
@@ -163,6 +168,9 @@ struct SmartPlaylistPageView: View {
         .onReceive(NotificationCenter.default.publisher(for: .smartPlaylistMembershipCacheDidInvalidate)) { _ in
             refreshGeneration &+= 1
         }
+        .onReceive(NotificationCenter.default.publisher(for: .splitRuntimeDidHydrate)) { _ in
+            projectionGeneration &+= 1
+        }
         .onChange(of: playlist.id) { _, _ in
             filterState.clear()
         }
@@ -179,6 +187,7 @@ struct SmartPlaylistPageView: View {
             filter: playlist.smartFilter
         ) {
             matchingEpisodes = cachedIDs.compactMap { modelContext.model(for: $0) as? Episode }
+            projectionGeneration &+= 1
             evaluationFailed = false
             isLoadingMatches = false
             return
@@ -193,6 +202,7 @@ struct SmartPlaylistPageView: View {
             )
             guard Task.isCancelled == false else { return }
             matchingEpisodes = episodeIDs.compactMap { modelContext.model(for: $0) as? Episode }
+            projectionGeneration &+= 1
             evaluationFailed = false
         } catch is CancellationError {
             return

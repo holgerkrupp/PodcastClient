@@ -1,4 +1,5 @@
 import Foundation
+import SwiftData
 
 /// A sendable snapshot of the fields needed by queue lists and filters.
 ///
@@ -19,7 +20,7 @@ struct QueueEpisodeValue: Identifiable, Equatable, Hashable, Sendable {
     let isPlayed: Bool
     let isDownloaded: Bool
     let categories: [String]
-    let occurrence: Int
+    var occurrence: Int
     let orderIndex: Int
 
     var id: String {
@@ -162,7 +163,16 @@ struct QueueProjection: Equatable, Sendable {
         self.playlistID = playlistID
         self.playlistTitle = playlistTitle
         self.isSmartPlaylist = isSmartPlaylist
-        self.entries = entries
+        // Presentation IDs must stay unique when the same episode is queued
+        // twice, so number repeated identities in order.
+        var occurrenceByIdentity: [String: Int] = [:]
+        self.entries = entries.map { entry in
+            var entry = entry
+            let occurrence = occurrenceByIdentity[entry.stableIdentityKey, default: 0]
+            occurrenceByIdentity[entry.stableIdentityKey] = occurrence + 1
+            entry.occurrence = occurrence
+            return entry
+        }
     }
 
     var count: Int { entries.count }
@@ -207,6 +217,44 @@ struct QueueProjection: Equatable, Sendable {
             upcoming: Array(entries.dropFirst(currentIndex + 1)),
             isIndependentPlayback: false
         )
+    }
+}
+
+/// When a cached `QueueProjection` must be rebuilt (#498, #519).
+///
+/// Membership/order (entry IDs), each entry's episode relationship (an
+/// importer can repoint an existing entry without changing its ID), the file
+/// inventory, the playing episode, play state, filters and a `generation`
+/// bumped by hydration/feed-commit notifications. Reading the related
+/// episode's persistent ID uses the entry's own row, so the key never faults
+/// episodes and never changes on playback-position ticks.
+struct QueueProjectionRebuildKey: Equatable {
+    let playlistID: UUID
+    let entryIDs: [PersistentIdentifier]
+    let episodeIDs: [PersistentIdentifier?]
+    let downloadedFiles: Set<URL>
+    let currentEpisodeURL: URL?
+    let isPlaying: Bool
+    let filterState: QueueFilterState
+    let generation: Int
+
+    init(
+        playlistID: UUID,
+        entries: [PlaylistEntry],
+        downloadedFiles: Set<URL>,
+        currentEpisodeURL: URL?,
+        isPlaying: Bool,
+        filterState: QueueFilterState,
+        generation: Int
+    ) {
+        self.playlistID = playlistID
+        self.entryIDs = entries.map(\.persistentModelID)
+        self.episodeIDs = entries.map { $0.episode?.persistentModelID }
+        self.downloadedFiles = downloadedFiles
+        self.currentEpisodeURL = currentEpisodeURL
+        self.isPlaying = isPlaying
+        self.filterState = filterState
+        self.generation = generation
     }
 }
 
