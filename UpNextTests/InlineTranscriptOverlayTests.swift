@@ -238,4 +238,27 @@ final class InlineTranscriptOverlayTests: XCTestCase {
         let presenter = InlineTranscriptPresenter()
         XCTAssertEqual(presenter.state, .preparing)
     }
+
+    // MARK: Reopen cache (#495)
+
+    @MainActor
+    func testReopenCacheIsBoundedAndInvalidatedByReferenceChanges() {
+        let cache = InlineCaptionDocumentCache()
+        var accumulator = InlineSegmentAccumulator()
+        accumulator.update(with: sources((0..<8).map { cue($0) }))
+        let urls = (0..<3).map { URL(string: "https://example.com/\($0).mp3")! }
+
+        for url in urls { cache.store(accumulator, usesPublisherAlignment: true, for: url) }
+        XCTAssertNil(cache.entry(for: urls[0]), "oldest entry is evicted")
+        XCTAssertEqual(cache.entry(for: urls[2])?.accumulator.segments, accumulator.segments)
+        XCTAssertEqual(cache.entry(for: urls[2])?.usesPublisherAlignment, true)
+
+        NotificationCenter.default.post(
+            name: .episodeReferencesDidChange,
+            object: nil,
+            userInfo: [EpisodeReferenceNotificationKey.episodeURL: urls[2]]
+        )
+        XCTAssertNil(cache.entry(for: urls[2]), "a changed transcript is not reused")
+        XCTAssertNotNil(cache.entry(for: urls[1]))
+    }
 }

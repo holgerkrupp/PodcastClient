@@ -213,10 +213,21 @@ final class InlineTranscriptPresenter {
             state = .status(.noTranscript)
             return
         }
-        state = .preparing
         let signpost = OSSignpostID(log: PlayerOpeningPerformance.log)
         contentSignpost = signpost
         os_signpost(.begin, log: PlayerOpeningPerformance.log, name: "Transcript overlay content", signpostID: signpost)
+        if let episodeURL, let cached = InlineCaptionDocumentCache.shared.entry(for: episodeURL) {
+            // Reopening an unchanged overlay: the grouped captions are already
+            // prepared values, so paint them now. The background reload below
+            // reuses them as the previous state and republishes only on change.
+            os_signpost(.event, log: PlayerOpeningPerformance.log, name: "Transcript overlay cache hit")
+            kind = .document
+            accumulator = cached.accumulator
+            publisherAlignment = cached.usesPublisherAlignment
+            publish()
+        } else {
+            state = .preparing
+        }
         observeLive(session: session)
         reload(after: nil)
     }
@@ -265,6 +276,7 @@ final class InlineTranscriptPresenter {
     func referencesChanged(episodeURL changedURL: URL?) {
         guard let episodeURL, hasLoaded, kind != .live else { return }
         guard changedURL == nil || changedURL == episodeURL else { return }
+        InlineCaptionDocumentCache.shared.invalidate(episodeURL: episodeURL)
         // Debounced so the player's own cache invalidation for the same
         // notification runs first and bursts of reference updates coalesce.
         reload(after: .milliseconds(500))
@@ -300,11 +312,19 @@ final class InlineTranscriptPresenter {
             episodeURL: episodeURL, container: container, previous: previousDocument
         )
         guard !Task.isCancelled, session == self.session else { return }
+        if document == nil {
+            InlineCaptionDocumentCache.shared.invalidate(episodeURL: episodeURL)
+        }
         if let document {
             let isNewKind = kind != .document
             kind = .document
             accumulator = document.accumulator
             publisherAlignment = document.usesPublisherAlignment
+            InlineCaptionDocumentCache.shared.store(
+                document.accumulator,
+                usesPublisherAlignment: document.usesPublisherAlignment,
+                for: episodeURL
+            )
             if isNewKind || document.changed || !hasLoaded { publish() }
             return
         }
@@ -443,5 +463,60 @@ final class InlineTranscriptPresenter {
             accumulator: accumulator,
             usesPublisherAlignment: publisherAlignment
         )
+    }
+}
+
+// MARK: - Reopen cache
+
+/// Grouped document captions for the last few overlays, so closing and
+/// reopening the same unchanged overlay paints its caption on the first frame
+/// (#495). It sits on top of the player's ``TranscriptPreparedSnapshot`` cache
+/// rather than competing with it: entries are only a reuse hint, and every
+/// show still reloads in the background and corrects stale content.
+@MainActor
+final class InlineCaptionDocumentCache {
+    static let shared = InlineCaptionDocumentCache()
+
+    struct Entry {
+        let accumulator: InlineSegmentAccumulator
+        let usesPublisherAlignment: Bool
+    }
+
+    private var entries: [URL: Entry] = [:]
+    private var order: [URL] = []
+    private let limit = 2
+    private var observer: NSObjectProtocol?
+
+    init() {
+        // Drop entries for transcripts replaced while the overlay was hidden.
+        observer = NotificationCenter.default.addObserver(
+            forName: .episodeReferencesDidChange, object: nil, queue: .main
+        ) { [weak self] notification in
+            let url = notification.userInfo?[EpisodeReferenceNotificationKey.episodeURL] as? URL
+            MainActor.assumeIsolated {
+                if let url { self?.invalidate(episodeURL: url) } else { self?.removeAll() }
+            }
+        }
+    }
+
+    func entry(for episodeURL: URL) -> Entry? { entries[episodeURL] }
+
+    func store(_ accumulator: InlineSegmentAccumulator, usesPublisherAlignment: Bool, for episodeURL: URL) {
+        entries[episodeURL] = Entry(accumulator: accumulator, usesPublisherAlignment: usesPublisherAlignment)
+        order.removeAll { $0 == episodeURL }
+        order.append(episodeURL)
+        if order.count > limit {
+            entries.removeValue(forKey: order.removeFirst())
+        }
+    }
+
+    func invalidate(episodeURL: URL) {
+        entries.removeValue(forKey: episodeURL)
+        order.removeAll { $0 == episodeURL }
+    }
+
+    func removeAll() {
+        entries.removeAll()
+        order.removeAll()
     }
 }
