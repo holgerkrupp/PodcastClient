@@ -1041,6 +1041,7 @@ class Player {
             guard isPlaying != oldValue else { return }
             let playbackStarted = isPlaying
             Self.hasActivePlaybackInProcess = playbackStarted
+            if playbackStarted { StoreLaunchTimer.recordMilestone("playback_started") }
             CarPlayDiagnostics.notePlaybackStateChange(isPlaying: playbackStarted)
             StoreSplitPlaybackGate.shared.setActive(playbackStarted)
             // Detached local-cache workers check this between episodes and
@@ -1118,6 +1119,7 @@ class Player {
             // each; `restoreLastPlayedFromPlaylist` reads the same cache
             // directly, so it no longer needs that pass to have finished.
             await restoreLastPlayedFromPlaylist()
+            StoreLaunchTimer.recordMilestone("player_restored")
 
             // Remove legacy UUID-based last-played storage from older builds.
             await migrateLastPlayedFromUserDefaultsIfNeeded()
@@ -4108,6 +4110,7 @@ class Player {
     }
     
     func play(){
+        StoreLaunchTimer.recordMilestone("play_command")
         transitionToPlaying(updateEngineRate: true, preparePlaybackSource: true)
     }
 

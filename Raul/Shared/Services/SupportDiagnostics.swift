@@ -444,6 +444,7 @@ final class SupportDiagnosticsRecorder: ObservableObject {
         Store opening in progress: \(StoreLaunchDiagnostics.inProgressTimings ?? "none")
         Last unfinished store opening: \(StoreLaunchDiagnostics.interruptedTimings)
         First usable library after process start: \(StoreLaunchDiagnostics.firstUsableShell)
+        Launch milestones after process start: \(StoreLaunchDiagnostics.launchMilestones)
         Deferred launch maintenance: \(StoreLaunchDiagnostics.deferredMaintenance)
         Historical cache: \(StoreLaunchDiagnostics.historicalCacheStatus)
         Launch reset check still running: \(DeleteAllDataService.isLaunchFenceCheckUnresolved)

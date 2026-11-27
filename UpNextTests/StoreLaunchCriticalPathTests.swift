@@ -321,4 +321,49 @@ final class StoreLaunchCriticalPathTests: XCTestCase {
             isFirstLibraryBuild: false, firstBuildPending: false, libraryBackfillPending: true
         ))
     }
+
+    // MARK: Local library first (#518 follow-up)
+
+    func testCacheOpenWaitsOnlyWhenNothingButTheDeferredMigrationsNeedIt() {
+        XCTAssertTrue(ModelContainerManager.cacheOpenMayWaitForDeferredMigrations(
+            legacyCopyPending: false, libraryBackfillPending: false, cacheRecoveryPending: false
+        ))
+        XCTAssertFalse(ModelContainerManager.cacheOpenMayWaitForDeferredMigrations(
+            legacyCopyPending: true, libraryBackfillPending: false, cacheRecoveryPending: false
+        ), "the legacy copy reads its checkpoints from the open cache")
+        XCTAssertFalse(ModelContainerManager.cacheOpenMayWaitForDeferredMigrations(
+            legacyCopyPending: false, libraryBackfillPending: true, cacheRecoveryPending: false
+        ), "the backfill copies cache transcripts")
+        XCTAssertFalse(ModelContainerManager.cacheOpenMayWaitForDeferredMigrations(
+            legacyCopyPending: false, libraryBackfillPending: false, cacheRecoveryPending: true
+        ), "cache recovery restores rows only the cache has")
+    }
+
+    func testDeferredCacheOpenStillCountsAsPendingMigrationWork() {
+        XCTAssertTrue(ModelContainerManager.deferredCacheMigrationsArePending(
+            bootstrapMode: .legacyUpgrade,
+            isFirstLibraryBuild: false,
+            hasEverReset: false,
+            cacheIsOpen: true, // deferred open: the owner opens it itself
+            localDataMigrationComplete: false,
+            aiContentMigrationComplete: true
+        ))
+    }
+
+    func testLaunchMilestonesAreRecordedOncePerProcess() throws {
+        let suiteName = "StoreLaunchMilestones.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let other = try XCTUnwrap(UserDefaults(suiteName: suiteName + ".other"))
+        defer { other.removePersistentDomain(forName: suiteName + ".other") }
+        let name = "test_milestone_\(UUID().uuidString.prefix(8))"
+
+        StoreLaunchTimer.recordMilestone(name, defaults: defaults)
+        let entries = defaults.dictionary(forKey: StoreLaunchTimer.milestonesKey) as? [String: String]
+        XCTAssertNotNil(entries?[name])
+        XCTAssertTrue(entries?[name]?.hasSuffix("ms") == true || entries?[name] == "recorded")
+
+        StoreLaunchTimer.recordMilestone(name, defaults: other)
+        XCTAssertNil(other.dictionary(forKey: StoreLaunchTimer.milestonesKey), "a repeat is ignored")
+    }
 }

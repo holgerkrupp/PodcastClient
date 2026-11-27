@@ -18,6 +18,11 @@ struct StoreLaunchTimer {
     static let interruptedKey = "storeLaunch.interruptedTimings"
     static let firstUsableShellKey = "storeLaunch.firstUsableShell"
     static let deferredMaintenanceKey = "storeLaunch.deferredMaintenance"
+    static let milestonesKey = "storeLaunch.milestones"
+    /// Steps after the shell that decide how soon someone can listen (#518):
+    /// `store_ready`, `player_restored`, `play_command`, `playback_started`.
+    nonisolated(unsafe) private static var recordedMilestones: Set<String> = []
+    private static let milestoneLock = NSLock()
 
     static let signposter = OSSignposter(
         subsystem: Bundle.main.bundleIdentifier ?? "UpNext",
@@ -76,6 +81,24 @@ struct StoreLaunchTimer {
         )
     }
 
+    /// Records the first time this process reached `name`, in milliseconds
+    /// after process start. Later calls in the same process are ignored, and a
+    /// new process replaces the previous launch's values.
+    static func recordMilestone(_ name: String, defaults: UserDefaults = StoreLaunchDiagnostics.defaults) {
+        milestoneLock.lock()
+        let isFirstMilestone = recordedMilestones.isEmpty
+        let inserted = recordedMilestones.insert(name).inserted
+        milestoneLock.unlock()
+        guard inserted else { return }
+        let milliseconds = StoreLaunchDiagnostics.processAgeMilliseconds()
+        signposter.emitEvent("LaunchMilestone", "\(name, privacy: .public) \(milliseconds ?? -1)ms")
+        var entries = isFirstMilestone
+            ? [:]
+            : (defaults.dictionary(forKey: milestonesKey) as? [String: String]) ?? [:]
+        entries[name] = milliseconds.map { "\($0)ms" } ?? "recorded"
+        defaults.set(entries, forKey: milestonesKey)
+    }
+
     /// Records the latest duration and outcome of a post-launch maintenance step
     /// that used to run on the launch critical path.
     static func recordDeferredMaintenance(
@@ -115,6 +138,12 @@ enum StoreLaunchDiagnostics {
 
     static var firstUsableShell: String {
         defaults.string(forKey: StoreLaunchTimer.firstUsableShellKey) ?? "not recorded yet"
+    }
+
+    static var launchMilestones: String {
+        guard let entries = defaults.dictionary(forKey: StoreLaunchTimer.milestonesKey) as? [String: String],
+              entries.isEmpty == false else { return "none recorded" }
+        return entries.keys.sorted().map { "\($0)=\(entries[$0] ?? "")" }.joined(separator: ", ")
     }
 
     static var deferredMaintenance: String {

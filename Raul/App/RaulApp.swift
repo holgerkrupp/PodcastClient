@@ -1586,9 +1586,9 @@ private struct RootWindowView: View {
                     Player.shared.startRecoveryIfNeeded()
 #if canImport(UIKit)
                     Task(priority: .utility) {
-                        try? await Task.sleep(for: .seconds(6))
-                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                        guard Task.isCancelled == false,
+                        guard await RaulApp.waitForOptionalLaunchSlot(
+                            after: .seconds(6), manager: modelContainerManager
+                        ),
                               UIApplication.shared.applicationState == .active else { return }
                         await BackgroundRefreshScheduleSnapshotCoordinator.refreshIfSafe(using: container)
                     }
@@ -1625,9 +1625,9 @@ private struct RootWindowView: View {
                         }
                     }
                     Task(priority: .utility) {
-                        try? await Task.sleep(for: .seconds(2))
-                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                        guard Task.isCancelled == false else { return }
+                        guard await RaulApp.waitForOptionalLaunchSlot(
+                            after: .seconds(2), manager: modelContainerManager
+                        ) else { return }
                         WatchSyncCoordinator.activate()
                         await CloudSyncProgressReferenceStore.publish(modelContainer: container)
                         await PlayNextWidgetSync.refresh(using: container)
@@ -1635,25 +1635,25 @@ private struct RootWindowView: View {
                         PlaylistAutoDownloadCoordinator.scheduleAll(modelContainer: container)
                     }
                     Task(priority: .utility) {
-                        try? await Task.sleep(for: .seconds(3))
-                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                        guard Task.isCancelled == false else { return }
+                        guard await RaulApp.waitForOptionalLaunchSlot(
+                            after: .seconds(3), manager: modelContainerManager
+                        ) else { return }
                         _ = await SubscriptionManifestSync.restoreSubscriptionsAndBootstrap(
                             modelContainer: container
                         )
                     }
                     Task(priority: .utility) {
-                        try? await Task.sleep(for: .seconds(5))
-                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                        guard Task.isCancelled == false else { return }
+                        guard await RaulApp.waitForOptionalLaunchSlot(
+                            after: .seconds(5), manager: modelContainerManager
+                        ) else { return }
                         let actor = EpisodeActor(modelContainer: container)
                         await actor.migrateLegacyBackCatalogSuppressionIfNeeded()
                     }
                     TranscriptSearchLegacyStoreCleanup.removeObsoleteStore()
                     Task(priority: .background) {
-                        try? await Task.sleep(for: .seconds(8))
-                        guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                        guard Task.isCancelled == false else { return }
+                        guard await RaulApp.waitForOptionalLaunchSlot(
+                            after: .seconds(8), manager: modelContainerManager
+                        ) else { return }
                         await RaulApp.runAutomaticTranscriptionSweep(reason: "launch")
 #if canImport(UIKit)
                         // Arm the background pass at launch instead of waiting
@@ -1665,9 +1665,9 @@ private struct RootWindowView: View {
                     }
                 }
                 .task {
-                    guard await modelContainerManager.waitUntilApplicationQueriesReady() else { return }
-                    try? await Task.sleep(for: .seconds(15))
-                    guard Task.isCancelled == false else { return }
+                    guard await RaulApp.waitForOptionalLaunchSlot(
+                        after: .seconds(15), manager: modelContainerManager
+                    ) else { return }
                     await modelContainerManager.runLaunchStoreMaintenance()
                 }
 
@@ -1773,5 +1773,26 @@ extension DeviceUIStyle {
         
         let symbolBase = map[code] ?? "creditcard"
         return "\(symbolBase).circle"
+    }
+}
+
+extension RaulApp {
+    /// Optional launch work (widgets, Watch, manifest restore, migrations,
+    /// transcription, store maintenance) waits for the library first and only
+    /// then counts its stagger delay. Counting from the first frame let every
+    /// delay expire during a slow open, so all of it started together the
+    /// moment the library appeared, just as the listener pressed Play (#518).
+    /// The pressure gate then holds it while the user is interacting or the
+    /// device is hot or short on memory.
+    @MainActor
+    static func waitForOptionalLaunchSlot(
+        after delay: Duration,
+        manager: ModelContainerManager
+    ) async -> Bool {
+        guard await manager.waitUntilApplicationQueriesReady() else { return false }
+        try? await Task.sleep(for: delay)
+        guard Task.isCancelled == false else { return false }
+        await SystemPressureGate.shared.waitUntilIdle()
+        return Task.isCancelled == false
     }
 }

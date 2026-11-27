@@ -1004,6 +1004,9 @@ class ModelContainerManager: ObservableObject {
     /// portable reconciliation and the library backfill await it.
     private var deferredCacheMigrationTask: Task<Void, Never>?
     private var didRunDeferredCacheMigrations = false
+    /// Launch preparation left the historical cache closed because only the
+    /// deferred migrations need it; their task opens it (#518).
+    private var cacheOpenDeferredUntilAfterLaunch = false
     /// In-memory checkpoints for the legacy UserState copy when the cache
     /// file is persistently unreadable (`legacyCopyCheckpointSource`).
     private var legacyCopyTemporaryCheckpointContainer: ModelContainer?
@@ -1356,6 +1359,9 @@ class ModelContainerManager: ObservableObject {
         var projectionReady = false
         var userStateContainer: ModelContainer? = nil
         var cacheContainer: ModelContainer? = nil
+        /// The historical cache is needed only by the cache-local and
+        /// AI-content migrations, so its open moved to their deferred owner.
+        var cacheOpenDeferred = false
     }
 
     /// Holds the open started by `startEagerContainerPreparation` until
@@ -1543,6 +1549,42 @@ class ModelContainerManager: ObservableObject {
                 SupportDiagnosticsRecorder.shared.record("Opening User State store")
             }
             let libraryLogBytes = Self.sharedStoreURL.map(StoreWriteAheadLog.sizeInBytes(storeURL:)) ?? 0
+            // An established library is the device's own local store. Opening
+            // it does not depend on the reset fence or on UserState, so it
+            // overlaps the fence check instead of following it (#518). Nothing
+            // is returned, published or written portably until the fence has
+            // resolved and any locally known pending reset was cleaned up below.
+            let opensEstablishedLibrary = bootstrapMode == .legacyUpgrade
+                || (bootstrapMode == .builtLibrary
+                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false)
+            var establishedLibrary: ModelContainer?
+            if opensEstablishedLibrary {
+                guard let storeURL = Self.sharedStoreURL else {
+                    throw StoreBootstrapError.persistentStoreUnavailable
+                }
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record("Checking library indexes")
+                }
+                LegacyStoreIndexBackfill.run(storeURL: storeURL)
+                timer.mark("index_check")
+                let storeDetail = Self.storeOpenDiagnosticDetail(for: storeURL)
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record(
+                        "Opening runtime library store",
+                        detail: storeDetail
+                    )
+                }
+                establishedLibrary = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
+                    try Self.makeLegacyContainer(storageURL: storeURL)
+                }
+                timer.mark("library_open")
+                await MainActor.run {
+                    SupportDiagnosticsRecorder.shared.record(
+                        "Runtime library store opened",
+                        detail: storeDetail
+                    )
+                }
+            }
             let fenceOutcome = await fenceCheck.value
             timer.mark("remote_fence_wait")
             timer.note("remote_fence=\(fenceOutcome == .completed ? "checked" : "deferred")")
@@ -1573,6 +1615,7 @@ class ModelContainerManager: ObservableObject {
                     && StoreCacheOpenBackoff.hasGivenUpOnCurrentFile
             )
             let cache: ModelContainer?
+            var cacheOpenDeferred = false
             switch cacheDecision {
             case .inMemoryAfterReset:
                 // Keep production APIs that still accept a cache container
@@ -1596,6 +1639,20 @@ class ModelContainerManager: ObservableObject {
                 // file or a new build tries again.
                 cache = nil
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped", details: "repeated_open_failures")
+            case .open where opensEstablishedLibrary
+                && Self.cacheOpenMayWaitForDeferredMigrations(
+                    legacyCopyPending: StoreCutoverState.isDeferredMigrationPending,
+                    libraryBackfillPending: StoreRuntimeProjection.isLibraryBackfillPending,
+                    cacheRecoveryPending: Self.deviceUsedInMemoryProjection
+                        && UserDefaults.standard.integer(forKey: Self.cacheRecoveryVersionKey)
+                            < Self.cacheRecoveryVersion
+                ):
+                // Only the cache-local and AI-content migrations still read the
+                // historical file. They run after the library is on screen, so
+                // their owner opens it then instead of the launch path (#518).
+                cache = nil
+                cacheOpenDeferred = true
+                CrashBreadcrumbs.shared.record("store_cache_open_deferred", details: "migrations_only")
             case .open:
                 await MainActor.run {
                     SupportDiagnosticsRecorder.shared.record("Opening Podcast cache store")
@@ -1607,38 +1664,13 @@ class ModelContainerManager: ObservableObject {
                 StoreCacheOpenBackoff.recordOpenOutcome(opened: cache != nil, url: Self.cacheStoreURL)
             }
             timer.mark("cache")
-            if cache == nil {
+            if cacheOpenDeferred {
+                timer.note("cache=deferred")
+            } else if cache == nil {
                 CrashBreadcrumbs.shared.record("store_cache_open_skipped_or_failed")
             }
-            if bootstrapMode == .legacyUpgrade
-                || (bootstrapMode == .builtLibrary
-                    && StoreRuntimeProjection.isDirectBuiltLibraryProjectionPending == false) {
+            if let library = establishedLibrary {
                 // The device's own library stays what the UI reads, local-only.
-                guard let storeURL = Self.sharedStoreURL else {
-                    throw StoreBootstrapError.persistentStoreUnavailable
-                }
-                await MainActor.run {
-                    SupportDiagnosticsRecorder.shared.record("Checking library indexes")
-                }
-                LegacyStoreIndexBackfill.run(storeURL: storeURL)
-                timer.mark("index_check")
-                let storeDetail = Self.storeOpenDiagnosticDetail(for: storeURL)
-                await MainActor.run {
-                    SupportDiagnosticsRecorder.shared.record(
-                        "Opening runtime library store",
-                        detail: storeDetail
-                    )
-                }
-                let library = try Self.makeContainerWithRetry(store: "legacy", attempts: 3) {
-                    try Self.makeLegacyContainer(storageURL: storeURL)
-                }
-                timer.mark("library_open")
-                await MainActor.run {
-                    SupportDiagnosticsRecorder.shared.record(
-                        "Runtime library store opened",
-                        detail: storeDetail
-                    )
-                }
                 // The cache-local and AI-content migrations copy optional,
                 // device-local extras (transcripts, AI chapters, local
                 // settings) and scan the whole library. They are idempotent
@@ -1683,7 +1715,8 @@ class ModelContainerManager: ObservableObject {
                     bootstrapMode: bootstrapMode,
                     projectionReady: true,
                     userStateContainer: userState,
-                    cacheContainer: cache
+                    cacheContainer: cache,
+                    cacheOpenDeferred: cacheOpenDeferred
                 )
             }
             let libraryURL: URL
@@ -1789,6 +1822,18 @@ class ModelContainerManager: ObservableObject {
         StoreLaunchTimer.recordFirstUsableShell()
     }
 
+    /// Whether an established library may open the historical cache after
+    /// launch instead of during it: true only when nothing but the deferred
+    /// cache-local and AI-content migrations still reads it. The legacy copy,
+    /// the library backfill and cache recovery keep opening it at launch.
+    nonisolated static func cacheOpenMayWaitForDeferredMigrations(
+        legacyCopyPending: Bool,
+        libraryBackfillPending: Bool,
+        cacheRecoveryPending: Bool
+    ) -> Bool {
+        legacyCopyPending == false && libraryBackfillPending == false && cacheRecoveryPending == false
+    }
+
     /// Whether an opened direct library still has cache-local or AI-content
     /// migration work. Pure, so the launch classification can be tested.
     nonisolated static func deferredCacheMigrationsArePending(
@@ -1831,11 +1876,11 @@ class ModelContainerManager: ObservableObject {
                   bootstrapMode: bootstrapMode,
                   isFirstLibraryBuild: isFirstLibraryBuildRuntime,
                   hasEverReset: DeleteAllDataService.hasEverReset,
-                  cacheIsOpen: preparedCacheContainer != nil,
+                  cacheIsOpen: preparedCacheContainer != nil || cacheOpenDeferredUntilAfterLaunch,
                   localDataMigrationComplete: StoreSplitCacheLocalDataMigration.isComplete,
                   aiContentMigrationComplete: StoreSplitCacheAIContentMigration.isComplete
-              ),
-              let cache = preparedCacheContainer else { return }
+              ) else { return }
+        let openedCache = preparedCacheContainer
         // A background launch must not run whole-library scans; the launch
         // maintenance pass starts this again in the foreground.
         guard heavyStoreWorkMayRunInCurrentAppState else { return }
@@ -1848,7 +1893,32 @@ class ModelContainerManager: ObservableObject {
             libraryBackfillPending: StoreRuntimeProjection.isLibraryBackfillPending
         )
         SupportDiagnosticsRecorder.shared.record("Deferred cache migrations started")
-        deferredCacheMigrationTask = Task.detached(priority: .utility) {
+        deferredCacheMigrationTask = Task.detached(priority: .utility) { [weak self] in
+            let cache: ModelContainer
+            if let openedCache {
+                cache = openedCache
+            } else {
+                // Let launch, the first queue/player work and the user's first
+                // taps go first; the gate also waits out heat and memory pressure.
+                await SystemPressureGate.shared.waitUntilIdle()
+                guard Task.isCancelled == false,
+                      StoreCacheOpenBackoff.hasGivenUpOnCurrentFile == false else { return }
+                let openStart = ContinuousClock.now
+                let opened = try? Self.makeCacheContainerWithRetry()
+                StoreCacheOpenBackoff.recordOpenOutcome(opened: opened != nil, url: Self.cacheStoreURL)
+                StoreLaunchTimer.recordDeferredMaintenance(
+                    "cache_open",
+                    milliseconds: LaunchDuration.milliseconds(openStart.duration(to: .now)),
+                    outcome: opened != nil ? "opened" : "failed"
+                )
+                guard let opened else { return }
+                await MainActor.run {
+                    guard let self else { return }
+                    self.cacheOpenDeferredUntilAfterLaunch = false
+                    if self.preparedCacheContainer == nil { self.preparedCacheContainer = opened }
+                }
+                cache = opened
+            }
             let localStart = ContinuousClock.now
             let local = StoreSplitCacheLocalDataMigration.migrateIfNeeded(
                 cache: cache,
@@ -1929,6 +1999,7 @@ class ModelContainerManager: ObservableObject {
             bootstrapMode = preparation.bootstrapMode
             if let userState = preparation.userStateContainer { preparedUserStateContainer = userState }
             if let cache = preparation.cacheContainer { preparedCacheContainer = cache }
+            cacheOpenDeferredUntilAfterLaunch = preparation.cacheOpenDeferred
             // Launch preparation already decided whether the historical cache
             // was needed and tried it once; don't reopen it per caller.
             didAttemptCacheOpen = true
@@ -2392,6 +2463,7 @@ class ModelContainerManager: ObservableObject {
         runtimeStoreReadiness = .ready
         migrationReadiness = .complete
         migrationBlocker = nil
+        if isRuntimeGraphFixture == false { StoreLaunchTimer.recordMilestone("store_ready") }
         SupportDiagnosticsRecorder.shared.record("Runtime store ready")
         NotificationCenter.default.post(name: .splitRuntimeDidHydrate, object: nil)
         CrashBreadcrumbs.shared.record("runtime_store_ready")
@@ -2420,7 +2492,13 @@ class ModelContainerManager: ObservableObject {
     ) async {
         switch result {
         case .ready:
-            if let library = preparedContainer, let cache = preparedCacheContainer {
+            // Only a first build copies cache rows before the library counts
+            // as ready. An established library already shows its data; its
+            // migrations run in `startDeferredCacheMigrationsIfNeeded`, and
+            // awaiting a second pass here kept the "Opening your library…"
+            // banner up for a whole-library scan while both copies overlapped.
+            if isFirstLibraryBuildRuntime,
+               let library = preparedContainer, let cache = preparedCacheContainer {
                 _ = await Task.detached(priority: .utility) {
                     StoreSplitCacheLocalDataMigration.migrateIfNeeded(
                         cache: cache,
