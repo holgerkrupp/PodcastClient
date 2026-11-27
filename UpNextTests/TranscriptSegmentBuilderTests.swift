@@ -220,4 +220,68 @@ final class TranscriptSegmentBuilderTests: XCTestCase {
         XCTAssertFalse(TranscriptSegmentBuilder.endsSentence("and then we"))
         XCTAssertFalse(TranscriptSegmentBuilder.endsSentence(""))
     }
+
+    // MARK: #493 shared segmentation fixture (0, 20, 500, 2k, 5k lines)
+
+    /// Publisher-style cues: two alternating speakers, a pause every 25 cues and
+    /// one native word span per cue.
+    private func fixtureLines(_ count: Int) -> [TranscriptSegmentSource] {
+        (0..<count).map { index in
+            let start = Double(index) * 2.5 + Double(index / 25) * 4
+            let text = "Line \(index) says something worth reading."
+            return TranscriptSegmentSource(
+                speaker: (index / 6).isMultiple(of: 2) ? "Anna" : "Ben",
+                text: text, startTime: start, endTime: start + 2,
+                sourceRawValue: CachedTranscriptSource.publisher.rawValue,
+                timedSpans: [TranscriptTimedSpan(location: 0, length: 4, startTime: start, endTime: start + 0.3)]
+            )
+        }
+    }
+
+    @MainActor
+    func testSharedFixtureGroupsEveryLineOnceWithStableIdentityAtEverySize() {
+        for count in [0, 20, 500, 2_000, 5_000] {
+            let lines = fixtureLines(count)
+            let prepared = TranscriptPreparedSnapshot.make(from: lines, sourcesAreSorted: true)
+            let segments = prepared.segments
+            XCTAssertEqual(segments.flatMap(\.lineIDs), lines.map(\.id), "\(count)")
+            XCTAssertEqual(segments.map(\.startTime), segments.map(\.startTime).sorted(), "\(count)")
+            XCTAssertTrue(segments.allSatisfy { $0.text.count <= TranscriptSegmentBuilder.Options.full.hardCharacterLimit })
+            XCTAssertTrue(segments.allSatisfy { segment in
+                segment.timedSpans.allSatisfy { $0.location + $0.length <= segment.text.utf16.count }
+            }, "word highlights stay inside the grouped text")
+            XCTAssertEqual(prepared.presentation.timingQuality, count == 0 ? .unavailable : .nativeWords)
+            // Rebuilding (for example after a timing-only change) keeps every row identity.
+            let rebuilt = TranscriptPreparedSnapshot.make(from: lines, sourcesAreSorted: true)
+            XCTAssertTrue(prepared.hasSameDocumentLayout(as: rebuilt))
+            // Taps and Follow resolve each row's own start to that row.
+            for segment in segments {
+                XCTAssertEqual(TranscriptPlaybackTracker.lookup(segments: segments, at: segment.startTime)?.segmentID,
+                               segment.id)
+            }
+            var accumulator = InlineSegmentAccumulator()
+            accumulator.update(with: lines)
+            XCTAssertEqual(accumulator.segments,
+                           TranscriptSegmentBuilder.makeSegments(fromSorted: lines, options: .compact), "\(count)")
+        }
+    }
+
+    /// Guards against accidental O(n²) preparation: 10× the lines may cost at
+    /// most ~25× (generous for noise), where quadratic work would cost ~100×.
+    func testPreparingASnapshotScalesRoughlyLinearly() {
+        func fastest(_ lines: [TranscriptSegmentSource]) -> TimeInterval {
+            (0..<3).map { _ in
+                let start = Date()
+                _ = TranscriptPreparedSnapshot.make(from: lines, sourcesAreSorted: true)
+                return Date().timeIntervalSince(start)
+            }.min()!
+        }
+        let small = fixtureLines(500)
+        let large = fixtureLines(5_000)
+        _ = fastest(small) // Warm up.
+        let smallTime = fastest(small)
+        let largeTime = fastest(large)
+        XCTAssertLessThanOrEqual(largeTime, smallTime * 25 + 0.05,
+                                 "500 lines: \(smallTime)s, 5000 lines: \(largeTime)s")
+    }
 }

@@ -159,4 +159,133 @@ final class TranscriptPresentationSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.segments.map(\.text), ["Welcome to Up Next."])
         XCTAssertEqual(snapshot.segments.flatMap(\.lineIDs), [publisher.id])
     }
+
+    // MARK: #493 canonical document matrix
+
+    func testTimingQualityMatrixAcrossDocumentKinds() throws {
+        let word = [TranscriptTimedSpan(location: 0, length: 5, startTime: 1, endTime: 1.4)]
+        func quality(_ lines: [TranscriptSegmentSource]) -> TranscriptPresentationSnapshot.TimingQuality {
+            TranscriptPresentationSnapshot.resolve(
+                document: TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: lines)).timingQuality
+        }
+        // Publisher VTT/SRT with inline word timing, cue-only, and untimed text.
+        XCTAssertEqual(quality([line("Hello there.", .publisher, start: 1, end: 3, spans: word)]), .nativeWords)
+        XCTAssertEqual(quality([line("Hello there.", .publisher, start: 1, end: 3)]), .rawCues)
+        XCTAssertEqual(quality([line("Hello there.", .publisher)]), .unavailable, "static fallback")
+        // Cue-level spans identify the caption but never claim word precision.
+        XCTAssertEqual(quality([line("Hello there.", .publisher, start: 1, end: 3,
+            spans: [.init(location: 0, length: 12, startTime: 1, endTime: 3, cueLevel: true)])]), .rawCues)
+        // No publisher transcript: a full local transcript is the document.
+        let local = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: [
+            line("hello there", .localAI, start: 1, end: 3, spans: word)
+        ]))
+        XCTAssertEqual(local.source, .generated)
+        XCTAssertEqual(TranscriptPresentationSnapshot.resolve(document: local).timingQuality, .nativeWords)
+        // No stored document: partial live recognition is shown with its own timing.
+        let live = TranscriptPresentationSnapshot.resolve(document: nil, livePartial: [
+            line("hello", .localAI, start: 1, end: 2, spans: word)
+        ])
+        XCTAssertNil(live.document)
+        XCTAssertEqual(live.timingQuality, .nativeWords)
+        XCTAssertEqual(TranscriptPresentationSnapshot.resolve(document: nil, livePartial: [
+            line("hello", .localAI, start: 1, end: 2)
+        ]).timingQuality, .rawCues)
+        XCTAssertEqual(TranscriptPresentationSnapshot.resolve(document: nil).segments, [])
+        XCTAssertEqual(TranscriptPresentationSnapshot.resolve(document: nil).timingQuality, .unavailable)
+    }
+
+    func testDerivedTimingNeverAppliesToGeneratedTextOrUnknownMedia() throws {
+        let words: [TranscriptTimedSpan] = [.init(location: 0, length: 5, startTime: 3, endTime: 3.4)]
+        let timeline = try XCTUnwrap(TranscriptSynchronizationTimeline(anchors: [
+            .init(transcriptTime: 0, audioTime: 2, confidence: 1),
+            .init(transcriptTime: 4, audioTime: 6, confidence: 1)
+        ]))
+        for source in [CachedTranscriptSource.localAI, .ai] {
+            let generated = line("hello there", source, start: 0, end: 2)
+            let document = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: [generated]))
+            let evidence = PublisherTranscriptTimingEvidence(episodeID: "ep", mediaFingerprint: "media",
+                transcriptRevision: try XCTUnwrap(document.timingRevision), timeline: timeline,
+                wordsByLine: [generated.id: words])
+            let resolved = TranscriptPresentationSnapshot.resolve(document: document, mediaFingerprint: "media", evidence: evidence)
+            XCTAssertNil(resolved.timeline, "generated text is already on the audio clock")
+            XCTAssertTrue(resolved.enhancedWordsBySegment.isEmpty)
+            XCTAssertEqual(resolved.timingQuality, .rawCues)
+        }
+        let publisher = line("hello there", .publisher, start: 0, end: 2)
+        let document = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: [publisher]))
+        for fingerprint in [nil, ""] as [String?] {
+            let evidence = PublisherTranscriptTimingEvidence(episodeID: "ep", mediaFingerprint: fingerprint ?? "",
+                transcriptRevision: try XCTUnwrap(document.timingRevision), timeline: timeline,
+                wordsByLine: [publisher.id: words])
+            let resolved = TranscriptPresentationSnapshot.resolve(document: document, mediaFingerprint: fingerprint, evidence: evidence)
+            XCTAssertNil(resolved.timeline)
+            XCTAssertTrue(resolved.enhancedWordsBySegment.isEmpty)
+        }
+    }
+
+    func testDocumentIdentityIsDeterministicAndKeepsPublisherWordingSpeakersAndPunctuation() throws {
+        let lines = [
+            TranscriptSegmentSource(speaker: "ANNA", text: "[Music] Welcome back—it’s “Up Next”!", startTime: 0, endTime: 2,
+                                    sourceRawValue: CachedTranscriptSource.publisher.rawValue),
+            TranscriptSegmentSource(speaker: "Ben", text: "BEN: $20, 3½ hours… really?", startTime: 2, endTime: 4,
+                                    sourceRawValue: CachedTranscriptSource.publisher.rawValue)
+        ]
+        let first = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: lines))
+        let again = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: lines.reversed()))
+        XCTAssertEqual(first, again, "input order does not change the canonical document")
+        XCTAssertEqual(first.segments.map(\.id), lines.map(\.id))
+        XCTAssertEqual(first.segments.map(\.text), lines.map(\.text), "wording and punctuation are untouched")
+        XCTAssertEqual(first.segments.map(\.speaker), ["ANNA", "Ben"])
+
+        // A wording revision is a new timing revision; derived timing for it is stale.
+        let revised = [lines[0], TranscriptSegmentSource(id: lines[1].id, speaker: "Ben", text: "BEN: $20, 3½ hours… really!",
+            startTime: 2, endTime: 4, sourceRawValue: CachedTranscriptSource.publisher.rawValue)]
+        let changed = try XCTUnwrap(TranscriptDocumentSnapshot.resolve(episodeID: "ep", storedLines: revised))
+        XCTAssertNotEqual(first.timingRevision, changed.timingRevision)
+        XCTAssertEqual(first.segments.map(\.id), changed.segments.map(\.id))
+    }
+
+    /// Search and copy read the prepared rows, so a timing upgrade cannot change results.
+    func testSearchMatchesPreparedRowsIdenticallyAcrossTimingUpgrade() {
+        let ids = [UUID(), UUID()]
+        func lines(words: Bool) -> [TranscriptSegmentSource] {
+            [("Straße und Café.", 0.0), ("Something else entirely.", 10.0)].enumerated().map { index, entry in
+                TranscriptSegmentSource(id: ids[index], speaker: "Host", text: entry.0, startTime: entry.1,
+                    endTime: entry.1 + 2, sourceRawValue: CachedTranscriptSource.publisher.rawValue,
+                    timedSpans: words ? [.init(location: 0, length: 3, startTime: entry.1, endTime: entry.1 + 0.3)] : [])
+            }
+        }
+        let raw = TranscriptPreparedSnapshot.make(from: lines(words: false))
+        let worded = TranscriptPreparedSnapshot.make(from: lines(words: true))
+        for query in ["strasse", "CAFE", " café ", "entirely", "missing", ""] {
+            let before = raw.segments.filter { TranscriptSearchText.matches($0.text, query: query) }.map(\.id)
+            let after = worded.segments.filter { TranscriptSearchText.matches($0.text, query: query) }.map(\.id)
+            XCTAssertEqual(before, after, query)
+        }
+        XCTAssertEqual(raw.segments.filter { TranscriptSearchText.matches($0.text, query: "strasse") }.map(\.id), [ids[0]])
+        XCTAssertTrue(raw.segments.filter { TranscriptSearchText.matches($0.text, query: "  ") }.isEmpty)
+    }
+
+    // MARK: #493 tracker lookup on stable IDs
+
+    @MainActor
+    func testTrackerLookupResolvesStableSegmentIDsAndWordRanges() {
+        let first = TranscriptSegmentSource(text: "Hello there.", startTime: 10, endTime: 12,
+            timedSpans: [.init(location: 6, length: 5, startTime: 11, endTime: 11.5)])
+        let second = TranscriptSegmentSource(text: "After a pause.", startTime: 20, endTime: 22,
+            timedSpans: [.init(location: 0, length: 14, startTime: 20, endTime: 22, cueLevel: true)])
+        let open = TranscriptSegmentSource(text: "Open ended", startTime: 30)
+        let segments = TranscriptSegmentBuilder.makeSegments(from: [open, second, first], options: .full)
+        XCTAssertEqual(segments.map(\.id), [first.id, second.id, open.id])
+        typealias Tracker = TranscriptPlaybackTracker
+        XCTAssertNil(Tracker.lookup(segments: segments, at: 9.9), "before the first caption")
+        XCTAssertEqual(Tracker.lookup(segments: segments, at: 10), .init(segmentID: first.id, location: nil, length: nil))
+        XCTAssertEqual(Tracker.lookup(segments: segments, at: 11.2), .init(segmentID: first.id, location: 6, length: 5))
+        XCTAssertNil(Tracker.lookup(segments: segments, at: 15), "a pause has no active caption")
+        XCTAssertEqual(Tracker.lookup(segments: segments, at: 21), .init(segmentID: second.id, location: nil, length: nil),
+                       "cue-level timing highlights the row, not a word")
+        XCTAssertEqual(Tracker.lookup(segments: segments, at: 5_000)?.segmentID, open.id)
+        XCTAssertNil(Tracker.lookup(segments: segments, at: .nan))
+        XCTAssertNil(Tracker.lookup(segments: [], at: 10))
+    }
 }

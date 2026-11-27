@@ -119,4 +119,51 @@ final class PublisherTranscriptTimingOverlayTests: XCTestCase {
         let recovered = try await cache.mappings(for: key, in: 0..<20)
         XCTAssertEqual(recovered, [good])
     }
+
+    // MARK: #493 cache safety
+
+    func testCorruptOrTruncatedPagesAndIndexAreSafeMisses() async throws {
+        let root = try directory()
+        let cache = Cache(cacheDirectory: root)
+        let good = word(0, at: 12)
+        try await cache.merge([good], for: key)
+        let chunk = try XCTUnwrap(chunkFiles(in: root).first)
+        let bytes = try Data(contentsOf: chunk)
+        try bytes.prefix(bytes.count / 2).write(to: chunk) // Truncated page.
+        let truncated = try await cache.mappings(for: key, in: 0..<20)
+        XCTAssertTrue(truncated.isEmpty)
+        try await cache.merge([good], for: key)
+        let rebuilt = try await cache.mappings(for: key, in: 0..<20)
+        XCTAssertEqual(rebuilt, [good])
+
+        let index = chunk.deletingLastPathComponent().appendingPathComponent("index.plist")
+        try Data("not a property list".utf8).write(to: index)
+        let reopened = Cache(cacheDirectory: root)
+        let corrupt = try await reopened.mappings(for: key, in: 0..<20)
+        XCTAssertTrue(corrupt.isEmpty)
+        try await reopened.merge([good], for: key)
+        let recovered = try await reopened.mappings(for: key, in: 0..<20)
+        XCTAssertEqual(recovered, [good])
+        XCTAssertEqual(try chunkFiles(in: root).count, 1, "abandoned pages are collected")
+    }
+
+    func testIncompleteIdentityIsNeverCached() async throws {
+        let root = try directory()
+        let cache = Cache(cacheDirectory: root)
+        for incomplete in [
+            Cache.Key(episodeID: "", mediaFingerprint: "media", transcriptRevision: "revision"),
+            .init(episodeID: "episode", mediaFingerprint: "", transcriptRevision: "revision"),
+            .init(episodeID: "episode", mediaFingerprint: "media", transcriptRevision: "")
+        ] {
+            try await cache.merge([word(0, at: 1)], for: incomplete)
+            let stored = try await cache.mappings(for: incomplete, in: 0..<5)
+            XCTAssertTrue(stored.isEmpty)
+        }
+        XCTAssertTrue(try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil).isEmpty)
+        // Low-confidence aligned words are rejected; publisher-native timing is kept.
+        try await cache.merge([word(0, at: 1, confidence: 0.81), word(1, at: 2, confidence: 0.5, source: .publisherNative)],
+                              for: key)
+        let kept = try await cache.mappings(for: key, in: 0..<5)
+        XCTAssertEqual(kept.map(\.tokenIndex), [1])
+    }
 }

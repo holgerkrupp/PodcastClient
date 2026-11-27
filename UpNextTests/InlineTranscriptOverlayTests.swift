@@ -1,3 +1,4 @@
+import SwiftData
 import XCTest
 @testable import UpNext
 
@@ -320,5 +321,112 @@ final class InlineTranscriptOverlayTests: XCTestCase {
         XCTAssertNil(OptionalSpeechWorkPolicy.blocker(lowPower: false, thermal: .fair))
         XCTAssertEqual(OptionalSpeechWorkPolicy.blocker(lowPower: true, thermal: .nominal), .lowPower)
         XCTAssertEqual(OptionalSpeechWorkPolicy.blocker(lowPower: false, thermal: .serious), .thermal)
+    }
+
+    // MARK: #493 overlay transitions, reopen cache and Speech policy
+
+    private func libraryContainer() throws -> ModelContainer {
+        try ModelContainer(
+            for: Podcast.self, PodcastMetaData.self, Episode.self, EpisodeMetaData.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+    }
+
+    @MainActor
+    func testPresenterWithoutEpisodeShowsMissingStatusImmediately() throws {
+        let presenter = InlineTranscriptPresenter()
+        var requested = false
+        presenter.show(episodeURL: nil, container: try libraryContainer()) { requested = true }
+        XCTAssertEqual(presenter.state, .status(.noTranscript))
+        XCTAssertFalse(requested, "no episode never requests live transcription")
+        presenter.stop()
+    }
+
+    /// #495 before #494: a reopened overlay paints cached captions in the
+    /// caller's frame, before any load or live auto-start can run.
+    @MainActor
+    func testReopenedOverlayPaintsCachedCaptionsInTheSameFrame() throws {
+        let url = URL(string: "https://example.com/\(UUID().uuidString).mp3")!
+        var accumulator = InlineSegmentAccumulator()
+        accumulator.update(with: sources((0..<8).map { cue($0) }))
+        InlineCaptionDocumentCache.shared.store(accumulator, usesPublisherAlignment: true, for: url)
+        defer { InlineCaptionDocumentCache.shared.invalidate(episodeURL: url) }
+
+        let presenter = InlineTranscriptPresenter()
+        var requested = false
+        presenter.show(episodeURL: url, container: try libraryContainer()) { requested = true }
+        guard case .caption(let snapshot) = presenter.state else {
+            presenter.stop()
+            return XCTFail("expected cached captions on the first frame")
+        }
+        XCTAssertEqual(snapshot.kind, .document)
+        XCTAssertEqual(snapshot.segments, accumulator.segments)
+        XCTAssertTrue(snapshot.usesPublisherAlignment)
+        XCTAssertFalse(requested)
+        presenter.stop()
+
+        let uncached = InlineTranscriptPresenter()
+        uncached.show(episodeURL: URL(string: "https://example.com/\(UUID().uuidString).mp3")!,
+                      container: try libraryContainer())
+        XCTAssertEqual(uncached.state, .preparing, "a cold open shows status before heavy work")
+        uncached.stop()
+    }
+
+    @MainActor
+    func testReopenCacheRefreshesRecencyAndGlobalChangeClearsAll() {
+        let cache = InlineCaptionDocumentCache()
+        var accumulator = InlineSegmentAccumulator()
+        accumulator.update(with: sources((0..<4).map { cue($0) }))
+        let urls = (0..<3).map { URL(string: "https://example.com/recency-\($0).mp3")! }
+
+        cache.store(accumulator, usesPublisherAlignment: false, for: urls[0])
+        cache.store(accumulator, usesPublisherAlignment: false, for: urls[1])
+        cache.store(accumulator, usesPublisherAlignment: false, for: urls[0]) // Reopened.
+        cache.store(accumulator, usesPublisherAlignment: false, for: urls[2])
+        XCTAssertNotNil(cache.entry(for: urls[0]), "the recently reopened overlay survives")
+        XCTAssertNil(cache.entry(for: urls[1]))
+
+        NotificationCenter.default.post(name: .episodeReferencesDidChange, object: nil, userInfo: nil)
+        XCTAssertNil(cache.entry(for: urls[0]))
+        XCTAssertNil(cache.entry(for: urls[2]))
+    }
+
+    func testSeekSettleDelayCoalescesSkipBursts() {
+        // Repeated 30 s skips restart Speech once, after the playhead settles.
+        XCTAssertGreaterThanOrEqual(OptionalSpeechWorkPolicy.seekSettleDelay, .milliseconds(400))
+        XCTAssertLessThanOrEqual(OptionalSpeechWorkPolicy.seekSettleDelay, .milliseconds(600))
+    }
+
+    func testOptionalSpeechWorkCoversListeningTimeAtEverySupportedRate() {
+        for (rate, lookahead) in [(Float(1), 30.0), (1.5, 45), (2, 60), (2.5, 75)] {
+            XCTAssertEqual(OptionalSpeechWorkPolicy.enrichmentLookahead(playbackRate: rate), lookahead)
+            let centers = OptionalSpeechWorkPolicy.enrichmentWindowCenters(
+                audioTime: 600, mediaDuration: 7_200, playbackRate: rate)
+            let window = OptionalSpeechWorkPolicy.enrichmentWindow
+            XCTAssertGreaterThanOrEqual(centers.max()! + window / 2, 600 + lookahead, "rate \(rate)")
+            XCTAssertLessThanOrEqual(centers.min()! - window / 2, 600 - OptionalSpeechWorkPolicy.enrichmentBehind)
+            XCTAssertLessThanOrEqual(centers.count, 16, "bounded per pass")
+        }
+        // A ±30 min seek plans an entirely new set of windows.
+        let here = Set(OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: 1_800, mediaDuration: 7_200, playbackRate: 1))
+        for target in [0.0, 3_600] {
+            let there = Set(OptionalSpeechWorkPolicy.enrichmentWindowCenters(audioTime: target, mediaDuration: 7_200, playbackRate: 1))
+            XCTAssertTrue(here.isDisjoint(with: there))
+        }
+        for (rate, lookahead) in [(Float(1), 14.0), (1.5, 21), (2, 28), (2.5, 35)] {
+            XCTAssertEqual(LiveTranscriptController.lookahead(playbackRate: rate), lookahead)
+        }
+    }
+
+    @MainActor
+    func testAutomaticLiveStartSkipsAnEpisodeThatIsNotPlaying() async throws {
+        let container = try libraryContainer()
+        let episode = Episode(guid: "auto-start", title: "Not playing",
+                              url: URL(string: "https://example.com/\(UUID().uuidString).mp3")!, duration: 60)
+        container.mainContext.insert(episode)
+        let skip = await LiveTranscriptController.shared.startAutomaticallyIfAppropriate(
+            episode: episode, container: container)
+        XCTAssertEqual(skip, .notCurrentEpisode)
+        XCTAssertFalse(LiveTranscriptController.shared.isActive(for: episode))
     }
 }

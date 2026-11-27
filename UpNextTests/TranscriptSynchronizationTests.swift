@@ -302,4 +302,29 @@ final class TranscriptSynchronizationTests: XCTestCase {
         let second = try TranscriptMediaFingerprint.make(for: fileURL)
         XCTAssertNotEqual(first, second)
     }
+
+    /// The current fingerprint hashes every byte (#488's partial hash is not implemented).
+    func testMediaFingerprintIsStableForIdenticalBytesAndDetectsMiddleChanges() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("fingerprint-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        // Larger than one 1 MiB read so the change lands between chunk boundaries.
+        var bytes = Data((0..<(3 * 1_048_576 + 17)).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+        let original = folder.appendingPathComponent("a.mp3")
+        let copy = folder.appendingPathComponent("b.mp3")
+        try bytes.write(to: original)
+        try bytes.write(to: copy)
+        let fingerprint = try TranscriptMediaFingerprint.make(for: original)
+        XCTAssertEqual(fingerprint, try TranscriptMediaFingerprint.make(for: copy), "unchanged media is reused")
+        XCTAssertEqual(fingerprint, try TranscriptMediaFingerprint.make(for: original))
+
+        bytes[bytes.count / 2] ^= 0xFF // Same size and duration, different middle (DAI-style).
+        try bytes.write(to: copy)
+        XCTAssertNotEqual(fingerprint, try TranscriptMediaFingerprint.make(for: copy))
+
+        let tiny = folder.appendingPathComponent("tiny.mp3")
+        try Data().write(to: tiny)
+        XCTAssertEqual(try TranscriptMediaFingerprint.make(for: tiny).count, 64)
+        XCTAssertThrowsError(try TranscriptMediaFingerprint.make(for: folder.appendingPathComponent("missing.mp3")))
+    }
 }

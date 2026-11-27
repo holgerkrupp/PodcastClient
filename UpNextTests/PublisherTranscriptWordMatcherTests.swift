@@ -143,4 +143,43 @@ final class PublisherTranscriptWordMatcherTests: XCTestCase {
         XCTAssertTrue(match(Array(observed.reversed()), [cue]).isEmpty)
         XCTAssertTrue(match(observed, [cue], near: .nan).isEmpty)
     }
+
+    // MARK: #493 conservative matcher matrix
+
+    func testNumbersCurrencyAndStageDirectionsMapOnlyIdenticalWords() {
+        let money = segment("We raised $20 million for 3 rockets")
+        XCTAssertEqual(excerpts(match(words("we raised twenty million for three rockets"), [money]), in: money),
+                       ["We", "raised", "million", "for", "rockets"], "spelled numbers are left unmapped")
+        XCTAssertEqual(excerpts(match(words("we raised 20 million for three rockets"), [money]), in: money),
+                       ["We", "raised", "20", "million", "for", "rockets"], "the currency symbol is never timed")
+
+        let staged = segment("HOST: [laughs] Silver rockets launch tonight")
+        XCTAssertEqual(excerpts(match(words("silver rockets launch tonight"), [staged]), in: staged),
+                       ["Silver", "rockets", "launch", "tonight"], "unspoken labels and directions stay unmapped")
+    }
+
+    func testPhraseSizedSpeechResultFailsClosed() {
+        let cue = segment("Silver rockets launch tonight")
+        let phrase = [Word(text: "silver rockets", audioStart: 120, audioEnd: 121)]
+            + words("launch tonight", at: 121.5)
+        XCTAssertTrue(match(phrase, [cue]).isEmpty, "a phrase interval would invent word boundaries")
+        XCTAssertTrue(match(Array(words("silver rockets").prefix(2)), [cue]).isEmpty, "too few words")
+    }
+
+    func testMatchesAreMonotonicWithBoundedConfidence() {
+        let first = segment("Bright red foxes cross the quiet forest", at: 20)
+        let second = segment("before golden sunrise arrives", at: 24)
+        let observed = words("bright red foxes cross the quiet forest before golden sunrise arrives")
+        let result = match(observed, [first, second])
+        XCTAssertEqual(result.count, observed.count)
+        XCTAssertEqual(result.map(\.audioStart), result.map(\.audioStart).sorted())
+        XCTAssertTrue(zip(result, result.dropFirst()).allSatisfy { $0.audioEnd <= $1.audioStart })
+        XCTAssertTrue(zip(result, result.dropFirst()).allSatisfy {
+            $0.segmentID == $1.segmentID ? $0.textRange.upperBound <= $1.textRange.lowerBound : true
+        })
+        XCTAssertTrue(result.allSatisfy { (0.8...1).contains($0.confidence) })
+        // Missing words lower the confidence of the surviving matches.
+        let partial = match(words("bright um foxes cross a quiet forest before golden sunrise arrives"), [first, second])
+        XCTAssertLessThan(partial.map(\.confidence).max() ?? 1, result.map(\.confidence).min() ?? 0)
+    }
 }
